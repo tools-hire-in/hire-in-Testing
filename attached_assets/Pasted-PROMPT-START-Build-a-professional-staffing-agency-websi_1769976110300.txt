@@ -1,0 +1,108 @@
+PROMPT START
+Build a professional staffing agency website for "Hire'in Solutions" - an AI-powered recruitment company specializing in Healthcare, IT, and Professional Services staffing. The company was established in 2014.
+## Tech Stack
+- React 18 with TypeScript
+- Vite for build tooling
+- Tailwind CSS for styling
+- Shadcn/ui component library (Radix UI)
+- Wouter for routing
+- TanStack Query for data fetching
+- Lucide React for icons
+- Express.js backend (for contact forms and jobs API)
+## Design System
+### Colors (CSS Variables)
+Primary brand color: Orange (hsl(15, 94%, 61%))
+Background: Light grayish-blue (hsl(210, 40%, 98%))
+Foreground: Dark blue-gray (hsl(215, 25%, 17%))
+Cards: Pure white
+Muted text: Gray (hsl(215, 13%, 65%))
+### Typography
+- Headings: Inter font (300-800 weights)
+- Body: Open Sans font (300-700 weights)
+- Import from Google Fonts
+### Border Radius
+8px default radius
+## Pages to Build
+1. **Home Page** (/)
+   - Full-screen hero with image carousel (4 images, auto-rotate every 4 seconds)
+   - Hero headline: "Your Success, Our Mission"
+   - Hero subheadline: "AI-powered recruitment meets human expertise. Find exceptional talent 80% faster with guaranteed compliance."
+   - Two CTAs: "Start Hiring Today" (primary) and "Apply for Opportunities" (outline)
+   - About section with company intro
+   - Services section with 3 cards: Healthcare (priority), IT, Non-IT & Engineering
+   - Why Choose Us section with 4 feature cards + 3 metrics
+   - How It Works section with 4 steps
+2. **About Page** (/about)
+   - Hero with headline "Revolutionizing Recruitment: Where AI Meets Human Intuition"
+   - Company story section
+   - Mission/Vision/Purpose box
+   - Core Values (Innovation, Integrity, Human-First, Excellence)
+   - Stats section with orange background
+3. **Healthcare Recruitment** (/services/healthcare-recruitment)
+   - Service-specific hero with badge
+   - Value proposition cards
+   - AI Tools section (4 items)
+   - Human Touch section (4 items)
+   - Success Stories (3 case studies)
+   - Roles We Fill list
+4. **IT & Software** (/services/it-software)
+   - Similar structure to healthcare with IT-specific content
+5. **Engineering & Technical** (/services/engineering-technical)
+   - Similar structure with engineering content
+6. **Professional Services** (/services/non-it-professional)
+   - Similar structure with professional services content
+7. **Contract Staffing** (/services/contract-staffing)
+   - Contract/temp staffing specific content
+8. **Jobs Board** (/jobs)
+   - Search and filter functionality
+   - Job cards with title, location, type, salary
+   - Application modal form
+   - Backend API for jobs listing
+9. **Contact** (/contact)
+   - Contact information (address, phones, emails, hours)
+   - Three inquiry type cards opening modal forms
+   - Address: 2621 Leigh Ave., San Jose, CA-95124
+   - Main phone: +1 (415) 663-5944
+   - Healthcare: +1 (408) 892-9656
+   - IT: +1 (408) 876-0779
+   - Emails: contact@hire-in.com, careers@hire-in.com
+10. **Terms of Service** (/terms) - Legal page
+11. **Privacy Policy** (/privacy) - Legal page
+## Components
+### Header
+- Logo with "Hire'in" text and "Solutions" subtitle + "Est. 2014" badge
+- Centered navigation: Home, About, Services (dropdown), Jobs, Contact
+- Right-aligned CTAs: Start Hiring, Apply Now
+- Sticky positioning
+- Mobile hamburger menu
+### Footer
+- 3-column layout: Company info, Quick Links, Services links
+- Compliance badges row: HIPAA-Ready, Smart Encryption, TJC-HCSS Aligned, Healthcare Verified
+- Bottom bar: Copyright 2025, Privacy Policy, Terms of Service, Contact Us
+- LinkedIn social link
+### Consultation Modal
+- Reusable modal for all CTAs
+- Form fields: First Name, Last Name, Email, Phone, Company (optional), Message
+- Dynamic title based on CTA source
+- Form submission to backend
+### Job Card & Application Modal
+- Job details display
+- Application form with name, email, phone, cover letter, experience
+## Key Features
+- Responsive design (mobile-first)
+- Dark mode support
+- Smooth scroll animations
+- Image carousel with navigation
+- Form validation
+- Toast notifications for form submissions
+- SEO-friendly meta tags
+## Company Stats to Display
+- 10+ Years in Business (Since 2014)
+- 95% Client Retention Rate
+- 90% AI Accuracy Rate
+- 98% Client Satisfaction
+- 50% Faster Placements
+- 100% Healthcare Compliance
+## Brand Voice
+Professional yet approachable. Emphasize the combination of AI technology with human expertise. Focus on healthcare compliance and quality placements.
+Build this as a complete, production-ready website with all pages, components, and functionality working.
