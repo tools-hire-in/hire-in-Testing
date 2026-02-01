@@ -46,25 +46,36 @@ export const METRICS = {
   healthcareCompliance: "100%",
 } as const;
 
-// Hero Carousel Images (Unsplash)
-export const HERO_IMAGES = [
+// Hero Carousel Slides with unique messages per industry
+export const HERO_SLIDES = [
   {
     url: "https://images.unsplash.com/photo-1638202993928-7267aad84c31?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     alt: "Healthcare professionals collaborating in modern hospital",
+    headline: "Your Success, Our Mission",
+    subheadline: "AI-powered recruitment meets human expertise. Find exceptional talent 80% faster with guaranteed compliance.",
   },
   {
     url: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     alt: "IT development team working in modern tech office",
+    headline: "Top IT Talent, Delivered Fast",
+    subheadline: "From software engineers to cybersecurity experts, we connect you with pre-vetted tech professionals ready to make an impact.",
   },
   {
     url: "https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     alt: "Healthcare clinic staff with telehealth technology",
+    headline: "Healthcare Staffing Excellence",
+    subheadline: "Trusted by clinics and hospitals nationwide. 100% compliance-ready healthcare professionals with verified credentials.",
   },
   {
     url: "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
-    alt: "Engineers working with AI and data visualization",
+    alt: "Engineers and professionals in collaborative workspace",
+    headline: "Engineering & Professional Services",
+    subheadline: "Finance, marketing, operations, and core engineering talent. The right professionals for every critical role in your organization.",
   },
 ] as const;
+
+// Keep backward compatibility
+export const HERO_IMAGES = HERO_SLIDES;
 
 // Navigation Links
 export const NAV_LINKS = [

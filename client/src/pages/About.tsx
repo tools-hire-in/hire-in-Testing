@@ -161,19 +161,95 @@ export default function About() {
         </div>
       </section>
 
-      {/* Technology Partner Section */}
+      {/* Technology Partners Section */}
       <section className="py-20 px-4 lg:px-6">
-        <div className="container mx-auto max-w-4xl text-center">
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">Technology Excellence</h2>
-          <p className="text-muted-foreground mb-8 leading-relaxed">
-            Our healthcare credentialing processes are powered by CredentialRx.ai, a
-            cutting-edge technology platform that streamlines medical credential verification.
-            This partnership enables us to provide faster, more accurate compliance
-            verification for healthcare placements.
-          </p>
-          <Button variant="outline" onClick={() => openConsultation("header-start-hiring")}>
-            Learn More About Our Process
-          </Button>
+        <div className="container mx-auto max-w-5xl">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl md:text-3xl font-bold mb-4">Technology Excellence</h2>
+            <p className="text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              We partner with industry-leading AI platforms to deliver smarter, faster recruitment outcomes.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* kleriq.AI Card */}
+            <Card className="hover-elevate">
+              <CardContent className="p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Target className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">kleriq.AI</h3>
+                    <span className="text-sm text-muted-foreground">All Staffing Services</span>
+                  </div>
+                </div>
+                <p className="text-muted-foreground leading-relaxed mb-4">
+                  Our core AI platform for smart resume matching and job simplification. kleriq.AI powers our data enrichment, candidate flagging, and intelligent matching across IT, Engineering, and Professional Services placements.
+                </p>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Smart Resume Matching
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Job Simplification & Analysis
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Candidate Data Enrichment
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Automated Flag Raising
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            {/* CredentialRx.ai Card */}
+            <Card className="hover-elevate">
+              <CardContent className="p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Shield className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">CredentialRx.ai</h3>
+                    <span className="text-sm text-muted-foreground">Healthcare Compliance</span>
+                  </div>
+                </div>
+                <p className="text-muted-foreground leading-relaxed mb-4">
+                  Specialized healthcare credentialing platform that streamlines medical credential verification. This partnership ensures faster, more accurate compliance verification for all healthcare placements.
+                </p>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Medical License Verification
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Credential Tracking
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Compliance Monitoring
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    Healthcare-Specific Vetting
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="text-center mt-10">
+            <Button variant="outline" onClick={() => openConsultation("header-start-hiring")}>
+              Learn More About Our Process
+            </Button>
+          </div>
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { HERO_IMAGES } from "@/lib/constants";
+import { HERO_SLIDES } from "@/lib/constants";
 
 interface HeroCarouselProps {
   onStartHiring: () => void;
@@ -12,22 +12,24 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const nextSlide = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % HERO_IMAGES.length);
+    setCurrentIndex((prev) => (prev + 1) % HERO_SLIDES.length);
   }, []);
 
   const prevSlide = useCallback(() => {
-    setCurrentIndex((prev) => (prev - 1 + HERO_IMAGES.length) % HERO_IMAGES.length);
+    setCurrentIndex((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(nextSlide, 4000);
+    const interval = setInterval(nextSlide, 5000);
     return () => clearInterval(interval);
   }, [nextSlide]);
+
+  const currentSlide = HERO_SLIDES[currentIndex];
 
   return (
     <section className="relative h-screen w-full overflow-hidden" data-testid="section-hero">
       {/* Background Images */}
-      {HERO_IMAGES.map((image, index) => (
+      {HERO_SLIDES.map((slide, index) => (
         <div
           key={index}
           className={`absolute inset-0 transition-opacity duration-1000 ${
@@ -35,32 +37,33 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
           }`}
         >
           <img
-            src={image.url}
-            alt={image.alt}
+            src={slide.url}
+            alt={slide.alt}
             className="h-full w-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
         </div>
       ))}
 
-      {/* Content */}
+      {/* Content - Updates with each slide */}
       <div className="relative z-10 flex h-full items-center justify-center px-4">
         <div className="max-w-4xl text-center">
           <h1
-            className="mb-6 text-4xl font-bold text-white md:text-5xl lg:text-6xl xl:text-7xl"
+            key={`headline-${currentIndex}`}
+            className="mb-6 text-4xl font-bold text-white md:text-5xl lg:text-6xl xl:text-7xl animate-in fade-in slide-in-from-bottom-4 duration-700"
             style={{ lineHeight: 1.1 }}
             data-testid="text-hero-headline"
           >
-            Your Success, Our Mission
+            {currentSlide.headline}
           </h1>
           <p
-            className="mb-8 text-lg text-white/90 md:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed"
+            key={`subheadline-${currentIndex}`}
+            className="mb-8 text-lg text-white/90 md:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150"
             data-testid="text-hero-subheadline"
           >
-            AI-powered recruitment meets human expertise. Find exceptional talent 80% faster
-            with guaranteed compliance.
+            {currentSlide.subheadline}
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
             <Button
               size="lg"
               onClick={onStartHiring}
@@ -100,7 +103,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
 
       {/* Dot Indicators */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
-        {HERO_IMAGES.map((_, index) => (
+        {HERO_SLIDES.map((_, index) => (
           <button
             key={index}
             onClick={() => setCurrentIndex(index)}
