@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ChevronDown } from "lucide-react";
+import { Menu, ChevronDown, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -103,10 +103,17 @@ export function Header({ onOpenConsultation }: HeaderProps) {
 
         {/* Desktop CTAs */}
         <div className="hidden lg:flex items-center gap-3">
-          {isAuthenticated && (
+          {isAuthenticated ? (
             <Link href="/admin">
               <Button variant="ghost" size="sm" data-testid="button-admin">
                 Admin
+              </Button>
+            </Link>
+          ) : (
+            <Link href="/admin/login">
+              <Button variant="ghost" size="sm" data-testid="button-login">
+                <LogIn className="h-4 w-4 mr-1" />
+                Login
               </Button>
             </Link>
           )}
@@ -167,11 +174,20 @@ export function Header({ onOpenConsultation }: HeaderProps) {
                 )
               )}
               <div className="flex flex-col gap-3 pt-4 border-t">
-                {isAuthenticated && (
+                {isAuthenticated ? (
                   <SheetClose asChild>
                     <Link href="/admin">
                       <Button variant="ghost" className="w-full justify-start">
                         Admin Dashboard
+                      </Button>
+                    </Link>
+                  </SheetClose>
+                ) : (
+                  <SheetClose asChild>
+                    <Link href="/admin/login">
+                      <Button variant="ghost" className="w-full justify-start">
+                        <LogIn className="h-4 w-4 mr-2" />
+                        Login
                       </Button>
                     </Link>
                   </SheetClose>
