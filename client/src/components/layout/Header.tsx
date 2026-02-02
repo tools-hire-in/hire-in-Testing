@@ -40,7 +40,7 @@ export function Header({ onOpenConsultation }: HeaderProps) {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-6">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-2">
           <img
             src={logoImage}
             alt="Hire'in Solutions"
@@ -48,11 +48,11 @@ export function Header({ onOpenConsultation }: HeaderProps) {
             data-testid="img-logo"
           />
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-primary" data-testid="text-company-name">
+            <div className="flex items-center gap-1">
+              <span className="text-xl font-bold text-primary" data-testid="text-company-name">
                 Hire'in
               </span>
-              <span className="text-lg font-medium text-muted-foreground">Solutions</span>
+              <span className="text-xl font-medium text-muted-foreground">Solutions</span>
             </div>
             <span className="text-[10px] text-muted-foreground tracking-wide">{COMPANY.brandLine}</span>
           </div>
