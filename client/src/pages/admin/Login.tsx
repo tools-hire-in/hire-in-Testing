@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Shield, LogIn, UserPlus, Loader2 } from "lucide-react";
+import { Shield, LogIn, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useLogin, useSetup } from "@/hooks/use-auth";
+import { useAuth, useLogin } from "@/hooks/use-auth";
 import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
@@ -15,14 +15,10 @@ export default function AdminLogin() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   
-  const [isSetupMode, setIsSetupMode] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   
   const loginMutation = useLogin();
-  const setupMutation = useSetup();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -55,44 +51,6 @@ export default function AdminLogin() {
     }
   };
 
-  const handleSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!email.endsWith("@hire-in.com")) {
-      toast({
-        title: "Invalid Email",
-        description: "Only @hire-in.com email addresses are allowed",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (password.length < 8) {
-      toast({
-        title: "Weak Password",
-        description: "Password must be at least 8 characters",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    try {
-      await setupMutation.mutateAsync({ email, password, firstName, lastName });
-      toast({
-        title: "Setup Complete",
-        description: "Your Super Admin account has been created!",
-      });
-      setLocation("/admin");
-    } catch (error: any) {
-      const message = error?.message || "Setup failed. Please try again.";
-      toast({
-        title: "Setup Failed",
-        description: message,
-        variant: "destructive",
-      });
-    }
-  };
-
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
@@ -114,12 +72,10 @@ export default function AdminLogin() {
             />
           </div>
           <CardTitle className="text-2xl" data-testid="text-login-title">
-            {isSetupMode ? "Setup Admin Portal" : "Admin Portal"}
+            Admin Portal
           </CardTitle>
           <CardDescription>
-            {isSetupMode 
-              ? "Create your Super Admin account to get started" 
-              : "Sign in with your @hire-in.com email"}
+            Sign in with your @hire-in.com email
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -128,36 +84,7 @@ export default function AdminLogin() {
             <span>Access restricted to authorized personnel only</span>
           </div>
 
-          <form onSubmit={isSetupMode ? handleSetup : handleLogin} className="space-y-4">
-            {isSetupMode && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    type="text"
-                    placeholder="John"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    data-testid="input-first-name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    type="text"
-                    placeholder="Doe"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    data-testid="input-last-name"
-                  />
-                </div>
-              </div>
-            )}
-            
+          <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -176,11 +103,10 @@ export default function AdminLogin() {
               <Input
                 id="password"
                 type="password"
-                placeholder={isSetupMode ? "Minimum 8 characters" : "Enter your password"}
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={isSetupMode ? 8 : 1}
                 data-testid="input-password"
               />
             </div>
@@ -189,32 +115,17 @@ export default function AdminLogin() {
               type="submit" 
               className="w-full" 
               size="lg"
-              disabled={loginMutation.isPending || setupMutation.isPending}
+              disabled={loginMutation.isPending}
               data-testid="button-submit"
             >
-              {(loginMutation.isPending || setupMutation.isPending) ? (
+              {loginMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : isSetupMode ? (
-                <UserPlus className="mr-2 h-4 w-4" />
               ) : (
                 <LogIn className="mr-2 h-4 w-4" />
               )}
-              {isSetupMode ? "Create Super Admin" : "Sign In"}
+              Sign In
             </Button>
           </form>
-
-          <div className="text-center">
-            <Button 
-              variant="ghost" 
-              onClick={() => setIsSetupMode(!isSetupMode)}
-              className="text-sm text-primary hover:underline"
-              data-testid="button-toggle-mode"
-            >
-              {isSetupMode 
-                ? "Already have an account? Sign in" 
-                : "First time? Set up Super Admin account"}
-            </Button>
-          </div>
 
           <p className="text-xs text-center text-muted-foreground">
             Only @hire-in.com domain accounts are authorized to access this portal
