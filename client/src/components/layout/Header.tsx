@@ -117,19 +117,6 @@ export function Header({ onOpenConsultation }: HeaderProps) {
               </Button>
             </Link>
           )}
-          <Button
-            onClick={() => handleCTA("header-start-hiring")}
-            data-testid="button-start-hiring"
-          >
-            Start Hiring
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => handleCTA("header-apply-now")}
-            data-testid="button-apply-now"
-          >
-            Apply Now
-          </Button>
         </div>
 
         {/* Mobile Menu */}
@@ -192,25 +179,6 @@ export function Header({ onOpenConsultation }: HeaderProps) {
                     </Link>
                   </SheetClose>
                 )}
-                <Button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    handleCTA("header-start-hiring");
-                  }}
-                  className="w-full"
-                >
-                  Start Hiring
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setMobileOpen(false);
-                    handleCTA("header-apply-now");
-                  }}
-                  className="w-full"
-                >
-                  Apply Now
-                </Button>
               </div>
             </div>
           </SheetContent>
