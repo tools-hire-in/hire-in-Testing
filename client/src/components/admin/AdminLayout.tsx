@@ -8,8 +8,9 @@ import {
   LogOut,
   Home,
   ChevronRight,
+  Shield,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -23,17 +24,52 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, type AuthUser } from "@/hooks/use-auth";
 import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
-const menuItems = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/admin/applications", label: "Applications", icon: FileText },
-  { href: "/admin/contacts", label: "Contacts", icon: Mail },
-  { href: "/admin/users", label: "Team", icon: Users },
+// Define menu items with role access
+const allMenuItems = [
+  { 
+    href: "/admin", 
+    label: "Dashboard", 
+    icon: LayoutDashboard,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  { 
+    href: "/admin/jobs", 
+    label: "Jobs", 
+    icon: Briefcase,
+    roles: ["super_admin", "admin", "operations"]
+  },
+  { 
+    href: "/admin/applications", 
+    label: "Applications", 
+    icon: FileText,
+    roles: ["super_admin", "admin", "hr"]
+  },
+  { 
+    href: "/admin/contacts", 
+    label: "Contacts", 
+    icon: Mail,
+    roles: ["super_admin", "admin", "hr"]
+  },
+  { 
+    href: "/admin/users", 
+    label: "Team", 
+    icon: Users,
+    roles: ["super_admin"]
+  },
 ];
+
+// Role display labels
+const roleLabels: Record<string, { label: string; color: string }> = {
+  super_admin: { label: "Super Admin", color: "bg-primary text-primary-foreground" },
+  admin: { label: "Admin", color: "bg-blue-500 text-white" },
+  hr: { label: "HR", color: "bg-green-500 text-white" },
+  operations: { label: "Operations", color: "bg-orange-500 text-white" },
+  employee: { label: "Employee", color: "bg-gray-500 text-white" },
+};
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -43,12 +79,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
 
+  // Filter menu items based on user role
+  const menuItems = allMenuItems.filter(item => 
+    user?.role && item.roles.includes(user.role)
+  );
+
   const isActive = (href: string) => {
     if (href === "/admin") {
       return location === "/admin";
     }
     return location.startsWith(href);
   };
+
+  const roleInfo = user?.role ? roleLabels[user.role] : roleLabels.employee;
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -73,6 +116,26 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Link>
           </SidebarHeader>
           <SidebarContent>
+            {/* User Info */}
+            <SidebarGroup className="border-b pb-4">
+              <div className="px-3 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    {user?.firstName} {user?.lastName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={`text-xs ${roleInfo.color}`} data-testid="badge-user-role">
+                    {roleInfo.label}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 truncate">
+                  {user?.email}
+                </p>
+              </div>
+            </SidebarGroup>
+
             <SidebarGroup>
               <SidebarGroupLabel>Navigation</SidebarGroupLabel>
               <SidebarGroupContent>
@@ -106,7 +169,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton onClick={() => logout()}>
+                    <SidebarMenuButton onClick={() => logout()} data-testid="button-logout">
                       <LogOut className="h-4 w-4" />
                       <span>Sign Out</span>
                     </SidebarMenuButton>
@@ -131,9 +194,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </nav>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {user?.email || "admin@hire-in.com"}
-              </span>
+              <Badge variant="outline" className="text-xs">
+                {roleInfo.label}
+              </Badge>
             </div>
           </header>
 

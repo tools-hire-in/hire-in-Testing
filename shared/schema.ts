@@ -9,11 +9,13 @@ export * from "./models/auth";
 // User roles enum
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "operations", "employee"]);
 
-// Admin users table (extends auth users with roles)
+// Admin users table (custom auth with email/password)
 export const adminUsers = pgTable("admin_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
   email: varchar("email").notNull().unique(),
+  password: varchar("password").notNull(),
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
   role: userRoleEnum("role").notNull().default("employee"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -94,6 +96,22 @@ export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export const registerAdminSchema = z.object({
+  email: z.string().email("Invalid email address").refine(
+    (email) => email.endsWith("@hire-in.com"),
+    "Only @hire-in.com email addresses are allowed"
+  ),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  role: z.enum(["super_admin", "admin", "hr", "operations", "employee"]).default("employee"),
 });
 
 export const insertJobSchema = createInsertSchema(jobs).omit({

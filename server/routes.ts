@@ -5,53 +5,31 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema } from "@shared/schema";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupSession, requireAuth, requireRole as requireRoleAuth } from "./auth";
+import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const objectStorageService = new ObjectStorageService();
 
-// Helper to get user email from request
-function getUserEmail(req: Request): string | undefined {
-  const user = req.user as any;
-  return user?.claims?.email || user?.email;
-}
-
-// Helper to get user role (returns role or defaults based on email)
-async function getUserRole(email: string): Promise<string> {
-  if (email === "simranjeet@hire-in.com") return "super_admin";
-  const adminUser = await storage.getAdminUserByEmail(email);
-  return adminUser?.role || "employee";
-}
-
-// Middleware to check if user has admin access (@hire-in.com domain)
-async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.isAuthenticated?.() || !req.user) {
+// Middleware to check if user has admin access (any authenticated user with session)
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  
-  const email = getUserEmail(req);
-  if (!email?.endsWith("@hire-in.com")) {
-    return res.status(403).json({ error: "Access denied. Only @hire-in.com users can access admin portal." });
-  }
-  
   next();
 }
 
-// Role-based middleware factory
+// Role-based middleware - allows specific roles plus super_admin and admin
 function requireRole(...allowedRoles: string[]) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.isAuthenticated?.() || !req.user) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.userId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     
-    const email = getUserEmail(req);
-    if (!email?.endsWith("@hire-in.com")) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-    
-    const role = await getUserRole(email);
-    if (allowedRoles.includes(role) || role === "super_admin" || role === "admin") {
+    const userRole = req.session.role;
+    // Super admin and admin always have access
+    if (userRole === "super_admin" || userRole === "admin" || allowedRoles.includes(userRole!)) {
       next();
     } else {
       return res.status(403).json({ error: "Insufficient permissions" });
@@ -64,8 +42,8 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Setup authentication (must be before other routes)
-  await setupAuth(app);
+  // Setup session-based authentication (must be before other routes)
+  setupSession(app);
   registerAuthRoutes(app);
   
   // ==========================================
@@ -201,7 +179,8 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: "Invalid job data", details: result.error.issues });
       }
-      const job = await storage.updateJob(req.params.id, result.data);
+      const jobId = req.params.id as string;
+      const job = await storage.updateJob(jobId, result.data);
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
       }
@@ -213,7 +192,8 @@ export async function registerRoutes(
 
   app.delete("/api/admin/jobs/:id", requireRole("operations"), async (req, res) => {
     try {
-      await storage.deleteJob(req.params.id);
+      const jobId = req.params.id as string;
+      await storage.deleteJob(jobId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete job" });
@@ -296,7 +276,8 @@ export async function registerRoutes(
 
   app.patch("/api/admin/applications/:id", requireRole("hr"), async (req, res) => {
     try {
-      const application = await storage.updateApplication(req.params.id, req.body);
+      const applicationId = req.params.id as string;
+      const application = await storage.updateApplication(applicationId, req.body);
       if (!application) {
         return res.status(404).json({ error: "Application not found" });
       }
@@ -318,7 +299,8 @@ export async function registerRoutes(
 
   app.patch("/api/admin/contacts/:id", requireRole("hr"), async (req, res) => {
     try {
-      const contact = await storage.updateContact(req.params.id, req.body);
+      const contactId = req.params.id as string;
+      const contact = await storage.updateContact(contactId, req.body);
       if (!contact) {
         return res.status(404).json({ error: "Contact not found" });
       }
@@ -338,28 +320,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/users", requireAdmin, async (req, res) => {
+  // User management routes are now handled via auth routes (register, etc.)
+  // These routes now use session-based role checking
+  app.post("/api/admin/users", requireRole("super_admin"), async (req, res) => {
     try {
-      // Check if super admin (only super admin can create users)
-      const currentUserEmail = getUserEmail(req);
-      if (currentUserEmail !== "simranjeet@hire-in.com") {
-        return res.status(403).json({ error: "Only Super Admin can manage users" });
-      }
-      
-      const { email, role } = req.body;
+      const { email, role, firstName, lastName, password } = req.body;
       
       if (!email?.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
-      }
-      
-      const result = insertAdminUserSchema.safeParse({
-        userId: "",
-        email,
-        role: role || "employee",
-      });
-      
-      if (!result.success) {
-        return res.status(400).json({ error: "Invalid user data", details: result.error.issues });
       }
       
       const existing = await storage.getAdminUserByEmail(email);
@@ -367,26 +335,36 @@ export async function registerRoutes(
         return res.status(400).json({ error: "User already exists" });
       }
       
-      const user = await storage.createAdminUser(result.data);
+      // Import hash function
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password || "changeme123", 12);
+      
+      const user = await storage.createAdminUser({
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        role: role || "employee",
+        isActive: true,
+      });
       res.status(201).json(user);
     } catch (error) {
       res.status(500).json({ error: "Failed to create user" });
     }
   });
 
-  app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
     try {
-      const currentUserEmail = getUserEmail(req);
-      if (currentUserEmail !== "simranjeet@hire-in.com") {
-        return res.status(403).json({ error: "Only Super Admin can manage users" });
+      const { password, ...updateData } = req.body;
+      
+      // If password is being updated, hash it
+      if (password) {
+        const bcrypt = await import("bcryptjs");
+        updateData.password = await bcrypt.hash(password, 12);
       }
       
-      const result = insertAdminUserSchema.partial().safeParse(req.body);
-      if (!result.success) {
-        return res.status(400).json({ error: "Invalid user data", details: result.error.issues });
-      }
-      
-      const user = await storage.updateAdminUser(req.params.id, result.data);
+      const userId = req.params.id as string;
+      const user = await storage.updateAdminUser(userId, updateData);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -396,14 +374,10 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
     try {
-      const currentUserEmail = (req.user as any).email;
-      if (currentUserEmail !== "simranjeet@hire-in.com") {
-        return res.status(403).json({ error: "Only Super Admin can manage users" });
-      }
-      
-      await storage.deleteAdminUser(req.params.id);
+      const userId = req.params.id as string;
+      await storage.deleteAdminUser(userId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
