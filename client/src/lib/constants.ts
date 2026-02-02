@@ -4,7 +4,7 @@ export const COMPANY = {
   tagline: "Where AI Meets Human Intuition",
   legalName: "Rayomind Software Solutions LLC",
   established: "2014",
-  brandLine: "a Rayomind company | Est. 2014",
+  brandLine: "A RAYOMIND COMPANY | EST. 2014",
 } as const;
 
 // Contact Information
