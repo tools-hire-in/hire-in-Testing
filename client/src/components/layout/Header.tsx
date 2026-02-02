@@ -54,7 +54,7 @@ export function Header({ onOpenConsultation }: HeaderProps) {
               </span>
               <span className="text-lg font-medium text-muted-foreground">Solutions</span>
             </div>
-            <span className="text-xs text-muted-foreground">{COMPANY.brandLine}</span>
+            <span className="text-[10px] text-muted-foreground tracking-wide">{COMPANY.brandLine}</span>
           </div>
         </Link>
 
