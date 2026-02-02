@@ -12,8 +12,35 @@ import { ObjectStorageService } from "./replit_integrations/object_storage/objec
 const upload = multer({ storage: multer.memoryStorage() });
 const objectStorageService = new ObjectStorageService();
 
-// Middleware to check if user has admin access (any authenticated user with session)
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
+/**
+ * ROLE-BASED ACCESS CONTROL (RBAC) DOCUMENTATION
+ * 
+ * Role Hierarchy (highest to lowest):
+ * - super_admin: Full access to everything, including user management
+ * - admin: Full access to all operational routes (jobs, applications, contacts) but NOT user management
+ * - hr: Access to applications and contacts only
+ * - operations: Access to jobs only  
+ * - employee: Dashboard access only (view stats)
+ * 
+ * Policy: super_admin and admin are omnipotent for operational routes.
+ * Only super_admin can manage team members.
+ */
+
+// Middleware to check if user has admin-level access (super_admin or admin only)
+function requireAdminLevel(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const userRole = req.session.role;
+  if (userRole === "super_admin" || userRole === "admin") {
+    next();
+  } else {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+}
+
+// Middleware for any authenticated admin portal user
+function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -21,6 +48,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 // Role-based middleware - allows specific roles plus super_admin and admin
+// super_admin and admin automatically have access to all admin routes
 function requireRole(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session?.userId) {
@@ -28,12 +56,15 @@ function requireRole(...allowedRoles: string[]) {
     }
     
     const userRole = req.session.role;
-    // Super admin and admin always have access
-    if (userRole === "super_admin" || userRole === "admin" || allowedRoles.includes(userRole!)) {
-      next();
-    } else {
-      return res.status(403).json({ error: "Insufficient permissions" });
+    // Super admin and admin always have access to everything
+    if (userRole === "super_admin" || userRole === "admin") {
+      return next();
     }
+    // Check if user's role is in the allowed roles
+    if (allowedRoles.includes(userRole!)) {
+      return next();
+    }
+    return res.status(403).json({ error: "Insufficient permissions" });
   };
 }
 
@@ -140,8 +171,8 @@ export async function registerRoutes(
   // ADMIN API ROUTES
   // ==========================================
 
-  // Get admin stats
-  app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+  // Get admin stats - all authenticated admin users can see dashboard stats
+  app.get("/api/admin/stats", requireAuth, async (req, res) => {
     try {
       const stats = await storage.getStats();
       res.json(stats);
@@ -310,8 +341,8 @@ export async function registerRoutes(
     }
   });
 
-  // Admin Users
-  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  // Admin Users - only Super Admin can view/manage team
+  app.get("/api/admin/users", requireRole("super_admin"), async (req, res) => {
     try {
       const users = await storage.getAdminUsers();
       res.json(users);

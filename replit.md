@@ -51,10 +51,24 @@ Preferred communication style: Simple, everyday language.
 ```
 
 ### Authentication Flow
-- Replit Auth integration via OpenID Connect
-- Admin portal restricted to `@hire-in.com` email domain
-- Session-based authentication with 7-day cookie expiry
-- User data synced to PostgreSQL users table
+- **Custom Email/Password Authentication**: bcrypt password hashing (12 salt rounds)
+- Admin portal restricted to `@hire-in.com` email domain only
+- Session-based authentication with 7-day cookie expiry using PostgreSQL-backed sessions
+- Initial setup flow creates first Super Admin when no users exist (`POST /api/auth/setup`)
+
+### Role-Based Access Control (RBAC)
+Role hierarchy from highest to lowest access:
+- **super_admin**: Full access to everything, including user/team management
+- **admin**: Full access to all operational routes (jobs, applications, contacts) but NOT user management
+- **hr**: Access to applications and contacts only
+- **operations**: Access to jobs only
+- **employee**: Dashboard access only (view stats)
+
+Key files:
+- `server/auth.ts`: Session setup and password hashing utilities
+- `server/authRoutes.ts`: Login, logout, register, setup API routes
+- `client/src/hooks/use-auth.ts`: Frontend auth state management
+- `client/src/components/admin/AdminLayout.tsx`: Role-based menu filtering
 
 ### Data Flow Pattern
 - Frontend uses TanStack Query for API calls with automatic caching
@@ -69,8 +83,8 @@ Preferred communication style: Simple, everyday language.
 - **Session Storage**: PostgreSQL-backed sessions via connect-pg-simple
 
 ### Authentication
-- **Replit Auth**: OpenID Connect provider for user authentication
-- **Environment Variables**: `ISSUER_URL`, `REPL_ID`, `SESSION_SECRET`
+- **Custom Auth**: Email/password with bcrypt hashing
+- **Environment Variables**: `SESSION_SECRET` for session encryption
 
 ### File Storage
 - **Google Cloud Storage**: Object storage via `@google-cloud/storage`
