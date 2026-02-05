@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -79,7 +79,93 @@ export const contacts = pgTable("contacts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Relations
+// ==========================================
+// HR PORTAL TABLES
+// ==========================================
+
+export const attendanceStatusEnum = pgEnum("attendance_status", ["present", "absent", "half_day", "late", "on_leave", "holiday", "weekend"]);
+export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved", "rejected", "cancelled"]);
+export const ticketStatusEnum = pgEnum("ticket_status", ["open", "in_review", "resolved", "rejected"]);
+
+export const holidays = pgTable("holidays", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  date: varchar("date").notNull(),
+  type: varchar("type").notNull().default("public"),
+  isOptional: boolean("is_optional").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const attendance = pgTable("attendance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  date: varchar("date").notNull(),
+  punchIn: timestamp("punch_in"),
+  punchOut: timestamp("punch_out"),
+  totalHours: numeric("total_hours"),
+  status: attendanceStatusEnum("status").notNull().default("present"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const leaveTypes = pgTable("leave_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  defaultDays: integer("default_days").notNull().default(0),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const leaveBalances = pgTable("leave_balances", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  leaveTypeId: varchar("leave_type_id").notNull().references(() => leaveTypes.id),
+  totalDays: numeric("total_days").notNull().default("0"),
+  usedDays: numeric("used_days").notNull().default("0"),
+  year: integer("year").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const leaveRequests = pgTable("leave_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  leaveTypeId: varchar("leave_type_id").notNull().references(() => leaveTypes.id),
+  startDate: varchar("start_date").notNull(),
+  endDate: varchar("end_date").notNull(),
+  totalDays: numeric("total_days").notNull(),
+  reason: text("reason"),
+  status: leaveStatusEnum("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewComment: text("review_comment"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const tickets = pgTable("tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  type: varchar("type").notNull().default("regularization"),
+  attendanceId: varchar("attendance_id").references(() => attendance.id),
+  date: varchar("date").notNull(),
+  requestedPunchIn: timestamp("requested_punch_in"),
+  requestedPunchOut: timestamp("requested_punch_out"),
+  reason: text("reason").notNull(),
+  status: ticketStatusEnum("status").notNull().default("open"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewComment: text("review_comment"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ==========================================
+// RELATIONS
+// ==========================================
+
 export const jobsRelations = relations(jobs, ({ many }) => ({
   applications: many(applications),
 }));
@@ -91,7 +177,65 @@ export const applicationsRelations = relations(applications, ({ one }) => ({
   }),
 }));
 
-// Zod schemas for validation
+export const adminUsersRelations = relations(adminUsers, ({ many }) => ({
+  attendanceRecords: many(attendance),
+  leaveBalances: many(leaveBalances),
+  leaveRequests: many(leaveRequests),
+  tickets: many(tickets),
+}));
+
+export const attendanceRelations = relations(attendance, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [attendance.userId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const leaveBalancesRelations = relations(leaveBalances, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [leaveBalances.userId],
+    references: [adminUsers.id],
+  }),
+  leaveType: one(leaveTypes, {
+    fields: [leaveBalances.leaveTypeId],
+    references: [leaveTypes.id],
+  }),
+}));
+
+export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [leaveRequests.userId],
+    references: [adminUsers.id],
+  }),
+  leaveType: one(leaveTypes, {
+    fields: [leaveRequests.leaveTypeId],
+    references: [leaveTypes.id],
+  }),
+  reviewer: one(adminUsers, {
+    fields: [leaveRequests.reviewedBy],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const ticketsRelations = relations(tickets, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [tickets.userId],
+    references: [adminUsers.id],
+  }),
+  attendanceRecord: one(attendance, {
+    fields: [tickets.attendanceId],
+    references: [attendance.id],
+  }),
+  reviewer: one(adminUsers, {
+    fields: [tickets.reviewedBy],
+    references: [adminUsers.id],
+  }),
+}));
+
+// ==========================================
+// ZOD SCHEMAS
+// ==========================================
+
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
   id: true,
   createdAt: true,
@@ -133,7 +277,52 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
   status: true,
 });
 
-// Types
+export const insertHolidaySchema = createInsertSchema(holidays).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAttendanceSchema = createInsertSchema(attendance).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertLeaveTypeSchema = createInsertSchema(leaveTypes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLeaveBalanceSchema = createInsertSchema(leaveBalances).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  reviewedBy: true,
+  reviewComment: true,
+  reviewedAt: true,
+});
+
+export const insertTicketSchema = createInsertSchema(tickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  reviewedBy: true,
+  reviewComment: true,
+  reviewedAt: true,
+});
+
+// ==========================================
+// TYPES
+// ==========================================
+
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export type Job = typeof jobs.$inferSelect;
@@ -142,3 +331,15 @@ export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Holiday = typeof holidays.$inferSelect;
+export type InsertHoliday = z.infer<typeof insertHolidaySchema>;
+export type Attendance = typeof attendance.$inferSelect;
+export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
+export type LeaveType = typeof leaveTypes.$inferSelect;
+export type InsertLeaveType = z.infer<typeof insertLeaveTypeSchema>;
+export type LeaveBalance = typeof leaveBalances.$inferSelect;
+export type InsertLeaveBalance = z.infer<typeof insertLeaveBalanceSchema>;
+export type LeaveRequest = typeof leaveRequests.$inferSelect;
+export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
+export type Ticket = typeof tickets.$inferSelect;
+export type InsertTicket = z.infer<typeof insertTicketSchema>;
