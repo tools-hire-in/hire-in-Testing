@@ -32,7 +32,7 @@ Preferred communication style: Simple, everyday language.
 - **Database**: PostgreSQL (provisioned via Replit)
 - **ORM**: Drizzle ORM with drizzle-kit for migrations
 - **Schema Location**: `shared/schema.ts` (shared between client and server)
-- **Key Tables**: jobs, applications, contacts, admin_users, users, sessions
+- **Key Tables**: jobs, applications, contacts, admin_users, users, sessions, holidays, attendance, leave_types, leave_balances, leave_requests, tickets
 
 ### Project Structure
 ```
@@ -69,6 +69,29 @@ Key files:
 - `server/authRoutes.ts`: Login, logout, register, setup API routes
 - `client/src/hooks/use-auth.ts`: Frontend auth state management
 - `client/src/components/admin/AdminLayout.tsx`: Role-based menu filtering
+
+### HR Portal System
+The HR Portal is an internal employee management system integrated into the admin panel. It provides:
+
+**Employee Features** (all roles):
+- **Dashboard** (`/admin/hr`): Punch in/out widget, monthly stats, leave balances, upcoming holidays
+- **Attendance** (`/admin/hr/attendance`): Monthly attendance records with status tracking
+- **Leave Management** (`/admin/hr/leaves`): Apply for leave, view leave balances, cancel pending requests
+- **Holiday Calendar** (`/admin/hr/holidays`): Company holidays grouped by month
+- **Profile** (`/admin/hr/profile`): Personal info, attendance overview, leave balances
+- **Tickets** (`/admin/hr/tickets`): Attendance regularization requests
+
+**HR/Admin Features** (super_admin, admin, hr roles):
+- **Leave Approvals** (`/admin/hr/leave-approvals`): Review/approve/reject team leave requests
+- **HR Settings** (`/admin/hr/settings`): Manage leave types and holidays (CRUD)
+
+**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, tickets
+
+**HR Portal Key Files**:
+- `client/src/pages/admin/hr/*`: All HR Portal frontend pages
+- `server/routes.ts`: HR API routes under `/api/hr/*`
+- `server/storage.ts`: HR storage operations
+- `shared/schema.ts`: HR database tables and schemas
 
 ### Data Flow Pattern
 - Frontend uses TanStack Query for API calls with automatic caching

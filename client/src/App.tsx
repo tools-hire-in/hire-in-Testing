@@ -21,6 +21,14 @@ import AdminApplications from "@/pages/admin/Applications";
 import AdminContacts from "@/pages/admin/Contacts";
 import AdminUsers from "@/pages/admin/Users";
 import AdminLogin from "@/pages/admin/Login";
+import HRDashboard from "@/pages/admin/hr/HRDashboard";
+import HRAttendance from "@/pages/admin/hr/Attendance";
+import HRLeaveManagement from "@/pages/admin/hr/LeaveManagement";
+import HRHolidayCalendar from "@/pages/admin/hr/HolidayCalendar";
+import HRProfile from "@/pages/admin/hr/Profile";
+import HRTickets from "@/pages/admin/hr/Tickets";
+import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
+import HRSettings from "@/pages/admin/hr/HRSettings";
 
 function Router() {
   return (
@@ -47,6 +55,16 @@ function Router() {
       <Route path="/admin/applications" component={AdminApplications} />
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/users" component={AdminUsers} />
+
+      {/* HR Portal Pages */}
+      <Route path="/admin/hr" component={HRDashboard} />
+      <Route path="/admin/hr/attendance" component={HRAttendance} />
+      <Route path="/admin/hr/leaves" component={HRLeaveManagement} />
+      <Route path="/admin/hr/holidays" component={HRHolidayCalendar} />
+      <Route path="/admin/hr/profile" component={HRProfile} />
+      <Route path="/admin/hr/tickets" component={HRTickets} />
+      <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
+      <Route path="/admin/hr/settings" component={HRSettings} />
 
       {/* Fallback */}
       <Route component={NotFound} />

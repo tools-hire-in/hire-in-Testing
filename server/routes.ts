@@ -4,8 +4,8 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema } from "@shared/schema";
-import { setupSession, requireAuth, requireRole as requireRoleAuth } from "./auth";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema } from "@shared/schema";
+import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 
@@ -405,7 +405,6 @@ export async function registerRoutes(
         return res.status(400).json({ error: "User already exists" });
       }
       
-      // Import hash function
       const bcrypt = await import("bcryptjs");
       const hashedPassword = await bcrypt.hash(password || "changeme123", 12);
       
@@ -427,7 +426,6 @@ export async function registerRoutes(
     try {
       const { password, ...updateData } = req.body;
       
-      // If password is being updated, hash it
       if (password) {
         const bcrypt = await import("bcryptjs");
         updateData.password = await bcrypt.hash(password, 12);
@@ -451,6 +449,485 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // ==========================================
+  // HR PORTAL API ROUTES
+  // ==========================================
+
+  // --- User Directory (for HR) ---
+  app.get("/api/hr/users", requireRole("hr"), async (req, res) => {
+    try {
+      const users = await storage.getAdminUsers();
+      const safeUsers = users.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        isActive: u.isActive,
+      }));
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // --- Dashboard Stats ---
+  app.get("/api/hr/dashboard-stats", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const todayRecord = await storage.getTodayAttendance(userId);
+      const now = new Date();
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
+      const monthRecords = await storage.getAttendanceByUser(userId, monthStart, monthEnd);
+      const presentRecords = monthRecords.filter(r => ["present", "late", "half_day"].includes(r.status));
+      const totalHours = monthRecords.reduce((s, r) => s + parseFloat(r.totalHours || "0"), 0);
+      const leaveRequests = await storage.getLeaveRequests({ userId });
+      const pendingCount = leaveRequests.filter(lr => lr.status === "pending").length;
+      const balances = await storage.getLeaveBalances(userId, now.getFullYear());
+
+      let todayStatus: "not_punched" | "punched_in" | "completed" = "not_punched";
+      if (todayRecord) {
+        todayStatus = todayRecord.punchOut ? "completed" : "punched_in";
+      }
+
+      res.json({
+        todayStatus,
+        punchInTime: todayRecord?.punchIn || null,
+        punchOutTime: todayRecord?.punchOut || null,
+        presentDaysThisMonth: presentRecords.length,
+        totalHoursThisMonth: totalHours.toFixed(1),
+        pendingLeaveRequests: pendingCount,
+        leaveBalances: balances,
+      });
+    } catch (error) {
+      console.error("Dashboard stats error:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // --- Holidays ---
+  app.get("/api/hr/holidays", requireAuth, async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const result = await storage.getHolidays(year);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch holidays" });
+    }
+  });
+
+  app.post("/api/hr/holidays", requireRole("hr"), async (req, res) => {
+    try {
+      const result = insertHolidaySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid holiday data", details: result.error.issues });
+      }
+      const holiday = await storage.createHoliday(result.data);
+      res.status(201).json(holiday);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create holiday" });
+    }
+  });
+
+  app.patch("/api/hr/holidays/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const holiday = await storage.updateHoliday(req.params.id as string, req.body);
+      if (!holiday) return res.status(404).json({ error: "Holiday not found" });
+      res.json(holiday);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update holiday" });
+    }
+  });
+
+  app.delete("/api/hr/holidays/:id", requireRole("hr"), async (req, res) => {
+    try {
+      await storage.deleteHoliday(req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete holiday" });
+    }
+  });
+
+  // --- Attendance ---
+  app.get("/api/hr/attendance/today", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const record = await storage.getTodayAttendance(userId);
+      res.json(record || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch today's attendance" });
+    }
+  });
+
+  app.post("/api/hr/attendance/punch-in", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const existing = await storage.getTodayAttendance(userId);
+      if (existing) {
+        return res.status(400).json({ error: "Already punched in today" });
+      }
+      const record = await storage.createAttendance({
+        userId,
+        date: today,
+        punchIn: new Date(),
+        status: "present",
+      });
+      res.status(201).json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to punch in" });
+    }
+  });
+
+  app.post("/api/hr/attendance/punch-out", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await storage.getTodayAttendance(userId);
+      if (!existing) {
+        return res.status(400).json({ error: "No punch-in record found for today" });
+      }
+      if (existing.punchOut) {
+        return res.status(400).json({ error: "Already punched out today" });
+      }
+      const punchOut = new Date();
+      const punchIn = existing.punchIn ? new Date(existing.punchIn) : punchOut;
+      const diffMs = punchOut.getTime() - punchIn.getTime();
+      const totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+      const record = await storage.updateAttendance(existing.id, {
+        punchOut,
+        totalHours,
+      });
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to punch out" });
+    }
+  });
+
+  app.get("/api/hr/attendance/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { startDate, endDate } = req.query;
+      const records = await storage.getAttendanceByUser(
+        userId,
+        startDate as string,
+        endDate as string
+      );
+      res.json(records);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch attendance records" });
+    }
+  });
+
+  app.get("/api/hr/attendance/team", requireRole("hr"), async (req, res) => {
+    try {
+      const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      const records = await storage.getAttendanceByDate(date);
+      res.json(records);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team attendance" });
+    }
+  });
+
+  app.patch("/api/hr/attendance/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const record = await storage.updateAttendance(req.params.id as string, req.body);
+      if (!record) return res.status(404).json({ error: "Attendance record not found" });
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update attendance" });
+    }
+  });
+
+  // --- Leave Types ---
+  app.get("/api/hr/leave-types", requireAuth, async (req, res) => {
+    try {
+      const types = await storage.getLeaveTypes();
+      res.json(types);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave types" });
+    }
+  });
+
+  app.post("/api/hr/leave-types", requireRole("hr"), async (req, res) => {
+    try {
+      const result = insertLeaveTypeSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid leave type data", details: result.error.issues });
+      }
+      const lt = await storage.createLeaveType(result.data);
+      res.status(201).json(lt);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create leave type" });
+    }
+  });
+
+  app.patch("/api/hr/leave-types/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const lt = await storage.updateLeaveType(req.params.id as string, req.body);
+      if (!lt) return res.status(404).json({ error: "Leave type not found" });
+      res.json(lt);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update leave type" });
+    }
+  });
+
+  app.delete("/api/hr/leave-types/:id", requireRole("hr"), async (req, res) => {
+    try {
+      await storage.deleteLeaveType(req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete leave type" });
+    }
+  });
+
+  // --- Leave Balances ---
+  app.get("/api/hr/leave-balances/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      let balances = await storage.getLeaveBalances(userId, year);
+      if (balances.length === 0) {
+        balances = await storage.initLeaveBalances(userId, year);
+      }
+      res.json(balances);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave balances" });
+    }
+  });
+
+  app.get("/api/hr/leave-balances/:userId", requireRole("hr"), async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      let balances = await storage.getLeaveBalances(req.params.userId as string, year);
+      if (balances.length === 0) {
+        balances = await storage.initLeaveBalances(req.params.userId as string, year);
+      }
+      res.json(balances);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave balances" });
+    }
+  });
+
+  app.patch("/api/hr/leave-balances/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const lb = await storage.updateLeaveBalance(req.params.id as string, req.body);
+      if (!lb) return res.status(404).json({ error: "Leave balance not found" });
+      res.json(lb);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update leave balance" });
+    }
+  });
+
+  // --- Leave Requests ---
+  app.get("/api/hr/leave-requests/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const requests = await storage.getLeaveRequests({ userId });
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave requests" });
+    }
+  });
+
+  app.get("/api/hr/leave-requests", requireRole("hr"), async (req, res) => {
+    try {
+      const { status } = req.query;
+      const requests = await storage.getLeaveRequests({ status: status as string });
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave requests" });
+    }
+  });
+
+  app.post("/api/hr/leave-requests", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const body = { ...req.body, userId };
+      const result = insertLeaveRequestSchema.safeParse(body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid leave request data", details: result.error.issues });
+      }
+      const lr = await storage.createLeaveRequest(result.data);
+      res.status(201).json(lr);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create leave request" });
+    }
+  });
+
+  app.patch("/api/hr/leave-requests/:id/review", requireRole("hr"), async (req, res) => {
+    try {
+      const { status, reviewComment } = req.body;
+      if (!["approved", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+      }
+      const lr = await storage.updateLeaveRequest(req.params.id as string, {
+        status,
+        reviewComment,
+        reviewedBy: req.session.userId!,
+        reviewedAt: new Date(),
+      });
+      if (!lr) return res.status(404).json({ error: "Leave request not found" });
+
+      if (status === "approved") {
+        const year = parseInt(lr.startDate.split("-")[0]);
+        const balances = await storage.getLeaveBalances(lr.userId, year);
+        const balance = balances.find(b => b.leaveTypeId === lr.leaveTypeId);
+        if (balance) {
+          const newUsed = parseFloat(balance.usedDays || "0") + parseFloat(lr.totalDays || "0");
+          await storage.updateLeaveBalance(balance.id, { usedDays: String(newUsed) });
+        }
+      }
+
+      res.json(lr);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to review leave request" });
+    }
+  });
+
+  app.patch("/api/hr/leave-requests/:id/cancel", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getLeaveRequest(req.params.id as string);
+      if (!existing) return res.status(404).json({ error: "Leave request not found" });
+      if (existing.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      if (existing.status !== "pending") {
+        return res.status(400).json({ error: "Only pending requests can be cancelled" });
+      }
+      const lr = await storage.updateLeaveRequest(req.params.id as string, { status: "cancelled" });
+      res.json(lr);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to cancel leave request" });
+    }
+  });
+
+  // --- Tickets (Regularization) ---
+  app.get("/api/hr/tickets/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const result = await storage.getTickets({ userId });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tickets" });
+    }
+  });
+
+  app.get("/api/hr/tickets", requireRole("hr"), async (req, res) => {
+    try {
+      const { status } = req.query;
+      const result = await storage.getTickets({ status: status as string });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tickets" });
+    }
+  });
+
+  app.post("/api/hr/tickets", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const body = { ...req.body, userId };
+      const result = insertTicketSchema.safeParse(body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid ticket data", details: result.error.issues });
+      }
+      const ticket = await storage.createTicket(result.data);
+      res.status(201).json(ticket);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create ticket" });
+    }
+  });
+
+  app.patch("/api/hr/tickets/:id/review", requireRole("hr"), async (req, res) => {
+    try {
+      const { status, reviewComment } = req.body;
+      if (!["resolved", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'resolved' or 'rejected'" });
+      }
+      const ticket = await storage.getTicket(req.params.id as string);
+      if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+      const updated = await storage.updateTicket(req.params.id as string, {
+        status,
+        reviewComment,
+        reviewedBy: req.session.userId!,
+        reviewedAt: new Date(),
+      });
+
+      if (status === "resolved" && ticket.attendanceId && ticket.requestedPunchIn) {
+        const updateData: any = {};
+        if (ticket.requestedPunchIn) updateData.punchIn = ticket.requestedPunchIn;
+        if (ticket.requestedPunchOut) updateData.punchOut = ticket.requestedPunchOut;
+        if (updateData.punchIn && updateData.punchOut) {
+          const diffMs = new Date(updateData.punchOut).getTime() - new Date(updateData.punchIn).getTime();
+          updateData.totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+        }
+        await storage.updateAttendance(ticket.attendanceId, updateData);
+      }
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to review ticket" });
+    }
+  });
+
+  // --- HR Dashboard Stats ---
+  app.get("/api/hr/dashboard-stats", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const year = new Date().getFullYear();
+      const monthStart = `${today.substring(0, 7)}-01`;
+
+      const todayAttendance = await storage.getTodayAttendance(userId);
+      const monthRecords = await storage.getAttendanceByUser(userId, monthStart, today);
+      const pendingLeaves = await storage.getLeaveRequests({ userId, status: "pending" });
+      let leaveBalances = await storage.getLeaveBalances(userId, year);
+      if (leaveBalances.length === 0) {
+        leaveBalances = await storage.initLeaveBalances(userId, year);
+      }
+
+      const presentDays = monthRecords.filter(r => r.status === "present" || r.status === "half_day" || r.status === "late").length;
+      const totalHoursMonth = monthRecords.reduce((sum, r) => sum + parseFloat(r.totalHours || "0"), 0);
+
+      res.json({
+        todayStatus: todayAttendance ? (todayAttendance.punchOut ? "completed" : "punched_in") : "not_punched",
+        punchInTime: todayAttendance?.punchIn || null,
+        punchOutTime: todayAttendance?.punchOut || null,
+        presentDaysThisMonth: presentDays,
+        totalHoursThisMonth: totalHoursMonth.toFixed(1),
+        pendingLeaveRequests: pendingLeaves.length,
+        leaveBalances,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // --- Attendance Report (CSV export) ---
+  app.get("/api/hr/reports/attendance", requireRole("hr"), async (req, res) => {
+    try {
+      const { userId, startDate, endDate } = req.query;
+      if (!userId || !startDate || !endDate) {
+        return res.status(400).json({ error: "userId, startDate, and endDate are required" });
+      }
+      const records = await storage.getAttendanceByUser(userId as string, startDate as string, endDate as string);
+      const user = await storage.getAdminUser(userId as string);
+      const csvHeader = "Date,Punch In,Punch Out,Total Hours,Status,Notes\n";
+      const csvRows = records.map(r => {
+        const pIn = r.punchIn ? new Date(r.punchIn).toLocaleTimeString() : "";
+        const pOut = r.punchOut ? new Date(r.punchOut).toLocaleTimeString() : "";
+        return `${r.date},${pIn},${pOut},${r.totalHours || ""},${r.status},${(r.notes || "").replace(/,/g, ";")}`;
+      }).join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=attendance_${user?.firstName || "user"}_${startDate}_${endDate}.csv`);
+      res.send(csvHeader + csvRows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate report" });
     }
   });
 

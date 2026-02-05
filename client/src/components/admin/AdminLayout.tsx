@@ -9,6 +9,12 @@ import {
   Home,
   ChevronRight,
   Shield,
+  Clock,
+  CalendarDays,
+  CalendarCheck,
+  UserCircle,
+  Ticket,
+  Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,8 +34,7 @@ import { useAuth, type AuthUser } from "@/hooks/use-auth";
 import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
-// Define menu items with role access
-const allMenuItems = [
+const recruitmentMenu = [
   { 
     href: "/admin", 
     label: "Dashboard", 
@@ -62,7 +67,57 @@ const allMenuItems = [
   },
 ];
 
-// Role display labels
+const hrPortalMenu = [
+  {
+    href: "/admin/hr",
+    label: "My Dashboard",
+    icon: LayoutDashboard,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/attendance",
+    label: "Attendance",
+    icon: Clock,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/leaves",
+    label: "Leave Management",
+    icon: CalendarCheck,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/holidays",
+    label: "Holiday Calendar",
+    icon: CalendarDays,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/profile",
+    label: "My Profile",
+    icon: UserCircle,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/tickets",
+    label: "Tickets",
+    icon: Ticket,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+  },
+  {
+    href: "/admin/hr/leave-approvals",
+    label: "Leave Approvals",
+    icon: CalendarCheck,
+    roles: ["super_admin", "admin", "hr"]
+  },
+  {
+    href: "/admin/hr/settings",
+    label: "HR Settings",
+    icon: Settings,
+    roles: ["super_admin", "admin", "hr"]
+  },
+];
+
 const roleLabels: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-primary text-primary-foreground" },
   admin: { label: "Admin", color: "bg-blue-500 text-white" },
@@ -79,15 +134,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
 
-  // Filter menu items based on user role
-  const menuItems = allMenuItems.filter(item => 
+  const filteredRecruitment = recruitmentMenu.filter(item => 
+    user?.role && item.roles.includes(user.role)
+  );
+
+  const filteredHR = hrPortalMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
 
   const isActive = (href: string) => {
-    if (href === "/admin") {
-      return location === "/admin";
-    }
+    if (href === "/admin") return location === "/admin";
+    if (href === "/admin/hr") return location === "/admin/hr";
     return location.startsWith(href);
   };
 
@@ -96,6 +153,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const sidebarStyle = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
+  };
+
+  const breadcrumbLabel = () => {
+    const path = location.replace("/admin", "").replace(/^\//, "");
+    if (!path) return "Dashboard";
+    const parts = path.split("/");
+    return parts[parts.length - 1].replace(/-/g, " ");
   };
 
   return (
@@ -111,12 +175,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               />
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-primary">Hire'in Admin</span>
-                <span className="text-xs text-muted-foreground">Dashboard</span>
+                <span className="text-xs text-muted-foreground">Portal</span>
               </div>
             </Link>
           </SidebarHeader>
           <SidebarContent>
-            {/* User Info */}
             <SidebarGroup className="border-b pb-4">
               <div className="px-3 py-2">
                 <div className="flex items-center gap-2 mb-1">
@@ -137,15 +200,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+              <SidebarGroupLabel>Recruitment</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {menuItems.map((item) => (
+                  {filteredRecruitment.map((item) => (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive(item.href)}
-                        data-testid={`nav-admin-${item.label.toLowerCase()}`}
+                        data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                       >
                         <Link href={item.href}>
                           <item.icon className="h-4 w-4" />
@@ -157,6 +220,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel>HR Portal</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {filteredHR.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive(item.href)}
+                        data-testid={`nav-hr-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                      >
+                        <Link href={item.href}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
             <SidebarGroup className="mt-auto">
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -181,7 +267,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </Sidebar>
 
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Top Bar */}
           <header className="flex items-center justify-between h-14 px-4 border-b bg-background">
             <div className="flex items-center gap-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
@@ -189,7 +274,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <span>Admin</span>
                 <ChevronRight className="h-4 w-4" />
                 <span className="text-foreground font-medium capitalize">
-                  {location.split("/").pop() || "Dashboard"}
+                  {breadcrumbLabel()}
                 </span>
               </nav>
             </div>
@@ -200,7 +285,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           </header>
 
-          {/* Main Content */}
           <main className="flex-1 overflow-auto p-6 bg-muted/20">{children}</main>
         </div>
       </div>
