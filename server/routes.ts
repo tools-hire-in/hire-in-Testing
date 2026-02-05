@@ -231,6 +231,45 @@ export async function registerRoutes(
     }
   });
 
+  // Bulk delete jobs
+  app.post("/api/admin/jobs/bulk-delete", requireRole("operations"), async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "No job IDs provided" });
+      }
+      const count = await storage.deleteJobs(ids);
+      res.json({ message: `Deleted ${count} jobs`, count });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete jobs" });
+    }
+  });
+
+  // Bulk update jobs (activate/deactivate only)
+  app.post("/api/admin/jobs/bulk-update", requireRole("operations"), async (req, res) => {
+    try {
+      const { ids, updates } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "No job IDs provided" });
+      }
+      // Whitelist only allowed bulk update fields for security
+      const allowedUpdates: Partial<{ isActive: boolean; isHot: boolean }> = {};
+      if (typeof updates?.isActive === "boolean") {
+        allowedUpdates.isActive = updates.isActive;
+      }
+      if (typeof updates?.isHot === "boolean") {
+        allowedUpdates.isHot = updates.isHot;
+      }
+      if (Object.keys(allowedUpdates).length === 0) {
+        return res.status(400).json({ error: "No valid updates provided" });
+      }
+      const count = await storage.updateJobsBulk(ids, allowedUpdates);
+      res.json({ message: `Updated ${count} jobs`, count });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update jobs" });
+    }
+  });
+
   // CSV/XLSX Upload for Jobs
   app.post("/api/admin/jobs/upload", requireRole("operations"), upload.single("file"), async (req, res) => {
     try {

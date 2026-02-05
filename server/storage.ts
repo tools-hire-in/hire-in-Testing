@@ -24,6 +24,8 @@ export interface IStorage {
   createJobs(jobList: InsertJob[]): Promise<Job[]>;
   updateJob(id: string, job: Partial<InsertJob>): Promise<Job | undefined>;
   deleteJob(id: string): Promise<boolean>;
+  deleteJobs(ids: string[]): Promise<number>;
+  updateJobsBulk(ids: string[], updates: Partial<InsertJob>): Promise<number>;
   getJobFilters(): Promise<{ specialties: string[]; states: string[]; jobTypes: string[] }>;
 
   // Applications
@@ -120,6 +122,20 @@ export class DatabaseStorage implements IStorage {
   async deleteJob(id: string): Promise<boolean> {
     const result = await db.delete(jobs).where(eq(jobs.id, id));
     return true;
+  }
+
+  async deleteJobs(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.delete(jobs).where(sql`${jobs.id} = ANY(ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::text[])`);
+    return ids.length;
+  }
+
+  async updateJobsBulk(ids: string[], updates: Partial<InsertJob>): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.update(jobs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(sql`${jobs.id} = ANY(ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::text[])`);
+    return ids.length;
   }
 
   async getJobFilters(): Promise<{ specialties: string[]; states: string[]; jobTypes: string[] }> {
