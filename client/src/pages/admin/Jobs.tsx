@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff } from "lucide-react";
+import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +84,29 @@ export default function AdminJobs() {
       job.specialty?.toLowerCase().includes(search.toLowerCase()) ||
       job.city?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const downloadTemplate = () => {
+    const headers = ["title", "specialty", "city", "state", "jobType", "salaryMin", "salaryMax", "description", "requirements"];
+    const sampleRow = [
+      "Registered Nurse",
+      "ICU",
+      "Houston",
+      "TX",
+      "Full-Time",
+      "70000",
+      "95000",
+      "We are seeking an experienced ICU Registered Nurse to join our team.",
+      "Active RN license; 2+ years ICU experience; BLS and ACLS certification"
+    ];
+    const csvContent = [headers.join(","), sampleRow.join(",")].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "job_upload_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <AdminLayout>
@@ -271,9 +294,21 @@ export default function AdminJobs() {
                   </label>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Supported formats: CSV, XLSX, XLS. Maximum file size: 10MB
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Supported formats: CSV, XLSX, XLS. Maximum file size: 10MB
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-primary"
+                  onClick={downloadTemplate}
+                  data-testid="button-download-template"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Download Template
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
