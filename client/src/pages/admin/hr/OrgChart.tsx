@@ -36,7 +36,9 @@ interface TreeNode {
 }
 
 const LEVEL_LABELS: Record<string, string> = {
-  ceo: "CEO / Director",
+  ceo: "CEO",
+  director: "Director",
+  vp: "Vice President",
   department_head: "Department Head",
   manager: "Manager",
   team_lead: "Team Lead",
@@ -46,12 +48,16 @@ const LEVEL_LABELS: Record<string, string> = {
 
 const LEVEL_COLORS: Record<string, string> = {
   ceo: "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200",
+  director: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  vp: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
   department_head: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   manager: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
   team_lead: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
   senior_member: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
   team_member: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
 };
+
+const TOP_LEVELS = ["ceo", "director", "vp"];
 
 function OrgNode({ node, departments, depth = 0 }: { node: TreeNode; departments: Department[]; depth?: number }) {
   const [expanded, setExpanded] = useState(depth < 2);
@@ -174,7 +180,7 @@ export default function OrgChart() {
 
   const topLeaders = useMemo(() => {
     if (!orgData) return [];
-    return orgData.users.filter(u => u.hierarchyLevel === "ceo" && !u.managerId);
+    return orgData.users.filter(u => TOP_LEVELS.includes(u.hierarchyLevel || "") && !u.managerId);
   }, [orgData]);
 
   const deptSummary = useMemo(() => {
@@ -210,11 +216,12 @@ export default function OrgChart() {
                 <div className="flex flex-wrap gap-3 justify-center">
                   {topLeaders.map(leader => {
                     const initials = `${leader.firstName[0] || ""}${leader.lastName[0] || ""}`;
+                    const lvl = leader.hierarchyLevel || "ceo";
                     return (
                       <Card key={leader.id} className="min-w-[200px]" data-testid={`leader-card-${leader.id}`}>
                         <CardContent className="p-4 text-center">
                           <Avatar className="mx-auto mb-2 h-12 w-12">
-                            <AvatarFallback className={LEVEL_COLORS.ceo + " text-lg"}>
+                            <AvatarFallback className={(LEVEL_COLORS[lvl] || LEVEL_COLORS.ceo) + " text-lg"}>
                               {initials}
                             </AvatarFallback>
                           </Avatar>
@@ -223,7 +230,7 @@ export default function OrgChart() {
                             <p className="text-sm text-muted-foreground">{leader.designation}</p>
                           )}
                           <Badge variant="secondary" className="mt-2 text-xs no-default-active-elevate">
-                            {LEVEL_LABELS.ceo}
+                            {LEVEL_LABELS[lvl] || lvl}
                           </Badge>
                         </CardContent>
                       </Card>

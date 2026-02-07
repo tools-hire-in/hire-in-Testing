@@ -68,13 +68,17 @@ const roleColors: Record<string, string> = {
 };
 
 const levelLabels: Record<string, string> = {
-  ceo: "CEO / Director",
+  ceo: "CEO",
+  director: "Director",
+  vp: "Vice President",
   department_head: "Department Head",
   manager: "Manager",
   team_lead: "Team Lead",
   senior_member: "Senior Member",
   team_member: "Team Member",
 };
+
+const TOP_LEVELS = ["ceo", "director", "vp"];
 
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
@@ -472,7 +476,7 @@ export default function AdminUsers() {
                 <Label>Hierarchy Level</Label>
                 <Select value={hForm.hierarchyLevel} onValueChange={(v) => {
                   const updates: any = { hierarchyLevel: v };
-                  if (v === "ceo") {
+                  if (TOP_LEVELS.includes(v)) {
                     updates.departmentId = "none";
                     updates.managerId = "none";
                   }
@@ -482,7 +486,9 @@ export default function AdminUsers() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ceo">CEO / Director</SelectItem>
+                    <SelectItem value="ceo">CEO</SelectItem>
+                    <SelectItem value="director">Director</SelectItem>
+                    <SelectItem value="vp">Vice President</SelectItem>
                     <SelectItem value="department_head">Department Head</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="team_lead">Team Lead</SelectItem>
@@ -490,8 +496,8 @@ export default function AdminUsers() {
                     <SelectItem value="team_member">Team Member</SelectItem>
                   </SelectContent>
                 </Select>
-                {hForm.hierarchyLevel === "ceo" && (
-                  <p className="text-xs text-muted-foreground">CEO / Director is above all departments with no reporting manager.</p>
+                {TOP_LEVELS.includes(hForm.hierarchyLevel) && (
+                  <p className="text-xs text-muted-foreground">Top leadership is above all departments with no reporting manager.</p>
                 )}
               </div>
               <div className="space-y-2">

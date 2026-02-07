@@ -10,7 +10,7 @@ export * from "./models/auth";
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "operations", "employee"]);
 
 // Hierarchy level enum
-export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "department_head", "manager", "team_lead", "senior_member", "team_member"]);
+export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "director", "vp", "department_head", "manager", "team_lead", "senior_member", "team_member"]);
 
 // Departments table
 export const departments = pgTable("departments", {
