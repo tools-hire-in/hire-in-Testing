@@ -40,17 +40,25 @@ export function setupSession(app: Express) {
   });
 
   app.set("trust proxy", 1);
+
+  const cookieConfig: session.CookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: sessionTtl,
+    sameSite: "lax" as const,
+  };
+
+  if (process.env.COOKIE_DOMAIN) {
+    cookieConfig.domain = process.env.COOKIE_DOMAIN;
+  }
+
   app.use(
     session({
       secret: process.env.SESSION_SECRET!,
       store: sessionStore,
       resave: false,
       saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: sessionTtl,
-      },
+      cookie: cookieConfig,
     })
   );
 }
