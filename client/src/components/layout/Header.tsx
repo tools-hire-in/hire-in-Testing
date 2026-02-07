@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, ChevronDown, LogIn } from "lucide-react";
+import { Menu, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { NAV_LINKS, COMPANY } from "@/lib/constants";
-import { useAuth } from "@/hooks/use-auth";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
 interface ConsultationModalProps {
@@ -25,7 +24,6 @@ interface HeaderProps {
 
 export function Header({ onOpenConsultation }: HeaderProps) {
   const [location] = useLocation();
-  const { user, isAuthenticated } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (href: string) => location === href;
@@ -101,23 +99,7 @@ export function Header({ onOpenConsultation }: HeaderProps) {
           )}
         </nav>
 
-        {/* Desktop CTAs */}
-        <div className="hidden lg:flex items-center gap-3">
-          {isAuthenticated ? (
-            <Link href="/admin">
-              <Button variant="ghost" size="sm" data-testid="button-admin">
-                Admin
-              </Button>
-            </Link>
-          ) : (
-            <Link href="/admin/login">
-              <Button variant="ghost" size="sm" data-testid="button-login">
-                <LogIn className="h-4 w-4 mr-1" />
-                Employee Login
-              </Button>
-            </Link>
-          )}
-        </div>
+        <div className="hidden lg:flex items-center gap-3" />
 
         {/* Mobile Menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -160,26 +142,7 @@ export function Header({ onOpenConsultation }: HeaderProps) {
                   </SheetClose>
                 )
               )}
-              <div className="flex flex-col gap-3 pt-4 border-t">
-                {isAuthenticated ? (
-                  <SheetClose asChild>
-                    <Link href="/admin">
-                      <Button variant="ghost" className="w-full justify-start">
-                        Admin Dashboard
-                      </Button>
-                    </Link>
-                  </SheetClose>
-                ) : (
-                  <SheetClose asChild>
-                    <Link href="/admin/login">
-                      <Button variant="ghost" className="w-full justify-start">
-                        <LogIn className="h-4 w-4 mr-2" />
-                        Employee Login
-                      </Button>
-                    </Link>
-                  </SheetClose>
-                )}
-              </div>
+              
             </div>
           </SheetContent>
         </Sheet>
