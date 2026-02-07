@@ -9,6 +9,20 @@ export * from "./models/auth";
 // User roles enum
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "operations", "employee"]);
 
+// Hierarchy level enum
+export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "department_head", "manager", "team_lead", "senior_member", "team_member"]);
+
+// Departments table
+export const departments = pgTable("departments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull().unique(),
+  description: text("description"),
+  headId: varchar("head_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Admin users table (custom auth with email/password)
 export const adminUsers = pgTable("admin_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -18,6 +32,10 @@ export const adminUsers = pgTable("admin_users", {
   lastName: varchar("last_name").notNull(),
   role: userRoleEnum("role").notNull().default("employee"),
   isActive: boolean("is_active").notNull().default(true),
+  managerId: varchar("manager_id"),
+  departmentId: varchar("department_id").references(() => departments.id),
+  designation: varchar("designation"),
+  hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -177,7 +195,21 @@ export const applicationsRelations = relations(applications, ({ one }) => ({
   }),
 }));
 
-export const adminUsersRelations = relations(adminUsers, ({ many }) => ({
+export const departmentsRelations = relations(departments, ({ many }) => ({
+  employees: many(adminUsers),
+}));
+
+export const adminUsersRelations = relations(adminUsers, ({ one, many }) => ({
+  department: one(departments, {
+    fields: [adminUsers.departmentId],
+    references: [departments.id],
+  }),
+  manager: one(adminUsers, {
+    fields: [adminUsers.managerId],
+    references: [adminUsers.id],
+    relationName: "managerRelation",
+  }),
+  directReports: many(adminUsers, { relationName: "managerRelation" }),
   attendanceRecords: many(attendance),
   leaveBalances: many(leaveBalances),
   leaveRequests: many(leaveRequests),
@@ -235,6 +267,12 @@ export const ticketsRelations = relations(tickets, ({ one }) => ({
 // ==========================================
 // ZOD SCHEMAS
 // ==========================================
+
+export const insertDepartmentSchema = createInsertSchema(departments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
   id: true,
@@ -323,6 +361,8 @@ export const insertTicketSchema = createInsertSchema(tickets).omit({
 // TYPES
 // ==========================================
 
+export type Department = typeof departments.$inferSelect;
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export type Job = typeof jobs.$inferSelect;

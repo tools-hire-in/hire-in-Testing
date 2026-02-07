@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings, Plus, Pencil, Trash2, CalendarDays } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,14 @@ interface Holiday {
   isOptional: boolean;
 }
 
+interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  headId: string | null;
+  isActive: boolean;
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -45,6 +53,10 @@ export default function HRSettings() {
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   const [hForm, setHForm] = useState({ name: "", date: "", type: "public", isOptional: false });
+
+  const [showDepartment, setShowDepartment] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [dForm, setDForm] = useState({ name: "", description: "", isActive: true });
 
   const { data: leaveTypes, isLoading: ltLoading } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
@@ -108,6 +120,37 @@ export default function HRSettings() {
     },
   });
 
+  const { data: deptList, isLoading: deptLoading } = useQuery<Department[]>({
+    queryKey: ["/api/departments"],
+    enabled: isAuthenticated,
+  });
+
+  const deptMutation = useMutation({
+    mutationFn: (data: { id?: string; body: any }) => {
+      if (data.id) {
+        return apiRequest("PATCH", `/api/departments/${data.id}`, data.body);
+      }
+      return apiRequest("POST", "/api/departments", data.body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      setShowDepartment(false);
+      setEditingDepartment(null);
+      toast({ title: "Saved", description: "Department saved." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+    },
+  });
+
+  const deleteDeptMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/departments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      toast({ title: "Deleted", description: "Department deleted." });
+    },
+  });
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
@@ -134,6 +177,17 @@ export default function HRSettings() {
       setHForm({ name: "", date: "", type: "public", isOptional: false });
     }
     setShowHoliday(true);
+  };
+
+  const openDeptForm = (d?: Department) => {
+    if (d) {
+      setEditingDepartment(d);
+      setDForm({ name: d.name, description: d.description || "", isActive: d.isActive });
+    } else {
+      setEditingDepartment(null);
+      setDForm({ name: "", description: "", isActive: true });
+    }
+    setShowDepartment(true);
   };
 
   return (
@@ -312,6 +366,118 @@ export default function HRSettings() {
                 data-testid="button-save-leave-type"
               >
                 {leaveTypeMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Departments</CardTitle>
+            <Button size="sm" onClick={() => openDeptForm()} data-testid="button-add-department">
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {deptLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : deptList && deptList.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Description</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deptList.map((d) => (
+                      <tr key={d.id} className="border-b last:border-0" data-testid={`dept-row-${d.id}`}>
+                        <td className="py-2 px-2 font-medium">{d.name}</td>
+                        <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{d.description || "-"}</td>
+                        <td className="py-2 px-2">
+                          <Badge variant={d.isActive ? "default" : "secondary"}>
+                            {d.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openDeptForm(d)} data-testid={`button-edit-dept-${d.id}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {user?.role === "super_admin" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteDeptMutation.mutate(d.id)}
+                                data-testid={`button-delete-dept-${d.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No departments configured</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={showDepartment} onOpenChange={setShowDepartment}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingDepartment ? "Edit" : "Add"} Department</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Department Name</Label>
+                <Input
+                  value={dForm.name}
+                  onChange={(e) => setDForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Engineering, Healthcare, HR"
+                  data-testid="input-dept-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={dForm.description}
+                  onChange={(e) => setDForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description of the department"
+                  data-testid="input-dept-description"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={dForm.isActive}
+                  onCheckedChange={(v) => setDForm(prev => ({ ...prev, isActive: v }))}
+                  data-testid="switch-dept-active"
+                />
+                <Label>Active</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDepartment(false)}>Cancel</Button>
+              <Button
+                onClick={() => deptMutation.mutate({
+                  id: editingDepartment?.id,
+                  body: dForm,
+                })}
+                disabled={!dForm.name || deptMutation.isPending}
+                data-testid="button-save-department"
+              >
+                {deptMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>

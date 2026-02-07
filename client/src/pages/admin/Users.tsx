@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2 } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -27,6 +28,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -41,6 +43,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AdminUser } from "@shared/schema";
+
+interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
 
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
@@ -58,6 +67,15 @@ const roleColors: Record<string, string> = {
   employee: "bg-gray-100 text-gray-800",
 };
 
+const levelLabels: Record<string, string> = {
+  ceo: "CEO / Director",
+  department_head: "Department Head",
+  manager: "Manager",
+  team_lead: "Team Lead",
+  senior_member: "Senior Member",
+  team_member: "Team Member",
+};
+
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -67,8 +85,22 @@ export default function AdminUsers() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("employee");
 
+  const [hierarchyOpen, setHierarchyOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [hForm, setHForm] = useState({
+    managerId: "" as string,
+    departmentId: "" as string,
+    designation: "",
+    hierarchyLevel: "team_member",
+  });
+
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: deptList } = useQuery<Department[]>({
+    queryKey: ["/api/departments"],
     enabled: isAuthenticated,
   });
 
@@ -102,6 +134,22 @@ export default function AdminUsers() {
     },
   });
 
+  const hierarchyMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      return apiRequest("PATCH", `/api/admin/users/${id}/hierarchy`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/org-tree"] });
+      toast({ title: "Hierarchy updated" });
+      setHierarchyOpen(false);
+      setSelectedUser(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to update hierarchy", variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/admin/users/${id}`);
@@ -123,20 +171,46 @@ export default function AdminUsers() {
   }
 
   const filteredUsers = users?.filter(
-    (u) => u.email.toLowerCase().includes(search.toLowerCase())
+    (u) =>
+      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      u.firstName.toLowerCase().includes(search.toLowerCase()) ||
+      u.lastName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const isSuperAdmin = user?.email === "simranjeet@hire-in.com";
+  const isSuperAdmin = user?.role === "super_admin";
+  const canEditHierarchy = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
+
+  const openHierarchyDialog = (adminUser: AdminUser) => {
+    setSelectedUser(adminUser);
+    setHForm({
+      managerId: adminUser.managerId || "",
+      departmentId: adminUser.departmentId || "",
+      designation: adminUser.designation || "",
+      hierarchyLevel: adminUser.hierarchyLevel || "team_member",
+    });
+    setHierarchyOpen(true);
+  };
+
+  const getDeptName = (deptId: string | null) => {
+    if (!deptId || !deptList) return "-";
+    const d = deptList.find(dep => dep.id === deptId);
+    return d?.name || "-";
+  };
+
+  const getManagerName = (managerId: string | null) => {
+    if (!managerId || !users) return "-";
+    const m = users.find(u => u.id === managerId);
+    return m ? `${m.firstName} ${m.lastName}` : "-";
+  };
 
   return (
     <AdminLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Team Management</h1>
             <p className="text-muted-foreground">
-              Manage admin users and their roles
+              Manage admin users, roles, departments, and hierarchy
             </p>
           </div>
           {isSuperAdmin && (
@@ -147,7 +221,6 @@ export default function AdminUsers() {
           )}
         </div>
 
-        {/* Role Info */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Role Permissions</CardTitle>
@@ -181,7 +254,6 @@ export default function AdminUsers() {
           </CardContent>
         </Card>
 
-        {/* Search */}
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -193,124 +265,131 @@ export default function AdminUsers() {
           />
         </div>
 
-        {/* Users Table */}
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : filteredUsers && filteredUsers.length > 0 ? (
-                  filteredUsers.map((adminUser) => (
-                    <TableRow key={adminUser.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {adminUser.email}
-                          {adminUser.email === "simranjeet@hire-in.com" && (
-                            <Shield className="h-4 w-4 text-purple-600" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={roleColors[adminUser.role] || roleColors.employee}>
-                          {roleLabels[adminUser.role] || adminUser.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={adminUser.isActive ? "default" : "secondary"}>
-                          {adminUser.isActive ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isSuperAdmin && adminUser.email !== "simranjeet@hire-in.com" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  updateRoleMutation.mutate({
-                                    id: adminUser.id,
-                                    role: "admin",
-                                  })
-                                }
-                              >
-                                Set as Admin
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  updateRoleMutation.mutate({
-                                    id: adminUser.id,
-                                    role: "hr",
-                                  })
-                                }
-                              >
-                                Set as HR
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  updateRoleMutation.mutate({
-                                    id: adminUser.id,
-                                    role: "operations",
-                                  })
-                                }
-                              >
-                                Set as Operations
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  updateRoleMutation.mutate({
-                                    id: adminUser.id,
-                                    role: "employee",
-                                  })
-                                }
-                              >
-                                Set as Employee
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => deleteMutation.mutate(adminUser.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remove
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      No users found.
-                    </TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Designation</TableHead>
+                    <TableHead>Level</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : filteredUsers && filteredUsers.length > 0 ? (
+                    filteredUsers.map((adminUser) => (
+                      <TableRow key={adminUser.id} data-testid={`user-row-${adminUser.id}`}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {adminUser.firstName} {adminUser.lastName}
+                            {adminUser.email === "simranjeet@hire-in.com" && (
+                              <Shield className="h-4 w-4 text-purple-600" />
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{adminUser.email}</TableCell>
+                        <TableCell>
+                          <Badge className={roleColors[adminUser.role] || roleColors.employee}>
+                            {roleLabels[adminUser.role] || adminUser.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {getDeptName(adminUser.departmentId)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {adminUser.designation || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {adminUser.hierarchyLevel ? (levelLabels[adminUser.hierarchyLevel] || adminUser.hierarchyLevel) : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {getManagerName(adminUser.managerId)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={adminUser.isActive ? "default" : "secondary"}>
+                            {adminUser.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {(isSuperAdmin || canEditHierarchy) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canEditHierarchy && (
+                                  <DropdownMenuItem onClick={() => openHierarchyDialog(adminUser)} data-testid={`menu-edit-hierarchy-${adminUser.id}`}>
+                                    <Network className="h-4 w-4 mr-2" />
+                                    Edit Hierarchy
+                                  </DropdownMenuItem>
+                                )}
+                                {isSuperAdmin && adminUser.email !== "simranjeet@hire-in.com" && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
+                                      Set as Admin
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "hr" })}>
+                                      Set as HR
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>
+                                      Set as Operations
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>
+                                      Set as Employee
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => deleteMutation.mutate(adminUser.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Remove
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        No users found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Invite User Dialog */}
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogContent>
             <DialogHeader>
@@ -354,6 +433,93 @@ export default function AdminUsers() {
                 Send Invite
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={hierarchyOpen} onOpenChange={setHierarchyOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Hierarchy</DialogTitle>
+              <DialogDescription>
+                Update {selectedUser?.firstName} {selectedUser?.lastName}'s position in the organization.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={hForm.departmentId} onValueChange={(v) => setHForm(prev => ({ ...prev, departmentId: v }))}>
+                  <SelectTrigger data-testid="select-hierarchy-department">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Department</SelectItem>
+                    {deptList?.filter(d => d.isActive).map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Designation / Title</Label>
+                <Input
+                  value={hForm.designation}
+                  onChange={(e) => setHForm(prev => ({ ...prev, designation: e.target.value }))}
+                  placeholder="e.g. Senior Software Engineer, HR Manager"
+                  data-testid="input-hierarchy-designation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Hierarchy Level</Label>
+                <Select value={hForm.hierarchyLevel} onValueChange={(v) => setHForm(prev => ({ ...prev, hierarchyLevel: v }))}>
+                  <SelectTrigger data-testid="select-hierarchy-level">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ceo">CEO / Director</SelectItem>
+                    <SelectItem value="department_head">Department Head</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="team_lead">Team Lead</SelectItem>
+                    <SelectItem value="senior_member">Senior Member</SelectItem>
+                    <SelectItem value="team_member">Team Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Reports To (Manager)</Label>
+                <Select value={hForm.managerId} onValueChange={(v) => setHForm(prev => ({ ...prev, managerId: v }))}>
+                  <SelectTrigger data-testid="select-hierarchy-manager">
+                    <SelectValue placeholder="Select manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Manager (Top Level)</SelectItem>
+                    {users?.filter(u => u.id !== selectedUser?.id && u.isActive).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setHierarchyOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!selectedUser) return;
+                  hierarchyMutation.mutate({
+                    id: selectedUser.id,
+                    data: {
+                      managerId: hForm.managerId === "none" ? null : hForm.managerId || null,
+                      departmentId: hForm.departmentId === "none" ? null : hForm.departmentId || null,
+                      designation: hForm.designation || null,
+                      hierarchyLevel: hForm.hierarchyLevel,
+                    },
+                  });
+                }}
+                disabled={hierarchyMutation.isPending}
+                data-testid="button-save-hierarchy"
+              >
+                {hierarchyMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

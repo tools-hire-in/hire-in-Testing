@@ -453,6 +453,100 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // DEPARTMENTS & HIERARCHY API ROUTES
+  // ==========================================
+
+  app.get("/api/departments", requireAuth, async (req, res) => {
+    try {
+      const depts = await storage.getDepartments();
+      res.json(depts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch departments" });
+    }
+  });
+
+  app.post("/api/departments", requireRole("hr"), async (req, res) => {
+    try {
+      const dept = await storage.createDepartment(req.body);
+      res.status(201).json(dept);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create department" });
+    }
+  });
+
+  app.patch("/api/departments/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const dept = await storage.updateDepartment(req.params.id as string, req.body);
+      if (!dept) return res.status(404).json({ error: "Department not found" });
+      res.json(dept);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update department" });
+    }
+  });
+
+  app.delete("/api/departments/:id", requireRole("super_admin"), async (req, res) => {
+    try {
+      await storage.deleteDepartment(req.params.id as string);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete department" });
+    }
+  });
+
+  app.get("/api/org-tree", requireAuth, async (req, res) => {
+    try {
+      const tree = await storage.getOrgTree();
+      const safeUsers = tree.users.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        isActive: u.isActive,
+        managerId: u.managerId,
+        departmentId: u.departmentId,
+        designation: u.designation,
+        hierarchyLevel: u.hierarchyLevel,
+      }));
+      res.json({ users: safeUsers, departments: tree.departments });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch org tree" });
+    }
+  });
+
+  app.get("/api/team-members/:managerId", requireAuth, async (req, res) => {
+    try {
+      const members = await storage.getTeamMembers(req.params.managerId as string);
+      const safeMembers = members.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        designation: u.designation,
+        departmentId: u.departmentId,
+        hierarchyLevel: u.hierarchyLevel,
+      }));
+      res.json(safeMembers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team members" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/hierarchy", requireRole("hr"), async (req, res) => {
+    try {
+      const { managerId, departmentId, designation, hierarchyLevel } = req.body;
+      const updated = await storage.updateAdminUser(req.params.id as string, {
+        managerId, departmentId, designation, hierarchyLevel,
+      });
+      if (!updated) return res.status(404).json({ error: "User not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update user hierarchy" });
+    }
+  });
+
+  // ==========================================
   // HR PORTAL API ROUTES
   // ==========================================
 
@@ -467,6 +561,10 @@ export async function registerRoutes(
         email: u.email,
         role: u.role,
         isActive: u.isActive,
+        managerId: u.managerId,
+        departmentId: u.departmentId,
+        designation: u.designation,
+        hierarchyLevel: u.hierarchyLevel,
       }));
       res.json(safeUsers);
     } catch (error) {

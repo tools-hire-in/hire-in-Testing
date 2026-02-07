@@ -5,6 +5,7 @@ import {
   applications,
   contacts,
   adminUsers,
+  departments,
   holidays,
   attendance,
   leaveTypes,
@@ -19,6 +20,8 @@ import {
   type InsertContact,
   type AdminUser,
   type InsertAdminUser,
+  type Department,
+  type InsertDepartment,
   type Holiday,
   type InsertHoliday,
   type Attendance,
@@ -65,6 +68,17 @@ export interface IStorage {
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   updateAdminUser(id: string, user: Partial<AdminUser>): Promise<AdminUser | undefined>;
   deleteAdminUser(id: string): Promise<boolean>;
+
+  // Departments
+  getDepartments(): Promise<Department[]>;
+  getDepartment(id: string): Promise<Department | undefined>;
+  createDepartment(dept: InsertDepartment): Promise<Department>;
+  updateDepartment(id: string, dept: Partial<InsertDepartment>): Promise<Department | undefined>;
+  deleteDepartment(id: string): Promise<boolean>;
+
+  // Hierarchy
+  getOrgTree(): Promise<{ users: AdminUser[]; departments: Department[] }>;
+  getTeamMembers(managerId: string): Promise<AdminUser[]>;
 
   // Holidays
   getHolidays(year?: number): Promise<Holiday[]>;
@@ -287,6 +301,51 @@ export class DatabaseStorage implements IStorage {
   async deleteAdminUser(id: string): Promise<boolean> {
     await db.delete(adminUsers).where(eq(adminUsers.id, id));
     return true;
+  }
+
+  // ==========================================
+  // DEPARTMENTS
+  // ==========================================
+
+  async getDepartments(): Promise<Department[]> {
+    return db.select().from(departments).orderBy(departments.name);
+  }
+
+  async getDepartment(id: string): Promise<Department | undefined> {
+    const [dept] = await db.select().from(departments).where(eq(departments.id, id));
+    return dept;
+  }
+
+  async createDepartment(dept: InsertDepartment): Promise<Department> {
+    const [created] = await db.insert(departments).values(dept).returning();
+    return created;
+  }
+
+  async updateDepartment(id: string, dept: Partial<InsertDepartment>): Promise<Department | undefined> {
+    const [updated] = await db.update(departments)
+      .set({ ...dept, updatedAt: new Date() })
+      .where(eq(departments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDepartment(id: string): Promise<boolean> {
+    await db.delete(departments).where(eq(departments.id, id));
+    return true;
+  }
+
+  // ==========================================
+  // HIERARCHY
+  // ==========================================
+
+  async getOrgTree(): Promise<{ users: AdminUser[]; departments: Department[] }> {
+    const allUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true)).orderBy(adminUsers.firstName);
+    const allDepts = await db.select().from(departments).where(eq(departments.isActive, true)).orderBy(departments.name);
+    return { users: allUsers, departments: allDepts };
+  }
+
+  async getTeamMembers(managerId: string): Promise<AdminUser[]> {
+    return db.select().from(adminUsers).where(eq(adminUsers.managerId, managerId)).orderBy(adminUsers.firstName);
   }
 
   // ==========================================

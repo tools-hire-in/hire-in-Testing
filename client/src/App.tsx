@@ -29,6 +29,7 @@ import HRProfile from "@/pages/admin/hr/Profile";
 import HRTickets from "@/pages/admin/hr/Tickets";
 import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
 import HRSettings from "@/pages/admin/hr/HRSettings";
+import OrgChart from "@/pages/admin/hr/OrgChart";
 
 function Router() {
   return (
@@ -65,6 +66,7 @@ function Router() {
       <Route path="/admin/hr/tickets" component={HRTickets} />
       <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
       <Route path="/admin/hr/settings" component={HRSettings} />
+      <Route path="/admin/hr/org-chart" component={OrgChart} />
 
       {/* Fallback */}
       <Route component={NotFound} />

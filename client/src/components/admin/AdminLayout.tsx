@@ -15,6 +15,7 @@ import {
   UserCircle,
   Ticket,
   Settings,
+  Network,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -109,6 +110,12 @@ const hrPortalMenu = [
     label: "Leave Approvals",
     icon: CalendarCheck,
     roles: ["super_admin", "admin", "hr"]
+  },
+  {
+    href: "/admin/hr/org-chart",
+    label: "Org Chart",
+    icon: Network,
+    roles: ["super_admin", "admin", "hr", "operations", "employee"]
   },
   {
     href: "/admin/hr/settings",

@@ -80,12 +80,19 @@ The HR Portal is an internal employee management system integrated into the admi
 - **Holiday Calendar** (`/admin/hr/holidays`): Company holidays grouped by month
 - **Profile** (`/admin/hr/profile`): Personal info, attendance overview, leave balances
 - **Tickets** (`/admin/hr/tickets`): Attendance regularization requests
+- **Org Chart** (`/admin/hr/org-chart`): Interactive company hierarchy tree showing reporting structure
 
 **HR/Admin Features** (super_admin, admin, hr roles):
 - **Leave Approvals** (`/admin/hr/leave-approvals`): Review/approve/reject team leave requests
-- **HR Settings** (`/admin/hr/settings`): Manage leave types and holidays (CRUD)
+- **HR Settings** (`/admin/hr/settings`): Manage leave types, holidays, and departments (CRUD)
 
-**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, tickets
+**Organization Hierarchy**:
+- Departments table for company-wide department management
+- Hierarchy levels: CEO/Director, Department Head, Manager, Team Lead, Senior Member, Team Member
+- Manager assignment creates reporting chains visible in the Org Chart
+- Hierarchy editing available in Team Management page (super_admin, admin, hr)
+
+**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, tickets, departments
 
 **HR Portal Key Files**:
 - `client/src/pages/admin/hr/*`: All HR Portal frontend pages
