@@ -172,6 +172,11 @@ export default function OrgChart() {
     return roots;
   }, [orgData]);
 
+  const topLeaders = useMemo(() => {
+    if (!orgData) return [];
+    return orgData.users.filter(u => u.hierarchyLevel === "ceo" && !u.managerId);
+  }, [orgData]);
+
   const deptSummary = useMemo(() => {
     if (!orgData) return [];
     const { users, departments } = orgData;
@@ -199,25 +204,65 @@ export default function OrgChart() {
           </div>
         ) : (
           <>
+            {topLeaders.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Leadership</h2>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  {topLeaders.map(leader => {
+                    const initials = `${leader.firstName[0] || ""}${leader.lastName[0] || ""}`;
+                    return (
+                      <Card key={leader.id} className="min-w-[200px]" data-testid={`leader-card-${leader.id}`}>
+                        <CardContent className="p-4 text-center">
+                          <Avatar className="mx-auto mb-2 h-12 w-12">
+                            <AvatarFallback className={LEVEL_COLORS.ceo + " text-lg"}>
+                              {initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="font-semibold">{leader.firstName} {leader.lastName}</p>
+                          {leader.designation && (
+                            <p className="text-sm text-muted-foreground">{leader.designation}</p>
+                          )}
+                          <Badge variant="secondary" className="mt-2 text-xs no-default-active-elevate">
+                            {LEVEL_LABELS.ceo}
+                          </Badge>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+                {deptSummary.length > 0 && (
+                  <div className="flex justify-center">
+                    <div className="w-px h-8 bg-border" />
+                  </div>
+                )}
+              </div>
+            )}
+
             {deptSummary.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {deptSummary.map(d => (
-                  <Card key={d.id} data-testid={`dept-summary-${d.id}`}>
-                    <CardContent className="p-3 text-center">
-                      <Building2 className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                      <p className="font-medium text-sm">{d.name}</p>
-                      <p className="text-xs text-muted-foreground">{d.memberCount} member{d.memberCount !== 1 ? "s" : ""}</p>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Departments</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {deptSummary.map(d => (
+                    <Card key={d.id} data-testid={`dept-summary-${d.id}`}>
+                      <CardContent className="p-3 text-center">
+                        <Building2 className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
+                        <p className="font-medium text-sm">{d.name}</p>
+                        <p className="text-xs text-muted-foreground">{d.memberCount} member{d.memberCount !== 1 ? "s" : ""}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
 
             {tree.length > 0 ? (
-              <div className="space-y-2" data-testid="org-tree-container">
-                {tree.map((node) => (
-                  <OrgNode key={node.user.id} node={node} departments={orgData?.departments || []} />
-                ))}
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Reporting Structure</h2>
+                <div className="space-y-2" data-testid="org-tree-container">
+                  {tree.map((node) => (
+                    <OrgNode key={node.user.id} node={node} departments={orgData?.departments || []} />
+                  ))}
+                </div>
               </div>
             ) : (
               <Card>

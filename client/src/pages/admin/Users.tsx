@@ -470,7 +470,14 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-2">
                 <Label>Hierarchy Level</Label>
-                <Select value={hForm.hierarchyLevel} onValueChange={(v) => setHForm(prev => ({ ...prev, hierarchyLevel: v }))}>
+                <Select value={hForm.hierarchyLevel} onValueChange={(v) => {
+                  const updates: any = { hierarchyLevel: v };
+                  if (v === "ceo") {
+                    updates.departmentId = "none";
+                    updates.managerId = "none";
+                  }
+                  setHForm(prev => ({ ...prev, ...updates }));
+                }}>
                   <SelectTrigger data-testid="select-hierarchy-level">
                     <SelectValue />
                   </SelectTrigger>
@@ -483,6 +490,9 @@ export default function AdminUsers() {
                     <SelectItem value="team_member">Team Member</SelectItem>
                   </SelectContent>
                 </Select>
+                {hForm.hierarchyLevel === "ceo" && (
+                  <p className="text-xs text-muted-foreground">CEO / Director is above all departments with no reporting manager.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Reports To (Manager)</Label>
