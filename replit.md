@@ -121,12 +121,22 @@ The HR Portal is an internal employee management system integrated into the admi
 - **Uppy**: Client-side file upload UI with AWS S3-compatible presigned URLs
 - **Environment Variable**: `PUBLIC_OBJECT_SEARCH_PATHS` for public file access
 
+### Email Service
+- **SendGrid**: Transactional emails via Replit's SendGrid connector integration
+- **Email Module**: `server/email.ts` with `sendInvitationEmail` and `sendWelcomeEmail` functions
+- **Invitation Emails**: Sent when inviting new team members (includes temp password and login link)
+- **Welcome Emails**: Sent on initial Super Admin setup
+- **Resend Invitation**: Super Admin can resend invitations with fresh credentials via Team Management
+
 ### External Services
 - **Google Fonts**: Inter and Open Sans typography (loaded via CDN)
 - **Unsplash**: Hero carousel images (external URLs in constants)
+- **SendGrid**: Email delivery for invitations and welcome emails
 
 ### Key NPM Packages
 - Form validation: `zod`, `@hookform/resolvers`, `react-hook-form`
 - Date handling: `date-fns`
 - CSV parsing: `csv-parse` (for job CSV uploads)
 - UI utilities: `class-variance-authority`, `clsx`, `tailwind-merge`
+- Email: `@sendgrid/mail` (via Replit connector)
+- TOTP/2FA: `otpauth`, `qrcode`

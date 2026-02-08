@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +87,8 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [newFirstName, setNewFirstName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
   const [newRole, setNewRole] = useState("employee");
 
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
@@ -109,14 +111,16 @@ export default function AdminUsers() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      return apiRequest("POST", "/api/admin/users", { email, role });
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string }) => {
+      return apiRequest("POST", "/api/admin/users", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "User invited successfully" });
+      toast({ title: "User invited successfully", description: "An invitation email with login credentials has been sent." });
       setInviteOpen(false);
       setNewEmail("");
+      setNewFirstName("");
+      setNewLastName("");
       setNewRole("employee");
     },
     onError: () => {
@@ -151,6 +155,18 @@ export default function AdminUsers() {
     },
     onError: () => {
       toast({ title: "Failed to update hierarchy", variant: "destructive" });
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/admin/users/${id}/resend-invite`);
+    },
+    onSuccess: () => {
+      toast({ title: "Invitation resent", description: "A new invitation email with fresh login credentials has been sent." });
+    },
+    onError: () => {
+      toast({ title: "Failed to resend invitation", variant: "destructive" });
     },
   });
 
@@ -352,6 +368,13 @@ export default function AdminUsers() {
                                 )}
                                 {isSuperAdmin && adminUser.email !== "simranjeet@hire-in.com" && (
                                   <>
+                                    <DropdownMenuItem
+                                      onClick={() => resendInviteMutation.mutate(adminUser.id)}
+                                      data-testid={`menu-resend-invite-${adminUser.id}`}
+                                    >
+                                      <Mail className="h-4 w-4 mr-2" />
+                                      Resend Invitation
+                                    </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
                                       Set as Admin
@@ -399,10 +422,32 @@ export default function AdminUsers() {
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
               <DialogDescription>
-                Add a new team member to the admin portal. They must have an @hire-in.com email.
+                Add a new team member. They'll receive an email with login credentials.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    placeholder="John"
+                    value={newFirstName}
+                    onChange={(e) => setNewFirstName(e.target.value)}
+                    data-testid="input-invite-first-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    placeholder="Doe"
+                    value={newLastName}
+                    onChange={(e) => setNewLastName(e.target.value)}
+                    data-testid="input-invite-last-name"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
                 <Input
@@ -430,11 +475,16 @@ export default function AdminUsers() {
               </div>
               <Button
                 className="w-full"
-                onClick={() => inviteMutation.mutate({ email: newEmail, role: newRole })}
-                disabled={!newEmail.endsWith("@hire-in.com") || inviteMutation.isPending}
+                onClick={() => inviteMutation.mutate({
+                  email: newEmail,
+                  firstName: newFirstName,
+                  lastName: newLastName,
+                  role: newRole,
+                })}
+                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
                 data-testid="button-send-invite"
               >
-                Send Invite
+                {inviteMutation.isPending ? "Sending..." : "Send Invite"}
               </Button>
             </div>
           </DialogContent>

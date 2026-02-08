@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword, requireAuth, createSession, destroySessio
 import { z } from "zod";
 import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
+import { sendWelcomeEmail } from "./email";
 
 export function registerAuthRoutes(app: Express) {
   // Login route (supports two-step TOTP)
@@ -211,6 +212,12 @@ export function registerAuthRoutes(app: Express) {
         lastName: newUser.lastName!,
         role: newUser.role,
       });
+
+      sendWelcomeEmail({
+        to: newUser.email,
+        firstName: newUser.firstName!,
+        lastName: newUser.lastName!,
+      }).catch((err) => console.error("Background welcome email error:", err));
 
       res.status(201).json(newUser);
     } catch (error) {

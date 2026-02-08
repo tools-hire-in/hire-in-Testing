@@ -8,6 +8,8 @@ import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAd
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
+import { sendInvitationEmail, sendWelcomeEmail } from "./email";
+import crypto from "crypto";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const objectStorageService = new ObjectStorageService();
@@ -405,8 +407,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "User already exists" });
       }
       
+      const tempPassword = password || crypto.randomBytes(6).toString("base64url") + "A1!";
       const bcrypt = await import("bcryptjs");
-      const hashedPassword = await bcrypt.hash(password || "changeme123", 12);
+      const hashedPassword = await bcrypt.hash(tempPassword, 12);
       
       const user = await storage.createAdminUser({
         email: email.toLowerCase(),
@@ -416,6 +419,19 @@ export async function registerRoutes(
         role: role || "employee",
         isActive: true,
       });
+
+      const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
+      const loginUrl = `${baseUrl}/admin/login`;
+
+      sendInvitationEmail({
+        to: email.toLowerCase(),
+        firstName: firstName || email.split("@")[0],
+        lastName: lastName || "",
+        role: role || "employee",
+        temporaryPassword: tempPassword,
+        loginUrl,
+      }).catch((err) => console.error("Background invitation email error:", err));
+
       res.status(201).json(user);
     } catch (error) {
       res.status(500).json({ error: "Failed to create user" });
@@ -439,6 +455,42 @@ export async function registerRoutes(
       res.json(user);
     } catch (error) {
       res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/resend-invite", requireRole("super_admin"), async (req, res) => {
+    try {
+      const userId = req.params.id as string;
+      const targetUser = await storage.getAdminUser(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const tempPassword = crypto.randomBytes(6).toString("base64url") + "A1!";
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+      const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
+      const loginUrl = `${baseUrl}/admin/login`;
+
+      const result = await sendInvitationEmail({
+        to: targetUser.email,
+        firstName: targetUser.firstName,
+        lastName: targetUser.lastName,
+        role: targetUser.role,
+        temporaryPassword: tempPassword,
+        loginUrl,
+      });
+
+      if (result.success) {
+        await storage.updateAdminUser(userId, { password: hashedPassword });
+        res.json({ message: "Invitation resent successfully" });
+      } else {
+        res.status(500).json({ error: "Failed to send email. Password was not changed." });
+      }
+    } catch (error) {
+      console.error("Resend invite error:", error);
+      res.status(500).json({ error: "Failed to resend invitation" });
     }
   });
 
