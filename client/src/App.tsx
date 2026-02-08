@@ -36,7 +36,16 @@ function isEmployeeSubdomain(): boolean {
     return (window as any).__IS_EMPLOYEE_SUBDOMAIN__;
   }
   const hostname = window.location.hostname;
-  return hostname.startsWith("employee.") || hostname.startsWith("www.employee.");
+  if (hostname.startsWith("employee.") || hostname.startsWith("www.employee.")) {
+    return true;
+  }
+  if (hostname.endsWith(".replit.dev") || hostname === "localhost") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("employee") === "true") {
+      return true;
+    }
+  }
+  return false;
 }
 
 function PublicRouter() {
