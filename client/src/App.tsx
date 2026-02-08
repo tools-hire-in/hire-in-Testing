@@ -31,7 +31,10 @@ import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
 import HRSettings from "@/pages/admin/hr/HRSettings";
 import OrgChart from "@/pages/admin/hr/OrgChart";
 
-function isEmployeeSubdomain() {
+function isEmployeeSubdomain(): boolean {
+  if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
+    return (window as any).__IS_EMPLOYEE_SUBDOMAIN__;
+  }
   const hostname = window.location.hostname;
   return hostname.startsWith("employee.") || hostname.startsWith("www.employee.");
 }
