@@ -33,7 +33,7 @@ import OrgChart from "@/pages/admin/hr/OrgChart";
 
 function isEmployeeSubdomain() {
   const hostname = window.location.hostname;
-  return hostname.startsWith("employee.");
+  return hostname.startsWith("employee.") || hostname.startsWith("www.employee.");
 }
 
 function PublicRouter() {
