@@ -36,6 +36,8 @@ export const adminUsers = pgTable("admin_users", {
   departmentId: varchar("department_id").references(() => departments.id),
   designation: varchar("designation"),
   hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
+  totpSecret: varchar("totp_secret"),
+  totpEnabled: boolean("totp_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

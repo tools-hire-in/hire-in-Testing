@@ -4,9 +4,11 @@ import { adminUsers, loginSchema, registerAdminSchema } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requireRole } from "./auth";
 import { z } from "zod";
+import * as OTPAuth from "otpauth";
+import QRCode from "qrcode";
 
 export function registerAuthRoutes(app: Express) {
-  // Login route
+  // Login route (supports two-step TOTP)
   app.post("/api/auth/login", async (req, res) => {
     try {
       const parsed = loginSchema.safeParse(req.body);
@@ -15,13 +17,12 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const { email, password } = parsed.data;
+      const totpCode = req.body.totpCode as string | undefined;
 
-      // Check if email is from hire-in.com domain
       if (!email.endsWith("@hire-in.com")) {
         return res.status(403).json({ message: "Only @hire-in.com email addresses are allowed" });
       }
 
-      // Find user
       const [user] = await db
         .select()
         .from(adminUsers)
@@ -36,13 +37,31 @@ export function registerAuthRoutes(app: Express) {
         return res.status(403).json({ message: "Account is deactivated. Contact your administrator." });
       }
 
-      // Verify password
       const isValid = await verifyPassword(password, user.password);
       if (!isValid) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Create session
+      if (user.totpEnabled && user.totpSecret) {
+        if (!totpCode) {
+          return res.status(200).json({ totpRequired: true });
+        }
+
+        const totp = new OTPAuth.TOTP({
+          issuer: "Hire'in Solutions",
+          label: user.email,
+          algorithm: "SHA1",
+          digits: 6,
+          period: 30,
+          secret: OTPAuth.Secret.fromBase32(user.totpSecret),
+        });
+
+        const delta = totp.validate({ token: totpCode, window: 1 });
+        if (delta === null) {
+          return res.status(401).json({ message: "Invalid verification code" });
+        }
+      }
+
       createSession(req, {
         id: user.id,
         email: user.email,
@@ -197,6 +216,159 @@ export function registerAuthRoutes(app: Express) {
     } catch (error) {
       console.error("Setup error:", error);
       res.status(500).json({ message: "Setup failed" });
+    }
+  });
+
+  // Get TOTP status for current user
+  app.get("/api/auth/totp/status", requireAuth, async (req, res) => {
+    try {
+      const [user] = await db
+        .select({ totpEnabled: adminUsers.totpEnabled })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, req.session.userId!))
+        .limit(1);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ totpEnabled: user.totpEnabled });
+    } catch (error) {
+      console.error("TOTP status error:", error);
+      res.status(500).json({ message: "Failed to get TOTP status" });
+    }
+  });
+
+  // Generate TOTP secret and QR code for setup
+  app.post("/api/auth/totp/setup", requireAuth, async (req, res) => {
+    try {
+      const [user] = await db
+        .select({ email: adminUsers.email, totpEnabled: adminUsers.totpEnabled })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, req.session.userId!))
+        .limit(1);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.totpEnabled) {
+        return res.status(400).json({ message: "2FA is already enabled. Disable it first to set up again." });
+      }
+
+      const secret = new OTPAuth.Secret({ size: 20 });
+      const totp = new OTPAuth.TOTP({
+        issuer: "Hire'in Solutions",
+        label: user.email,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: secret,
+      });
+
+      const otpauthUrl = totp.toString();
+      const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+      await db
+        .update(adminUsers)
+        .set({ totpSecret: secret.base32 })
+        .where(eq(adminUsers.id, req.session.userId!));
+
+      res.json({
+        secret: secret.base32,
+        qrCode: qrCodeDataUrl,
+      });
+    } catch (error) {
+      console.error("TOTP setup error:", error);
+      res.status(500).json({ message: "Failed to set up 2FA" });
+    }
+  });
+
+  // Verify TOTP code and enable 2FA
+  app.post("/api/auth/totp/verify", requireAuth, async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "Verification code is required" });
+      }
+
+      const [user] = await db
+        .select({ totpSecret: adminUsers.totpSecret, email: adminUsers.email })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, req.session.userId!))
+        .limit(1);
+
+      if (!user || !user.totpSecret) {
+        return res.status(400).json({ message: "TOTP not set up. Please start setup first." });
+      }
+
+      const totp = new OTPAuth.TOTP({
+        issuer: "Hire'in Solutions",
+        label: user.email,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(user.totpSecret),
+      });
+
+      const delta = totp.validate({ token: code, window: 1 });
+      if (delta === null) {
+        return res.status(401).json({ message: "Invalid verification code. Please try again." });
+      }
+
+      await db
+        .update(adminUsers)
+        .set({ totpEnabled: true })
+        .where(eq(adminUsers.id, req.session.userId!));
+
+      res.json({ message: "2FA enabled successfully" });
+    } catch (error) {
+      console.error("TOTP verify error:", error);
+      res.status(500).json({ message: "Failed to verify code" });
+    }
+  });
+
+  // Disable TOTP 2FA
+  app.post("/api/auth/totp/disable", requireAuth, async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "Verification code is required to disable 2FA" });
+      }
+
+      const [user] = await db
+        .select({ totpSecret: adminUsers.totpSecret, totpEnabled: adminUsers.totpEnabled, email: adminUsers.email })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, req.session.userId!))
+        .limit(1);
+
+      if (!user || !user.totpEnabled || !user.totpSecret) {
+        return res.status(400).json({ message: "2FA is not enabled" });
+      }
+
+      const totp = new OTPAuth.TOTP({
+        issuer: "Hire'in Solutions",
+        label: user.email,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(user.totpSecret),
+      });
+
+      const delta = totp.validate({ token: code, window: 1 });
+      if (delta === null) {
+        return res.status(401).json({ message: "Invalid verification code" });
+      }
+
+      await db
+        .update(adminUsers)
+        .set({ totpEnabled: false, totpSecret: null })
+        .where(eq(adminUsers.id, req.session.userId!));
+
+      res.json({ message: "2FA disabled successfully" });
+    } catch (error) {
+      console.error("TOTP disable error:", error);
+      res.status(500).json({ message: "Failed to disable 2FA" });
     }
   });
 }

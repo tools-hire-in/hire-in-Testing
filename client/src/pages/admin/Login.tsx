@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Shield, LogIn, Loader2 } from "lucide-react";
+import { Shield, LogIn, Loader2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useLogin } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
@@ -17,8 +19,9 @@ export default function AdminLogin() {
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  
-  const loginMutation = useLogin();
+  const [totpCode, setTotpCode] = useState("");
+  const [showTotpStep, setShowTotpStep] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -38,8 +41,23 @@ export default function AdminLogin() {
       return;
     }
     
+    setIsSubmitting(true);
     try {
-      await loginMutation.mutateAsync({ email, password });
+      const payload: any = { email, password };
+      if (showTotpStep && totpCode) {
+        payload.totpCode = totpCode;
+      }
+
+      const response = await apiRequest("POST", "/api/auth/login", payload);
+      const data = await response.json();
+
+      if (data.totpRequired) {
+        setShowTotpStep(true);
+        setIsSubmitting(false);
+        return;
+      }
+
+      queryClient.setQueryData(["/api/auth/me"], data);
       setLocation("/admin");
     } catch (error: any) {
       const message = error?.message || "Login failed. Please try again.";
@@ -48,7 +66,18 @@ export default function AdminLogin() {
         description: message,
         variant: "destructive",
       });
+      if (showTotpStep) {
+        setTotpCode("");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleBackToLogin = () => {
+    setShowTotpStep(false);
+    setTotpCode("");
+    setPassword("");
   };
 
   if (authLoading) {
@@ -72,64 +101,113 @@ export default function AdminLogin() {
             />
           </div>
           <CardTitle className="text-2xl" data-testid="text-login-title">
-            Admin Portal
+            {showTotpStep ? "Two-Factor Authentication" : "Admin Portal"}
           </CardTitle>
           <CardDescription>
-            Sign in with your @hire-in.com email
+            {showTotpStep
+              ? "Enter the 6-digit code from your authenticator app"
+              : "Sign in with your @hire-in.com email"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg text-sm text-muted-foreground">
-            <Shield className="h-4 w-4 text-primary" />
-            <span>Access restricted to authorized personnel only</span>
-          </div>
+          {!showTotpStep && (
+            <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg text-sm text-muted-foreground">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Access restricted to authorized personnel only</span>
+            </div>
+          )}
+
+          {showTotpStep && (
+            <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg text-sm text-muted-foreground">
+              <KeyRound className="h-4 w-4 text-primary" />
+              <span>Open your authenticator app to get the code</span>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@hire-in.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                data-testid="input-email"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                data-testid="input-password"
-              />
-            </div>
+            {!showTotpStep ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@hire-in.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    data-testid="input-email"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    data-testid="input-password"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="totpCode">Verification Code</Label>
+                <Input
+                  id="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                  required
+                  autoFocus
+                  className="text-center text-2xl tracking-widest font-mono"
+                  data-testid="input-totp-code"
+                />
+              </div>
+            )}
 
             <Button 
               type="submit" 
               className="w-full" 
               size="lg"
-              disabled={loginMutation.isPending}
+              disabled={isSubmitting}
               data-testid="button-submit"
             >
-              {loginMutation.isPending ? (
+              {isSubmitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : showTotpStep ? (
+                <KeyRound className="mr-2 h-4 w-4" />
               ) : (
                 <LogIn className="mr-2 h-4 w-4" />
               )}
-              Sign In
+              {showTotpStep ? "Verify" : "Sign In"}
             </Button>
+
+            {showTotpStep && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={handleBackToLogin}
+                data-testid="button-back-to-login"
+              >
+                Back to login
+              </Button>
+            )}
           </form>
 
-          <p className="text-xs text-center text-muted-foreground">
-            Only @hire-in.com domain accounts are authorized to access this portal
-          </p>
+          {!showTotpStep && (
+            <p className="text-xs text-center text-muted-foreground">
+              Only @hire-in.com domain accounts are authorized to access this portal
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
