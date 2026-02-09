@@ -10,7 +10,7 @@ export * from "./models/auth";
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "operations", "manager", "employee"]);
 
 // Hierarchy level enum
-export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "director", "vp", "department_head", "manager", "team_lead", "senior_member", "team_member"]);
+export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "director", "vp", "department_head", "delivery_manager", "manager", "team_lead", "senior_member", "team_member"]);
 
 // Departments table
 export const departments = pgTable("departments", {
@@ -36,6 +36,7 @@ export const adminUsers = pgTable("admin_users", {
   departmentId: varchar("department_id").references(() => departments.id),
   designation: varchar("designation"),
   hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
+  joiningDate: date("joining_date"),
   totpSecret: varchar("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
