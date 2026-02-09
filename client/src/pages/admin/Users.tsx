@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +93,10 @@ export default function AdminUsers() {
   const [newLastName, setNewLastName] = useState("");
   const [newRole, setNewRole] = useState("employee");
 
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [hForm, setHForm] = useState({
@@ -182,6 +186,25 @@ export default function AdminUsers() {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ id, newPassword }: { id: string; newPassword: string }) => {
+      return apiRequest("POST", `/api/admin/users/${id}/reset-password`, { newPassword });
+    },
+    onSuccess: () => {
+      toast({ title: "Password reset successfully", description: "The user's password has been updated and their 2FA has been disabled." });
+      setResetPasswordOpen(false);
+      setResetPasswordUser(null);
+      setNewPassword("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to reset password",
+        description: error?.message || "You may not have permission to reset this user's password.",
+        variant: "destructive",
+      });
+    },
+  });
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       setLocation("/admin/login");
@@ -201,6 +224,15 @@ export default function AdminUsers() {
 
   const isSuperAdmin = user?.role === "super_admin";
   const canEditHierarchy = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
+
+  const roleRank: Record<string, number> = {
+    super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
+  };
+  const currentUserRank = roleRank[user?.role || ""] ?? 0;
+  const canResetPassword = (targetUser: AdminUser) => {
+    if (targetUser.id === user?.id) return false;
+    return currentUserRank >= roleRank.admin && currentUserRank > (roleRank[targetUser.role] ?? 0);
+  };
 
   const openHierarchyDialog = (adminUser: AdminUser) => {
     setSelectedUser(adminUser);
@@ -358,7 +390,7 @@ export default function AdminUsers() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {(isSuperAdmin || canEditHierarchy) && (
+                          {(isSuperAdmin || canEditHierarchy || canResetPassword(adminUser)) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
@@ -370,6 +402,19 @@ export default function AdminUsers() {
                                   <DropdownMenuItem onClick={() => openHierarchyDialog(adminUser)} data-testid={`menu-edit-hierarchy-${adminUser.id}`}>
                                     <Network className="h-4 w-4 mr-2" />
                                     Edit Hierarchy
+                                  </DropdownMenuItem>
+                                )}
+                                {canResetPassword(adminUser) && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setResetPasswordUser(adminUser);
+                                      setNewPassword("");
+                                      setResetPasswordOpen(true);
+                                    }}
+                                    data-testid={`menu-reset-password-${adminUser.id}`}
+                                  >
+                                    <KeyRound className="h-4 w-4 mr-2" />
+                                    Reset Password
                                   </DropdownMenuItem>
                                 )}
                                 {isSuperAdmin && adminUser.email !== "simranjeet@hire-in.com" && (
@@ -591,6 +636,52 @@ export default function AdminUsers() {
                 data-testid="button-save-hierarchy"
               >
                 {hierarchyMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={resetPasswordOpen} onOpenChange={(open) => {
+          setResetPasswordOpen(open);
+          if (!open) {
+            setResetPasswordUser(null);
+            setNewPassword("");
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset Password</DialogTitle>
+              <DialogDescription>
+                Set a new password for {resetPasswordUser?.firstName} {resetPasswordUser?.lastName} ({resetPasswordUser?.email}). This will also disable their two-factor authentication.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  placeholder="Minimum 8 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  data-testid="input-reset-password"
+                />
+                {newPassword.length > 0 && newPassword.length < 8 && (
+                  <p className="text-xs text-destructive">Password must be at least 8 characters</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setResetPasswordOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!resetPasswordUser) return;
+                  resetPasswordMutation.mutate({ id: resetPasswordUser.id, newPassword });
+                }}
+                disabled={newPassword.length < 8 || resetPasswordMutation.isPending}
+                data-testid="button-confirm-reset-password"
+              >
+                {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -383,7 +383,7 @@ export async function registerRoutes(
   });
 
   // Admin Users - only Super Admin can view/manage team
-  app.get("/api/admin/users", requireRole("super_admin"), async (req, res) => {
+  app.get("/api/admin/users", requireRole("super_admin", "hr"), async (req, res) => {
     try {
       const users = await storage.getAdminUsers();
       res.json(users);
@@ -491,6 +491,55 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Resend invite error:", error);
       res.status(500).json({ error: "Failed to resend invitation" });
+    }
+  });
+
+  const ROLE_RANK: Record<string, number> = {
+    super_admin: 6,
+    admin: 5,
+    hr: 4,
+    operations: 3,
+    manager: 2,
+    employee: 1,
+  };
+
+  app.post("/api/admin/users/:id/reset-password", requireAuth, async (req, res) => {
+    try {
+      const actorRole = req.session.role!;
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
+
+      if (actorRank < ROLE_RANK.admin) {
+        return res.status(403).json({ error: "Only supervisors can reset passwords" });
+      }
+
+      const targetId = req.params.id as string;
+      if (targetId === req.session.userId) {
+        return res.status(400).json({ error: "You cannot reset your own password through this action" });
+      }
+
+      const targetUser = await storage.getAdminUser(targetId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+      if (actorRank <= targetRank) {
+        return res.status(403).json({ error: "You can only reset passwords for users with a lower role than yours" });
+      }
+
+      const { newPassword } = req.body;
+      if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      await storage.updateAdminUser(targetId, { password: hashedPassword, totpEnabled: false, totpSecret: null });
+
+      res.json({ message: "Password reset successfully" });
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ error: "Failed to reset password" });
     }
   });
 

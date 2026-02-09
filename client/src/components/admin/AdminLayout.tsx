@@ -64,7 +64,7 @@ const recruitmentMenu = [
     href: "/admin/users", 
     label: "Team", 
     icon: Users,
-    roles: ["super_admin"]
+    roles: ["super_admin", "admin", "hr"]
   },
 ];
 
