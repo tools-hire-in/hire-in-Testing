@@ -37,27 +37,25 @@ interface TreeNode {
 
 const LEVEL_LABELS: Record<string, string> = {
   ceo: "CEO",
-  director: "Director",
   vp: "Vice President",
-  department_head: "Department Head",
+  director: "Director",
   manager: "Manager",
   team_lead: "Team Lead",
-  senior_member: "Senior Member",
+  delivery_manager: "Delivery Manager",
   team_member: "Team Member",
 };
 
 const LEVEL_COLORS: Record<string, string> = {
   ceo: "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200",
-  director: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   vp: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
-  department_head: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  director: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   manager: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
   team_lead: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  senior_member: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
+  delivery_manager: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   team_member: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
 };
 
-const TOP_LEVELS = ["ceo", "director", "vp"];
+const TOP_LEVELS = ["ceo", "vp"];
 
 function OrgNode({ node, departments, depth = 0 }: { node: TreeNode; departments: Department[]; depth?: number }) {
   const [expanded, setExpanded] = useState(depth < 2);
@@ -166,7 +164,7 @@ export default function OrgChart() {
     });
 
     const sortLevel = (level: string | null) => {
-      const order = ["ceo", "department_head", "manager", "team_lead", "senior_member", "team_member"];
+      const order = ["ceo", "vp", "director", "manager", "team_lead", "delivery_manager", "team_member"];
       return order.indexOf(level || "team_member");
     };
     const sortNodes = (nodes: TreeNode[]) => {

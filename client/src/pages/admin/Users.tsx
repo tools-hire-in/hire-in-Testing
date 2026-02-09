@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -71,16 +72,15 @@ const roleColors: Record<string, string> = {
 
 const levelLabels: Record<string, string> = {
   ceo: "CEO",
-  director: "Director",
   vp: "Vice President",
-  department_head: "Department Head",
+  director: "Director",
   manager: "Manager",
   team_lead: "Team Lead",
-  senior_member: "Senior Member",
+  delivery_manager: "Delivery Manager",
   team_member: "Team Member",
 };
 
-const TOP_LEVELS = ["ceo", "director", "vp"];
+const TOP_LEVELS = ["ceo", "vp"];
 
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
@@ -92,6 +92,9 @@ export default function AdminUsers() {
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
   const [newRole, setNewRole] = useState("employee");
+  const [newJoiningDate, setNewJoiningDate] = useState("");
+  const [newDesignation, setNewDesignation] = useState("");
+  const [newDepartmentId, setNewDepartmentId] = useState("");
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
@@ -117,7 +120,7 @@ export default function AdminUsers() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string }) => {
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string }) => {
       return apiRequest("POST", "/api/admin/users", data);
     },
     onSuccess: () => {
@@ -128,6 +131,9 @@ export default function AdminUsers() {
       setNewFirstName("");
       setNewLastName("");
       setNewRole("employee");
+      setNewJoiningDate("");
+      setNewDesignation("");
+      setNewDepartmentId("");
     },
     onError: () => {
       toast({
@@ -336,6 +342,7 @@ export default function AdminUsers() {
                     <TableHead>Designation</TableHead>
                     <TableHead>Level</TableHead>
                     <TableHead>Manager</TableHead>
+                    <TableHead>Joining Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -346,6 +353,7 @@ export default function AdminUsers() {
                       <TableRow key={i}>
                         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -383,6 +391,9 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {getManagerName(adminUser.managerId)}
+                        </TableCell>
+                        <TableCell className="text-sm" data-testid={`text-joining-date-${adminUser.id}`}>
+                          {adminUser.joiningDate ? format(new Date(adminUser.joiningDate + "T00:00:00"), "dd MMM yyyy") : "-"}
                         </TableCell>
                         <TableCell>
                           <Badge variant={adminUser.isActive ? "default" : "secondary"}>
@@ -510,20 +521,58 @@ export default function AdminUsers() {
                   data-testid="input-invite-email"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={newRole} onValueChange={setNewRole}>
-                  <SelectTrigger data-testid="select-invite-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="hr">HR</SelectItem>
-                    <SelectItem value="operations">Operations</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="employee">Employee</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={newRole} onValueChange={setNewRole}>
+                    <SelectTrigger data-testid="select-invite-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="hr">HR</SelectItem>
+                      <SelectItem value="operations">Operations</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="employee">Employee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="joiningDate">Joining Date</Label>
+                  <Input
+                    id="joiningDate"
+                    type="date"
+                    value={newJoiningDate}
+                    onChange={(e) => setNewJoiningDate(e.target.value)}
+                    data-testid="input-invite-joining-date"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="designation">Designation</Label>
+                  <Input
+                    id="designation"
+                    placeholder="e.g. Software Engineer"
+                    value={newDesignation}
+                    onChange={(e) => setNewDesignation(e.target.value)}
+                    data-testid="input-invite-designation"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="department">Department</Label>
+                  <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
+                    <SelectTrigger data-testid="select-invite-department">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Department</SelectItem>
+                      {deptList?.filter(d => d.isActive).map(d => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <Button
                 className="w-full"
@@ -532,6 +581,9 @@ export default function AdminUsers() {
                   firstName: newFirstName,
                   lastName: newLastName,
                   role: newRole,
+                  joiningDate: newJoiningDate || undefined,
+                  designation: newDesignation || undefined,
+                  departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
                 })}
                 disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
                 data-testid="button-send-invite"
@@ -589,12 +641,11 @@ export default function AdminUsers() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ceo">CEO</SelectItem>
-                    <SelectItem value="director">Director</SelectItem>
                     <SelectItem value="vp">Vice President</SelectItem>
-                    <SelectItem value="department_head">Department Head</SelectItem>
+                    <SelectItem value="director">Director</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="team_lead">Team Lead</SelectItem>
-                    <SelectItem value="senior_member">Senior Member</SelectItem>
+                    <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
                     <SelectItem value="team_member">Team Member</SelectItem>
                   </SelectContent>
                 </Select>
