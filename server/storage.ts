@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, ilike, or, sql, gte, lte, asc } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray } from "drizzle-orm";
 import {
   jobs,
   applications,
@@ -93,6 +93,8 @@ export interface IStorage {
   getTodayAttendance(userId: string): Promise<Attendance | undefined>;
   createAttendance(record: InsertAttendance): Promise<Attendance>;
   updateAttendance(id: string, record: Partial<InsertAttendance>): Promise<Attendance | undefined>;
+  getAttendanceByTeam(userIds: string[], date: string): Promise<Attendance[]>;
+  getAttendanceByTeamRange(userIds: string[], startDate: string, endDate: string): Promise<Attendance[]>;
 
   // Leave Types
   getLeaveTypes(): Promise<LeaveType[]>;
@@ -113,6 +115,8 @@ export interface IStorage {
   getLeaveRequest(id: string): Promise<LeaveRequest | undefined>;
   createLeaveRequest(lr: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequest(id: string, lr: Partial<LeaveRequest>): Promise<LeaveRequest | undefined>;
+  getLeaveRequestsByTeam(userIds: string[]): Promise<LeaveRequest[]>;
+  isUserOnLeaveToday(userId: string): Promise<boolean>;
 
   // Tickets
   getTickets(filters?: { userId?: string; status?: string }): Promise<Ticket[]>;
@@ -427,6 +431,24 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async getAttendanceByTeam(userIds: string[], date: string): Promise<Attendance[]> {
+    if (userIds.length === 0) return [];
+    return db.select().from(attendance)
+      .where(and(inArray(attendance.userId, userIds), eq(attendance.date, date)))
+      .orderBy(attendance.userId);
+  }
+
+  async getAttendanceByTeamRange(userIds: string[], startDate: string, endDate: string): Promise<Attendance[]> {
+    if (userIds.length === 0) return [];
+    return db.select().from(attendance)
+      .where(and(
+        inArray(attendance.userId, userIds),
+        gte(attendance.date, startDate),
+        lte(attendance.date, endDate)
+      ))
+      .orderBy(desc(attendance.date));
+  }
+
   // ==========================================
   // HR PORTAL: Leave Types
   // ==========================================
@@ -540,6 +562,26 @@ export class DatabaseStorage implements IStorage {
       .where(eq(leaveRequests.id, id))
       .returning();
     return updated;
+  }
+
+  async getLeaveRequestsByTeam(userIds: string[]): Promise<LeaveRequest[]> {
+    if (userIds.length === 0) return [];
+    return db.select().from(leaveRequests)
+      .where(inArray(leaveRequests.userId, userIds))
+      .orderBy(desc(leaveRequests.createdAt));
+  }
+
+  async isUserOnLeaveToday(userId: string): Promise<boolean> {
+    const today = new Date().toISOString().split("T")[0];
+    const [result] = await db.select().from(leaveRequests)
+      .where(and(
+        eq(leaveRequests.userId, userId),
+        eq(leaveRequests.status, "approved"),
+        lte(leaveRequests.startDate, today),
+        gte(leaveRequests.endDate, today)
+      ))
+      .limit(1);
+    return !!result;
   }
 
   // ==========================================

@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser } from "@shared/schema";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
@@ -336,8 +336,8 @@ export async function registerRoutes(
     }
   });
 
-  // Admin Applications (HR role can access)
-  app.get("/api/admin/applications", requireRole("hr"), async (req, res) => {
+  // Admin Applications (HR and Operations roles can access)
+  app.get("/api/admin/applications", requireRole("hr", "operations"), async (req, res) => {
     try {
       const applications = await storage.getApplications();
       res.json(applications);
@@ -346,7 +346,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/applications/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/admin/applications/:id", requireRole("hr", "operations"), async (req, res) => {
     try {
       const applicationId = req.params.id as string;
       const application = await storage.updateApplication(applicationId, req.body);
@@ -359,8 +359,8 @@ export async function registerRoutes(
     }
   });
 
-  // Admin Contacts (HR role can access)
-  app.get("/api/admin/contacts", requireRole("hr"), async (req, res) => {
+  // Admin Contacts (HR and Operations roles can access - view)
+  app.get("/api/admin/contacts", requireRole("hr", "operations"), async (req, res) => {
     try {
       const contacts = await storage.getContacts();
       res.json(contacts);
@@ -369,7 +369,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/contacts/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/admin/contacts/:id", requireRole("hr", "operations"), async (req, res) => {
     try {
       const contactId = req.params.id as string;
       const contact = await storage.updateContact(contactId, req.body);
@@ -908,12 +908,25 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/leave-requests/:id/review", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/leave-requests/:id/review", requireRole("hr", "manager"), async (req, res) => {
     try {
       const { status, reviewComment } = req.body;
       if (!["approved", "rejected"].includes(status)) {
         return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
       }
+
+      const leaveRequest = await storage.getLeaveRequest(req.params.id as string);
+      if (!leaveRequest) return res.status(404).json({ error: "Leave request not found" });
+
+      const reviewerRole = req.session.role;
+      if (reviewerRole === "manager") {
+        const directReports = await storage.getTeamMembers(req.session.userId!);
+        const isDirectReport = directReports.some(r => r.id === leaveRequest.userId);
+        if (!isDirectReport) {
+          return res.status(403).json({ error: "You can only review leave requests from your direct reports" });
+        }
+      }
+
       const lr = await storage.updateLeaveRequest(req.params.id as string, {
         status,
         reviewComment,
@@ -1078,6 +1091,141 @@ export async function registerRoutes(
       res.send(csvHeader + csvRows);
     } catch (error) {
       res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  // --- Manager: Team Attendance ---
+  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+      const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
+
+      let teamMembers: AdminUser[];
+      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+        teamMembers = await storage.getAdminUsers();
+      } else {
+        teamMembers = await storage.getTeamMembers(userId);
+      }
+
+      if (teamMembers.length === 0) {
+        return res.json({ members: [], attendance: [] });
+      }
+
+      const memberIds = teamMembers.map(m => m.id);
+      const attendanceRecords = await storage.getAttendanceByTeam(memberIds, date);
+
+      res.json({
+        members: teamMembers.map(m => ({
+          id: m.id, firstName: m.firstName, lastName: m.lastName, email: m.email,
+          designation: m.designation, departmentId: m.departmentId
+        })),
+        attendance: attendanceRecords
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team attendance" });
+    }
+  });
+
+  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      let teamMembers: AdminUser[];
+      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+        teamMembers = await storage.getAdminUsers();
+      } else {
+        teamMembers = await storage.getTeamMembers(userId);
+      }
+
+      if (teamMembers.length === 0) {
+        return res.json({ members: [], attendance: [] });
+      }
+
+      const memberIds = teamMembers.map(m => m.id);
+      const attendanceRecords = await storage.getAttendanceByTeamRange(memberIds, startDate, endDate);
+
+      res.json({
+        members: teamMembers.map(m => ({
+          id: m.id, firstName: m.firstName, lastName: m.lastName, email: m.email,
+          designation: m.designation, departmentId: m.departmentId
+        })),
+        attendance: attendanceRecords
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team attendance" });
+    }
+  });
+
+  // --- Manager: Team Leave Requests ---
+  app.get("/api/hr/leave-requests/my-team", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+      const { status } = req.query;
+
+      let teamMembers: AdminUser[];
+      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+        const requests = await storage.getLeaveRequests({ status: status as string });
+        return res.json(requests);
+      } else {
+        teamMembers = await storage.getTeamMembers(userId);
+      }
+
+      if (teamMembers.length === 0) {
+        return res.json([]);
+      }
+
+      const memberIds = teamMembers.map(m => m.id);
+      const requests = await storage.getLeaveRequestsByTeam(memberIds);
+
+      const filtered = status ? requests.filter(r => r.status === status) : requests;
+      res.json(filtered);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team leave requests" });
+    }
+  });
+
+  // --- Leave Request: Get Approver (for escalation logic display) ---
+  app.get("/api/hr/leave-requests/approver/:userId", requireAuth, async (req, res) => {
+    try {
+      const targetUserId = req.params.userId as string;
+      const targetUser = await storage.getAdminUser(targetUserId);
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+
+      let currentManagerId = targetUser.managerId;
+      let approver = null;
+      let escalationPath: string[] = [];
+
+      while (currentManagerId) {
+        const manager = await storage.getAdminUser(currentManagerId);
+        if (!manager) break;
+
+        const isOnLeave = await storage.isUserOnLeaveToday(manager.id);
+        escalationPath.push(`${manager.firstName} ${manager.lastName}${isOnLeave ? ' (on leave)' : ''}`);
+
+        if (!isOnLeave) {
+          approver = { id: manager.id, firstName: manager.firstName, lastName: manager.lastName, role: manager.role };
+          break;
+        }
+
+        currentManagerId = manager.managerId;
+      }
+
+      if (!approver) {
+        approver = { id: null, firstName: "HR", lastName: "Department", role: "hr" };
+      }
+
+      res.json({ approver, escalationPath });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to determine approver" });
     }
   });
 

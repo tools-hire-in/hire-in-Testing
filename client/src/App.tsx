@@ -30,6 +30,7 @@ import HRTickets from "@/pages/admin/hr/Tickets";
 import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
 import HRSettings from "@/pages/admin/hr/HRSettings";
 import OrgChart from "@/pages/admin/hr/OrgChart";
+import TeamAttendance from "@/pages/admin/hr/TeamAttendance";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -77,6 +78,7 @@ function PublicRouter() {
       <Route path="/admin/hr/holidays" component={HRHolidayCalendar} />
       <Route path="/admin/hr/profile" component={HRProfile} />
       <Route path="/admin/hr/tickets" component={HRTickets} />
+      <Route path="/admin/hr/team-attendance" component={TeamAttendance} />
       <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
       <Route path="/admin/hr/settings" component={HRSettings} />
       <Route path="/admin/hr/org-chart" component={OrgChart} />
@@ -105,6 +107,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/holidays" component={HRHolidayCalendar} />
       <Route path="/admin/hr/profile" component={HRProfile} />
       <Route path="/admin/hr/tickets" component={HRTickets} />
+      <Route path="/admin/hr/team-attendance" component={TeamAttendance} />
       <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
       <Route path="/admin/hr/settings" component={HRSettings} />
       <Route path="/admin/hr/org-chart" component={OrgChart} />

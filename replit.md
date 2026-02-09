@@ -60,8 +60,9 @@ Preferred communication style: Simple, everyday language.
 Role hierarchy from highest to lowest access:
 - **super_admin**: Full access to everything, including user/team management
 - **admin**: Full access to all operational routes (jobs, applications, contacts) but NOT user management
-- **hr**: Access to applications and contacts only
-- **operations**: Access to jobs only
+- **hr**: Access to applications, contacts, all leave requests/approvals, team attendance, HR settings
+- **operations**: Access to jobs, applications (view + status updates), contacts (view), holiday calendar
+- **manager**: Employee features + view direct reports' attendance + approve/reject direct reports' leave requests
 - **employee**: Dashboard access only (view stats)
 
 Key files:
@@ -82,8 +83,13 @@ The HR Portal is an internal employee management system integrated into the admi
 - **Tickets** (`/admin/hr/tickets`): Attendance regularization requests
 - **Org Chart** (`/admin/hr/org-chart`): Interactive company hierarchy tree showing reporting structure
 
+**Manager Features** (super_admin, admin, hr, manager roles):
+- **Team Attendance** (`/admin/hr/team-attendance`): View direct reports' daily attendance with punch in/out times and hours
+- **Leave Approvals** (`/admin/hr/leave-approvals`): Review/approve/reject team leave requests (managers see direct reports only; HR sees all)
+
+**Leave Approval Escalation**: When an employee submits leave, it goes to their manager. If the manager is on approved leave, it escalates to the manager's manager, continuing up the chain. If no available manager is found, it falls through to HR. HR always has full access to approve/reject any leave request.
+
 **HR/Admin Features** (super_admin, admin, hr roles):
-- **Leave Approvals** (`/admin/hr/leave-approvals`): Review/approve/reject team leave requests
 - **HR Settings** (`/admin/hr/settings`): Manage leave types, holidays, and departments (CRUD)
 
 **Organization Hierarchy**:

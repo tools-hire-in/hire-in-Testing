@@ -6,7 +6,7 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
-  role: "super_admin" | "admin" | "hr" | "operations" | "employee";
+  role: "super_admin" | "admin" | "hr" | "operations" | "manager" | "employee";
   isActive: boolean;
 }
 

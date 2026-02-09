@@ -48,8 +48,11 @@ export default function LeaveApprovals() {
   const [statusFilter, setStatusFilter] = useState("pending");
   const [reviewData, setReviewData] = useState<{ id: string; action: string; comment: string } | null>(null);
 
+  const isManagerOnly = user?.role === "manager";
+  const leaveEndpoint = isManagerOnly ? "/api/hr/leave-requests/my-team" : "/api/hr/leave-requests";
+
   const { data: requests, isLoading } = useQuery<LeaveRequest[]>({
-    queryKey: ["/api/hr/leave-requests", { status: statusFilter }],
+    queryKey: [leaveEndpoint, { status: statusFilter }],
     enabled: isAuthenticated,
   });
 
@@ -63,6 +66,11 @@ export default function LeaveApprovals() {
     enabled: isAuthenticated && (user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr"),
   });
 
+  const { data: teamMembers } = useQuery<{ members: AdminUser[] }>({
+    queryKey: ["/api/hr/attendance/my-team"],
+    enabled: isAuthenticated && isManagerOnly,
+  });
+
   const reviewMutation = useMutation({
     mutationFn: (data: { id: string; status: string; reviewComment: string }) =>
       apiRequest("PATCH", `/api/hr/leave-requests/${data.id}/review`, {
@@ -71,6 +79,7 @@ export default function LeaveApprovals() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-requests/my-team"] });
       setReviewData(null);
       toast({ title: "Reviewed", description: "Leave request has been updated." });
     },
@@ -88,7 +97,10 @@ export default function LeaveApprovals() {
   const getLeaveTypeName = (id: string) => leaveTypes?.find(lt => lt.id === id)?.name || "Unknown";
   const getUserName = (id: string) => {
     const u = users?.find(u => u.id === id);
-    return u ? `${u.firstName} ${u.lastName}` : "Unknown";
+    if (u) return `${u.firstName} ${u.lastName}`;
+    const tm = teamMembers?.members?.find(m => m.id === id);
+    if (tm) return `${tm.firstName} ${tm.lastName}`;
+    return "Unknown";
   };
 
   const statusColors: Record<string, string> = {

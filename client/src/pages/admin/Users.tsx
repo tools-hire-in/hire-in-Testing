@@ -56,6 +56,7 @@ const roleLabels: Record<string, string> = {
   admin: "Admin",
   hr: "HR",
   operations: "Operations",
+  manager: "Manager",
   employee: "Employee",
 };
 
@@ -64,6 +65,7 @@ const roleColors: Record<string, string> = {
   admin: "bg-blue-100 text-blue-800",
   hr: "bg-green-100 text-green-800",
   operations: "bg-orange-100 text-orange-800",
+  manager: "bg-violet-100 text-violet-800",
   employee: "bg-gray-100 text-gray-800",
 };
 
@@ -249,7 +251,7 @@ export default function AdminUsers() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
               <div className="space-y-1">
                 <Badge className={roleColors.super_admin}>Super Admin</Badge>
                 <p className="text-xs text-muted-foreground">Full access, can manage users</p>
@@ -260,15 +262,19 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-1">
                 <Badge className={roleColors.hr}>HR</Badge>
-                <p className="text-xs text-muted-foreground">Applications & contacts only</p>
+                <p className="text-xs text-muted-foreground">HR, leaves, attendance, apps</p>
               </div>
               <div className="space-y-1">
                 <Badge className={roleColors.operations}>Operations</Badge>
-                <p className="text-xs text-muted-foreground">Jobs management only</p>
+                <p className="text-xs text-muted-foreground">Jobs, apps, contacts</p>
+              </div>
+              <div className="space-y-1">
+                <Badge className={roleColors.manager}>Manager</Badge>
+                <p className="text-xs text-muted-foreground">Team attendance & leave approvals</p>
               </div>
               <div className="space-y-1">
                 <Badge className={roleColors.employee}>Employee</Badge>
-                <p className="text-xs text-muted-foreground">Read-only dashboard access</p>
+                <p className="text-xs text-muted-foreground">Dashboard access only</p>
               </div>
             </div>
           </CardContent>
@@ -469,6 +475,7 @@ export default function AdminUsers() {
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="hr">HR</SelectItem>
                     <SelectItem value="operations">Operations</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="employee">Employee</SelectItem>
                   </SelectContent>
                 </Select>

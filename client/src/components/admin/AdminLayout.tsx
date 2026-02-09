@@ -40,7 +40,7 @@ const recruitmentMenu = [
     href: "/admin", 
     label: "Dashboard", 
     icon: LayoutDashboard,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   { 
     href: "/admin/jobs", 
@@ -52,13 +52,13 @@ const recruitmentMenu = [
     href: "/admin/applications", 
     label: "Applications", 
     icon: FileText,
-    roles: ["super_admin", "admin", "hr"]
+    roles: ["super_admin", "admin", "hr", "operations"]
   },
   { 
     href: "/admin/contacts", 
     label: "Contacts", 
     icon: Mail,
-    roles: ["super_admin", "admin", "hr"]
+    roles: ["super_admin", "admin", "hr", "operations"]
   },
   { 
     href: "/admin/users", 
@@ -73,49 +73,55 @@ const hrPortalMenu = [
     href: "/admin/hr",
     label: "My Dashboard",
     icon: LayoutDashboard,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/attendance",
     label: "Attendance",
     icon: Clock,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/leaves",
     label: "Leave Management",
     icon: CalendarCheck,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/holidays",
     label: "Holiday Calendar",
     icon: CalendarDays,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/profile",
     label: "My Profile",
     icon: UserCircle,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/tickets",
     label: "Tickets",
     icon: Ticket,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
+    href: "/admin/hr/team-attendance",
+    label: "Team Attendance",
+    icon: Clock,
+    roles: ["super_admin", "admin", "hr", "manager"]
   },
   {
     href: "/admin/hr/leave-approvals",
     label: "Leave Approvals",
     icon: CalendarCheck,
-    roles: ["super_admin", "admin", "hr"]
+    roles: ["super_admin", "admin", "hr", "manager"]
   },
   {
     href: "/admin/hr/org-chart",
     label: "Org Chart",
     icon: Network,
-    roles: ["super_admin", "admin", "hr", "operations", "employee"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/settings",
@@ -130,6 +136,7 @@ const roleLabels: Record<string, { label: string; color: string }> = {
   admin: { label: "Admin", color: "bg-blue-500 text-white" },
   hr: { label: "HR", color: "bg-green-500 text-white" },
   operations: { label: "Operations", color: "bg-orange-500 text-white" },
+  manager: { label: "Manager", color: "bg-purple-500 text-white" },
   employee: { label: "Employee", color: "bg-gray-500 text-white" },
 };
 
