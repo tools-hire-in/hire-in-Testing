@@ -95,6 +95,7 @@ export default function AdminUsers() {
   const [newJoiningDate, setNewJoiningDate] = useState("");
   const [newDesignation, setNewDesignation] = useState("");
   const [newDepartmentId, setNewDepartmentId] = useState("");
+  const [newHierarchyLevel, setNewHierarchyLevel] = useState("team_member");
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
@@ -120,7 +121,7 @@ export default function AdminUsers() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string }) => {
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string; hierarchyLevel?: string }) => {
       return apiRequest("POST", "/api/admin/users", data);
     },
     onSuccess: () => {
@@ -134,6 +135,7 @@ export default function AdminUsers() {
       setNewJoiningDate("");
       setNewDesignation("");
       setNewDepartmentId("");
+      setNewHierarchyLevel("team_member");
     },
     onError: () => {
       toast({
@@ -538,6 +540,25 @@ export default function AdminUsers() {
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="hierarchyLevel">Level</Label>
+                  <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
+                    <SelectTrigger data-testid="select-invite-level">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ceo">CEO</SelectItem>
+                      <SelectItem value="vp">Vice President</SelectItem>
+                      <SelectItem value="director">Director</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="team_lead">Team Lead</SelectItem>
+                      <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
+                      <SelectItem value="team_member">Team Member</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="joiningDate">Joining Date</Label>
                   <Input
                     id="joiningDate"
@@ -547,8 +568,6 @@ export default function AdminUsers() {
                     data-testid="input-invite-joining-date"
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="designation">Designation</Label>
                   <Input
@@ -559,20 +578,20 @@ export default function AdminUsers() {
                     data-testid="input-invite-designation"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="department">Department</Label>
-                  <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
-                    <SelectTrigger data-testid="select-invite-department">
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Department</SelectItem>
-                      {deptList?.filter(d => d.isActive).map(d => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="department">Department</Label>
+                <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
+                  <SelectTrigger data-testid="select-invite-department">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Department</SelectItem>
+                    {deptList?.filter(d => d.isActive).map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button
                 className="w-full"
@@ -584,6 +603,7 @@ export default function AdminUsers() {
                   joiningDate: newJoiningDate || undefined,
                   designation: newDesignation || undefined,
                   departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
+                  hierarchyLevel: newHierarchyLevel || undefined,
                 })}
                 disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
                 data-testid="button-send-invite"

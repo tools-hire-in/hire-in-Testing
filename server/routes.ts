@@ -396,7 +396,7 @@ export async function registerRoutes(
   // These routes now use session-based role checking
   app.post("/api/admin/users", requireRole("super_admin"), async (req, res) => {
     try {
-      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId } = req.body;
+      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel } = req.body;
       
       if (!email?.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
@@ -421,6 +421,7 @@ export async function registerRoutes(
         joiningDate: joiningDate || null,
         designation: designation || null,
         departmentId: departmentId || null,
+        hierarchyLevel: hierarchyLevel || "team_member",
       });
 
       const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
