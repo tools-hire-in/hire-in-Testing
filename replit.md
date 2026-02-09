@@ -94,7 +94,7 @@ The HR Portal is an internal employee management system integrated into the admi
 
 **Organization Hierarchy**:
 - Departments table for company-wide department management
-- Hierarchy levels: CEO/Director, Department Head, Manager, Team Lead, Senior Member, Team Member
+- Hierarchy levels: CEO, VP, Director, Manager, Team Lead, Delivery Manager, Team Member
 - Manager assignment creates reporting chains visible in the Org Chart
 - Hierarchy editing available in Team Management page (super_admin, admin, hr)
 
