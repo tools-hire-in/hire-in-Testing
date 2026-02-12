@@ -134,6 +134,7 @@ export const leaveTypes = pgTable("leave_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   defaultDays: integer("default_days").notNull().default(0),
+  monthlyAccrual: numeric("monthly_accrual").notNull().default("0"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -164,6 +165,16 @@ export const leaveRequests = pgTable("leave_requests", {
   reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const leaveAccruals = pgTable("leave_accruals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  leaveTypeId: varchar("leave_type_id").notNull().references(() => leaveTypes.id),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  accruedDays: numeric("accrued_days").notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const tickets = pgTable("tickets", {
@@ -350,6 +361,11 @@ export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
   reviewedAt: true,
 });
 
+export const insertLeaveAccrualSchema = createInsertSchema(leaveAccruals).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertTicketSchema = createInsertSchema(tickets).omit({
   id: true,
   createdAt: true,
@@ -384,5 +400,7 @@ export type LeaveBalance = typeof leaveBalances.$inferSelect;
 export type InsertLeaveBalance = z.infer<typeof insertLeaveBalanceSchema>;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
 export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
+export type LeaveAccrual = typeof leaveAccruals.$inferSelect;
+export type InsertLeaveAccrual = z.infer<typeof insertLeaveAccrualSchema>;
 export type Ticket = typeof tickets.$inferSelect;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;

@@ -11,6 +11,7 @@ import {
   leaveTypes,
   leaveBalances,
   leaveRequests,
+  leaveAccruals,
   tickets,
   type Job,
   type InsertJob,
@@ -32,6 +33,8 @@ import {
   type InsertLeaveBalance,
   type LeaveRequest,
   type InsertLeaveRequest,
+  type LeaveAccrual,
+  type InsertLeaveAccrual,
   type Ticket,
   type InsertTicket,
 } from "@shared/schema";
@@ -109,6 +112,7 @@ export interface IStorage {
   createLeaveBalance(lb: InsertLeaveBalance): Promise<LeaveBalance>;
   updateLeaveBalance(id: string, lb: Partial<InsertLeaveBalance>): Promise<LeaveBalance | undefined>;
   initLeaveBalances(userId: string, year: number): Promise<LeaveBalance[]>;
+  accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number }>;
 
   // Leave Requests
   getLeaveRequests(filters?: { userId?: string; status?: string }): Promise<LeaveRequest[]>;
@@ -516,7 +520,7 @@ export class DatabaseStorage implements IStorage {
     const balancesToCreate = activeLeaveTypes.map(lt => ({
       userId,
       leaveTypeId: lt.id,
-      totalDays: String(lt.defaultDays),
+      totalDays: "0",
       usedDays: "0",
       year,
     }));
@@ -524,6 +528,73 @@ export class DatabaseStorage implements IStorage {
     if (balancesToCreate.length === 0) return [];
     const created = await db.insert(leaveBalances).values(balancesToCreate).returning();
     return created;
+  }
+
+  async accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number }> {
+    const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
+    const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
+
+    let usersProcessed = 0;
+    let accrualsMade = 0;
+
+    for (const user of activeUsers) {
+      const joiningDate = user.joiningDate ? new Date(user.joiningDate) : null;
+      if (joiningDate) {
+        const joiningYear = joiningDate.getFullYear();
+        const joiningMonth = joiningDate.getMonth() + 1;
+        if (year < joiningYear || (year === joiningYear && month < joiningMonth)) {
+          continue;
+        }
+      }
+
+      let userBalances = await this.getLeaveBalances(user.id, year);
+      if (userBalances.length === 0) {
+        userBalances = await this.initLeaveBalances(user.id, year);
+      }
+
+      let userAccrued = false;
+
+      for (const lt of activeLeaveTypesList) {
+        const monthlyRate = parseFloat(lt.monthlyAccrual || "0");
+        if (monthlyRate <= 0) continue;
+
+        const inserted = await db.insert(leaveAccruals).values({
+          userId: user.id,
+          leaveTypeId: lt.id,
+          year,
+          month,
+          accruedDays: String(monthlyRate),
+        }).onConflictDoNothing().returning();
+
+        if (inserted.length === 0) continue;
+
+        let balance = userBalances.find(b => b.leaveTypeId === lt.id);
+        if (!balance) {
+          const [created] = await db.insert(leaveBalances).values({
+            userId: user.id,
+            leaveTypeId: lt.id,
+            totalDays: "0",
+            usedDays: "0",
+            year,
+          }).returning();
+          balance = created;
+          userBalances.push(created);
+        }
+        const newTotal = parseFloat(balance.totalDays) + monthlyRate;
+        const maxDays = lt.defaultDays;
+        const cappedTotal = Math.min(newTotal, maxDays);
+        await db.update(leaveBalances)
+          .set({ totalDays: String(cappedTotal), updatedAt: new Date() })
+          .where(eq(leaveBalances.id, balance.id));
+
+        accrualsMade++;
+        userAccrued = true;
+      }
+
+      if (userAccrued) usersProcessed++;
+    }
+
+    return { usersProcessed, accrualsMade };
   }
 
   // ==========================================

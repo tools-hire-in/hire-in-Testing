@@ -925,6 +925,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hr/leave-accruals/run", requireRole("hr"), async (req, res) => {
+    try {
+      const now = new Date();
+      const rawYear = req.body.year ?? now.getFullYear();
+      const rawMonth = req.body.month ?? (now.getMonth() + 1);
+      const targetYear = Number(rawYear);
+      const targetMonth = Number(rawMonth);
+      if (!Number.isInteger(targetYear) || targetYear < 2020 || targetYear > 2100) {
+        return res.status(400).json({ error: "Invalid year (must be 2020-2100)" });
+      }
+      if (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+        return res.status(400).json({ error: "Invalid month (must be 1-12)" });
+      }
+      const result = await storage.accrueMonthlyLeaves(targetYear, targetMonth);
+      res.json({ 
+        message: `Accrual completed for ${targetMonth}/${targetYear}`,
+        ...result 
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to run leave accrual" });
+    }
+  });
+
   // --- Leave Requests ---
   app.get("/api/hr/leave-requests/my", requireAuth, async (req, res) => {
     try {

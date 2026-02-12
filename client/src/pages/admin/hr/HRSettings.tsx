@@ -21,6 +21,7 @@ interface LeaveType {
   id: string;
   name: string;
   defaultDays: number;
+  monthlyAccrual: string;
   description: string | null;
   isActive: boolean;
 }
@@ -48,7 +49,7 @@ export default function HRSettings() {
 
   const [showLeaveType, setShowLeaveType] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
-  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", description: "", isActive: true });
+  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", description: "", isActive: true });
 
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -91,6 +92,18 @@ export default function HRSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-types"] });
       toast({ title: "Deleted", description: "Leave type deleted." });
+    },
+  });
+
+  const accrualMutation = useMutation({
+    mutationFn: (data: { year?: number; month?: number }) => apiRequest("POST", "/api/hr/leave-accruals/run", data),
+    onSuccess: async (res) => {
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
+      toast({ title: "Accrual Complete", description: `${result.message}. ${result.usersProcessed} users processed, ${result.accrualsMade} accruals made.` });
+    },
+    onError: () => {
+      toast({ title: "Failed", description: "Could not run leave accrual", variant: "destructive" });
     },
   });
 
@@ -160,10 +173,10 @@ export default function HRSettings() {
   const openLeaveTypeForm = (lt?: LeaveType) => {
     if (lt) {
       setEditingLeaveType(lt);
-      setLtForm({ name: lt.name, defaultDays: String(lt.defaultDays), description: lt.description || "", isActive: lt.isActive });
+      setLtForm({ name: lt.name, defaultDays: String(lt.defaultDays), monthlyAccrual: lt.monthlyAccrual || "0", description: lt.description || "", isActive: lt.isActive });
     } else {
       setEditingLeaveType(null);
-      setLtForm({ name: "", defaultDays: "0", description: "", isActive: true });
+      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", description: "", isActive: true });
     }
     setShowLeaveType(true);
   };
@@ -201,10 +214,21 @@ export default function HRSettings() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Leave Types</CardTitle>
-            <Button size="sm" onClick={() => openLeaveTypeForm()} data-testid="button-add-leave-type">
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => accrualMutation.mutate({})}
+                disabled={accrualMutation.isPending}
+                data-testid="button-run-accrual"
+              >
+                {accrualMutation.isPending ? "Running..." : "Run Monthly Accrual"}
+              </Button>
+              <Button size="sm" onClick={() => openLeaveTypeForm()} data-testid="button-add-leave-type">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {ltLoading ? (
@@ -215,7 +239,8 @@ export default function HRSettings() {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Default Days</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Description</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
@@ -226,6 +251,7 @@ export default function HRSettings() {
                       <tr key={lt.id} className="border-b last:border-0" data-testid={`leave-type-row-${lt.id}`}>
                         <td className="py-2 px-2 font-medium">{lt.name}</td>
                         <td className="py-2 px-2">{lt.defaultDays}</td>
+                        <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
                         <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{lt.description || "-"}</td>
                         <td className="py-2 px-2">
                           <Badge variant={lt.isActive ? "default" : "secondary"}>
@@ -329,14 +355,26 @@ export default function HRSettings() {
                   data-testid="input-lt-name"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Default Days Per Year</Label>
-                <Input
-                  type="number"
-                  value={ltForm.defaultDays}
-                  onChange={(e) => setLtForm(prev => ({ ...prev, defaultDays: e.target.value }))}
-                  data-testid="input-lt-days"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Annual Days (Max)</Label>
+                  <Input
+                    type="number"
+                    value={ltForm.defaultDays}
+                    onChange={(e) => setLtForm(prev => ({ ...prev, defaultDays: e.target.value }))}
+                    data-testid="input-lt-days"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Monthly Accrual</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    value={ltForm.monthlyAccrual}
+                    onChange={(e) => setLtForm(prev => ({ ...prev, monthlyAccrual: e.target.value }))}
+                    data-testid="input-lt-monthly-accrual"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
@@ -360,7 +398,7 @@ export default function HRSettings() {
               <Button
                 onClick={() => leaveTypeMutation.mutate({
                   id: editingLeaveType?.id,
-                  body: { ...ltForm, defaultDays: parseInt(ltForm.defaultDays) },
+                  body: { ...ltForm, defaultDays: parseInt(ltForm.defaultDays), monthlyAccrual: ltForm.monthlyAccrual },
                 })}
                 disabled={!ltForm.name || leaveTypeMutation.isPending}
                 data-testid="button-save-leave-type"
