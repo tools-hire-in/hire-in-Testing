@@ -49,7 +49,7 @@ export default function HRSettings() {
 
   const [showLeaveType, setShowLeaveType] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
-  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", description: "", isActive: true });
+  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true });
 
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -100,7 +100,11 @@ export default function HRSettings() {
     onSuccess: async (res) => {
       const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
-      toast({ title: "Accrual Complete", description: `${result.message}. ${result.usersProcessed} users processed, ${result.accrualsMade} accruals made.` });
+      let desc = `${result.message}. ${result.usersProcessed} users earned leave, ${result.accrualsMade} accruals made.`;
+      if (result.skippedUsers && result.skippedUsers.length > 0) {
+        desc += ` ${result.skippedUsers.length} user(s) did not meet hours threshold.`;
+      }
+      toast({ title: "Accrual Complete", description: desc });
     },
     onError: () => {
       toast({ title: "Failed", description: "Could not run leave accrual", variant: "destructive" });
@@ -173,10 +177,10 @@ export default function HRSettings() {
   const openLeaveTypeForm = (lt?: LeaveType) => {
     if (lt) {
       setEditingLeaveType(lt);
-      setLtForm({ name: lt.name, defaultDays: String(lt.defaultDays), monthlyAccrual: lt.monthlyAccrual || "0", description: lt.description || "", isActive: lt.isActive });
+      setLtForm({ name: lt.name, defaultDays: String(lt.defaultDays), monthlyAccrual: lt.monthlyAccrual || "0", minHoursForAccrual: lt.minHoursForAccrual || "128", description: lt.description || "", isActive: lt.isActive });
     } else {
       setEditingLeaveType(null);
-      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", description: "", isActive: true });
+      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true });
     }
     setShowLeaveType(true);
   };
@@ -241,7 +245,7 @@ export default function HRSettings() {
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Description</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Min Hours</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
                     </tr>
@@ -252,7 +256,7 @@ export default function HRSettings() {
                         <td className="py-2 px-2 font-medium">{lt.name}</td>
                         <td className="py-2 px-2">{lt.defaultDays}</td>
                         <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
-                        <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{lt.description || "-"}</td>
+                        <td className="py-2 px-2">{parseFloat(lt.minHoursForAccrual || "128")}h</td>
                         <td className="py-2 px-2">
                           <Badge variant={lt.isActive ? "default" : "secondary"}>
                             {lt.isActive ? "Active" : "Inactive"}
@@ -355,7 +359,7 @@ export default function HRSettings() {
                   data-testid="input-lt-name"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Annual Days (Max)</Label>
                   <Input
@@ -373,6 +377,15 @@ export default function HRSettings() {
                     value={ltForm.monthlyAccrual}
                     onChange={(e) => setLtForm(prev => ({ ...prev, monthlyAccrual: e.target.value }))}
                     data-testid="input-lt-monthly-accrual"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Min Hours/Month</Label>
+                  <Input
+                    type="number"
+                    value={ltForm.minHoursForAccrual}
+                    onChange={(e) => setLtForm(prev => ({ ...prev, minHoursForAccrual: e.target.value }))}
+                    data-testid="input-lt-min-hours"
                   />
                 </div>
               </div>
@@ -398,7 +411,7 @@ export default function HRSettings() {
               <Button
                 onClick={() => leaveTypeMutation.mutate({
                   id: editingLeaveType?.id,
-                  body: { ...ltForm, defaultDays: parseInt(ltForm.defaultDays), monthlyAccrual: ltForm.monthlyAccrual },
+                  body: { ...ltForm, defaultDays: parseInt(ltForm.defaultDays), monthlyAccrual: ltForm.monthlyAccrual, minHoursForAccrual: ltForm.minHoursForAccrual },
                 })}
                 disabled={!ltForm.name || leaveTypeMutation.isPending}
                 data-testid="button-save-leave-type"

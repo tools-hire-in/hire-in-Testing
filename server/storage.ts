@@ -112,7 +112,7 @@ export interface IStorage {
   createLeaveBalance(lb: InsertLeaveBalance): Promise<LeaveBalance>;
   updateLeaveBalance(id: string, lb: Partial<InsertLeaveBalance>): Promise<LeaveBalance | undefined>;
   initLeaveBalances(userId: string, year: number): Promise<LeaveBalance[]>;
-  accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number }>;
+  accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number; skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> }>;
 
   // Leave Requests
   getLeaveRequests(filters?: { userId?: string; status?: string }): Promise<LeaveRequest[]>;
@@ -530,12 +530,34 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number }> {
+  async getUserMonthlyHours(userId: string, year: number, month: number): Promise<number> {
+    const monthStr = String(month).padStart(2, "0");
+    const prefix = `${year}-${monthStr}`;
+    const records = await db.select().from(attendance).where(
+      and(
+        eq(attendance.userId, userId),
+        sql`${attendance.date} LIKE ${prefix + '%'}`
+      )
+    );
+    let totalHours = 0;
+    for (const rec of records) {
+      if (rec.totalHours) {
+        totalHours += parseFloat(rec.totalHours);
+      } else if (rec.punchIn && rec.punchOut) {
+        const diff = new Date(rec.punchOut).getTime() - new Date(rec.punchIn).getTime();
+        totalHours += diff / (1000 * 60 * 60);
+      }
+    }
+    return Math.round(totalHours * 100) / 100;
+  }
+
+  async accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number; skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> }> {
     const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
     const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
 
     let usersProcessed = 0;
     let accrualsMade = 0;
+    const skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> = [];
 
     for (const user of activeUsers) {
       const joiningDate = user.joiningDate ? new Date(user.joiningDate) : null;
@@ -552,49 +574,63 @@ export class DatabaseStorage implements IStorage {
         userBalances = await this.initLeaveBalances(user.id, year);
       }
 
+      const hoursWorked = await this.getUserMonthlyHours(user.id, year, month);
       let userAccrued = false;
 
       for (const lt of activeLeaveTypesList) {
         const monthlyRate = parseFloat(lt.monthlyAccrual || "0");
         if (monthlyRate <= 0) continue;
 
+        const minHours = parseFloat(lt.minHoursForAccrual || "128");
+        const qualified = hoursWorked >= minHours;
+
         const inserted = await db.insert(leaveAccruals).values({
           userId: user.id,
           leaveTypeId: lt.id,
           year,
           month,
-          accruedDays: String(monthlyRate),
+          accruedDays: qualified ? String(monthlyRate) : "0",
+          hoursWorked: String(hoursWorked),
+          qualified,
         }).onConflictDoNothing().returning();
 
         if (inserted.length === 0) continue;
 
-        let balance = userBalances.find(b => b.leaveTypeId === lt.id);
-        if (!balance) {
-          const [created] = await db.insert(leaveBalances).values({
-            userId: user.id,
-            leaveTypeId: lt.id,
-            totalDays: "0",
-            usedDays: "0",
-            year,
-          }).returning();
-          balance = created;
-          userBalances.push(created);
-        }
-        const newTotal = parseFloat(balance.totalDays) + monthlyRate;
-        const maxDays = lt.defaultDays;
-        const cappedTotal = Math.min(newTotal, maxDays);
-        await db.update(leaveBalances)
-          .set({ totalDays: String(cappedTotal), updatedAt: new Date() })
-          .where(eq(leaveBalances.id, balance.id));
+        if (qualified) {
+          let balance = userBalances.find(b => b.leaveTypeId === lt.id);
+          if (!balance) {
+            const [created] = await db.insert(leaveBalances).values({
+              userId: user.id,
+              leaveTypeId: lt.id,
+              totalDays: "0",
+              usedDays: "0",
+              year,
+            }).returning();
+            balance = created;
+            userBalances.push(created);
+          }
+          const newTotal = parseFloat(balance.totalDays) + monthlyRate;
+          const maxDays = lt.defaultDays;
+          const cappedTotal = Math.min(newTotal, maxDays);
+          await db.update(leaveBalances)
+            .set({ totalDays: String(cappedTotal), updatedAt: new Date() })
+            .where(eq(leaveBalances.id, balance.id));
 
-        accrualsMade++;
-        userAccrued = true;
+          accrualsMade++;
+          userAccrued = true;
+        } else {
+          skippedUsers.push({
+            name: `${user.firstName} ${user.lastName || ""}`.trim(),
+            hoursWorked,
+            requiredHours: minHours,
+          });
+        }
       }
 
       if (userAccrued) usersProcessed++;
     }
 
-    return { usersProcessed, accrualsMade };
+    return { usersProcessed, accrualsMade, skippedUsers };
   }
 
   // ==========================================
