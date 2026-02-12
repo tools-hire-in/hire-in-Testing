@@ -247,22 +247,16 @@ export default function HRSettings() {
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Min Hours</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {leaveTypes.map((lt) => (
+                    {leaveTypes.filter(lt => lt.isActive).map((lt) => (
                       <tr key={lt.id} className="border-b last:border-0" data-testid={`leave-type-row-${lt.id}`}>
                         <td className="py-2 px-2 font-medium">{lt.name}</td>
                         <td className="py-2 px-2">{lt.defaultDays}</td>
                         <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
                         <td className="py-2 px-2">{parseFloat(lt.minHoursForAccrual || "128")}h</td>
-                        <td className="py-2 px-2">
-                          <Badge variant={lt.isActive ? "default" : "secondary"}>
-                            {lt.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </td>
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openLeaveTypeForm(lt)}>

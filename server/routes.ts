@@ -691,6 +691,9 @@ export async function registerRoutes(
       const leaveRequests = await storage.getLeaveRequests({ userId });
       const pendingCount = leaveRequests.filter(lr => lr.status === "pending").length;
       const balances = await storage.getLeaveBalances(userId, now.getFullYear());
+      const allLeaveTypes = await storage.getLeaveTypes();
+      const activeIds = new Set(allLeaveTypes.filter(lt => lt.isActive).map(lt => lt.id));
+      const activeBalances = balances.filter(b => activeIds.has(b.leaveTypeId));
 
       let todayStatus: "not_punched" | "punched_in" | "completed" = "not_punched";
       if (todayRecord) {
@@ -704,7 +707,7 @@ export async function registerRoutes(
         presentDaysThisMonth: presentRecords.length,
         totalHoursThisMonth: totalHours.toFixed(1),
         pendingLeaveRequests: pendingCount,
-        leaveBalances: balances,
+        leaveBalances: activeBalances,
       });
     } catch (error) {
       console.error("Dashboard stats error:", error);
@@ -896,6 +899,9 @@ export async function registerRoutes(
       if (balances.length === 0) {
         balances = await storage.initLeaveBalances(userId, year);
       }
+      const ltAll = await storage.getLeaveTypes();
+      const activeIds = new Set(ltAll.filter(lt => lt.isActive).map(lt => lt.id));
+      balances = balances.filter(b => activeIds.has(b.leaveTypeId));
       res.json(balances);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch leave balances" });
@@ -1128,6 +1134,9 @@ export async function registerRoutes(
       if (leaveBalances.length === 0) {
         leaveBalances = await storage.initLeaveBalances(userId, year);
       }
+      const activeLeaveTypes = await storage.getLeaveTypes();
+      const activeTypeIds = new Set(activeLeaveTypes.filter(lt => lt.isActive).map(lt => lt.id));
+      leaveBalances = leaveBalances.filter(lb => activeTypeIds.has(lb.leaveTypeId));
 
       const presentDays = monthRecords.filter(r => r.status === "present" || r.status === "half_day" || r.status === "late").length;
       const totalHoursMonth = monthRecords.reduce((sum, r) => sum + parseFloat(r.totalHours || "0"), 0);
