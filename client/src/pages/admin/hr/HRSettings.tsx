@@ -22,6 +22,7 @@ interface LeaveType {
   name: string;
   defaultDays: number;
   monthlyAccrual: string;
+  minHoursForAccrual: string;
   description: string | null;
   isActive: boolean;
 }

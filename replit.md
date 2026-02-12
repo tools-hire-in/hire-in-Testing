@@ -98,7 +98,17 @@ The HR Portal is an internal employee management system integrated into the admi
 - Manager assignment creates reporting chains visible in the Org Chart
 - Hierarchy editing available in Team Management page (super_admin, admin, hr)
 
-**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, tickets, departments
+**Hours-Based Leave Accrual System**:
+- Leaves are NOT granted upfront — they are earned monthly based on hours worked
+- Each leave type has: `monthlyAccrual` (days earned per month), `minHoursForAccrual` (minimum hours required in the month to qualify)
+- Default: Annual Leave accrues 2 days/month (24/year max), requires 128 hours/month minimum (80% of 160 standard hours)
+- `leave_accruals` table tracks: userId, leaveTypeId, year, month, accruedDays, hoursWorked, qualified (audit trail)
+- HR runs accrual via POST `/api/hr/leave-accruals/run` with optional `{year, month}` body
+- Unique constraint on (userId, leaveTypeId, year, month) prevents duplicate accruals
+- Uses `ON CONFLICT DO NOTHING` for race-safety
+- Sick Leave and Casual Leave are deactivated; only Annual Leave is active with accrual
+
+**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, leave_accruals, tickets, departments
 
 **HR Portal Key Files**:
 - `client/src/pages/admin/hr/*`: All HR Portal frontend pages
