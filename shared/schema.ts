@@ -135,6 +135,7 @@ export const leaveTypes = pgTable("leave_types", {
   name: varchar("name").notNull(),
   defaultDays: integer("default_days").notNull().default(0),
   monthlyAccrual: numeric("monthly_accrual").notNull().default("0"),
+  minHoursForAccrual: numeric("min_hours_for_accrual").notNull().default("128"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -174,6 +175,8 @@ export const leaveAccruals = pgTable("leave_accruals", {
   year: integer("year").notNull(),
   month: integer("month").notNull(),
   accruedDays: numeric("accrued_days").notNull().default("0"),
+  hoursWorked: numeric("hours_worked").notNull().default("0"),
+  qualified: boolean("qualified").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
