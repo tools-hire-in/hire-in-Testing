@@ -13,6 +13,7 @@ import {
   leaveRequests,
   leaveAccruals,
   tickets,
+  auditLogs,
   type Job,
   type InsertJob,
   type Application,
@@ -37,6 +38,8 @@ import {
   type InsertLeaveAccrual,
   type Ticket,
   type InsertTicket,
+  type AuditLog,
+  type InsertAuditLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -127,6 +130,11 @@ export interface IStorage {
   getTicket(id: string): Promise<Ticket | undefined>;
   createTicket(ticket: InsertTicket): Promise<Ticket>;
   updateTicket(id: string, ticket: Partial<Ticket>): Promise<Ticket | undefined>;
+
+  // Audit Logs
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(filters?: { actorId?: string; targetId?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLog[]>;
+  getAuditLogCount(filters?: { actorId?: string; targetId?: string; action?: string }): Promise<number>;
 
   // Stats
   getStats(): Promise<{
@@ -757,6 +765,42 @@ export class DatabaseStorage implements IStorage {
       totalContacts: contactStats?.total ?? 0,
       newContacts: contactStats?.newCount ?? 0,
     };
+  }
+
+  // ==========================================
+  // AUDIT LOGS
+  // ==========================================
+
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const [created] = await db.insert(auditLogs).values(log).returning();
+    return created;
+  }
+
+  async getAuditLogs(filters?: { actorId?: string; targetId?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLog[]> {
+    const conditions = [];
+    if (filters?.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
+    if (filters?.targetId) conditions.push(eq(auditLogs.targetId, filters.targetId));
+    if (filters?.action) conditions.push(eq(auditLogs.action, filters.action));
+
+    const query = db.select().from(auditLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(filters?.limit ?? 100)
+      .offset(filters?.offset ?? 0);
+
+    return query;
+  }
+
+  async getAuditLogCount(filters?: { actorId?: string; targetId?: string; action?: string }): Promise<number> {
+    const conditions = [];
+    if (filters?.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
+    if (filters?.targetId) conditions.push(eq(auditLogs.targetId, filters.targetId));
+    if (filters?.action) conditions.push(eq(auditLogs.action, filters.action));
+
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(auditLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    return result?.count ?? 0;
   }
 }
 

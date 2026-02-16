@@ -20,6 +20,7 @@ import AdminJobs from "@/pages/admin/Jobs";
 import AdminApplications from "@/pages/admin/Applications";
 import AdminContacts from "@/pages/admin/Contacts";
 import AdminUsers from "@/pages/admin/Users";
+import AuditLogs from "@/pages/admin/AuditLogs";
 import AdminLogin from "@/pages/admin/Login";
 import HRDashboard from "@/pages/admin/hr/HRDashboard";
 import HRAttendance from "@/pages/admin/hr/Attendance";
@@ -71,6 +72,7 @@ function PublicRouter() {
       <Route path="/admin/applications" component={AdminApplications} />
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/audit-logs" component={AuditLogs} />
 
       <Route path="/admin/hr" component={HRDashboard} />
       <Route path="/admin/hr/attendance" component={HRAttendance} />
@@ -100,6 +102,7 @@ function EmployeeRouter() {
       <Route path="/admin/applications" component={AdminApplications} />
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/audit-logs" component={AuditLogs} />
 
       <Route path="/admin/hr" component={HRDashboard} />
       <Route path="/admin/hr/attendance" component={HRAttendance} />

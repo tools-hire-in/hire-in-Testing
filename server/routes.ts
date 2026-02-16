@@ -392,12 +392,29 @@ export async function registerRoutes(
     }
   });
 
-  // User management routes are now handled via auth routes (register, etc.)
-  // These routes now use session-based role checking
-  app.post("/api/admin/users", requireRole("super_admin"), async (req, res) => {
+  // Role hierarchy for permission checks
+  const ROLE_RANK: Record<string, number> = {
+    super_admin: 6,
+    admin: 5,
+    hr: 4,
+    operations: 3,
+    manager: 2,
+    employee: 1,
+  };
+
+  // User management routes — accessible to super_admin, admin, and manager
+  app.post("/api/admin/users", requireRole("admin", "manager"), async (req, res) => {
     try {
+      const actorRole = req.session.role!;
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
       const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel } = req.body;
-      
+
+      const assignedRole = role || "employee";
+      const assignedRank = ROLE_RANK[assignedRole] ?? 0;
+      if (actorRank <= assignedRank && actorRole !== "super_admin") {
+        return res.status(403).json({ error: "You cannot assign a role equal to or higher than your own" });
+      }
+
       if (!email?.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
       }
@@ -416,12 +433,19 @@ export async function registerRoutes(
         password: hashedPassword,
         firstName: firstName || "",
         lastName: lastName || "",
-        role: role || "employee",
+        role: assignedRole,
         isActive: true,
         joiningDate: joiningDate || null,
         designation: designation || null,
         departmentId: departmentId || null,
         hierarchyLevel: hierarchyLevel || "team_member",
+      });
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: user.id,
+        action: "create_user",
+        changes: { email: email.toLowerCase(), role: assignedRole, firstName, lastName, designation, departmentId, hierarchyLevel },
       });
 
       const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
@@ -431,7 +455,7 @@ export async function registerRoutes(
         to: email.toLowerCase(),
         firstName: firstName || email.split("@")[0],
         lastName: lastName || "",
-        role: role || "employee",
+        role: assignedRole,
         temporaryPassword: tempPassword,
         loginUrl,
       }).catch((err) => console.error("Background invitation email error:", err));
@@ -442,32 +466,79 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
+  app.patch("/api/admin/users/:id", requireRole("admin", "manager"), async (req, res) => {
     try {
-      const { password, ...updateData } = req.body;
+      const actorRole = req.session.role!;
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
+      const userId = req.params.id as string;
+
+      const targetUser = await storage.getAdminUser(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+      if (actorRank <= targetRank && actorRole !== "super_admin") {
+        return res.status(403).json({ error: "You cannot edit a user with an equal or higher role" });
+      }
+
+      const { password, role, ...updateData } = req.body;
       
+      if (role) {
+        const newRoleRank = ROLE_RANK[role] ?? 0;
+        if (actorRank <= newRoleRank && actorRole !== "super_admin") {
+          return res.status(403).json({ error: "You cannot assign a role equal to or higher than your own" });
+        }
+        updateData.role = role;
+      }
+
       if (password) {
         const bcrypt = await import("bcryptjs");
         updateData.password = await bcrypt.hash(password, 12);
       }
-      
-      const userId = req.params.id as string;
+
+      const before: Record<string, any> = {};
+      const after: Record<string, any> = {};
+      for (const key of Object.keys(updateData)) {
+        if (key === "password") {
+          before[key] = "***";
+          after[key] = "***";
+        } else if ((targetUser as any)[key] !== updateData[key]) {
+          before[key] = (targetUser as any)[key];
+          after[key] = updateData[key];
+        }
+      }
+
       const user = await storage.updateAdminUser(userId, updateData);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "update_user",
+        changes: { before, after },
+      });
+
       res.json(user);
     } catch (error) {
       res.status(500).json({ error: "Failed to update user" });
     }
   });
 
-  app.post("/api/admin/users/:id/resend-invite", requireRole("super_admin"), async (req, res) => {
+  app.post("/api/admin/users/:id/resend-invite", requireRole("admin", "manager"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
       if (!targetUser) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      const actorRank = ROLE_RANK[req.session.role!] ?? 0;
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+      if (actorRank <= targetRank && req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "You cannot resend invitations to users with an equal or higher role" });
       }
 
       const tempPassword = crypto.randomBytes(6).toString("base64url") + "A1!";
@@ -488,6 +559,12 @@ export async function registerRoutes(
 
       if (result.success) {
         await storage.updateAdminUser(userId, { password: hashedPassword });
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: userId,
+          action: "resend_invite",
+          changes: { email: targetUser.email },
+        });
         res.json({ message: "Invitation resent successfully" });
       } else {
         res.status(500).json({ error: "Failed to send email. Password was not changed." });
@@ -498,22 +575,13 @@ export async function registerRoutes(
     }
   });
 
-  const ROLE_RANK: Record<string, number> = {
-    super_admin: 6,
-    admin: 5,
-    hr: 4,
-    operations: 3,
-    manager: 2,
-    employee: 1,
-  };
-
   app.post("/api/admin/users/:id/reset-password", requireAuth, async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
 
-      if (actorRank < ROLE_RANK.admin) {
-        return res.status(403).json({ error: "Only supervisors can reset passwords" });
+      if (actorRank < ROLE_RANK.manager) {
+        return res.status(403).json({ error: "Only managers and above can reset passwords" });
       }
 
       const targetId = req.params.id as string;
@@ -540,6 +608,13 @@ export async function registerRoutes(
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await storage.updateAdminUser(targetId, { password: hashedPassword, totpEnabled: false, totpSecret: null });
 
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: targetId,
+        action: "reset_password",
+        changes: { targetEmail: targetUser.email },
+      });
+
       res.json({ message: "Password reset successfully" });
     } catch (error) {
       console.error("Reset password error:", error);
@@ -550,7 +625,17 @@ export async function registerRoutes(
   app.delete("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
     try {
       const userId = req.params.id as string;
+      const targetUser = await storage.getAdminUser(userId);
+
       await storage.deleteAdminUser(userId);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "delete_user",
+        changes: targetUser ? { email: targetUser.email, role: targetUser.role, name: `${targetUser.firstName} ${targetUser.lastName}` } : null,
+      });
+
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
@@ -638,16 +723,67 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id/hierarchy", requireRole("hr"), async (req, res) => {
+  app.patch("/api/admin/users/:id/hierarchy", requireRole("hr", "admin", "manager"), async (req, res) => {
     try {
+      const targetId = req.params.id as string;
+      const targetUser = await storage.getAdminUser(targetId);
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+
       const { managerId, departmentId, designation, hierarchyLevel } = req.body;
-      const updated = await storage.updateAdminUser(req.params.id as string, {
+      const before = { managerId: targetUser.managerId, departmentId: targetUser.departmentId, designation: targetUser.designation, hierarchyLevel: targetUser.hierarchyLevel };
+
+      const updated = await storage.updateAdminUser(targetId, {
         managerId, departmentId, designation, hierarchyLevel,
       });
       if (!updated) return res.status(404).json({ error: "User not found" });
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId,
+        action: "update_hierarchy",
+        changes: { before, after: { managerId, departmentId, designation, hierarchyLevel } },
+      });
+
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update user hierarchy" });
+    }
+  });
+
+  // ==========================================
+  // AUDIT LOGS API ROUTES
+  // ==========================================
+
+  app.get("/api/admin/audit-logs", requireRole("admin"), async (req, res) => {
+    try {
+      const { actorId, targetId, action, limit, offset } = req.query;
+      const filters = {
+        actorId: actorId as string | undefined,
+        targetId: targetId as string | undefined,
+        action: action as string | undefined,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      };
+      const [logs, total] = await Promise.all([
+        storage.getAuditLogs(filters),
+        storage.getAuditLogCount(filters),
+      ]);
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, { firstName: u.firstName, lastName: u.lastName, email: u.email }]));
+
+      const enrichedLogs = logs.map(log => ({
+        ...log,
+        actorName: userMap.get(log.actorId) ? `${userMap.get(log.actorId)!.firstName} ${userMap.get(log.actorId)!.lastName}` : "Unknown",
+        actorEmail: userMap.get(log.actorId)?.email || "Unknown",
+        targetName: log.targetId && userMap.get(log.targetId) ? `${userMap.get(log.targetId)!.firstName} ${userMap.get(log.targetId)!.lastName}` : "Unknown",
+        targetEmail: log.targetId && userMap.get(log.targetId)?.email || null,
+      }));
+
+      res.json({ logs: enrichedLogs, total });
+    } catch (error) {
+      console.error("Audit logs error:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
     }
   });
 

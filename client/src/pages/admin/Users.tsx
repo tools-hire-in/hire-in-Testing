@@ -231,15 +231,23 @@ export default function AdminUsers() {
   );
 
   const isSuperAdmin = user?.role === "super_admin";
-  const canEditHierarchy = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
+  const canManageUsers = user?.role === "super_admin" || user?.role === "admin" || user?.role === "manager";
+  const canEditHierarchy = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr" || user?.role === "manager";
 
   const roleRank: Record<string, number> = {
     super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
   };
   const currentUserRank = roleRank[user?.role || ""] ?? 0;
+
+  const canEditUser = (targetUser: AdminUser) => {
+    if (!canManageUsers) return false;
+    if (isSuperAdmin) return true;
+    return currentUserRank > (roleRank[targetUser.role] ?? 0);
+  };
+
   const canResetPassword = (targetUser: AdminUser) => {
     if (targetUser.id === user?.id) return false;
-    return currentUserRank >= roleRank.admin && currentUserRank > (roleRank[targetUser.role] ?? 0);
+    return currentUserRank >= roleRank.manager && currentUserRank > (roleRank[targetUser.role] ?? 0);
   };
 
   const openHierarchyDialog = (adminUser: AdminUser) => {
@@ -275,8 +283,8 @@ export default function AdminUsers() {
               Manage admin users, roles, departments, and hierarchy
             </p>
           </div>
-          {isSuperAdmin && (
-            <Button onClick={() => setInviteOpen(true)}>
+          {canManageUsers && (
+            <Button onClick={() => setInviteOpen(true)} data-testid="button-invite-user">
               <UserPlus className="h-4 w-4 mr-2" />
               Invite User
             </Button>
@@ -298,7 +306,7 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-1">
                 <Badge className={roleColors.admin}>Admin</Badge>
-                <p className="text-xs text-muted-foreground">Full access, cannot manage users</p>
+                <p className="text-xs text-muted-foreground">Full access, can manage users</p>
               </div>
               <div className="space-y-1">
                 <Badge className={roleColors.hr}>HR</Badge>
@@ -403,7 +411,7 @@ export default function AdminUsers() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {(isSuperAdmin || canEditHierarchy || canResetPassword(adminUser)) && (
+                          {(canEditUser(adminUser) || canEditHierarchy || canResetPassword(adminUser)) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
@@ -430,7 +438,7 @@ export default function AdminUsers() {
                                     Reset Password
                                   </DropdownMenuItem>
                                 )}
-                                {isSuperAdmin && adminUser.email !== "simranjeet@hire-in.com" && (
+                                {canEditUser(adminUser) && adminUser.email !== "simranjeet@hire-in.com" && (
                                   <>
                                     <DropdownMenuItem
                                       onClick={() => resendInviteMutation.mutate(adminUser.id)}
@@ -440,26 +448,41 @@ export default function AdminUsers() {
                                       Resend Invitation
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
-                                      Set as Admin
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "hr" })}>
-                                      Set as HR
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>
-                                      Set as Operations
-                                    </DropdownMenuItem>
+                                    {currentUserRank > roleRank.admin && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
+                                        Set as Admin
+                                      </DropdownMenuItem>
+                                    )}
+                                    {currentUserRank > roleRank.hr && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "hr" })}>
+                                        Set as HR
+                                      </DropdownMenuItem>
+                                    )}
+                                    {currentUserRank > roleRank.operations && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>
+                                        Set as Operations
+                                      </DropdownMenuItem>
+                                    )}
+                                    {currentUserRank > roleRank.manager && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "manager" })}>
+                                        Set as Manager
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>
                                       Set as Employee
                                     </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive"
-                                      onClick={() => deleteMutation.mutate(adminUser.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Remove
-                                    </DropdownMenuItem>
+                                    {isSuperAdmin && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive"
+                                          onClick={() => deleteMutation.mutate(adminUser.id)}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2" />
+                                          Remove
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </DropdownMenuContent>
@@ -531,10 +554,10 @@ export default function AdminUsers() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="hr">HR</SelectItem>
-                      <SelectItem value="operations">Operations</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
+                      {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
+                      {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
+                      {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
+                      {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
                       <SelectItem value="employee">Employee</SelectItem>
                     </SelectContent>
                   </Select>

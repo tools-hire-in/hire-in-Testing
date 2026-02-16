@@ -197,6 +197,16 @@ export const tickets = pgTable("tickets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Audit logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorId: varchar("actor_id").notNull().references(() => adminUsers.id),
+  targetId: varchar("target_id").references(() => adminUsers.id),
+  action: varchar("action").notNull(),
+  changes: jsonb("changes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ==========================================
 // RELATIONS
 // ==========================================
@@ -278,6 +288,19 @@ export const ticketsRelations = relations(tickets, ({ one }) => ({
   reviewer: one(adminUsers, {
     fields: [tickets.reviewedBy],
     references: [adminUsers.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  actor: one(adminUsers, {
+    fields: [auditLogs.actorId],
+    references: [adminUsers.id],
+    relationName: "auditActor",
+  }),
+  target: one(adminUsers, {
+    fields: [auditLogs.targetId],
+    references: [adminUsers.id],
+    relationName: "auditTarget",
   }),
 }));
 
@@ -369,6 +392,11 @@ export const insertLeaveAccrualSchema = createInsertSchema(leaveAccruals).omit({
   createdAt: true,
 });
 
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertTicketSchema = createInsertSchema(tickets).omit({
   id: true,
   createdAt: true,
@@ -407,3 +435,5 @@ export type LeaveAccrual = typeof leaveAccruals.$inferSelect;
 export type InsertLeaveAccrual = z.infer<typeof insertLeaveAccrualSchema>;
 export type Ticket = typeof tickets.$inferSelect;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
