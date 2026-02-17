@@ -70,6 +70,49 @@ function requireRole(...allowedRoles: string[]) {
   };
 }
 
+function parseDateString(dateStr: string, year: number): string | null {
+  const monthNames: Record<string, number> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
+    nov: 11, november: 11, dec: 12, december: 12,
+  };
+
+  if (!dateStr || !dateStr.trim()) return null;
+  const s = dateStr.trim();
+
+  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+
+  const usMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (usMatch) {
+    const y = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
+    return `${y}-${usMatch[1].padStart(2, "0")}-${usMatch[2].padStart(2, "0")}`;
+  }
+
+  const namedMatch = s.match(/^([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?$/i);
+  if (namedMatch) {
+    const month = monthNames[namedMatch[1].toLowerCase()];
+    if (month) {
+      const day = namedMatch[2].padStart(2, "0");
+      const y = namedMatch[3] || String(year);
+      return `${y}-${String(month).padStart(2, "0")}-${day}`;
+    }
+  }
+
+  const dayMonthMatch = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)(?:\s*,?\s*(\d{4}))?$/i);
+  if (dayMonthMatch) {
+    const month = monthNames[dayMonthMatch[2].toLowerCase()];
+    if (month) {
+      const day = dayMonthMatch[1].padStart(2, "0");
+      const y = dayMonthMatch[3] || String(year);
+      return `${y}-${String(month).padStart(2, "0")}-${day}`;
+    }
+  }
+
+  return null;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -872,6 +915,87 @@ export async function registerRoutes(
       res.status(201).json(holiday);
     } catch (error) {
       res.status(500).json({ error: "Failed to create holiday" });
+    }
+  });
+
+  app.post("/api/hr/holidays/upload", requireRole("hr"), upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const csvContent = req.file.buffer.toString("utf-8");
+      const records = parse(csvContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        relax_column_count: true,
+      });
+
+      if (!records || records.length === 0) {
+        return res.status(400).json({ error: "CSV file is empty or has no valid rows" });
+      }
+
+      const year = req.body.year ? parseInt(req.body.year) : new Date().getFullYear();
+      const note = req.body.note || null;
+
+      const created: any[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < records.length; i++) {
+        const row = records[i] as Record<string, string>;
+        const rowNum = i + 2;
+
+        const dateStr = row["Date"] || row["date"] || "";
+        const holidayName = row["Holiday Name"] || row["holiday_name"] || row["name"] || "";
+        const regionalHoliday = row["Regional Holiday"] || row["regional_holiday"] || row["regional"] || "";
+
+        if (!dateStr && !holidayName && !regionalHoliday) continue;
+
+        const parsedDate = parseDateString(dateStr, year);
+        if (!parsedDate) {
+          errors.push(`Row ${rowNum}: Could not parse date "${dateStr}"`);
+          continue;
+        }
+
+        if (holidayName) {
+          try {
+            const h = await storage.createHoliday({
+              name: holidayName,
+              date: parsedDate,
+              type: "public",
+              isOptional: false,
+            });
+            created.push(h);
+          } catch (e: any) {
+            errors.push(`Row ${rowNum}: Failed to create holiday "${holidayName}"`);
+          }
+        }
+
+        if (regionalHoliday) {
+          try {
+            const h = await storage.createHoliday({
+              name: regionalHoliday,
+              date: parsedDate,
+              type: "regional",
+              isOptional: true,
+            });
+            created.push(h);
+          } catch (e: any) {
+            errors.push(`Row ${rowNum}: Failed to create regional holiday "${regionalHoliday}"`);
+          }
+        }
+      }
+
+      res.json({
+        message: `Imported ${created.length} holiday(s) successfully`,
+        imported: created.length,
+        errors,
+        note,
+      });
+    } catch (error: any) {
+      console.error("Holiday CSV upload error:", error);
+      res.status(500).json({ error: "Failed to process holiday CSV file" });
     }
   });
 

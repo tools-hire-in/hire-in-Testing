@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2 } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,12 @@ export default function HRSettings() {
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   const [hForm, setHForm] = useState({ name: "", date: "", type: "public", isOptional: false });
+
+  const [showUploadHoliday, setShowUploadHoliday] = useState(false);
+  const [uploadYear, setUploadYear] = useState(String(new Date().getFullYear()));
+  const [uploadNote, setUploadNote] = useState("Employee's can apply any two regional holidays without any loss of pay for india office. US Holidays are mandatory for US Client Team.");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showDepartment, setShowDepartment] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
@@ -137,6 +143,51 @@ export default function HRSettings() {
       toast({ title: "Deleted", description: "Holiday deleted." });
     },
   });
+
+  const uploadHolidayMutation = useMutation({
+    mutationFn: async () => {
+      if (!uploadFile) throw new Error("No file selected");
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("year", uploadYear);
+      formData.append("note", uploadNote);
+      const res = await fetch("/api/hr/holidays/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/holidays"] });
+      setShowUploadHoliday(false);
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      let desc = data.message;
+      if (data.errors && data.errors.length > 0) {
+        desc += `. ${data.errors.length} error(s) encountered.`;
+      }
+      toast({ title: "Upload Complete", description: desc });
+    },
+    onError: (err: any) => {
+      toast({ title: "Upload Failed", description: err.message || "Failed to upload", variant: "destructive" });
+    },
+  });
+
+  const downloadTemplate = () => {
+    const csv = "Date,Holiday Name,Regional Holiday\nJan 1st,New Year,\nMarch 3rd,,Holi\nMarch 20th,,Eid-ul-Fitr\nMay 27th,,Eid-ul-Adha (Bakrid)\nSep 7th,Labour Day USA,\nNov 12th,,Diwali\nNov 26th,Thanksgiving day,\nDec 25th,Christmas,\n";
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "holiday_calendar_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const { data: deptList, isLoading: deptLoading } = useQuery<Department[]>({
     queryKey: ["/api/departments"],
@@ -285,10 +336,16 @@ export default function HRSettings() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Holidays ({new Date().getFullYear()})</CardTitle>
-            <Button size="sm" onClick={() => openHolidayForm()} data-testid="button-add-holiday">
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" onClick={() => setShowUploadHoliday(true)} data-testid="button-upload-holidays">
+                <Upload className="h-4 w-4 mr-1" />
+                Upload CSV
+              </Button>
+              <Button size="sm" onClick={() => openHolidayForm()} data-testid="button-add-holiday">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {hLoading ? (
@@ -298,20 +355,18 @@ export default function HRSettings() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Type</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Optional</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Holiday Name</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Regional Holiday</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {holidays.map((h) => (
                       <tr key={h.id} className="border-b last:border-0" data-testid={`holiday-row-${h.id}`}>
-                        <td className="py-2 px-2 font-medium">{h.name}</td>
                         <td className="py-2 px-2">{h.date}</td>
-                        <td className="py-2 px-2 capitalize">{h.type}</td>
-                        <td className="py-2 px-2">{h.isOptional ? "Yes" : "No"}</td>
+                        <td className="py-2 px-2 font-medium">{h.type !== "regional" ? h.name : ""}</td>
+                        <td className="py-2 px-2">{h.type === "regional" || h.isOptional ? h.name : ""}</td>
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openHolidayForm(h)}>
@@ -337,6 +392,12 @@ export default function HRSettings() {
                 <p className="text-sm text-muted-foreground">No holidays configured</p>
               </div>
             )}
+            <div className="mt-4 p-3 rounded-md border border-dashed flex items-start gap-2" data-testid="text-holiday-note">
+              <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground font-medium">
+                Note : Employee's can apply any two regional holidays without any loss of pay for india office. US Holidays are mandatory for US Client Team.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -586,6 +647,61 @@ export default function HRSettings() {
                 data-testid="button-save-holiday"
               >
                 {holidayMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showUploadHoliday} onOpenChange={setShowUploadHoliday}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Upload Holiday Calendar</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>CSV File</Label>
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  data-testid="input-upload-holiday-file"
+                />
+                <p className="text-xs text-muted-foreground">
+                  CSV must have columns: Date, Holiday Name, Regional Holiday
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Year</Label>
+                <Input
+                  type="number"
+                  value={uploadYear}
+                  onChange={(e) => setUploadYear(e.target.value)}
+                  data-testid="input-upload-holiday-year"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Note</Label>
+                <Textarea
+                  value={uploadNote}
+                  onChange={(e) => setUploadNote(e.target.value)}
+                  rows={3}
+                  data-testid="input-upload-holiday-note"
+                />
+              </div>
+              <Button variant="outline" size="sm" onClick={downloadTemplate} data-testid="button-download-template">
+                <Download className="h-4 w-4 mr-1" />
+                Download Template
+              </Button>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowUploadHoliday(false)}>Cancel</Button>
+              <Button
+                onClick={() => uploadHolidayMutation.mutate()}
+                disabled={!uploadFile || uploadHolidayMutation.isPending}
+                data-testid="button-submit-upload-holidays"
+              >
+                {uploadHolidayMutation.isPending ? "Uploading..." : "Upload"}
               </Button>
             </DialogFooter>
           </DialogContent>
