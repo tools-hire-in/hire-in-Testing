@@ -10,6 +10,7 @@ import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { sendInvitationEmail, sendWelcomeEmail } from "./email";
 import crypto from "crypto";
+import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const objectStorageService = new ObjectStorageService();
@@ -179,7 +180,6 @@ export async function registerRoutes(
   // Submit job application (public)
   app.post("/api/applications", async (req, res) => {
     try {
-      // Handle resumeUrl -> resumePath conversion
       const body = { ...req.body };
       if (body.resumeUrl) {
         body.resumePath = objectStorageService.normalizeObjectEntityPath(body.resumeUrl);
@@ -193,6 +193,16 @@ export async function registerRoutes(
       
       const application = await storage.createApplication(result.data);
       res.status(201).json(application);
+
+      pushApplicantToCeipal(application.id).then((syncResult) => {
+        if (syncResult.success) {
+          console.log(`Applicant ${application.id} synced to Ceipal (ID: ${syncResult.ceipalId})`);
+        } else {
+          console.error(`Ceipal sync failed for applicant ${application.id}:`, syncResult.error);
+        }
+      }).catch((err) => {
+        console.error(`Ceipal sync error for applicant ${application.id}:`, err);
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to submit application" });
     }
@@ -312,6 +322,20 @@ export async function registerRoutes(
       res.json({ message: `Updated ${count} jobs`, count });
     } catch (error) {
       res.status(500).json({ error: "Failed to update jobs" });
+    }
+  });
+
+  // Sync jobs from Ceipal ATS
+  app.post("/api/admin/jobs/sync-ceipal", requireRole("operations"), async (req, res) => {
+    try {
+      const result = await syncCeipalJobs();
+      res.json({
+        message: `Ceipal sync complete: ${result.created} new, ${result.updated} updated out of ${result.total} total`,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("Ceipal sync error:", error);
+      res.status(500).json({ error: error.message || "Failed to sync jobs from Ceipal" });
     }
   });
 

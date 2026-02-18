@@ -43,7 +43,7 @@ export const adminUsers = pgTable("admin_users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Jobs table - stores all job postings from CSV uploads
+// Jobs table - stores all job postings from CSV uploads and Ceipal sync
 export const jobs = pgTable("jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   jobId: varchar("job_id"),
@@ -64,6 +64,9 @@ export const jobs = pgTable("jobs", {
   isActive: boolean("is_active").notNull().default(true),
   isHot: boolean("is_hot").notNull().default(false),
   rawData: jsonb("raw_data"),
+  source: varchar("source").notNull().default("manual"),
+  ceipalJobCode: varchar("ceipal_job_code"),
+  ceipalJobId: varchar("ceipal_job_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -81,6 +84,8 @@ export const applications = pgTable("applications", {
   yearsExperience: integer("years_experience"),
   currentEmployer: varchar("current_employer"),
   status: varchar("status").notNull().default("new"),
+  ceipalSyncStatus: varchar("ceipal_sync_status").default("pending"),
+  ceipalApplicantId: varchar("ceipal_applicant_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

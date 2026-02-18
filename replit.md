@@ -152,10 +152,22 @@ The HR Portal is an internal employee management system integrated into the admi
 - **Welcome Emails**: Sent on initial Super Admin setup
 - **Resend Invitation**: Super Admin can resend invitations with fresh credentials via Team Management
 
+### Ceipal ATS Integration
+- **Service Module**: `server/ceipalService.ts` handles all Ceipal API interactions
+- **Authentication**: JWT token-based auth with 1-hour expiry; auto-refresh and token caching in memory
+- **Auth Endpoint**: `POST https://api.ceipal.com/v1/createAuthtoken` (returns XML with access_token and refresh_token)
+- **Job Sync**: Pulls jobs from custom endpoint (`CEIPAL_JOBS_ENDPOINT` secret) and upserts into jobs table using `ceipalJobCode` for deduplication
+- **Applicant Push**: When someone applies on the website, their info is automatically pushed to Ceipal (`CEIPAL_APPLICANT_ENDPOINT` secret) in the background (non-blocking)
+- **Job ID Attachment**: If the applied job is from Ceipal (has `ceipalJobId`), the applicant is attached to that requirement in Ceipal
+- **Schema Columns**: `jobs.source` ("manual"|"ceipal"), `jobs.ceipalJobCode`, `jobs.ceipalJobId`, `applications.ceipalSyncStatus`, `applications.ceipalApplicantId`
+- **Admin Sync**: `POST /api/admin/jobs/sync-ceipal` endpoint (operations role); "Sync from Ceipal" button on admin Jobs page
+- **Secrets Used**: `CEIPAL_EMAIL`, `CEIPAL_PASSWORD`, `CEIPAL_API_KEY`, `CEIPAL_JOBS_ENDPOINT`, `CEIPAL_APPLICANT_ENDPOINT`
+
 ### External Services
 - **Google Fonts**: Inter and Open Sans typography (loaded via CDN)
 - **Unsplash**: Hero carousel images (external URLs in constants)
 - **SendGrid**: Email delivery for invitations and welcome emails
+- **Ceipal ATS**: Job postings sync and applicant data push
 
 ### Key NPM Packages
 - Form validation: `zod`, `@hookform/resolvers`, `react-hook-form`

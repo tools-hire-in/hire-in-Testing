@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download, CheckSquare } from "lucide-react";
+import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download, CheckSquare, RefreshCw } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -177,6 +177,24 @@ export default function AdminJobs() {
     },
   });
 
+  const ceipalSyncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/jobs/sync-ceipal");
+      return await res.json();
+    },
+    onSuccess: (data: { message?: string; created?: number; updated?: number; total?: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({
+        title: "Ceipal Sync Complete",
+        description: data.message || `${data.created || 0} new, ${data.updated || 0} updated`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ceipal sync failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       setLocation("/admin/login");
@@ -308,7 +326,16 @@ export default function AdminJobs() {
               Manage job listings and upload new positions
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => ceipalSyncMutation.mutate()}
+              disabled={ceipalSyncMutation.isPending}
+              data-testid="button-sync-ceipal"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${ceipalSyncMutation.isPending ? "animate-spin" : ""}`} />
+              {ceipalSyncMutation.isPending ? "Syncing..." : "Sync from Ceipal"}
+            </Button>
             <Button variant="outline" onClick={() => setUploadOpen(true)} data-testid="button-upload-csv">
               <Upload className="h-4 w-4 mr-2" />
               Upload CSV
@@ -406,9 +433,10 @@ export default function AdminJobs() {
                       </TableCell>
                       <TableCell className="font-medium">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {job.title}
                             {job.isHot && <Badge variant="destructive" className="text-xs">Hot</Badge>}
+                            {job.source === "ceipal" && <Badge variant="outline" className="text-xs">Ceipal</Badge>}
                           </div>
                           {job.specialty && (
                             <span className="text-sm text-muted-foreground">{job.specialty}</span>
