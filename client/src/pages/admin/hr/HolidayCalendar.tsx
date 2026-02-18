@@ -1,12 +1,15 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { CalendarDays } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { CalendarDays, Check, Info } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Holiday {
   id: string;
@@ -16,14 +19,49 @@ interface Holiday {
   isOptional: boolean;
 }
 
+interface RegionalSelection {
+  id: string;
+  userId: string;
+  holidayId: string;
+  year: number;
+}
+
 export default function HolidayCalendar() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
   const year = new Date().getFullYear();
 
   const { data: holidays, isLoading } = useQuery<Holiday[]>({
     queryKey: ["/api/hr/holidays", { year }],
     enabled: isAuthenticated,
+  });
+
+  const { data: selections } = useQuery<RegionalSelection[]>({
+    queryKey: ["/api/hr/regional-holiday-selections", { year }],
+    enabled: isAuthenticated,
+  });
+
+  const selectMutation = useMutation({
+    mutationFn: (holidayId: string) => apiRequest("POST", "/api/hr/regional-holiday-selections", { holidayId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/regional-holiday-selections"] });
+      toast({ title: "Selected", description: "Regional holiday selected successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to select holiday", variant: "destructive" });
+    },
+  });
+
+  const deselectMutation = useMutation({
+    mutationFn: (selectionId: string) => apiRequest("DELETE", `/api/hr/regional-holiday-selections/${selectionId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/regional-holiday-selections"] });
+      toast({ title: "Removed", description: "Regional holiday selection removed." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to remove selection", variant: "destructive" });
+    },
   });
 
   useEffect(() => {
@@ -33,9 +71,11 @@ export default function HolidayCalendar() {
   if (authLoading || !isAuthenticated) return null;
 
   const today = new Date().toISOString().split("T")[0];
+  const regionalHolidays = holidays?.filter(h => h.type === "regional") || [];
+  const selectedIds = new Set(selections?.map(s => s.holidayId) || []);
+  const selectionCount = selections?.length || 0;
 
   const upcoming = holidays?.filter(h => h.date >= today) || [];
-  const past = holidays?.filter(h => h.date < today) || [];
 
   const months = Array.from(new Set(holidays?.map(h => h.date.substring(0, 7)) || [])).sort();
 
@@ -51,6 +91,10 @@ export default function HolidayCalendar() {
     return new Date(y, m - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
   };
 
+  const getSelectionForHoliday = (holidayId: string) => {
+    return selections?.find(s => s.holidayId === holidayId);
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -62,7 +106,7 @@ export default function HolidayCalendar() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold">{holidays?.length || 0}</div>
+              <div className="text-3xl font-bold" data-testid="text-total-holidays">{holidays?.length || 0}</div>
               <p className="text-sm text-muted-foreground">Total Holidays</p>
             </CardContent>
           </Card>
@@ -74,11 +118,81 @@ export default function HolidayCalendar() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold">{holidays?.filter(h => h.isOptional).length || 0}</div>
-              <p className="text-sm text-muted-foreground">Optional</p>
+              <div className="text-3xl font-bold" data-testid="text-regional-selected">{selectionCount}/2</div>
+              <p className="text-sm text-muted-foreground">Regional Holidays Selected</p>
             </CardContent>
           </Card>
         </div>
+
+        <div className="p-3 rounded-md border border-dashed flex items-start gap-2" data-testid="text-regional-note">
+          <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-muted-foreground font-medium">
+            Note : Employee's can apply any two regional holidays without any loss of pay for india office. US Holidays are mandatory for US Client Team.
+          </p>
+        </div>
+
+        {regionalHolidays.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Select Your Regional Holidays ({selectionCount}/2)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {regionalHolidays.map(h => {
+                  const isSelected = selectedIds.has(h.id);
+                  const existingSelection = getSelectionForHoliday(h.id);
+                  const hDate = new Date(h.date + "T00:00:00");
+                  const dayName = hDate.toLocaleString("en-US", { weekday: "long" });
+                  const dateLabel = hDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const canSelect = !isSelected && selectionCount < 2;
+                  const isPast = h.date < today;
+
+                  return (
+                    <div
+                      key={h.id}
+                      className={`flex items-center justify-between py-3 px-4 rounded-md border ${isSelected ? "border-primary/50 bg-primary/5" : ""} ${isPast ? "opacity-60" : ""}`}
+                      data-testid={`regional-holiday-${h.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-bold">{hDate.getDate()}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{h.name}</p>
+                          <p className="text-xs text-muted-foreground">{dateLabel} - {dayName}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isSelected ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => existingSelection && deselectMutation.mutate(existingSelection.id)}
+                            disabled={deselectMutation.isPending}
+                            data-testid={`button-deselect-${h.id}`}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Selected
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => selectMutation.mutate(h.id)}
+                            disabled={!canSelect || selectMutation.isPending}
+                            data-testid={`button-select-${h.id}`}
+                          >
+                            Select
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="space-y-4">
@@ -97,6 +211,8 @@ export default function HolidayCalendar() {
                       const hDate = new Date(h.date + "T00:00:00");
                       const dayName = hDate.toLocaleString("en-US", { weekday: "long" });
                       const isPast = h.date < today;
+                      const isRegional = h.type === "regional";
+                      const isSelectedRegional = isRegional && selectedIds.has(h.id);
                       return (
                         <div
                           key={h.id}
@@ -113,10 +229,14 @@ export default function HolidayCalendar() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {h.isOptional && (
-                              <Badge variant="outline" className="text-xs">Optional</Badge>
+                            {isRegional && (
+                              <Badge variant={isSelectedRegional ? "default" : "outline"} className="text-xs">
+                                {isSelectedRegional ? "Selected" : "Regional"}
+                              </Badge>
                             )}
-                            <Badge variant="secondary" className="text-xs capitalize">{h.type}</Badge>
+                            {!isRegional && (
+                              <Badge variant="secondary" className="text-xs capitalize">{h.type}</Badge>
+                            )}
                           </div>
                         </div>
                       );

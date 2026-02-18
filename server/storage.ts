@@ -14,6 +14,7 @@ import {
   leaveAccruals,
   tickets,
   auditLogs,
+  regionalHolidaySelections,
   type Job,
   type InsertJob,
   type Application,
@@ -40,6 +41,8 @@ import {
   type InsertTicket,
   type AuditLog,
   type InsertAuditLog,
+  type RegionalHolidaySelection,
+  type InsertRegionalHolidaySelection,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -92,6 +95,11 @@ export interface IStorage {
   createHoliday(holiday: InsertHoliday): Promise<Holiday>;
   updateHoliday(id: string, holiday: Partial<InsertHoliday>): Promise<Holiday | undefined>;
   deleteHoliday(id: string): Promise<boolean>;
+
+  // Regional Holiday Selections
+  getRegionalHolidaySelections(userId: string, year: number): Promise<RegionalHolidaySelection[]>;
+  createRegionalHolidaySelection(data: InsertRegionalHolidaySelection): Promise<RegionalHolidaySelection>;
+  deleteRegionalHolidaySelection(id: string, userId: string): Promise<boolean>;
 
   // Attendance
   getAttendanceByUser(userId: string, startDate?: string, endDate?: string): Promise<Attendance[]>;
@@ -397,6 +405,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHoliday(id: string): Promise<boolean> {
     await db.delete(holidays).where(eq(holidays.id, id));
+    return true;
+  }
+
+  async getRegionalHolidaySelections(userId: string, year: number): Promise<RegionalHolidaySelection[]> {
+    return await db.select().from(regionalHolidaySelections)
+      .where(and(
+        eq(regionalHolidaySelections.userId, userId),
+        eq(regionalHolidaySelections.year, year),
+      ))
+      .orderBy(asc(regionalHolidaySelections.createdAt));
+  }
+
+  async createRegionalHolidaySelection(data: InsertRegionalHolidaySelection): Promise<RegionalHolidaySelection> {
+    const [sel] = await db.insert(regionalHolidaySelections).values(data).returning();
+    return sel;
+  }
+
+  async deleteRegionalHolidaySelection(id: string, userId: string): Promise<boolean> {
+    await db.delete(regionalHolidaySelections).where(
+      and(
+        eq(regionalHolidaySelections.id, id),
+        eq(regionalHolidaySelections.userId, userId),
+      )
+    );
     return true;
   }
 

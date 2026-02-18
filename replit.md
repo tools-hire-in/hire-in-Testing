@@ -108,7 +108,15 @@ The HR Portal is an internal employee management system integrated into the admi
 - Uses `ON CONFLICT DO NOTHING` for race-safety
 - Sick Leave and Casual Leave are deactivated; only Annual Leave is active with accrual
 
-**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, leave_accruals, tickets, departments
+**Regional Holiday Selection**:
+- Employees can select up to 2 regional holidays per year (without loss of pay for India office)
+- US Holidays are mandatory for US Client Team
+- `regional_holiday_selections` table: userId, holidayId, year with unique constraint
+- Selection UI in Holiday Calendar page (/admin/hr/holidays) with Select/Deselect buttons
+- API: GET/POST/DELETE `/api/hr/regional-holiday-selections`
+- Holiday CSV upload supports "Regional Holiday" column (type="regional", isOptional=true)
+
+**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, leave_accruals, tickets, departments, regional_holiday_selections
 
 **HR Portal Key Files**:
 - `client/src/pages/admin/hr/*`: All HR Portal frontend pages

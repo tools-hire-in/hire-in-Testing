@@ -1018,6 +1018,61 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/hr/regional-holiday-selections", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AdminUser;
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const selections = await storage.getRegionalHolidaySelections(user.id, year);
+      res.json(selections);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch regional holiday selections" });
+    }
+  });
+
+  app.post("/api/hr/regional-holiday-selections", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AdminUser;
+      const { holidayId } = req.body;
+      if (!holidayId) {
+        return res.status(400).json({ error: "holidayId is required" });
+      }
+
+      const holiday = await storage.getHoliday(holidayId);
+      if (!holiday || holiday.type !== "regional") {
+        return res.status(400).json({ error: "Invalid regional holiday" });
+      }
+
+      const holidayYear = parseInt(holiday.date.substring(0, 4)) || new Date().getFullYear();
+
+      const existing = await storage.getRegionalHolidaySelections(user.id, holidayYear);
+      if (existing.length >= 2) {
+        return res.status(400).json({ error: "You can only select up to 2 regional holidays per year" });
+      }
+      if (existing.some(s => s.holidayId === holidayId)) {
+        return res.status(400).json({ error: "You have already selected this holiday" });
+      }
+
+      const selection = await storage.createRegionalHolidaySelection({
+        userId: user.id,
+        holidayId,
+        year: holidayYear,
+      });
+      res.status(201).json(selection);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save regional holiday selection" });
+    }
+  });
+
+  app.delete("/api/hr/regional-holiday-selections/:id", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as AdminUser;
+      await storage.deleteRegionalHolidaySelection(req.params.id as string, user.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove regional holiday selection" });
+    }
+  });
+
   // --- Attendance ---
   app.get("/api/hr/attendance/today", requireAuth, async (req, res) => {
     try {
