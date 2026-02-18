@@ -87,6 +87,7 @@ export interface CeipalJob {
   id: string;
   job_code: string;
   job_title: string;
+  public_job_title: string;
   job_description: string;
   public_job_description: string;
   city: string;
@@ -136,7 +137,16 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   }
 
   const data = await res.json();
-  return Array.isArray(data) ? data : [];
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (data && Array.isArray(data.results)) {
+    return data.results;
+  }
+
+  return [];
 }
 
 function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
@@ -145,7 +155,7 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
 
   return {
     jobId: ceipalJob.job_code,
-    title: ceipalJob.job_title || "Untitled Position",
+    title: ceipalJob.public_job_title || ceipalJob.job_title || "Untitled Position",
     specialty: ceipalJob.industry || null,
     department: ceipalJob.department || null,
     facility: ceipalJob.client || null,
