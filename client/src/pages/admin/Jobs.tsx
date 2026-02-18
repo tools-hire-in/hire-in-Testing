@@ -444,7 +444,7 @@ export default function AdminJobs() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {job.city}, {job.state}
+                        {[job.city, job.state].filter(Boolean).join(", ") || "Remote"}
                       </TableCell>
                       <TableCell>{job.jobType || "—"}</TableCell>
                       <TableCell>

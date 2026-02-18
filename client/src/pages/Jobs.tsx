@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, MapPin, Clock, DollarSign, Filter, X } from "lucide-react";
+import { Link } from "wouter";
+import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +167,11 @@ export default function Jobs() {
                   >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg line-clamp-2">{job.title}</CardTitle>
+                        <Link href={`/jobs/${job.id}`}>
+                          <CardTitle className="text-lg line-clamp-2 cursor-pointer hover:text-primary transition-colors" data-testid={`link-job-title-${job.id}`}>
+                            {job.title}
+                          </CardTitle>
+                        </Link>
                         {job.isHot && (
                           <Badge variant="destructive" className="flex-shrink-0">
                             Hot
@@ -176,7 +181,7 @@ export default function Jobs() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5" />
                         <span>
-                          {job.city}, {job.state}
+                          {[job.city, job.state].filter(Boolean).join(", ") || "Remote"}
                         </span>
                       </div>
                     </CardHeader>
@@ -200,16 +205,28 @@ export default function Jobs() {
                       )}
                       {job.description && (
                         <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1">
-                          {job.description}
+                          {job.description.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")}
                         </p>
                       )}
-                      <Button
-                        onClick={() => openApplication(job)}
-                        className="w-full mt-auto"
-                        data-testid={`button-apply-${job.id}`}
-                      >
-                        Apply Now
-                      </Button>
+                      <div className="flex gap-2 mt-auto">
+                        <Link href={`/jobs/${job.id}`} className="flex-1">
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            data-testid={`button-view-${job.id}`}
+                          >
+                            View Details
+                            <ArrowRight className="h-4 w-4 ml-1" />
+                          </Button>
+                        </Link>
+                        <Button
+                          onClick={() => openApplication(job)}
+                          className="flex-1"
+                          data-testid={`button-apply-${job.id}`}
+                        >
+                          Apply Now
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

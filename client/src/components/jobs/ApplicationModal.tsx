@@ -137,7 +137,7 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
         <DialogHeader>
           <DialogTitle data-testid="modal-job-title">Apply for {job.title}</DialogTitle>
           <DialogDescription>
-            {job.city}, {job.state} • {job.jobType}
+            {[job.city, job.state].filter(Boolean).join(", ") || "Remote"} • {job.jobType}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

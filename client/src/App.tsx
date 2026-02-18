@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Jobs from "@/pages/Jobs";
+import JobDetail from "@/pages/JobDetail";
 import Contact from "@/pages/Contact";
 import Terms from "@/pages/Terms";
 import Privacy from "@/pages/Privacy";
@@ -56,6 +57,7 @@ function PublicRouter() {
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/jobs" component={Jobs} />
+      <Route path="/jobs/:id" component={JobDetail} />
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />

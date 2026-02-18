@@ -149,9 +149,56 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   return [];
 }
 
+function stripHtml(html: string): string {
+  if (!html) return "";
+  let text = html;
+  text = text.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;amp;/gi, "&");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<\/p>/gi, "\n");
+  text = text.replace(/<\/div>/gi, "\n");
+  text = text.replace(/<\/li>/gi, "\n");
+  text = text.replace(/<\/h[1-6]>/gi, "\n");
+  text = text.replace(/<\/tr>/gi, "\n");
+  text = text.replace(/<hr\s*\/?>/gi, "\n");
+  text = text.replace(/<[^>]*>/g, "");
+  text = text.replace(/&nbsp;/gi, " ");
+  text = text.replace(/&amp;/gi, "&");
+  text = text.replace(/&rsquo;/gi, "\u2019");
+  text = text.replace(/&lsquo;/gi, "\u2018");
+  text = text.replace(/&rdquo;/gi, "\u201D");
+  text = text.replace(/&ldquo;/gi, "\u201C");
+  text = text.replace(/&mdash;/gi, "\u2014");
+  text = text.replace(/&ndash;/gi, "\u2013");
+  text = text.replace(/&hellip;/gi, "\u2026");
+  text = text.replace(/&bull;/gi, "\u2022");
+  text = text.replace(/&quot;/gi, '"');
+  text = text.replace(/&#39;/gi, "'");
+  text = text.replace(/&#\d+;/gi, "");
+  text = text.replace(/\r\n/g, "\n");
+  text = text.replace(/\r/g, "\n");
+  text = text.replace(/\t/g, " ");
+  text = text.replace(/ {2,}/g, " ");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  text = text.replace(/^\s+$/gm, "");
+  return text.trim();
+}
+
+function formatLocation(city: string, states: string): { city: string; state: string } {
+  const stateList = states ? states.split(",").map(s => s.trim()).filter(Boolean) : [];
+  const formattedCity = city?.trim() || "";
+
+  if (stateList.length <= 2) {
+    return { city: formattedCity, state: stateList.join(", ") };
+  }
+
+  return { city: formattedCity, state: `${stateList[0]} +${stateList.length - 1} more` };
+}
+
 function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
-  const description = ceipalJob.public_job_description || ceipalJob.job_description || "";
+  const rawDescription = ceipalJob.public_job_description || ceipalJob.job_description || "";
+  const description = stripHtml(rawDescription);
   const skills = [ceipalJob.primary_skills, ceipalJob.secondary_skills].filter(Boolean).join(", ");
+  const location = formatLocation(ceipalJob.city, ceipalJob.states);
 
   return {
     jobId: ceipalJob.job_code,
@@ -159,8 +206,8 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
     specialty: ceipalJob.industry || null,
     department: ceipalJob.department || null,
     facility: ceipalJob.client || null,
-    city: ceipalJob.city || null,
-    state: ceipalJob.states || null,
+    city: location.city || null,
+    state: location.state || null,
     jobType: ceipalJob.job_type || ceipalJob.tax_terms || null,
     shift: null,
     duration: ceipalJob.duration || null,
