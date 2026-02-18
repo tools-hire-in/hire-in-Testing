@@ -1020,9 +1020,9 @@ export async function registerRoutes(
 
   app.get("/api/hr/regional-holiday-selections", requireAuth, async (req, res) => {
     try {
-      const user = req.user as AdminUser;
+      const userId = req.session.userId!;
       const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-      const selections = await storage.getRegionalHolidaySelections(user.id, year);
+      const selections = await storage.getRegionalHolidaySelections(userId, year);
       res.json(selections);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch regional holiday selections" });
@@ -1031,7 +1031,7 @@ export async function registerRoutes(
 
   app.post("/api/hr/regional-holiday-selections", requireAuth, async (req, res) => {
     try {
-      const user = req.user as AdminUser;
+      const userId = req.session.userId!;
       const { holidayId } = req.body;
       if (!holidayId) {
         return res.status(400).json({ error: "holidayId is required" });
@@ -1044,7 +1044,7 @@ export async function registerRoutes(
 
       const holidayYear = parseInt(holiday.date.substring(0, 4)) || new Date().getFullYear();
 
-      const existing = await storage.getRegionalHolidaySelections(user.id, holidayYear);
+      const existing = await storage.getRegionalHolidaySelections(userId, holidayYear);
       if (existing.length >= 2) {
         return res.status(400).json({ error: "You can only select up to 2 regional holidays per year" });
       }
@@ -1053,12 +1053,13 @@ export async function registerRoutes(
       }
 
       const selection = await storage.createRegionalHolidaySelection({
-        userId: user.id,
+        userId,
         holidayId,
         year: holidayYear,
       });
       res.status(201).json(selection);
     } catch (error) {
+      console.error("Regional holiday selection error:", error);
       res.status(500).json({ error: "Failed to save regional holiday selection" });
     }
   });
