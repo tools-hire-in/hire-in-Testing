@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, CalendarDays, CalendarCheck, TrendingUp, LogIn, LogOut as LogOutIcon } from "lucide-react";
+import { Clock, CalendarDays, CalendarCheck, TrendingUp, LogIn, LogOut as LogOutIcon, Globe, Lock, Check } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,9 +48,27 @@ export default function HRDashboard() {
     enabled: isAuthenticated,
   });
 
-  const { data: holidays } = useQuery<Array<{ id: string; name: string; date: string }>>({
-    queryKey: ["/api/hr/holidays", { year: new Date().getFullYear() }],
+  const currentYear = new Date().getFullYear();
+
+  const { data: holidays } = useQuery<Array<{ id: string; name: string; date: string; type: string; isOptional: boolean }>>({
+    queryKey: ["/api/hr/holidays", { year: currentYear }],
     enabled: isAuthenticated,
+  });
+
+  const { data: regionalSelections } = useQuery<Array<{ id: string; userId: string; holidayId: string; year: number }>>({
+    queryKey: ["/api/hr/regional-holiday-selections", { year: currentYear }],
+    enabled: isAuthenticated,
+  });
+
+  const selectRegionalMutation = useMutation({
+    mutationFn: (holidayId: string) => apiRequest("POST", "/api/hr/regional-holiday-selections", { holidayId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/regional-holiday-selections"] });
+      toast({ title: "Selected", description: "Regional holiday selected. This selection is now locked." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to select holiday", variant: "destructive" });
+    },
   });
 
   const punchInMutation = useMutation({
@@ -92,8 +110,17 @@ export default function HRDashboard() {
     return leaveTypes?.find(lt => lt.id === typeId)?.name || "Unknown";
   };
 
+  const selectedRegionalIds = new Set(regionalSelections?.map(s => s.holidayId) || []);
+  const regionalSelectionCount = regionalSelections?.length || 0;
+
+  const regionalHolidays = holidays?.filter(h => h.type === "regional") || [];
+
   const upcomingHolidays = holidays
-    ?.filter(h => h.date >= new Date().toISOString().split("T")[0])
+    ?.filter(h => {
+      if (h.date < new Date().toISOString().split("T")[0]) return false;
+      if (h.type === "regional") return selectedRegionalIds.has(h.id);
+      return true;
+    })
     .slice(0, 5) || [];
 
   const today = new Date();
@@ -268,10 +295,11 @@ export default function HRDashboard() {
               {upcomingHolidays.length > 0 ? (
                 <div className="space-y-3">
                   {upcomingHolidays.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between" data-testid={`holiday-${h.id}`}>
+                    <div key={h.id} className="flex items-center justify-between flex-wrap gap-1" data-testid={`holiday-${h.id}`}>
                       <div className="flex items-center gap-3">
                         <CalendarDays className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">{h.name}</span>
+                        {h.type === "regional" && <Badge variant="secondary" className="text-xs">Regional</Badge>}
                       </div>
                       <span className="text-sm text-muted-foreground">
                         {new Date(h.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -285,6 +313,64 @@ export default function HRDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {regionalHolidays.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base">Regional Holiday Selection</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Choose up to 2 regional holidays for {currentYear}. Once selected, choices are locked.
+                </p>
+              </div>
+              <Badge variant={regionalSelectionCount >= 2 ? "default" : "outline"} data-testid="badge-regional-count">
+                {regionalSelectionCount}/2
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {regionalHolidays.map((h) => {
+                  const isSelected = selectedRegionalIds.has(h.id);
+                  return (
+                    <div key={h.id} className="flex items-center justify-between flex-wrap gap-2" data-testid={`regional-holiday-${h.id}`}>
+                      <div className="flex items-center gap-3">
+                        <Globe className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <span className="text-sm">{h.name}</span>
+                          <span className="text-sm text-muted-foreground ml-2">
+                            {new Date(h.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </div>
+                      </div>
+                      {isSelected ? (
+                        <Badge variant="default" data-testid={`badge-selected-${h.id}`}>
+                          <Lock className="h-3 w-3 mr-1" />
+                          Selected
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={regionalSelectionCount >= 2 || selectRegionalMutation.isPending}
+                          onClick={() => selectRegionalMutation.mutate(h.id)}
+                          data-testid={`button-select-regional-${h.id}`}
+                        >
+                          <Check className="h-3 w-3 mr-1" />
+                          Select
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {regionalSelectionCount > 0 && (
+                <p className="text-xs text-muted-foreground mt-4">
+                  Contact HR or Super Admin to change your selections.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AdminLayout>
   );

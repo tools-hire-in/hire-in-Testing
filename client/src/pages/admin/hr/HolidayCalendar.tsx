@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CalendarDays, Check, Info } from "lucide-react";
+import { CalendarDays, Check, Info, Lock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ interface RegionalSelection {
 
 export default function HolidayCalendar() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
   const year = new Date().getFullYear();
 
@@ -74,6 +74,7 @@ export default function HolidayCalendar() {
   const regionalHolidays = holidays?.filter(h => h.type === "regional") || [];
   const selectedIds = new Set(selections?.map(s => s.holidayId) || []);
   const selectionCount = selections?.length || 0;
+  const canDeselect = ["super_admin", "admin", "hr"].includes(user?.role || "");
 
   const upcoming = holidays?.filter(h => h.date >= today) || [];
 
@@ -134,7 +135,9 @@ export default function HolidayCalendar() {
         {regionalHolidays.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Select Your Regional Holidays ({selectionCount}/2)</CardTitle>
+              <CardTitle className="text-base">
+                {canDeselect ? "Manage" : "Select Your"} Regional Holidays ({selectionCount}/2)
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -164,16 +167,23 @@ export default function HolidayCalendar() {
                       </div>
                       <div className="flex items-center gap-2">
                         {isSelected ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => existingSelection && deselectMutation.mutate(existingSelection.id)}
-                            disabled={deselectMutation.isPending}
-                            data-testid={`button-deselect-${h.id}`}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Selected
-                          </Button>
+                          canDeselect ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => existingSelection && deselectMutation.mutate(existingSelection.id)}
+                              disabled={deselectMutation.isPending}
+                              data-testid={`button-deselect-${h.id}`}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Deselect
+                            </Button>
+                          ) : (
+                            <Badge variant="default" data-testid={`badge-locked-${h.id}`}>
+                              <Lock className="h-3 w-3 mr-1" />
+                              Selected
+                            </Badge>
+                          )
                         ) : (
                           <Button
                             size="sm"
