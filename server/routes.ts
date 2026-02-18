@@ -1063,10 +1063,9 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/regional-holiday-selections/:id", requireAuth, async (req, res) => {
+  app.delete("/api/hr/regional-holiday-selections/:id", requireRole("hr"), async (req, res) => {
     try {
-      const user = req.user as AdminUser;
-      await storage.deleteRegionalHolidaySelection(req.params.id as string, user.id);
+      await storage.deleteRegionalHolidaySelection(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to remove regional holiday selection" });

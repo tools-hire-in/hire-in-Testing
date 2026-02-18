@@ -99,7 +99,7 @@ export interface IStorage {
   // Regional Holiday Selections
   getRegionalHolidaySelections(userId: string, year: number): Promise<RegionalHolidaySelection[]>;
   createRegionalHolidaySelection(data: InsertRegionalHolidaySelection): Promise<RegionalHolidaySelection>;
-  deleteRegionalHolidaySelection(id: string, userId: string): Promise<boolean>;
+  deleteRegionalHolidaySelection(id: string, userId?: string): Promise<boolean>;
 
   // Attendance
   getAttendanceByUser(userId: string, startDate?: string, endDate?: string): Promise<Attendance[]>;
@@ -422,13 +422,12 @@ export class DatabaseStorage implements IStorage {
     return sel;
   }
 
-  async deleteRegionalHolidaySelection(id: string, userId: string): Promise<boolean> {
-    await db.delete(regionalHolidaySelections).where(
-      and(
-        eq(regionalHolidaySelections.id, id),
-        eq(regionalHolidaySelections.userId, userId),
-      )
-    );
+  async deleteRegionalHolidaySelection(id: string, userId?: string): Promise<boolean> {
+    const conditions = [eq(regionalHolidaySelections.id, id)];
+    if (userId) {
+      conditions.push(eq(regionalHolidaySelections.userId, userId));
+    }
+    await db.delete(regionalHolidaySelections).where(and(...conditions));
     return true;
   }
 
