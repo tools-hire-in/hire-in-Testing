@@ -47,7 +47,7 @@ export default function AdminApplications() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
 
   const { data: applications, isLoading } = useQuery<Application[]>({
@@ -79,7 +79,7 @@ export default function AdminApplications() {
     const matchesSearch =
       app.candidateName.toLowerCase().includes(search.toLowerCase()) ||
       app.email.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || app.status === statusFilter;
+    const matchesStatus = statusFilter === "all" || app.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -109,7 +109,7 @@ export default function AdminApplications() {
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All statuses</SelectItem>
+              <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="new">New</SelectItem>
               <SelectItem value="reviewed">Reviewed</SelectItem>
               <SelectItem value="shortlisted">Shortlisted</SelectItem>
