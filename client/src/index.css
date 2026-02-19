@@ -286,3 +286,34 @@
     inset: -1px;
   }
 }
+
+@media print {
+  .capability-deck {
+    color: #1a1a1a !important;
+    background: white !important;
+  }
+
+  .capability-deck section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  .capability-deck [data-testid="section-deck-hero"],
+  .capability-deck [data-testid="section-deck-stats"],
+  .capability-deck [data-testid="section-deck-cta"] {
+    background: #1e293b !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  header, footer, [data-testid="button-deck-download"] {
+    display: none !important;
+  }
+
+  .capability-deck .hover-elevate::after,
+  .capability-deck .active-elevate-2::after {
+    display: none !important;
+  }
+}

@@ -16,6 +16,7 @@ import ITSoftware from "@/pages/services/ITSoftware";
 import EngineeringTechnical from "@/pages/services/EngineeringTechnical";
 import ProfessionalServices from "@/pages/services/ProfessionalServices";
 import ContractStaffing from "@/pages/services/ContractStaffing";
+import CapabilityDeck from "@/pages/CapabilityDeck";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminJobs from "@/pages/admin/Jobs";
 import AdminApplications from "@/pages/admin/Applications";
@@ -67,6 +68,7 @@ function PublicRouter() {
       <Route path="/services/engineering-technical" component={EngineeringTechnical} />
       <Route path="/services/non-it-professional" component={ProfessionalServices} />
       <Route path="/services/contract-staffing" component={ContractStaffing} />
+      <Route path="/capability-deck" component={CapabilityDeck} />
 
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={AdminDashboard} />
