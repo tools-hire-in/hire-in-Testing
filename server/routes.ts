@@ -450,7 +450,7 @@ export async function registerRoutes(
   });
 
   // Admin Users - only Super Admin can view/manage team
-  app.get("/api/admin/users", requireRole("super_admin", "hr"), async (req, res) => {
+  app.get("/api/admin/users", requireRole("super_admin", "admin", "hr"), async (req, res) => {
     try {
       const users = await storage.getAdminUsers();
       res.json(users);
@@ -689,10 +689,21 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
+  app.delete("/api/admin/users/:id", requireRole("super_admin", "admin"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
+
+      if (targetUser) {
+        const actorRank = ROLE_RANK[req.session.role!] ?? 0;
+        const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+        if (actorRank <= targetRank && req.session.role !== "super_admin") {
+          return res.status(403).json({ error: "You cannot delete a user with an equal or higher role" });
+        }
+        if (userId === req.session.userId) {
+          return res.status(400).json({ error: "You cannot delete your own account" });
+        }
+      }
 
       await storage.deleteAdminUser(userId);
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,11 +82,16 @@ const levelLabels: Record<string, string> = {
 
 const TOP_LEVELS = ["ceo", "vp"];
 
+const roleRank: Record<string, number> = {
+  super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
+};
+
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+
   const [inviteOpen, setInviteOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newFirstName, setNewFirstName] = useState("");
@@ -96,6 +101,10 @@ export default function AdminUsers() {
   const [newDesignation, setNewDesignation] = useState("");
   const [newDepartmentId, setNewDepartmentId] = useState("");
   const [newHierarchyLevel, setNewHierarchyLevel] = useState("team_member");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "" });
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
@@ -109,6 +118,9 @@ export default function AdminUsers() {
     designation: "",
     hierarchyLevel: "team_member",
   });
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable"; user: AdminUser } | null>(null);
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -128,21 +140,27 @@ export default function AdminUsers() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "User invited successfully", description: "An invitation email with login credentials has been sent." });
       setInviteOpen(false);
-      setNewEmail("");
-      setNewFirstName("");
-      setNewLastName("");
-      setNewRole("employee");
-      setNewJoiningDate("");
-      setNewDesignation("");
-      setNewDepartmentId("");
-      setNewHierarchyLevel("team_member");
+      setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
+      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member");
     },
     onError: () => {
-      toast({
-        title: "Failed to invite user",
-        description: "Please ensure the email ends with @hire-in.com",
-        variant: "destructive",
-      });
+      toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      return apiRequest("PATCH", `/api/admin/users/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/org-tree"] });
+      toast({ title: "User updated" });
+      setEditOpen(false);
+      setEditUser(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update user", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -190,7 +208,27 @@ export default function AdminUsers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "User removed" });
+      toast({ title: "User removed permanently" });
+      setConfirmOpen(false);
+      setConfirmAction(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to remove user", description: error?.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/admin/users/${id}`, { isActive });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: variables.isActive ? "User enabled" : "User disabled", description: variables.isActive ? "The user can now log in." : "The user has been disabled and can no longer log in." });
+      setConfirmOpen(false);
+      setConfirmAction(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update status", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -205,11 +243,7 @@ export default function AdminUsers() {
       setNewPassword("");
     },
     onError: (error: any) => {
-      toast({
-        title: "Failed to reset password",
-        description: error?.message || "You may not have permission to reset this user's password.",
-        variant: "destructive",
-      });
+      toast({ title: "Failed to reset password", description: error?.message || "You may not have permission.", variant: "destructive" });
     },
   });
 
@@ -219,9 +253,7 @@ export default function AdminUsers() {
     }
   }, [authLoading, isAuthenticated, setLocation]);
 
-  if (authLoading || !isAuthenticated) {
-    return null;
-  }
+  if (authLoading || !isAuthenticated) return null;
 
   const filteredUsers = users?.filter(
     (u) =>
@@ -231,12 +263,9 @@ export default function AdminUsers() {
   );
 
   const isSuperAdmin = user?.role === "super_admin";
-  const canManageUsers = user?.role === "super_admin" || user?.role === "admin" || user?.role === "manager";
-  const canEditHierarchy = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr" || user?.role === "manager";
-
-  const roleRank: Record<string, number> = {
-    super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
-  };
+  const isAdmin = user?.role === "admin";
+  const canManageUsers = isSuperAdmin || isAdmin || user?.role === "manager";
+  const canEditHierarchy = isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "manager";
   const currentUserRank = roleRank[user?.role || ""] ?? 0;
 
   const canEditUser = (targetUser: AdminUser) => {
@@ -248,6 +277,25 @@ export default function AdminUsers() {
   const canResetPassword = (targetUser: AdminUser) => {
     if (targetUser.id === user?.id) return false;
     return currentUserRank >= roleRank.manager && currentUserRank > (roleRank[targetUser.role] ?? 0);
+  };
+
+  const canDeleteUser = (targetUser: AdminUser) => {
+    if (targetUser.id === user?.id) return false;
+    if (isSuperAdmin) return true;
+    if (isAdmin) return currentUserRank > (roleRank[targetUser.role] ?? 0);
+    return false;
+  };
+
+  const openEditDialog = (adminUser: AdminUser) => {
+    setEditUser(adminUser);
+    setEditForm({
+      firstName: adminUser.firstName,
+      lastName: adminUser.lastName,
+      designation: adminUser.designation || "",
+      departmentId: adminUser.departmentId || "",
+      joiningDate: adminUser.joiningDate || "",
+    });
+    setEditOpen(true);
   };
 
   const openHierarchyDialog = (adminUser: AdminUser) => {
@@ -278,9 +326,9 @@ export default function AdminUsers() {
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Team Management</h1>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Team Management</h1>
             <p className="text-muted-foreground">
-              Manage admin users, roles, departments, and hierarchy
+              Manage team members, roles, departments, and hierarchy
             </p>
           </div>
           {canManageUsers && (
@@ -294,36 +342,23 @@ export default function AdminUsers() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Role Permissions</CardTitle>
-            <CardDescription>
-              Only @hire-in.com domain emails can access the admin portal
-            </CardDescription>
+            <CardDescription>Only @hire-in.com domain emails can access the portal</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-              <div className="space-y-1">
-                <Badge className={roleColors.super_admin}>Super Admin</Badge>
-                <p className="text-xs text-muted-foreground">Full access, can manage users</p>
-              </div>
-              <div className="space-y-1">
-                <Badge className={roleColors.admin}>Admin</Badge>
-                <p className="text-xs text-muted-foreground">Full access, can manage users</p>
-              </div>
-              <div className="space-y-1">
-                <Badge className={roleColors.hr}>HR</Badge>
-                <p className="text-xs text-muted-foreground">HR, leaves, attendance, apps</p>
-              </div>
-              <div className="space-y-1">
-                <Badge className={roleColors.operations}>Operations</Badge>
-                <p className="text-xs text-muted-foreground">Jobs, apps, contacts</p>
-              </div>
-              <div className="space-y-1">
-                <Badge className={roleColors.manager}>Manager</Badge>
-                <p className="text-xs text-muted-foreground">Team attendance & leave approvals</p>
-              </div>
-              <div className="space-y-1">
-                <Badge className={roleColors.employee}>Employee</Badge>
-                <p className="text-xs text-muted-foreground">Dashboard access only</p>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {Object.entries(roleLabels).map(([key, label]) => (
+                <div key={key} className="space-y-1">
+                  <Badge className={roleColors[key]}>{label}</Badge>
+                  <p className="text-xs text-muted-foreground">
+                    {key === "super_admin" && "Full access, manage users"}
+                    {key === "admin" && "Full access, manage users"}
+                    {key === "hr" && "HR, leaves, attendance, apps"}
+                    {key === "operations" && "Jobs, apps, contacts"}
+                    {key === "manager" && "Team attendance & leave approvals"}
+                    {key === "employee" && "Dashboard access only"}
+                  </p>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -361,16 +396,9 @@ export default function AdminUsers() {
                   {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
+                        {Array.from({ length: 10 }).map((_, j) => (
+                          <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                        ))}
                       </TableRow>
                     ))
                   ) : filteredUsers && filteredUsers.length > 0 ? (
@@ -379,7 +407,7 @@ export default function AdminUsers() {
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {adminUser.firstName} {adminUser.lastName}
-                            {adminUser.email === "simranjeet@hire-in.com" && (
+                            {adminUser.role === "super_admin" && (
                               <Shield className="h-4 w-4 text-purple-600" />
                             )}
                           </div>
@@ -390,24 +418,18 @@ export default function AdminUsers() {
                             {roleLabels[adminUser.role] || adminUser.role}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm">
-                          {getDeptName(adminUser.departmentId)}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {adminUser.designation || "-"}
-                        </TableCell>
+                        <TableCell className="text-sm">{getDeptName(adminUser.departmentId)}</TableCell>
+                        <TableCell className="text-sm">{adminUser.designation || "-"}</TableCell>
                         <TableCell className="text-sm">
                           {adminUser.hierarchyLevel ? (levelLabels[adminUser.hierarchyLevel] || adminUser.hierarchyLevel) : "-"}
                         </TableCell>
-                        <TableCell className="text-sm">
-                          {getManagerName(adminUser.managerId)}
-                        </TableCell>
+                        <TableCell className="text-sm">{getManagerName(adminUser.managerId)}</TableCell>
                         <TableCell className="text-sm" data-testid={`text-joining-date-${adminUser.id}`}>
                           {adminUser.joiningDate ? format(new Date(adminUser.joiningDate + "T00:00:00"), "dd MMM yyyy") : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={adminUser.isActive ? "default" : "secondary"}>
-                            {adminUser.isActive ? "Active" : "Inactive"}
+                          <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
+                            {adminUser.isActive ? "Active" : "Disabled"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -419,6 +441,12 @@ export default function AdminUsers() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {canEditUser(adminUser) && (
+                                  <DropdownMenuItem onClick={() => openEditDialog(adminUser)} data-testid={`menu-edit-profile-${adminUser.id}`}>
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    Edit Profile
+                                  </DropdownMenuItem>
+                                )}
                                 {canEditHierarchy && (
                                   <DropdownMenuItem onClick={() => openHierarchyDialog(adminUser)} data-testid={`menu-edit-hierarchy-${adminUser.id}`}>
                                     <Network className="h-4 w-4 mr-2" />
@@ -427,26 +455,25 @@ export default function AdminUsers() {
                                 )}
                                 {canResetPassword(adminUser) && (
                                   <DropdownMenuItem
-                                    onClick={() => {
-                                      setResetPasswordUser(adminUser);
-                                      setNewPassword("");
-                                      setResetPasswordOpen(true);
-                                    }}
+                                    onClick={() => { setResetPasswordUser(adminUser); setNewPassword(""); setResetPasswordOpen(true); }}
                                     data-testid={`menu-reset-password-${adminUser.id}`}
                                   >
                                     <KeyRound className="h-4 w-4 mr-2" />
                                     Reset Password
                                   </DropdownMenuItem>
                                 )}
-                                {canEditUser(adminUser) && adminUser.email !== "simranjeet@hire-in.com" && (
+                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
+                                  <DropdownMenuItem
+                                    onClick={() => resendInviteMutation.mutate(adminUser.id)}
+                                    data-testid={`menu-resend-invite-${adminUser.id}`}
+                                  >
+                                    <Mail className="h-4 w-4 mr-2" />
+                                    Resend Invitation
+                                  </DropdownMenuItem>
+                                )}
+
+                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
                                   <>
-                                    <DropdownMenuItem
-                                      onClick={() => resendInviteMutation.mutate(adminUser.id)}
-                                      data-testid={`menu-resend-invite-${adminUser.id}`}
-                                    >
-                                      <Mail className="h-4 w-4 mr-2" />
-                                      Resend Invitation
-                                    </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     {currentUserRank > roleRank.admin && (
                                       <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
@@ -471,17 +498,30 @@ export default function AdminUsers() {
                                     <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>
                                       Set as Employee
                                     </DropdownMenuItem>
-                                    {isSuperAdmin && (
-                                      <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          className="text-destructive"
-                                          onClick={() => deleteMutation.mutate(adminUser.id)}
-                                        >
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                          Remove
-                                        </DropdownMenuItem>
-                                      </>
+                                  </>
+                                )}
+
+                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => { setConfirmAction({ type: adminUser.isActive ? "disable" : "enable", user: adminUser }); setConfirmOpen(true); }}
+                                      data-testid={`menu-toggle-active-${adminUser.id}`}
+                                    >
+                                      {adminUser.isActive ? (
+                                        <><UserX className="h-4 w-4 mr-2 text-amber-600" /><span className="text-amber-600">Disable</span></>
+                                      ) : (
+                                        <><UserCheck className="h-4 w-4 mr-2 text-green-600" /><span className="text-green-600">Enable</span></>
+                                      )}
+                                    </DropdownMenuItem>
+                                    {canDeleteUser(adminUser) && (
+                                      <DropdownMenuItem
+                                        onClick={() => { setConfirmAction({ type: "delete", user: adminUser }); setConfirmOpen(true); }}
+                                        data-testid={`menu-delete-${adminUser.id}`}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                                        <span className="text-destructive">Delete</span>
+                                      </DropdownMenuItem>
                                     )}
                                   </>
                                 )}
@@ -493,7 +533,7 @@ export default function AdminUsers() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                         No users found.
                       </TableCell>
                     </TableRow>
@@ -504,55 +544,33 @@ export default function AdminUsers() {
           </CardContent>
         </Card>
 
+        {/* Invite Dialog */}
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
-              <DialogDescription>
-                Add a new team member. They'll receive an email with login credentials.
-              </DialogDescription>
+              <DialogDescription>Add a new team member. They'll receive an email with login credentials.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    placeholder="John"
-                    value={newFirstName}
-                    onChange={(e) => setNewFirstName(e.target.value)}
-                    data-testid="input-invite-first-name"
-                  />
+                  <Input id="firstName" placeholder="John" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} data-testid="input-invite-first-name" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    placeholder="Doe"
-                    value={newLastName}
-                    onChange={(e) => setNewLastName(e.target.value)}
-                    data-testid="input-invite-last-name"
-                  />
+                  <Input id="lastName" placeholder="Doe" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} data-testid="input-invite-last-name" />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="user@hire-in.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  data-testid="input-invite-email"
-                />
+                <Input id="email" type="email" placeholder="user@hire-in.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
                   <Select value={newRole} onValueChange={setNewRole}>
-                    <SelectTrigger data-testid="select-invite-role">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger data-testid="select-invite-role"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
                       {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
@@ -565,9 +583,7 @@ export default function AdminUsers() {
                 <div className="space-y-2">
                   <Label htmlFor="hierarchyLevel">Level</Label>
                   <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
-                    <SelectTrigger data-testid="select-invite-level">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger data-testid="select-invite-level"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ceo">CEO</SelectItem>
                       <SelectItem value="vp">Vice President</SelectItem>
@@ -583,31 +599,17 @@ export default function AdminUsers() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="joiningDate">Joining Date</Label>
-                  <Input
-                    id="joiningDate"
-                    type="date"
-                    value={newJoiningDate}
-                    onChange={(e) => setNewJoiningDate(e.target.value)}
-                    data-testid="input-invite-joining-date"
-                  />
+                  <Input id="joiningDate" type="date" value={newJoiningDate} onChange={(e) => setNewJoiningDate(e.target.value)} data-testid="input-invite-joining-date" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="designation">Designation</Label>
-                  <Input
-                    id="designation"
-                    placeholder="e.g. Software Engineer"
-                    value={newDesignation}
-                    onChange={(e) => setNewDesignation(e.target.value)}
-                    data-testid="input-invite-designation"
-                  />
+                  <Input id="designation" placeholder="e.g. Software Engineer" value={newDesignation} onChange={(e) => setNewDesignation(e.target.value)} data-testid="input-invite-designation" />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="department">Department</Label>
                 <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
-                  <SelectTrigger data-testid="select-invite-department">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Department</SelectItem>
                     {deptList?.filter(d => d.isActive).map(d => (
@@ -619,12 +621,8 @@ export default function AdminUsers() {
               <Button
                 className="w-full"
                 onClick={() => inviteMutation.mutate({
-                  email: newEmail,
-                  firstName: newFirstName,
-                  lastName: newLastName,
-                  role: newRole,
-                  joiningDate: newJoiningDate || undefined,
-                  designation: newDesignation || undefined,
+                  email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
+                  joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
                   departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
                   hierarchyLevel: newHierarchyLevel || undefined,
                 })}
@@ -637,6 +635,73 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Profile Dialog */}
+        <Dialog open={editOpen} onOpenChange={(open) => { setEditOpen(open); if (!open) setEditUser(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Profile</DialogTitle>
+              <DialogDescription>
+                Update details for {editUser?.firstName} {editUser?.lastName} ({editUser?.email})
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input value={editForm.firstName} onChange={(e) => setEditForm(prev => ({ ...prev, firstName: e.target.value }))} data-testid="input-edit-first-name" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input value={editForm.lastName} onChange={(e) => setEditForm(prev => ({ ...prev, lastName: e.target.value }))} data-testid="input-edit-last-name" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Designation</Label>
+                <Input value={editForm.designation} onChange={(e) => setEditForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Senior Software Engineer" data-testid="input-edit-designation" />
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={editForm.departmentId || "none"} onValueChange={(v) => setEditForm(prev => ({ ...prev, departmentId: v }))}>
+                  <SelectTrigger data-testid="select-edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Department</SelectItem>
+                    {deptList?.filter(d => d.isActive).map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Joining Date</Label>
+                <Input type="date" value={editForm.joiningDate} onChange={(e) => setEditForm(prev => ({ ...prev, joiningDate: e.target.value }))} data-testid="input-edit-joining-date" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!editUser) return;
+                  updateUserMutation.mutate({
+                    id: editUser.id,
+                    data: {
+                      firstName: editForm.firstName,
+                      lastName: editForm.lastName,
+                      designation: editForm.designation || null,
+                      departmentId: editForm.departmentId === "none" ? null : editForm.departmentId || null,
+                      joiningDate: editForm.joiningDate || null,
+                    },
+                  });
+                }}
+                disabled={!editForm.firstName.trim() || !editForm.lastName.trim() || updateUserMutation.isPending}
+                data-testid="button-save-edit"
+              >
+                {updateUserMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Hierarchy Dialog */}
         <Dialog open={hierarchyOpen} onOpenChange={setHierarchyOpen}>
           <DialogContent>
             <DialogHeader>
@@ -649,9 +714,7 @@ export default function AdminUsers() {
               <div className="space-y-2">
                 <Label>Department</Label>
                 <Select value={hForm.departmentId} onValueChange={(v) => setHForm(prev => ({ ...prev, departmentId: v }))}>
-                  <SelectTrigger data-testid="select-hierarchy-department">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-hierarchy-department"><SelectValue placeholder="Select department" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Department</SelectItem>
                     {deptList?.filter(d => d.isActive).map(d => (
@@ -662,26 +725,16 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-2">
                 <Label>Designation / Title</Label>
-                <Input
-                  value={hForm.designation}
-                  onChange={(e) => setHForm(prev => ({ ...prev, designation: e.target.value }))}
-                  placeholder="e.g. Senior Software Engineer, HR Manager"
-                  data-testid="input-hierarchy-designation"
-                />
+                <Input value={hForm.designation} onChange={(e) => setHForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Senior Software Engineer, HR Manager" data-testid="input-hierarchy-designation" />
               </div>
               <div className="space-y-2">
                 <Label>Hierarchy Level</Label>
                 <Select value={hForm.hierarchyLevel} onValueChange={(v) => {
                   const updates: any = { hierarchyLevel: v };
-                  if (TOP_LEVELS.includes(v)) {
-                    updates.departmentId = "none";
-                    updates.managerId = "none";
-                  }
+                  if (TOP_LEVELS.includes(v)) { updates.departmentId = "none"; updates.managerId = "none"; }
                   setHForm(prev => ({ ...prev, ...updates }));
                 }}>
-                  <SelectTrigger data-testid="select-hierarchy-level">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-hierarchy-level"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ceo">CEO</SelectItem>
                     <SelectItem value="vp">Vice President</SelectItem>
@@ -699,9 +752,7 @@ export default function AdminUsers() {
               <div className="space-y-2">
                 <Label>Reports To (Manager)</Label>
                 <Select value={hForm.managerId} onValueChange={(v) => setHForm(prev => ({ ...prev, managerId: v }))}>
-                  <SelectTrigger data-testid="select-hierarchy-manager">
-                    <SelectValue placeholder="Select manager" />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-hierarchy-manager"><SelectValue placeholder="Select manager" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Manager (Top Level)</SelectItem>
                     {users?.filter(u => u.id !== selectedUser?.id && u.isActive).map(u => (
@@ -735,31 +786,19 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={resetPasswordOpen} onOpenChange={(open) => {
-          setResetPasswordOpen(open);
-          if (!open) {
-            setResetPasswordUser(null);
-            setNewPassword("");
-          }
-        }}>
+        {/* Reset Password Dialog */}
+        <Dialog open={resetPasswordOpen} onOpenChange={(open) => { setResetPasswordOpen(open); if (!open) { setResetPasswordUser(null); setNewPassword(""); } }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Reset Password</DialogTitle>
               <DialogDescription>
-                Set a new password for {resetPasswordUser?.firstName} {resetPasswordUser?.lastName} ({resetPasswordUser?.email}). This will also disable their two-factor authentication.
+                Set a new password for {resetPasswordUser?.firstName} {resetPasswordUser?.lastName} ({resetPasswordUser?.email}). This will also disable their 2FA.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Minimum 8 characters"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  data-testid="input-reset-password"
-                />
+                <Input id="newPassword" type="password" placeholder="Minimum 8 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} data-testid="input-reset-password" />
                 {newPassword.length > 0 && newPassword.length < 8 && (
                   <p className="text-xs text-destructive">Password must be at least 8 characters</p>
                 )}
@@ -768,15 +807,70 @@ export default function AdminUsers() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setResetPasswordOpen(false)}>Cancel</Button>
               <Button
-                onClick={() => {
-                  if (!resetPasswordUser) return;
-                  resetPasswordMutation.mutate({ id: resetPasswordUser.id, newPassword });
-                }}
+                onClick={() => { if (resetPasswordUser) resetPasswordMutation.mutate({ id: resetPasswordUser.id, newPassword }); }}
                 disabled={newPassword.length < 8 || resetPasswordMutation.isPending}
                 data-testid="button-confirm-reset-password"
               >
                 {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Confirm Action Dialog (Disable/Enable/Delete) */}
+        <Dialog open={confirmOpen} onOpenChange={(open) => { setConfirmOpen(open); if (!open) setConfirmAction(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className={`h-5 w-5 ${confirmAction?.type === "delete" ? "text-destructive" : "text-amber-500"}`} />
+                {confirmAction?.type === "delete" && "Delete User"}
+                {confirmAction?.type === "disable" && "Disable User"}
+                {confirmAction?.type === "enable" && "Enable User"}
+              </DialogTitle>
+              <DialogDescription>
+                {confirmAction?.type === "delete" && (
+                  <>Are you sure you want to permanently delete <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong> ({confirmAction.user.email})? This action cannot be undone.</>
+                )}
+                {confirmAction?.type === "disable" && (
+                  <>Are you sure you want to disable <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong>? They will no longer be able to log in.</>
+                )}
+                {confirmAction?.type === "enable" && (
+                  <>Re-enable <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong>? They will be able to log in again.</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+              {confirmAction?.type === "delete" && (
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteMutation.mutate(confirmAction.user.id)}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-confirm-delete"
+                >
+                  {deleteMutation.isPending ? "Deleting..." : "Delete Permanently"}
+                </Button>
+              )}
+              {confirmAction?.type === "disable" && (
+                <Button
+                  variant="default"
+                  className="bg-amber-600 hover:bg-amber-700"
+                  onClick={() => toggleActiveMutation.mutate({ id: confirmAction.user.id, isActive: false })}
+                  disabled={toggleActiveMutation.isPending}
+                  data-testid="button-confirm-disable"
+                >
+                  {toggleActiveMutation.isPending ? "Disabling..." : "Disable User"}
+                </Button>
+              )}
+              {confirmAction?.type === "enable" && (
+                <Button
+                  onClick={() => toggleActiveMutation.mutate({ id: confirmAction.user.id, isActive: true })}
+                  disabled={toggleActiveMutation.isPending}
+                  data-testid="button-confirm-enable"
+                >
+                  {toggleActiveMutation.isPending ? "Enabling..." : "Enable User"}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

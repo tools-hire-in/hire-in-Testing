@@ -60,7 +60,7 @@ Preferred communication style: Simple, everyday language.
 ### Role-Based Access Control (RBAC)
 Role hierarchy from highest to lowest access:
 - **super_admin**: Full access to everything, including user/team management
-- **admin**: Full access to all operational routes (jobs, applications, contacts) but NOT user management
+- **admin**: Full access to all operational routes (jobs, applications, contacts) AND user/team management (can edit/disable/delete lower-ranked users)
 - **hr**: Access to applications, contacts, all leave requests/approvals, team attendance, HR settings
 - **operations**: Access to jobs, applications (view + status updates), contacts (view), holiday calendar
 - **manager**: Employee features + view direct reports' attendance + approve/reject direct reports' leave requests
