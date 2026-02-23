@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -956,20 +956,43 @@ export default function AdminUsers() {
                 </div>
 
                 <div className="bg-muted/50 rounded-lg p-4">
-                  <p className="text-xs font-semibold mb-2">Required Columns:</p>
-                  <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                    <span>First Name</span>
-                    <span>Last Name</span>
-                    <span>Email</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold">Column Format:</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => {
+                        const headers = ["First Name","Last Name","Email","Designation","Reporting Manager","Salary","Department","Role","Joining Date"];
+                        const sample = ["John","Doe","john.doe@hire-in.com","Software Engineer","Jane Smith","85000","Engineering","employee","2025-03-01"];
+                        const csv = [headers.join(","), sample.join(",")].join("\n");
+                        const blob = new Blob([csv], { type: "text/csv" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "bulk_upload_template.csv";
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      data-testid="button-download-template"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Template
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-xs text-muted-foreground">
+                    <span>First Name *</span>
+                    <span>Last Name *</span>
+                    <span>Email *</span>
                     <span>Designation</span>
                     <span>Reporting Manager</span>
                     <span>Salary</span>
+                    <span>Department</span>
+                    <span>Role</span>
+                    <span>Joining Date</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Optional: Department, Role, Joining Date
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Reporting Manager should match "First Name Last Name" of an existing user.
+                    * Required. Reporting Manager should match "First Last" name of an existing user. Role defaults to "employee".
                   </p>
                 </div>
 
