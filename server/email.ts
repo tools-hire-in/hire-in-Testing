@@ -166,6 +166,79 @@ export async function sendPasswordResetEmail(options: {
   }
 }
 
+export async function sendSalaryReport(options: {
+  csvContent: string;
+  summary: { year: number; month: number; monthName: string; totalEmployees: number; totalPayable: number; totalHoursWorked: number; generatedAt: string };
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+
+    const csvBase64 = Buffer.from(options.csvContent).toString("base64");
+    const fileName = `Salary_Report_${options.summary.monthName}_${options.summary.year}.csv`;
+
+    const msg = {
+      to: "accounts@hire-in.com",
+      cc: "simranjeet.sidana@hire-in.com",
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Monthly Salary Processing Report - ${options.summary.monthName} ${options.summary.year}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Monthly Salary Processing Report</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">
+              Salary Report: ${options.summary.monthName} ${options.summary.year}
+            </h2>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="color: #64748b; padding: 8px 0;">Total Employees:</td>
+                  <td style="color: #1e293b; font-weight: 600; padding: 8px 0; text-align: right;">${options.summary.totalEmployees}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 8px 0;">Total Hours Worked:</td>
+                  <td style="color: #1e293b; font-weight: 600; padding: 8px 0; text-align: right;">${options.summary.totalHoursWorked.toLocaleString()}</td>
+                </tr>
+                <tr style="border-top: 2px solid #e2e8f0;">
+                  <td style="color: #1e40af; padding: 12px 0; font-weight: 600; font-size: 16px;">Total Payable:</td>
+                  <td style="color: #1e40af; font-weight: 700; padding: 12px 0; text-align: right; font-size: 16px;">$${options.summary.totalPayable.toLocaleString()}</td>
+                </tr>
+              </table>
+            </div>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 8px;">
+              The detailed salary processing report is attached as a CSV file. Please review and process accordingly.
+            </p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 16px 0 0;">
+              Generated on: ${new Date(options.summary.generatedAt).toLocaleString()}
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Salary Report: ${options.summary.monthName} ${options.summary.year}\n\nTotal Employees: ${options.summary.totalEmployees}\nTotal Hours Worked: ${options.summary.totalHoursWorked}\nTotal Payable: $${options.summary.totalPayable}\n\nPlease see the attached CSV for details.`,
+      attachments: [{
+        content: csvBase64,
+        filename: fileName,
+        type: "text/csv",
+        disposition: "attachment",
+      }],
+    };
+
+    await client.send(msg);
+    console.log(`Salary report email sent to accounts@hire-in.com`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send salary report email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendWelcomeEmail(options: {
   to: string;
   firstName: string;

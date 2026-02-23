@@ -215,6 +215,38 @@ export const tickets = pgTable("tickets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Salary slips table
+export const salarySlips = pgTable("salary_slips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  basicSalary: numeric("basic_salary").notNull().default("0"),
+  grossSalary: numeric("gross_salary").notNull().default("0"),
+  deductions: numeric("deductions").notNull().default("0"),
+  netPayable: numeric("net_payable").notNull().default("0"),
+  totalWorkingDays: integer("total_working_days").notNull().default(0),
+  daysPresent: integer("days_present").notNull().default(0),
+  daysAbsent: integer("days_absent").notNull().default(0),
+  approvedLeaves: numeric("approved_leaves").notNull().default("0"),
+  totalHours: numeric("total_hours").notNull().default("0"),
+  attendancePercentage: numeric("attendance_percentage").notNull().default("0"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  generatedBy: varchar("generated_by").references(() => adminUsers.id),
+});
+
+// Leave balance adjustments table
+export const leaveAdjustments = pgTable("leave_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  leaveTypeId: varchar("leave_type_id").notNull().references(() => leaveTypes.id),
+  adjustmentDays: numeric("adjustment_days").notNull(),
+  reason: text("reason").notNull(),
+  year: integer("year").notNull(),
+  adjustedBy: varchar("adjusted_by").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Audit logs table
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -306,6 +338,34 @@ export const ticketsRelations = relations(tickets, ({ one }) => ({
   reviewer: one(adminUsers, {
     fields: [tickets.reviewedBy],
     references: [adminUsers.id],
+  }),
+}));
+
+export const salarySlipsRelations = relations(salarySlips, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [salarySlips.userId],
+    references: [adminUsers.id],
+  }),
+  generator: one(adminUsers, {
+    fields: [salarySlips.generatedBy],
+    references: [adminUsers.id],
+    relationName: "slipGenerator",
+  }),
+}));
+
+export const leaveAdjustmentsRelations = relations(leaveAdjustments, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [leaveAdjustments.userId],
+    references: [adminUsers.id],
+  }),
+  leaveType: one(leaveTypes, {
+    fields: [leaveAdjustments.leaveTypeId],
+    references: [leaveTypes.id],
+  }),
+  adjuster: one(adminUsers, {
+    fields: [leaveAdjustments.adjustedBy],
+    references: [adminUsers.id],
+    relationName: "leaveAdjuster",
   }),
 }));
 
@@ -410,6 +470,16 @@ export const insertLeaveAccrualSchema = createInsertSchema(leaveAccruals).omit({
   createdAt: true,
 });
 
+export const insertSalarySlipSchema = createInsertSchema(salarySlips).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export const insertLeaveAdjustmentSchema = createInsertSchema(leaveAdjustments).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   id: true,
   createdAt: true,
@@ -458,6 +528,10 @@ export type LeaveAccrual = typeof leaveAccruals.$inferSelect;
 export type InsertLeaveAccrual = z.infer<typeof insertLeaveAccrualSchema>;
 export type Ticket = typeof tickets.$inferSelect;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
+export type SalarySlip = typeof salarySlips.$inferSelect;
+export type InsertSalarySlip = z.infer<typeof insertSalarySlipSchema>;
+export type LeaveAdjustment = typeof leaveAdjustments.$inferSelect;
+export type InsertLeaveAdjustment = z.infer<typeof insertLeaveAdjustmentSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type RegionalHolidaySelection = typeof regionalHolidaySelections.$inferSelect;

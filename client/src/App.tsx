@@ -36,6 +36,8 @@ import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
 import HRSettings from "@/pages/admin/hr/HRSettings";
 import OrgChart from "@/pages/admin/hr/OrgChart";
 import TeamAttendance from "@/pages/admin/hr/TeamAttendance";
+import SalaryReports from "@/pages/admin/hr/SalaryReports";
+import SalarySlips from "@/pages/admin/hr/SalarySlips";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -92,6 +94,8 @@ function PublicRouter() {
       <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
       <Route path="/admin/hr/settings" component={HRSettings} />
       <Route path="/admin/hr/org-chart" component={OrgChart} />
+      <Route path="/admin/hr/salary-reports" component={SalaryReports} />
+      <Route path="/admin/hr/salary-slips" component={SalarySlips} />
 
       <Route component={NotFound} />
     </Switch>
@@ -124,6 +128,8 @@ function EmployeeRouter() {
       <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
       <Route path="/admin/hr/settings" component={HRSettings} />
       <Route path="/admin/hr/org-chart" component={OrgChart} />
+      <Route path="/admin/hr/salary-reports" component={SalaryReports} />
+      <Route path="/admin/hr/salary-slips" component={SalarySlips} />
 
       <Route component={NotFound} />
     </Switch>

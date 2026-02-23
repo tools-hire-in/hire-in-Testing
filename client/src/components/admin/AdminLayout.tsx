@@ -13,6 +13,8 @@ import {
   CalendarDays,
   CalendarCheck,
   UserCircle,
+  Receipt,
+  FileBarChart,
   Ticket,
   Settings,
   Network,
@@ -128,6 +130,18 @@ const hrPortalMenu = [
     label: "Org Chart",
     icon: Network,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
+    href: "/admin/hr/salary-slips",
+    label: "My Salary Slips",
+    icon: Receipt,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
+    href: "/admin/hr/salary-reports",
+    label: "Salary Reports",
+    icon: FileBarChart,
+    roles: ["super_admin", "admin", "hr"]
   },
   {
     href: "/admin/hr/settings",

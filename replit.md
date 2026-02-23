@@ -119,7 +119,31 @@ The HR Portal is an internal employee management system integrated into the admi
 - API: GET/POST/DELETE `/api/hr/regional-holiday-selections`
 - Holiday CSV upload supports "Regional Holiday" column (type="regional", isOptional=true)
 
-**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, leave_accruals, tickets, departments, regional_holiday_selections
+**Salary Processing & Reports**:
+- Monthly salary report auto-generated and emailed on last day of every month (cron: 6 PM CST)
+- Email sent to accounts@hire-in.com with CC to simranjeet.sidana@hire-in.com
+- CSV attachment with per-employee breakdown: salary, attendance, deductions, net payable
+- Manual trigger via `POST /api/hr/reports/salary` (super_admin, admin, hr)
+- Preview via `GET /api/hr/reports/salary/preview`, download via `GET /api/hr/reports/salary/download`
+- UI: Salary Reports page (`/admin/hr/salary-reports`) with month selector, preview table, send & download buttons
+- Scheduler: `server/scheduler.ts` using node-cron, imported in `server/index.ts`
+- Report generation: `server/salaryReport.ts`
+
+**Employee Salary Slips**:
+- HR generates monthly salary slips via `POST /api/hr/salary-slips/generate`
+- `salary_slips` table stores per-employee monthly records (salary, hours, attendance, deductions, net payable)
+- Employees view own slips via `GET /api/hr/salary-slips/my` on Salary Slips page (`/admin/hr/salary-slips`)
+- Download generates styled HTML salary slip for browser print/save as PDF
+- Template placeholder — user will share final template later
+
+**Leave Balance Manual Adjustments**:
+- HR/Admin can manually adjust leave balances (add previous Sick Leave 0.5/month, Earned Leave 1/month)
+- `POST /api/hr/leave-balances/adjust` for single user, `POST /api/hr/leave-balances/bulk-adjust` for multiple
+- `leave_adjustments` table stores audit trail: userId, leaveTypeId, adjustmentDays, reason, year, adjustedBy
+- Adjustment history and UI integrated into HR Settings page (`/admin/hr/settings`)
+- `GET /api/hr/leave-adjustments` returns enriched history with user/leave type names
+
+**Key HR Tables**: holidays, attendance, leave_types, leave_balances, leave_requests, leave_accruals, tickets, departments, regional_holiday_selections, salary_slips, leave_adjustments
 
 **HR Portal Key Files**:
 - `client/src/pages/admin/hr/*`: All HR Portal frontend pages

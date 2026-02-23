@@ -8,7 +8,8 @@ import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAd
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
-import { sendInvitationEmail, sendWelcomeEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport } from "./email";
+import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 
@@ -1815,6 +1816,244 @@ export async function registerRoutes(
       res.json({ approver, escalationPath });
     } catch (error) {
       res.status(500).json({ error: "Failed to determine approver" });
+    }
+  });
+
+  // ==========================================
+  // SALARY REPORTS
+  // ==========================================
+
+  app.get("/api/hr/reports/salary/preview", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+      const report = await generateMonthlySalaryReport(year, month);
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate salary report preview" });
+    }
+  });
+
+  app.post("/api/hr/reports/salary", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const year = parseInt(req.body.year) || new Date().getFullYear();
+      const month = parseInt(req.body.month) || new Date().getMonth() + 1;
+      const report = await generateMonthlySalaryReport(year, month);
+
+      const emailResult = await sendSalaryReport({
+        csvContent: report.csv,
+        summary: report.summary,
+      });
+
+      if (emailResult.success) {
+        res.json({ success: true, summary: report.summary });
+      } else {
+        res.status(500).json({ error: "Report generated but email failed to send" });
+      }
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate and send salary report" });
+    }
+  });
+
+  app.get("/api/hr/reports/salary/download", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+      const report = await generateMonthlySalaryReport(year, month);
+      const monthName = report.summary.monthName;
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="Salary_Report_${monthName}_${year}.csv"`);
+      res.send(report.csv);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to download salary report" });
+    }
+  });
+
+  // ==========================================
+  // SALARY SLIPS
+  // ==========================================
+
+  app.get("/api/hr/salary-slips/my", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const slips = await storage.getSalarySlipsByUser(userId, year);
+      res.json(slips);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary slips" });
+    }
+  });
+
+  app.get("/api/hr/salary-slips/my/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const slip = await storage.getSalarySlip(req.params.id);
+      if (!slip || slip.userId !== req.session.userId) {
+        return res.status(404).json({ error: "Salary slip not found" });
+      }
+      const user = await storage.getAdminUser(slip.userId);
+      const allDepts = await storage.getDepartments();
+      const dept = allDepts.find(d => d.id === user?.departmentId);
+      res.json({ ...slip, user, department: dept });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary slip" });
+    }
+  });
+
+  app.post("/api/hr/salary-slips/generate", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const year = parseInt(req.body.year) || new Date().getFullYear();
+      const month = parseInt(req.body.month) || new Date().getMonth() + 1;
+
+      const existing = await storage.getSalarySlipsByMonth(year, month);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: `Salary slips already generated for ${month}/${year}. ${existing.length} slips exist.` });
+      }
+
+      const report = await generateMonthlySalaryReport(year, month);
+      const generatedBy = req.session.userId!;
+      let created = 0;
+
+      const allUsers = await storage.getAdminUsers();
+      const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
+
+      for (const row of report.rows) {
+        const userId = userEmailMap.get(row.email);
+        if (!userId) continue;
+        await storage.createSalarySlip({
+          userId,
+          year,
+          month,
+          basicSalary: String(row.salary),
+          grossSalary: String(row.grossSalary),
+          deductions: String(row.deductions),
+          netPayable: String(row.netPayable),
+          totalWorkingDays: row.workingDays,
+          daysPresent: row.presentDays,
+          daysAbsent: row.absentDays,
+          approvedLeaves: String(row.approvedLeaves),
+          totalHours: String(row.totalHours),
+          attendancePercentage: String(row.attendancePercentage),
+          generatedBy,
+        });
+        created++;
+      }
+
+      res.json({ success: true, created, month, year });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate salary slips" });
+    }
+  });
+
+  // ==========================================
+  // LEAVE BALANCE ADJUSTMENTS
+  // ==========================================
+
+  app.post("/api/hr/leave-balances/adjust", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { userId, leaveTypeId, adjustmentDays, reason, year } = req.body;
+      if (!userId || !leaveTypeId || !adjustmentDays || !reason || !year) {
+        return res.status(400).json({ error: "Missing required fields: userId, leaveTypeId, adjustmentDays, reason, year" });
+      }
+
+      const balances = await storage.getLeaveBalances(userId, year);
+      let balance = balances.find(b => b.leaveTypeId === leaveTypeId);
+
+      if (!balance) {
+        await storage.initLeaveBalances(userId, year);
+        const refreshed = await storage.getLeaveBalances(userId, year);
+        balance = refreshed.find(b => b.leaveTypeId === leaveTypeId);
+      }
+
+      if (!balance) {
+        return res.status(404).json({ error: "Leave balance not found for this user and leave type" });
+      }
+
+      const newTotal = Number(balance.totalDays) + Number(adjustmentDays);
+      await storage.updateLeaveBalance(balance.id, { totalDays: String(Math.max(0, newTotal)) });
+
+      const adjustment = await storage.createLeaveAdjustment({
+        userId,
+        leaveTypeId,
+        adjustmentDays: String(adjustmentDays),
+        reason,
+        year,
+        adjustedBy: req.session.userId!,
+      });
+
+      res.json({ success: true, adjustment, newBalance: Math.max(0, newTotal) });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to adjust leave balance" });
+    }
+  });
+
+  app.post("/api/hr/leave-balances/bulk-adjust", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { userIds, leaveTypeId, adjustmentDays, reason, year } = req.body;
+      if (!userIds?.length || !leaveTypeId || !adjustmentDays || !reason || !year) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      let adjusted = 0;
+      let failed = 0;
+
+      for (const userId of userIds) {
+        try {
+          const balances = await storage.getLeaveBalances(userId, year);
+          let balance = balances.find(b => b.leaveTypeId === leaveTypeId);
+
+          if (!balance) {
+            await storage.initLeaveBalances(userId, year);
+            const refreshed = await storage.getLeaveBalances(userId, year);
+            balance = refreshed.find(b => b.leaveTypeId === leaveTypeId);
+          }
+
+          if (balance) {
+            const newTotal = Number(balance.totalDays) + Number(adjustmentDays);
+            await storage.updateLeaveBalance(balance.id, { totalDays: String(Math.max(0, newTotal)) });
+            await storage.createLeaveAdjustment({
+              userId,
+              leaveTypeId,
+              adjustmentDays: String(adjustmentDays),
+              reason,
+              year,
+              adjustedBy: req.session.userId!,
+            });
+            adjusted++;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+
+      res.json({ success: true, adjusted, failed });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to bulk adjust leave balances" });
+    }
+  });
+
+  app.get("/api/hr/leave-adjustments", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const userId = req.query.userId as string | undefined;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const adjustments = await storage.getLeaveAdjustments({ userId, year });
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+      const leaveTypesList = await storage.getLeaveTypes();
+      const ltMap = new Map(leaveTypesList.map(lt => [lt.id, lt]));
+
+      const enriched = adjustments.map(a => ({
+        ...a,
+        userName: userMap.has(a.userId) ? `${userMap.get(a.userId)!.firstName} ${userMap.get(a.userId)!.lastName}` : "Unknown",
+        leaveTypeName: ltMap.get(a.leaveTypeId)?.name || "Unknown",
+        adjustedByName: userMap.has(a.adjustedBy) ? `${userMap.get(a.adjustedBy)!.firstName} ${userMap.get(a.adjustedBy)!.lastName}` : "Unknown",
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave adjustments" });
     }
   });
 

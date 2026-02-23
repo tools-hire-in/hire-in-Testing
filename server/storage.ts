@@ -15,6 +15,8 @@ import {
   tickets,
   auditLogs,
   regionalHolidaySelections,
+  salarySlips,
+  leaveAdjustments,
   type Job,
   type InsertJob,
   type Application,
@@ -43,6 +45,10 @@ import {
   type InsertAuditLog,
   type RegionalHolidaySelection,
   type InsertRegionalHolidaySelection,
+  type SalarySlip,
+  type InsertSalarySlip,
+  type LeaveAdjustment,
+  type InsertLeaveAdjustment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -143,6 +149,16 @@ export interface IStorage {
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogs(filters?: { actorId?: string; targetId?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLog[]>;
   getAuditLogCount(filters?: { actorId?: string; targetId?: string; action?: string }): Promise<number>;
+
+  // Salary Slips
+  getSalarySlipsByUser(userId: string, year?: number): Promise<SalarySlip[]>;
+  getSalarySlip(id: string): Promise<SalarySlip | undefined>;
+  createSalarySlip(slip: InsertSalarySlip): Promise<SalarySlip>;
+  getSalarySlipsByMonth(year: number, month: number): Promise<SalarySlip[]>;
+
+  // Leave Adjustments
+  createLeaveAdjustment(adj: InsertLeaveAdjustment): Promise<LeaveAdjustment>;
+  getLeaveAdjustments(filters?: { userId?: string; year?: number }): Promise<LeaveAdjustment[]>;
 
   // Stats
   getStats(): Promise<{
@@ -832,6 +848,51 @@ export class DatabaseStorage implements IStorage {
       .from(auditLogs)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
     return result?.count ?? 0;
+  }
+
+  // ==========================================
+  // SALARY SLIPS
+  // ==========================================
+
+  async getSalarySlipsByUser(userId: string, year?: number): Promise<SalarySlip[]> {
+    const conditions = [eq(salarySlips.userId, userId)];
+    if (year) conditions.push(eq(salarySlips.year, year));
+    return db.select().from(salarySlips)
+      .where(and(...conditions))
+      .orderBy(desc(salarySlips.year), desc(salarySlips.month));
+  }
+
+  async getSalarySlip(id: string): Promise<SalarySlip | undefined> {
+    const [slip] = await db.select().from(salarySlips).where(eq(salarySlips.id, id));
+    return slip;
+  }
+
+  async createSalarySlip(slip: InsertSalarySlip): Promise<SalarySlip> {
+    const [created] = await db.insert(salarySlips).values(slip).returning();
+    return created;
+  }
+
+  async getSalarySlipsByMonth(year: number, month: number): Promise<SalarySlip[]> {
+    return db.select().from(salarySlips)
+      .where(and(eq(salarySlips.year, year), eq(salarySlips.month, month)));
+  }
+
+  // ==========================================
+  // LEAVE ADJUSTMENTS
+  // ==========================================
+
+  async createLeaveAdjustment(adj: InsertLeaveAdjustment): Promise<LeaveAdjustment> {
+    const [created] = await db.insert(leaveAdjustments).values(adj).returning();
+    return created;
+  }
+
+  async getLeaveAdjustments(filters?: { userId?: string; year?: number }): Promise<LeaveAdjustment[]> {
+    const conditions = [];
+    if (filters?.userId) conditions.push(eq(leaveAdjustments.userId, filters.userId));
+    if (filters?.year) conditions.push(eq(leaveAdjustments.year, filters.year));
+    return db.select().from(leaveAdjustments)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(leaveAdjustments.createdAt));
   }
 }
 
