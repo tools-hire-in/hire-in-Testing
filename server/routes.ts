@@ -474,7 +474,7 @@ export async function registerRoutes(
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
-      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel } = req.body;
+      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary } = req.body;
 
       const assignedRole = role || "employee";
       const assignedRank = ROLE_RANK[assignedRole] ?? 0;
@@ -506,6 +506,7 @@ export async function registerRoutes(
         designation: designation || null,
         departmentId: departmentId || null,
         hierarchyLevel: hierarchyLevel || "team_member",
+        salary: salary || null,
       });
 
       await storage.createAuditLog({
@@ -530,6 +531,159 @@ export async function registerRoutes(
       res.status(201).json(user);
     } catch (error) {
       res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  // Bulk upload users via CSV/XLSX
+  app.post("/api/admin/users/bulk-upload", requireRole("admin", "manager"), upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const actorRole = req.session.role!;
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
+      const fileName = req.file.originalname.toLowerCase();
+      let rows: any[] = [];
+
+      if (fileName.endsWith(".csv")) {
+        const content = req.file.buffer.toString("utf-8");
+        rows = parse(content, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+      } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+        const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+        const sheetName = workbook.SheetNames[0];
+        rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+      } else {
+        return res.status(400).json({ error: "Only CSV and XLSX files are supported" });
+      }
+
+      if (rows.length === 0) {
+        return res.status(400).json({ error: "File is empty or has no data rows" });
+      }
+
+      const normalize = (row: any, keys: string[]): string => {
+        for (const k of keys) {
+          if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") return String(row[k]).trim();
+        }
+        return "";
+      };
+
+      const allUsers = await storage.getAdminUsers();
+      const existingEmails = new Set(allUsers.map(u => u.email.toLowerCase()));
+      const usersByName: Record<string, string> = {};
+      allUsers.forEach(u => {
+        usersByName[`${u.firstName} ${u.lastName}`.toLowerCase()] = u.id;
+      });
+
+      const bcrypt = await import("bcryptjs");
+      const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
+      const loginUrl = `${baseUrl}/admin/login`;
+
+      const results: { row: number; email: string; status: string; error?: string }[] = [];
+      const newUsersByName: Record<string, string> = {};
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const firstName = normalize(row, ["First Name", "first_name", "firstName", "First name", "first name", "FIRST NAME"]);
+        const lastName = normalize(row, ["Last Name", "last_name", "lastName", "Last name", "last name", "LAST NAME"]);
+        const email = normalize(row, ["Email", "email", "EMAIL", "Email Address", "email_address"]).toLowerCase();
+        const designation = normalize(row, ["Designation", "designation", "DESIGNATION", "Title", "title", "Job Title", "job_title"]);
+        const reportingManager = normalize(row, ["Reporting Manager", "reporting_manager", "Manager", "manager", "Reports To", "reports_to", "REPORTING MANAGER"]);
+        const salaryVal = normalize(row, ["Salary", "salary", "SALARY", "CTC", "ctc"]);
+        const joiningDate = normalize(row, ["Joining Date", "joining_date", "joiningDate", "JOINING DATE", "Join Date", "join_date"]);
+        const department = normalize(row, ["Department", "department", "DEPARTMENT"]);
+        const role = normalize(row, ["Role", "role", "ROLE"]).toLowerCase() || "employee";
+
+        if (!firstName || !email) {
+          results.push({ row: i + 2, email: email || "(empty)", status: "skipped", error: "Missing first name or email" });
+          continue;
+        }
+
+        if (!email.endsWith("@hire-in.com")) {
+          results.push({ row: i + 2, email, status: "skipped", error: "Email must end with @hire-in.com" });
+          continue;
+        }
+
+        if (existingEmails.has(email)) {
+          results.push({ row: i + 2, email, status: "skipped", error: "User already exists" });
+          continue;
+        }
+
+        const validRoles = ["super_admin", "admin", "hr", "operations", "manager", "employee"] as const;
+        const assignedRole = (validRoles as readonly string[]).includes(role) ? role as typeof validRoles[number] : "employee" as const;
+        const assignedRank = ROLE_RANK[assignedRole] ?? 0;
+        if (actorRank <= assignedRank && actorRole !== "super_admin") {
+          results.push({ row: i + 2, email, status: "skipped", error: "Cannot assign a role equal to or higher than your own" });
+          continue;
+        }
+
+        let managerId: string | null = null;
+        if (reportingManager) {
+          const mgrKey = reportingManager.toLowerCase();
+          managerId = usersByName[mgrKey] || newUsersByName[mgrKey] || null;
+        }
+
+        let departmentId: string | null = null;
+        if (department) {
+          const dept = (await storage.getDepartments?.())?.find((d: any) => d.name.toLowerCase() === department.toLowerCase() && d.isActive);
+          if (dept) departmentId = dept.id;
+        }
+
+        const tempPassword = crypto.randomBytes(6).toString("base64url") + "A1!";
+        const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+        try {
+          const newUser = await storage.createAdminUser({
+            email,
+            password: hashedPassword,
+            firstName,
+            lastName: lastName || "",
+            role: assignedRole,
+            isActive: true,
+            joiningDate: joiningDate || null,
+            designation: designation || null,
+            departmentId,
+            hierarchyLevel: "team_member",
+            salary: salaryVal || null,
+            managerId,
+          });
+
+          existingEmails.add(email);
+          newUsersByName[`${firstName} ${lastName || ""}`.toLowerCase().trim()] = newUser.id;
+          if (managerId) {
+            usersByName[`${firstName} ${lastName || ""}`.toLowerCase().trim()] = newUser.id;
+          }
+
+          await storage.createAuditLog({
+            actorId: req.session.userId!,
+            targetId: newUser.id,
+            action: "create_user",
+            changes: { email, role: assignedRole, firstName, lastName, designation, salary: salaryVal, source: "bulk_upload" },
+          });
+
+          sendInvitationEmail({
+            to: email,
+            firstName,
+            lastName: lastName || "",
+            role: assignedRole,
+            temporaryPassword: tempPassword,
+            loginUrl,
+          }).catch((err) => console.error(`Bulk upload email error for ${email}:`, err));
+
+          results.push({ row: i + 2, email, status: "created" });
+        } catch (err: any) {
+          results.push({ row: i + 2, email, status: "failed", error: err.message || "Database error" });
+        }
+      }
+
+      const created = results.filter(r => r.status === "created").length;
+      const skipped = results.filter(r => r.status === "skipped").length;
+      const failed = results.filter(r => r.status === "failed").length;
+
+      res.json({ summary: { total: rows.length, created, skipped, failed }, results });
+    } catch (error: any) {
+      console.error("Bulk upload error:", error);
+      res.status(500).json({ error: "Failed to process bulk upload: " + (error.message || "Unknown error") });
     }
   });
 

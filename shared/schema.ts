@@ -35,6 +35,7 @@ export const adminUsers = pgTable("admin_users", {
   managerId: varchar("manager_id"),
   departmentId: varchar("department_id").references(() => departments.id),
   designation: varchar("designation"),
+  salary: numeric("salary"),
   hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
   joiningDate: date("joining_date"),
   totpSecret: varchar("totp_secret"),

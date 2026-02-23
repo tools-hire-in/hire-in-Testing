@@ -56,6 +56,8 @@ Preferred communication style: Simple, everyday language.
 - Session-based authentication with 7-day cookie expiry using PostgreSQL-backed sessions
 - Initial setup flow creates first Super Admin when no users exist (`POST /api/auth/setup`)
 - **Password Reset**: Email-based reset flow via SendGrid. User requests reset → receives email with tokenized link (1-hour expiry) → sets new password. Routes: `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`. Frontend pages: `/admin/forgot-password`, `/admin/reset-password`. Schema columns: `passwordResetToken`, `passwordResetExpiry` on `admin_users` table.
+- **Bulk User Upload**: CSV/XLSX file upload to create multiple users. Columns: First Name, Last Name, Email, Designation, Reporting Manager, Salary, Department, Role, Joining Date. Route: `POST /api/admin/users/bulk-upload`. Each user receives invitation email. Reporting Manager matched by "First Last" name.
+- **User Schema**: `admin_users` table includes `salary` (numeric) field for employee compensation tracking.
 
 ### Role-Based Access Control (RBAC)
 Role hierarchy from highest to lowest access:

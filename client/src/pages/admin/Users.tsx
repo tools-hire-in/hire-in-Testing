@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,10 +101,15 @@ export default function AdminUsers() {
   const [newDesignation, setNewDesignation] = useState("");
   const [newDepartmentId, setNewDepartmentId] = useState("");
   const [newHierarchyLevel, setNewHierarchyLevel] = useState("team_member");
+  const [newSalary, setNewSalary] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "" });
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkResults, setBulkResults] = useState<{ summary: { total: number; created: number; skipped: number; failed: number }; results: { row: number; email: string; status: string; error?: string }[] } | null>(null);
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
@@ -141,10 +146,35 @@ export default function AdminUsers() {
       toast({ title: "User invited successfully", description: "An invitation email with login credentials has been sent." });
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
-      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member");
+      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary("");
     },
     onError: () => {
       toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
+    },
+  });
+
+  const bulkUploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/users/bulk-upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setBulkResults(data);
+      setBulkFile(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Bulk upload failed", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -294,6 +324,7 @@ export default function AdminUsers() {
       designation: adminUser.designation || "",
       departmentId: adminUser.departmentId || "",
       joiningDate: adminUser.joiningDate || "",
+      salary: adminUser.salary || "",
     });
     setEditOpen(true);
   };
@@ -332,10 +363,16 @@ export default function AdminUsers() {
             </p>
           </div>
           {canManageUsers && (
-            <Button onClick={() => setInviteOpen(true)} data-testid="button-invite-user">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Invite User
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => { setBulkOpen(true); setBulkResults(null); setBulkFile(null); }} data-testid="button-bulk-upload">
+                <Upload className="h-4 w-4 mr-2" />
+                Bulk Upload
+              </Button>
+              <Button onClick={() => setInviteOpen(true)} data-testid="button-invite-user">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Invite User
+              </Button>
+            </div>
           )}
         </div>
 
@@ -606,6 +643,13 @@ export default function AdminUsers() {
                   <Input id="designation" placeholder="e.g. Software Engineer" value={newDesignation} onChange={(e) => setNewDesignation(e.target.value)} data-testid="input-invite-designation" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="salary">Salary</Label>
+                  <Input id="salary" type="number" placeholder="e.g. 85000" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} data-testid="input-invite-salary" />
+                </div>
+                <div />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="department">Department</Label>
                 <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
@@ -625,7 +669,8 @@ export default function AdminUsers() {
                   joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
                   departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
                   hierarchyLevel: newHierarchyLevel || undefined,
-                })}
+                  salary: newSalary || undefined,
+                } as any)}
                 disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
                 data-testid="button-send-invite"
               >
@@ -660,6 +705,10 @@ export default function AdminUsers() {
                 <Input value={editForm.designation} onChange={(e) => setEditForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Senior Software Engineer" data-testid="input-edit-designation" />
               </div>
               <div className="space-y-2">
+                <Label>Salary</Label>
+                <Input type="number" value={editForm.salary} onChange={(e) => setEditForm(prev => ({ ...prev, salary: e.target.value }))} placeholder="e.g. 85000" data-testid="input-edit-salary" />
+              </div>
+              <div className="space-y-2">
                 <Label>Department</Label>
                 <Select value={editForm.departmentId || "none"} onValueChange={(v) => setEditForm(prev => ({ ...prev, departmentId: v }))}>
                   <SelectTrigger data-testid="select-edit-department"><SelectValue placeholder="Select department" /></SelectTrigger>
@@ -689,6 +738,7 @@ export default function AdminUsers() {
                       designation: editForm.designation || null,
                       departmentId: editForm.departmentId === "none" ? null : editForm.departmentId || null,
                       joiningDate: editForm.joiningDate || null,
+                      salary: editForm.salary || null,
                     },
                   });
                 }}
@@ -872,6 +922,131 @@ export default function AdminUsers() {
                 </Button>
               )}
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Upload Dialog */}
+        <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkResults(null); setBulkFile(null); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-primary" />
+                Bulk Upload Users
+              </DialogTitle>
+              <DialogDescription>
+                Upload a CSV or XLSX file to create multiple users at once. Each user will receive an invitation email.
+              </DialogDescription>
+            </DialogHeader>
+
+            {!bulkResults ? (
+              <div className="space-y-4">
+                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                  <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm font-medium mb-1">
+                    {bulkFile ? bulkFile.name : "Choose a CSV or XLSX file"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">Maximum file size: 5MB</p>
+                  <Input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => setBulkFile(e.target.files?.[0] || null)}
+                    className="max-w-xs mx-auto"
+                    data-testid="input-bulk-file"
+                  />
+                </div>
+
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <p className="text-xs font-semibold mb-2">Required Columns:</p>
+                  <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
+                    <span>First Name</span>
+                    <span>Last Name</span>
+                    <span>Email</span>
+                    <span>Designation</span>
+                    <span>Reporting Manager</span>
+                    <span>Salary</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Optional: Department, Role, Joining Date
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Reporting Manager should match "First Name Last Name" of an existing user.
+                  </p>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancel</Button>
+                  <Button
+                    onClick={() => { if (bulkFile) bulkUploadMutation.mutate(bulkFile); }}
+                    disabled={!bulkFile || bulkUploadMutation.isPending}
+                    data-testid="button-start-upload"
+                  >
+                    {bulkUploadMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
+                    ) : (
+                      <><Upload className="h-4 w-4 mr-2" /> Upload & Create Users</>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-green-600">{bulkResults.summary.created}</p>
+                      <p className="text-xs text-muted-foreground">Created</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-amber-600">{bulkResults.summary.skipped}</p>
+                      <p className="text-xs text-muted-foreground">Skipped</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-red-600">{bulkResults.summary.failed}</p>
+                      <p className="text-xs text-muted-foreground">Failed</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {bulkResults.results.length > 0 && (
+                  <div className="max-h-60 overflow-y-auto border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Row</TableHead>
+                          <TableHead className="text-xs">Email</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Details</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bulkResults.results.map((r, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="text-xs">{r.row}</TableCell>
+                            <TableCell className="text-xs font-mono">{r.email}</TableCell>
+                            <TableCell>
+                              {r.status === "created" && <Badge className="bg-green-100 text-green-800 text-[10px]">Created</Badge>}
+                              {r.status === "skipped" && <Badge className="bg-amber-100 text-amber-800 text-[10px]">Skipped</Badge>}
+                              {r.status === "failed" && <Badge className="bg-red-100 text-red-800 text-[10px]">Failed</Badge>}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{r.error || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                <DialogFooter>
+                  <Button onClick={() => setBulkOpen(false)} data-testid="button-close-bulk-results">
+                    Done
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
