@@ -39,6 +39,8 @@ export const adminUsers = pgTable("admin_users", {
   joiningDate: date("joining_date"),
   totpSecret: varchar("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
+  passwordResetToken: varchar("password_reset_token"),
+  passwordResetExpiry: timestamp("password_reset_expiry"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

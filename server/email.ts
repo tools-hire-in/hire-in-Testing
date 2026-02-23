@@ -115,6 +115,57 @@ export async function sendInvitationEmail(options: {
   }
 }
 
+export async function sendPasswordResetEmail(options: {
+  to: string;
+  firstName: string;
+  resetUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: "Password Reset - Hire'in Solutions",
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Password Reset Request</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              We received a request to reset your password. Click the button below to set a new password. This link will expire in 1 hour.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.resetUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; margin: 24px 0 0;">
+              If you didn't request this, you can safely ignore this email. Your password will remain unchanged.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nWe received a request to reset your password. Visit the link below to set a new password (expires in 1 hour):\n\n${options.resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
+    };
+
+    await client.send(msg);
+    console.log(`Password reset email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send password reset email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendWelcomeEmail(options: {
   to: string;
   firstName: string;

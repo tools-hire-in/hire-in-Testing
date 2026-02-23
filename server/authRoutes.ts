@@ -1,12 +1,13 @@
 import { Express } from "express";
 import { db } from "./db";
 import { adminUsers, loginSchema, registerAdminSchema } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requireRole } from "./auth";
 import { z } from "zod";
+import crypto from "crypto";
 import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
-import { sendWelcomeEmail } from "./email";
+import { sendWelcomeEmail, sendPasswordResetEmail } from "./email";
 
 export function registerAuthRoutes(app: Express) {
   // Login route (supports two-step TOTP)
@@ -376,6 +377,97 @@ export function registerAuthRoutes(app: Express) {
     } catch (error) {
       console.error("TOTP disable error:", error);
       res.status(500).json({ message: "Failed to disable 2FA" });
+    }
+  });
+
+  // Forgot Password - send reset email
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const [user] = await db
+        .select({ id: adminUsers.id, firstName: adminUsers.firstName, email: adminUsers.email, isActive: adminUsers.isActive })
+        .from(adminUsers)
+        .where(eq(adminUsers.email, normalizedEmail))
+        .limit(1);
+
+      if (!user || !user.isActive) {
+        return res.json({ message: "If an account with that email exists, a reset link has been sent." });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + 60 * 60 * 1000);
+
+      await db
+        .update(adminUsers)
+        .set({ passwordResetToken: token, passwordResetExpiry: expiry })
+        .where(eq(adminUsers.id, user.id));
+
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const resetUrl = `${protocol}://${host}/admin/reset-password?token=${token}`;
+
+      sendPasswordResetEmail({
+        to: user.email,
+        firstName: user.firstName,
+        resetUrl,
+      }).catch((err) => console.error("Background reset email error:", err));
+
+      res.json({ message: "If an account with that email exists, a reset link has been sent." });
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({ message: "Something went wrong. Please try again." });
+    }
+  });
+
+  // Reset Password - verify token and set new password
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password || typeof token !== "string" || typeof password !== "string") {
+        return res.status(400).json({ message: "Token and password are required" });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      const [user] = await db
+        .select({ id: adminUsers.id })
+        .from(adminUsers)
+        .where(
+          and(
+            eq(adminUsers.passwordResetToken, token),
+            gt(adminUsers.passwordResetExpiry, new Date())
+          )
+        )
+        .limit(1);
+
+      if (!user) {
+        return res.status(400).json({ message: "Invalid or expired reset link. Please request a new one." });
+      }
+
+      const hashedPassword = await hashPassword(password);
+
+      await db
+        .update(adminUsers)
+        .set({
+          password: hashedPassword,
+          passwordResetToken: null,
+          passwordResetExpiry: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(adminUsers.id, user.id));
+
+      res.json({ message: "Password reset successfully. You can now log in with your new password." });
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ message: "Something went wrong. Please try again." });
     }
   });
 }

@@ -24,6 +24,8 @@ import AdminContacts from "@/pages/admin/Contacts";
 import AdminUsers from "@/pages/admin/Users";
 import AuditLogs from "@/pages/admin/AuditLogs";
 import AdminLogin from "@/pages/admin/Login";
+import ForgotPassword from "@/pages/admin/ForgotPassword";
+import ResetPassword from "@/pages/admin/ResetPassword";
 import HRDashboard from "@/pages/admin/hr/HRDashboard";
 import HRAttendance from "@/pages/admin/hr/Attendance";
 import HRLeaveManagement from "@/pages/admin/hr/LeaveManagement";
@@ -71,6 +73,8 @@ function PublicRouter() {
       <Route path="/capability-deck" component={CapabilityDeck} />
 
       <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/forgot-password" component={ForgotPassword} />
+      <Route path="/admin/reset-password" component={ResetPassword} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/jobs" component={AdminJobs} />
       <Route path="/admin/applications" component={AdminApplications} />
@@ -101,6 +105,8 @@ function EmployeeRouter() {
       <Route path="/login">{() => <Redirect to="/admin/login" />}</Route>
 
       <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/forgot-password" component={ForgotPassword} />
+      <Route path="/admin/reset-password" component={ResetPassword} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/jobs" component={AdminJobs} />
       <Route path="/admin/applications" component={AdminApplications} />
