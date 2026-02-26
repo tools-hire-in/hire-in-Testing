@@ -18,6 +18,8 @@ import {
   Ticket,
   Settings,
   Network,
+  FileCheck,
+  ClipboardCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,7 +56,7 @@ const recruitmentMenu = [
     href: "/admin/applications", 
     label: "Applications", 
     icon: FileText,
-    roles: ["super_admin", "admin", "hr", "operations"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   { 
     href: "/admin/contacts", 
@@ -132,6 +134,12 @@ const hrPortalMenu = [
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
+    href: "/admin/hr/my-documents",
+    label: "My Documents",
+    icon: FileCheck,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
     href: "/admin/hr/salary-slips",
     label: "My Salary Slips",
     icon: Receipt,
@@ -141,6 +149,12 @@ const hrPortalMenu = [
     href: "/admin/hr/salary-reports",
     label: "Salary Reports",
     icon: FileBarChart,
+    roles: ["super_admin", "admin", "hr"]
+  },
+  {
+    href: "/admin/hr/document-compliance",
+    label: "Document Compliance",
+    icon: ClipboardCheck,
     roles: ["super_admin", "admin", "hr"]
   },
   {

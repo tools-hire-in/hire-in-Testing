@@ -37,6 +37,7 @@ export const adminUsers = pgTable("admin_users", {
   designation: varchar("designation"),
   salary: numeric("salary"),
   hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
+  employeeId: varchar("employee_id").unique(),
   joiningDate: date("joining_date"),
   totpSecret: varchar("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
@@ -257,6 +258,50 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Employee documents table - post-onboarding document checklist
+export const employeeDocuments = pgTable("employee_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  category: varchar("category").notNull(),
+  documentType: varchar("document_type").notNull(),
+  fileName: varchar("file_name"),
+  fileUrl: varchar("file_url"),
+  fileSize: integer("file_size"),
+  status: varchar("status").notNull().default("pending"),
+  isRequired: boolean("is_required").notNull().default(true),
+  remarks: text("remarks"),
+  uploadedAt: timestamp("uploaded_at"),
+  verifiedBy: varchar("verified_by").references(() => adminUsers.id),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Employee bank details table
+export const employeeBankDetails = pgTable("employee_bank_details", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id).unique(),
+  accountNumber: varchar("account_number"),
+  ifscCode: varchar("ifsc_code"),
+  bankName: varchar("bank_name"),
+  branchName: varchar("branch_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Employee emergency contacts table
+export const employeeEmergencyContacts = pgTable("employee_emergency_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  name: varchar("name").notNull(),
+  relationship: varchar("relationship").notNull(),
+  phone: varchar("phone").notNull(),
+  email: varchar("email"),
+  address: text("address"),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ==========================================
 // RELATIONS
 // ==========================================
@@ -366,6 +411,32 @@ export const leaveAdjustmentsRelations = relations(leaveAdjustments, ({ one }) =
     fields: [leaveAdjustments.adjustedBy],
     references: [adminUsers.id],
     relationName: "leaveAdjuster",
+  }),
+}));
+
+export const employeeDocumentsRelations = relations(employeeDocuments, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [employeeDocuments.userId],
+    references: [adminUsers.id],
+  }),
+  verifier: one(adminUsers, {
+    fields: [employeeDocuments.verifiedBy],
+    references: [adminUsers.id],
+    relationName: "docVerifier",
+  }),
+}));
+
+export const employeeBankDetailsRelations = relations(employeeBankDetails, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [employeeBankDetails.userId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const employeeEmergencyContactsRelations = relations(employeeEmergencyContacts, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [employeeEmergencyContacts.userId],
+    references: [adminUsers.id],
   }),
 }));
 
@@ -485,6 +556,23 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   createdAt: true,
 });
 
+export const insertEmployeeDocumentSchema = createInsertSchema(employeeDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEmployeeBankDetailsSchema = createInsertSchema(employeeBankDetails).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEmployeeEmergencyContactSchema = createInsertSchema(employeeEmergencyContacts).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertRegionalHolidaySelectionSchema = createInsertSchema(regionalHolidaySelections).omit({
   id: true,
   createdAt: true,
@@ -536,3 +624,9 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type RegionalHolidaySelection = typeof regionalHolidaySelections.$inferSelect;
 export type InsertRegionalHolidaySelection = z.infer<typeof insertRegionalHolidaySelectionSchema>;
+export type EmployeeDocument = typeof employeeDocuments.$inferSelect;
+export type InsertEmployeeDocument = z.infer<typeof insertEmployeeDocumentSchema>;
+export type EmployeeBankDetails = typeof employeeBankDetails.$inferSelect;
+export type InsertEmployeeBankDetails = z.infer<typeof insertEmployeeBankDetailsSchema>;
+export type EmployeeEmergencyContact = typeof employeeEmergencyContacts.$inferSelect;
+export type InsertEmployeeEmergencyContact = z.infer<typeof insertEmployeeEmergencyContactSchema>;

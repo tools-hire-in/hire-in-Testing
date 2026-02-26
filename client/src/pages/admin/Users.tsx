@@ -418,6 +418,7 @@ export default function AdminUsers() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Employee ID</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Department</TableHead>
@@ -433,7 +434,7 @@ export default function AdminUsers() {
                   {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 10 }).map((_, j) => (
+                        {Array.from({ length: 11 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
@@ -449,6 +450,7 @@ export default function AdminUsers() {
                             )}
                           </div>
                         </TableCell>
+                        <TableCell className="text-muted-foreground text-xs font-mono">{adminUser.employeeId || "-"}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">{adminUser.email}</TableCell>
                         <TableCell>
                           <Badge className={roleColors[adminUser.role] || roleColors.employee}>

@@ -352,6 +352,12 @@ export default function Profile() {
                 {roleLabels[user?.role || "employee"]}
               </Badge>
               <div className="mt-4 space-y-2 text-left">
+                {user?.employeeId && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded" data-testid="text-profile-employee-id">{user.employeeId}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span data-testid="text-profile-email">{user?.email}</span>

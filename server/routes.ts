@@ -8,12 +8,50 @@ import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAd
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+function generateEmployeeId(departmentName: string | null, joiningDate: string | null): string {
+  const deptAbbreviations: Record<string, string> = {
+    "information technology": "IT", "it": "IT", "technology": "IT",
+    "human resources": "HR", "hr": "HR",
+    "engineering": "ENG", "eng": "ENG",
+    "operations": "OPS", "ops": "OPS",
+    "finance": "FIN", "fin": "FIN",
+    "marketing": "MKT", "mkt": "MKT",
+    "sales": "SLS", "sls": "SLS",
+    "administration": "ADM", "admin": "ADM",
+    "legal": "LGL", "lgl": "LGL",
+    "healthcare": "HC", "health care": "HC",
+    "delivery": "DLV", "dlv": "DLV",
+    "recruitment": "REC", "rec": "REC",
+    "accounts": "ACC", "acc": "ACC",
+    "management": "MGT", "mgt": "MGT",
+  };
+
+  let abbrev = "GEN";
+  if (departmentName) {
+    const lower = departmentName.toLowerCase().trim();
+    abbrev = deptAbbreviations[lower] || departmentName.substring(0, 3).toUpperCase();
+  }
+
+  let dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  if (joiningDate) {
+    dateStr = joiningDate.replace(/-/g, "");
+  }
+
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let random4 = "";
+  for (let i = 0; i < 4; i++) {
+    random4 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return `HIS-${abbrev}${dateStr}-${random4}`;
+}
 const objectStorageService = new ObjectStorageService();
 
 /**
@@ -405,7 +443,7 @@ export async function registerRoutes(
   });
 
   // Admin Applications (HR and Operations roles can access)
-  app.get("/api/admin/applications", requireRole("hr", "operations"), async (req, res) => {
+  app.get("/api/admin/applications", requireAuth, async (req, res) => {
     try {
       const applications = await storage.getApplications();
       res.json(applications);
@@ -496,6 +534,13 @@ export async function registerRoutes(
       const bcrypt = await import("bcryptjs");
       const hashedPassword = await bcrypt.hash(tempPassword, 12);
       
+      let deptName: string | null = null;
+      if (departmentId) {
+        const dept = await storage.getDepartment(departmentId);
+        if (dept) deptName = dept.name;
+      }
+      const employeeIdVal = generateEmployeeId(deptName, joiningDate || null);
+
       const user = await storage.createAdminUser({
         email: email.toLowerCase(),
         password: hashedPassword,
@@ -508,13 +553,18 @@ export async function registerRoutes(
         departmentId: departmentId || null,
         hierarchyLevel: hierarchyLevel || "team_member",
         salary: salary || null,
+        employeeId: employeeIdVal,
       });
+
+      storage.initializeEmployeeDocuments(user.id).catch(err =>
+        console.error("Failed to initialize documents for user:", err)
+      );
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
         targetId: user.id,
         action: "create_user",
-        changes: { email: email.toLowerCase(), role: assignedRole, firstName, lastName, designation, departmentId, hierarchyLevel },
+        changes: { email: email.toLowerCase(), role: assignedRole, firstName, lastName, designation, departmentId, hierarchyLevel, employeeId: employeeIdVal },
       });
 
       const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
@@ -527,6 +577,7 @@ export async function registerRoutes(
         role: assignedRole,
         temporaryPassword: tempPassword,
         loginUrl,
+        employeeId: employeeIdVal,
       }).catch((err) => console.error("Background invitation email error:", err));
 
       res.status(201).json(user);
@@ -634,6 +685,13 @@ export async function registerRoutes(
         const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
         try {
+          let bulkDeptName: string | null = null;
+          if (departmentId) {
+            const dept = (await storage.getDepartments?.())?.find((d: any) => d.id === departmentId);
+            if (dept) bulkDeptName = dept.name;
+          }
+          const bulkEmployeeId = generateEmployeeId(bulkDeptName, joiningDate || null);
+
           const newUser = await storage.createAdminUser({
             email,
             password: hashedPassword,
@@ -647,7 +705,12 @@ export async function registerRoutes(
             hierarchyLevel: "team_member",
             salary: salaryVal || null,
             managerId,
+            employeeId: bulkEmployeeId,
           });
+
+          storage.initializeEmployeeDocuments(newUser.id).catch(err =>
+            console.error(`Failed to init docs for ${email}:`, err)
+          );
 
           existingEmails.add(email);
           newUsersByName[`${firstName} ${lastName || ""}`.toLowerCase().trim()] = newUser.id;
@@ -659,7 +722,7 @@ export async function registerRoutes(
             actorId: req.session.userId!,
             targetId: newUser.id,
             action: "create_user",
-            changes: { email, role: assignedRole, firstName, lastName, designation, salary: salaryVal, source: "bulk_upload" },
+            changes: { email, role: assignedRole, firstName, lastName, designation, salary: salaryVal, source: "bulk_upload", employeeId: bulkEmployeeId },
           });
 
           sendInvitationEmail({
@@ -669,6 +732,7 @@ export async function registerRoutes(
             role: assignedRole,
             temporaryPassword: tempPassword,
             loginUrl,
+            employeeId: bulkEmployeeId,
           }).catch((err) => console.error(`Bulk upload email error for ${email}:`, err));
 
           results.push({ row: i + 2, email, status: "created" });
@@ -2054,6 +2118,257 @@ export async function registerRoutes(
       res.json(enriched);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch leave adjustments" });
+    }
+  });
+
+  // ==========================================
+  // EMPLOYEE DOCUMENTS
+  // ==========================================
+
+  app.get("/api/hr/my-documents", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const docs = await storage.getEmployeeDocuments(req.session.userId!);
+      res.json(docs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
+  });
+
+  app.patch("/api/hr/my-documents/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const doc = await storage.getEmployeeDocument(req.params.id);
+      if (!doc || doc.userId !== req.session.userId) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const { fileName, fileUrl, fileSize } = req.body;
+      const updated = await storage.updateEmployeeDocument(req.params.id, {
+        fileName,
+        fileUrl,
+        fileSize,
+        status: "uploaded",
+        uploadedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update document" });
+    }
+  });
+
+  app.get("/api/hr/my-bank-details", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const details = await storage.getBankDetails(req.session.userId!);
+      res.json(details || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch bank details" });
+    }
+  });
+
+  app.post("/api/hr/my-bank-details", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { accountNumber, ifscCode, bankName, branchName } = req.body;
+      const result = await storage.upsertBankDetails({
+        userId: req.session.userId!,
+        accountNumber: accountNumber || null,
+        ifscCode: ifscCode || null,
+        bankName: bankName || null,
+        branchName: branchName || null,
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save bank details" });
+    }
+  });
+
+  app.get("/api/hr/my-emergency-contacts", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const contacts = await storage.getEmergencyContacts(req.session.userId!);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch emergency contacts" });
+    }
+  });
+
+  app.post("/api/hr/my-emergency-contacts", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, relationship, phone, email, address, isPrimary } = req.body;
+      const contact = await storage.createEmergencyContact({
+        userId: req.session.userId!,
+        name,
+        relationship,
+        phone,
+        email: email || null,
+        address: address || null,
+        isPrimary: isPrimary || false,
+      });
+      res.json(contact);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create emergency contact" });
+    }
+  });
+
+  app.patch("/api/hr/my-emergency-contacts/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const existing = await storage.getEmergencyContacts(req.session.userId!);
+      const contact = existing.find(c => c.id === req.params.id);
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      const updated = await storage.updateEmergencyContact(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update emergency contact" });
+    }
+  });
+
+  app.delete("/api/hr/my-emergency-contacts/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const existing = await storage.getEmergencyContacts(req.session.userId!);
+      const contact = existing.find(c => c.id === req.params.id);
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      await storage.deleteEmergencyContact(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete emergency contact" });
+    }
+  });
+
+  // HR Document Management routes
+  app.get("/api/hr/employee-documents/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const docs = await storage.getEmployeeDocuments(req.params.userId);
+      res.json(docs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch employee documents" });
+    }
+  });
+
+  app.patch("/api/hr/employee-documents/:id/verify", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { status, remarks } = req.body;
+      if (!["verified", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'verified' or 'rejected'" });
+      }
+      const updated = await storage.updateEmployeeDocument(req.params.id, {
+        status,
+        remarks: remarks || null,
+        verifiedBy: req.session.userId!,
+        verifiedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to verify document" });
+    }
+  });
+
+  app.get("/api/hr/document-compliance", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const allDocs = await storage.getAllEmployeeDocuments();
+      const allUsers = await storage.getAdminUsers();
+      const depts = await storage.getDepartments();
+      const deptMap = new Map(depts.map(d => [d.id, d.name]));
+
+      const userDocMap: Record<string, { user: any; docs: any[]; requiredTotal: number; requiredUploaded: number; requiredVerified: number }> = {};
+
+      for (const user of allUsers.filter(u => u.isActive)) {
+        userDocMap[user.id] = {
+          user: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            employeeId: user.employeeId,
+            department: user.departmentId ? deptMap.get(user.departmentId) || null : null,
+          },
+          docs: [],
+          requiredTotal: 0,
+          requiredUploaded: 0,
+          requiredVerified: 0,
+        };
+      }
+
+      for (const doc of allDocs) {
+        if (userDocMap[doc.userId]) {
+          userDocMap[doc.userId].docs.push(doc);
+          if (doc.isRequired) {
+            userDocMap[doc.userId].requiredTotal++;
+            if (doc.status === "uploaded" || doc.status === "verified") {
+              userDocMap[doc.userId].requiredUploaded++;
+            }
+            if (doc.status === "verified") {
+              userDocMap[doc.userId].requiredVerified++;
+            }
+          }
+        }
+      }
+
+      const report = Object.values(userDocMap);
+      const totalEmployees = report.length;
+      const fullyCompliant = report.filter(r => r.requiredTotal > 0 && r.requiredUploaded === r.requiredTotal).length;
+      const pendingDocs = report.filter(r => r.requiredTotal > 0 && r.requiredUploaded < r.requiredTotal).length;
+      const noDocs = report.filter(r => r.requiredTotal === 0).length;
+
+      res.json({
+        summary: { totalEmployees, fullyCompliant, pendingDocs, noDocs },
+        employees: report,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch compliance report" });
+    }
+  });
+
+  app.post("/api/hr/employee-documents/initialize/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const existing = await storage.getEmployeeDocuments(req.params.userId);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Documents already initialized for this user" });
+      }
+      const docs = await storage.initializeEmployeeDocuments(req.params.userId);
+      res.json(docs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to initialize documents" });
+    }
+  });
+
+  app.post("/api/hr/employee-documents/send-reminder/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getAdminUser(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const docs = await storage.getEmployeeDocuments(req.params.userId);
+      const pendingDocs = docs.filter(d => d.isRequired && d.status === "pending");
+
+      await sendDocumentReminderEmail({
+        to: user.email,
+        firstName: user.firstName,
+        pendingDocuments: pendingDocs.map(d => d.documentType),
+      });
+
+      res.json({ success: true, message: "Reminder sent" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to send reminder" });
+    }
+  });
+
+  // Employee bank details (HR view)
+  app.get("/api/hr/employee-bank-details/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const details = await storage.getBankDetails(req.params.userId);
+      res.json(details || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch bank details" });
+    }
+  });
+
+  // Employee emergency contacts (HR view)
+  app.get("/api/hr/employee-emergency-contacts/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const contacts = await storage.getEmergencyContacts(req.params.userId);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch emergency contacts" });
     }
   });
 

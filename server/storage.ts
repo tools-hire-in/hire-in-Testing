@@ -17,6 +17,9 @@ import {
   regionalHolidaySelections,
   salarySlips,
   leaveAdjustments,
+  employeeDocuments,
+  employeeBankDetails,
+  employeeEmergencyContacts,
   type Job,
   type InsertJob,
   type Application,
@@ -49,6 +52,12 @@ import {
   type InsertSalarySlip,
   type LeaveAdjustment,
   type InsertLeaveAdjustment,
+  type EmployeeDocument,
+  type InsertEmployeeDocument,
+  type EmployeeBankDetails,
+  type InsertEmployeeBankDetails,
+  type EmployeeEmergencyContact,
+  type InsertEmployeeEmergencyContact,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -159,6 +168,25 @@ export interface IStorage {
   // Leave Adjustments
   createLeaveAdjustment(adj: InsertLeaveAdjustment): Promise<LeaveAdjustment>;
   getLeaveAdjustments(filters?: { userId?: string; year?: number }): Promise<LeaveAdjustment[]>;
+
+  // Employee Documents
+  getEmployeeDocuments(userId: string): Promise<EmployeeDocument[]>;
+  getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined>;
+  createEmployeeDocument(doc: InsertEmployeeDocument): Promise<EmployeeDocument>;
+  updateEmployeeDocument(id: string, updates: Partial<EmployeeDocument>): Promise<EmployeeDocument | undefined>;
+  deleteEmployeeDocument(id: string): Promise<boolean>;
+  initializeEmployeeDocuments(userId: string): Promise<EmployeeDocument[]>;
+  getAllEmployeeDocuments(): Promise<EmployeeDocument[]>;
+
+  // Employee Bank Details
+  getBankDetails(userId: string): Promise<EmployeeBankDetails | undefined>;
+  upsertBankDetails(data: InsertEmployeeBankDetails): Promise<EmployeeBankDetails>;
+
+  // Employee Emergency Contacts
+  getEmergencyContacts(userId: string): Promise<EmployeeEmergencyContact[]>;
+  createEmergencyContact(contact: InsertEmployeeEmergencyContact): Promise<EmployeeEmergencyContact>;
+  updateEmergencyContact(id: string, updates: Partial<EmployeeEmergencyContact>): Promise<EmployeeEmergencyContact | undefined>;
+  deleteEmergencyContact(id: string): Promise<boolean>;
 
   // Stats
   getStats(): Promise<{
@@ -893,6 +921,125 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(leaveAdjustments)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(leaveAdjustments.createdAt));
+  }
+
+  // ==========================================
+  // EMPLOYEE DOCUMENTS
+  // ==========================================
+
+  async getEmployeeDocuments(userId: string): Promise<EmployeeDocument[]> {
+    return db.select().from(employeeDocuments)
+      .where(eq(employeeDocuments.userId, userId))
+      .orderBy(asc(employeeDocuments.category), asc(employeeDocuments.documentType));
+  }
+
+  async getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined> {
+    const [doc] = await db.select().from(employeeDocuments).where(eq(employeeDocuments.id, id));
+    return doc;
+  }
+
+  async createEmployeeDocument(doc: InsertEmployeeDocument): Promise<EmployeeDocument> {
+    const [created] = await db.insert(employeeDocuments).values(doc).returning();
+    return created;
+  }
+
+  async updateEmployeeDocument(id: string, updates: Partial<EmployeeDocument>): Promise<EmployeeDocument | undefined> {
+    const [updated] = await db.update(employeeDocuments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(employeeDocuments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEmployeeDocument(id: string): Promise<boolean> {
+    const result = await db.delete(employeeDocuments).where(eq(employeeDocuments.id, id));
+    return true;
+  }
+
+  async initializeEmployeeDocuments(userId: string): Promise<EmployeeDocument[]> {
+    const docTypes = [
+      { category: "identity", documentType: "aadhaar", isRequired: true },
+      { category: "identity", documentType: "pan", isRequired: true },
+      { category: "identity", documentType: "passport", isRequired: false },
+      { category: "identity", documentType: "voter_id_dl", isRequired: false },
+      { category: "education", documentType: "10th_marksheet", isRequired: true },
+      { category: "education", documentType: "12th_marksheet", isRequired: true },
+      { category: "education", documentType: "graduation_cert", isRequired: true },
+      { category: "education", documentType: "postgrad_cert", isRequired: false },
+      { category: "employment", documentType: "relieving_letter", isRequired: true },
+      { category: "employment", documentType: "salary_slips_prev", isRequired: true },
+      { category: "employment", documentType: "form16", isRequired: false },
+      { category: "bank", documentType: "cancelled_cheque", isRequired: true },
+    ];
+
+    const created: EmployeeDocument[] = [];
+    for (const dt of docTypes) {
+      const [doc] = await db.insert(employeeDocuments).values({
+        userId,
+        category: dt.category,
+        documentType: dt.documentType,
+        isRequired: dt.isRequired,
+        status: "pending",
+      }).returning();
+      created.push(doc);
+    }
+    return created;
+  }
+
+  async getAllEmployeeDocuments(): Promise<EmployeeDocument[]> {
+    return db.select().from(employeeDocuments)
+      .orderBy(asc(employeeDocuments.userId), asc(employeeDocuments.category));
+  }
+
+  // ==========================================
+  // EMPLOYEE BANK DETAILS
+  // ==========================================
+
+  async getBankDetails(userId: string): Promise<EmployeeBankDetails | undefined> {
+    const [details] = await db.select().from(employeeBankDetails)
+      .where(eq(employeeBankDetails.userId, userId));
+    return details;
+  }
+
+  async upsertBankDetails(data: InsertEmployeeBankDetails): Promise<EmployeeBankDetails> {
+    const existing = await this.getBankDetails(data.userId);
+    if (existing) {
+      const [updated] = await db.update(employeeBankDetails)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(employeeBankDetails.userId, data.userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(employeeBankDetails).values(data).returning();
+    return created;
+  }
+
+  // ==========================================
+  // EMPLOYEE EMERGENCY CONTACTS
+  // ==========================================
+
+  async getEmergencyContacts(userId: string): Promise<EmployeeEmergencyContact[]> {
+    return db.select().from(employeeEmergencyContacts)
+      .where(eq(employeeEmergencyContacts.userId, userId))
+      .orderBy(desc(employeeEmergencyContacts.isPrimary), asc(employeeEmergencyContacts.createdAt));
+  }
+
+  async createEmergencyContact(contact: InsertEmployeeEmergencyContact): Promise<EmployeeEmergencyContact> {
+    const [created] = await db.insert(employeeEmergencyContacts).values(contact).returning();
+    return created;
+  }
+
+  async updateEmergencyContact(id: string, updates: Partial<EmployeeEmergencyContact>): Promise<EmployeeEmergencyContact | undefined> {
+    const [updated] = await db.update(employeeEmergencyContacts)
+      .set(updates)
+      .where(eq(employeeEmergencyContacts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEmergencyContact(id: string): Promise<boolean> {
+    await db.delete(employeeEmergencyContacts).where(eq(employeeEmergencyContacts.id, id));
+    return true;
   }
 }
 

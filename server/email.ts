@@ -47,6 +47,7 @@ export async function sendInvitationEmail(options: {
   role: string;
   temporaryPassword: string;
   loginUrl: string;
+  employeeId?: string;
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
@@ -55,9 +56,15 @@ export async function sendInvitationEmail(options: {
       admin: "Admin",
       hr: "HR Manager",
       operations: "Operations",
+      manager: "Manager",
       employee: "Employee",
     };
     const roleName = roleLabels[options.role] || options.role;
+    const employeeIdRow = options.employeeId ? `
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0;">Employee ID:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0; font-family: monospace;">${options.employeeId}</td>
+                </tr>` : "";
 
     const msg = {
       to: options.to,
@@ -84,12 +91,29 @@ export async function sendInvitationEmail(options: {
                 <tr>
                   <td style="color: #64748b; padding: 4px 0;">Password:</td>
                   <td style="color: #1e293b; font-weight: 500; padding: 4px 0; font-family: monospace;">${options.temporaryPassword}</td>
-                </tr>
+                </tr>${employeeIdRow}
               </table>
             </div>
             <p style="color: #dc2626; font-size: 13px; margin: 0 0 24px;">
               Please change your password after your first login for security.
             </p>
+
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e40af; font-weight: 600; margin: 0 0 12px; font-size: 15px;">Post-Onboarding Checklist</p>
+              <p style="color: #475569; font-size: 13px; margin: 0 0 12px;">Please complete the following at your earliest convenience:</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Upload KYC documents (Aadhaar Card, PAN Card)</td></tr>
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Upload educational certificates (10th, 12th, Graduation)</td></tr>
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Upload previous employment documents (Relieving Letter, Last 3 months' Salary Slips)</td></tr>
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Complete bank account details (Cancelled Cheque, Account Number, IFSC)</td></tr>
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Add emergency contact information</td></tr>
+                <tr><td style="color: #475569; padding: 6px 0; font-size: 13px;">&#9744; Set up Two-Factor Authentication for account security</td></tr>
+              </table>
+              <p style="color: #1e40af; font-size: 12px; margin: 12px 0 0; font-weight: 500;">
+                You can complete these from the "My Documents" section in the employee portal.
+              </p>
+            </div>
+
             <div style="text-align: center; margin: 24px 0;">
               <a href="${options.loginUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
                 Login to Portal
@@ -103,7 +127,7 @@ export async function sendInvitationEmail(options: {
           </div>
         </div>
       `,
-      text: `Welcome to Hire'in Solutions, ${options.firstName}!\n\nYou've been invited as ${roleName}.\n\nYour login credentials:\nEmail: ${options.to}\nPassword: ${options.temporaryPassword}\n\nLogin at: ${options.loginUrl}\n\nPlease change your password after your first login.`,
+      text: `Welcome to Hire'in Solutions, ${options.firstName}!\n\nYou've been invited as ${roleName}.${options.employeeId ? `\nEmployee ID: ${options.employeeId}` : ""}\n\nYour login credentials:\nEmail: ${options.to}\nPassword: ${options.temporaryPassword}\n\nLogin at: ${options.loginUrl}\n\nPlease change your password after your first login.\n\nPost-Onboarding Checklist:\n- Upload KYC documents (Aadhaar Card, PAN Card)\n- Upload educational certificates (10th, 12th, Graduation)\n- Upload previous employment documents (Relieving Letter, Last 3 months' Salary Slips)\n- Complete bank account details (Cancelled Cheque, Account Number, IFSC)\n- Add emergency contact information\n- Set up Two-Factor Authentication`,
     };
 
     await client.send(msg);
@@ -111,6 +135,77 @@ export async function sendInvitationEmail(options: {
     return { success: true };
   } catch (error: any) {
     console.error("Failed to send invitation email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendDocumentReminderEmail(options: {
+  to: string;
+  firstName: string;
+  pendingDocuments: string[];
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+
+    const docLabels: Record<string, string> = {
+      aadhaar: "Aadhaar Card",
+      pan: "PAN Card",
+      passport: "Passport",
+      voter_id_dl: "Voter ID / Driving License",
+      "10th_marksheet": "10th Mark Sheet / Certificate",
+      "12th_marksheet": "12th Mark Sheet / Certificate",
+      graduation_cert: "Graduation Certificate",
+      postgrad_cert: "Post-Graduation Certificate",
+      relieving_letter: "Relieving Letter / Experience Letter",
+      salary_slips_prev: "Last 3 Months' Salary Slips",
+      form16: "Form 16",
+      cancelled_cheque: "Cancelled Cheque / Bank Passbook",
+    };
+
+    const docListHtml = options.pendingDocuments
+      .map(d => `<li style="color: #475569; padding: 4px 0; font-size: 14px;">${docLabels[d] || d}</li>`)
+      .join("");
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: "Reminder: Pending Onboarding Documents - Hire'in Solutions",
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Document Reminder</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              This is a friendly reminder that the following mandatory documents are still pending upload:
+            </p>
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #dc2626; font-weight: 600; margin: 0 0 12px;">Pending Documents (${options.pendingDocuments.length})</p>
+              <ul style="margin: 0; padding: 0 0 0 20px;">
+                ${docListHtml}
+              </ul>
+            </div>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please log in to the employee portal and navigate to <strong>"My Documents"</strong> to upload the required documents.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nThis is a reminder that the following documents are still pending:\n${options.pendingDocuments.map(d => `- ${docLabels[d] || d}`).join("\n")}\n\nPlease log in to the employee portal and navigate to "My Documents" to upload them.`,
+    };
+
+    await client.send(msg);
+    console.log(`Document reminder email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send document reminder email:", error?.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }
