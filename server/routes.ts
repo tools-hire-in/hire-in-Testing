@@ -2127,7 +2127,11 @@ export async function registerRoutes(
 
   app.get("/api/hr/my-documents", requireAuth, async (req: Request, res: Response) => {
     try {
-      const docs = await storage.getEmployeeDocuments(req.session.userId!);
+      let docs = await storage.getEmployeeDocuments(req.session.userId!);
+      if (!docs || docs.length === 0) {
+        await storage.initializeEmployeeDocuments(req.session.userId!);
+        docs = await storage.getEmployeeDocuments(req.session.userId!);
+      }
       res.json(docs);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch documents" });

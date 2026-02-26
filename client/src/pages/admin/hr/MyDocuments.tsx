@@ -437,7 +437,7 @@ export default function MyDocuments() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => window.open(`/api/uploads/download/${encodeURIComponent(doc.fileUrl!)}`, "_blank")}
+                          onClick={() => window.open(doc.fileUrl!, "_blank")}
                           data-testid={`button-view-${doc.documentType}`}
                         >
                           <Eye />
