@@ -76,6 +76,8 @@ export default function HRSettings() {
   const { data: leaveTypes, isLoading: ltLoading } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
     enabled: isAuthenticated,
+    retry: 2,
+    staleTime: 30000,
   });
 
   const { data: holidays, isLoading: hLoading } = useQuery<Holiday[]>({
@@ -255,6 +257,8 @@ export default function HRSettings() {
   const { data: allUsers } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
     enabled: isAuthenticated && isHrOrAbove,
+    retry: 2,
+    staleTime: 30000,
   });
 
   const { data: adjustmentHistory, isLoading: adjHistLoading } = useQuery<LeaveAdjustment[]>({
@@ -781,25 +785,31 @@ export default function HRSettings() {
                     </Button>
                   </div>
                   <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
-                    {allUsers?.filter(u => u.isActive).map(u => (
-                      <div key={u.id} className="flex items-center gap-2 py-1">
-                        <Checkbox
-                          id={`user-${u.id}`}
-                          checked={selectedUserIds.includes(u.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedUserIds(prev => [...prev, u.id]);
-                            } else {
-                              setSelectedUserIds(prev => prev.filter(id => id !== u.id));
-                            }
-                          }}
-                          data-testid={`checkbox-user-${u.id}`}
-                        />
-                        <Label htmlFor={`user-${u.id}`} className="text-sm cursor-pointer">
-                          {u.firstName} {u.lastName} ({u.email})
-                        </Label>
-                      </div>
-                    ))}
+                    {!allUsers ? (
+                      <p className="text-sm text-muted-foreground py-2 text-center">Loading employees...</p>
+                    ) : allUsers.filter(u => u.isActive).length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-2 text-center">No active employees found</p>
+                    ) : (
+                      allUsers.filter(u => u.isActive).map(u => (
+                        <div key={u.id} className="flex items-center gap-2 py-1">
+                          <Checkbox
+                            id={`user-${u.id}`}
+                            checked={selectedUserIds.includes(u.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedUserIds(prev => [...prev, u.id]);
+                              } else {
+                                setSelectedUserIds(prev => prev.filter(id => id !== u.id));
+                              }
+                            }}
+                            data-testid={`checkbox-user-${u.id}`}
+                          />
+                          <Label htmlFor={`user-${u.id}`} className="text-sm cursor-pointer">
+                            {u.firstName} {u.lastName} ({u.email})
+                          </Label>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">{selectedUserIds.length} employee(s) selected</p>
                 </div>
@@ -832,8 +842,8 @@ export default function HRSettings() {
                     <SelectValue placeholder="Select leave type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {leaveTypes?.filter(lt => lt.isActive).map(lt => (
-                      <SelectItem key={lt.id} value={lt.id}>{lt.name}</SelectItem>
+                    {leaveTypes?.map(lt => (
+                      <SelectItem key={lt.id} value={lt.id}>{lt.name}{!lt.isActive ? " (inactive)" : ""}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
