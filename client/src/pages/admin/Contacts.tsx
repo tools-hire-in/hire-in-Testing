@@ -30,7 +30,7 @@ import type { Contact } from "@shared/schema";
 
 export default function AdminContacts() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -148,7 +148,8 @@ export default function AdminContacts() {
                           size="sm"
                           onClick={() => {
                             setSelectedContact(contact);
-                            if (contact.status === "new") {
+                            const canManage = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
+                            if (contact.status === "new" && canManage) {
                               markReadMutation.mutate(contact.id);
                             }
                           }}

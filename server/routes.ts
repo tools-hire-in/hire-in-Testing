@@ -466,7 +466,7 @@ export async function registerRoutes(
   });
 
   // Admin Contacts (HR and Operations roles can access - view)
-  app.get("/api/admin/contacts", requireRole("hr", "operations"), async (req, res) => {
+  app.get("/api/admin/contacts", requireAuth, async (req, res) => {
     try {
       const contacts = await storage.getContacts();
       res.json(contacts);
@@ -489,7 +489,7 @@ export async function registerRoutes(
   });
 
   // Admin Users - only Super Admin can view/manage team
-  app.get("/api/admin/users", requireRole("super_admin", "admin", "hr"), async (req, res) => {
+  app.get("/api/admin/users", requireAuth, async (req, res) => {
     try {
       const users = await storage.getAdminUsers();
       res.json(users);

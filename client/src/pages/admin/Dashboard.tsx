@@ -35,13 +35,15 @@ export default function AdminDashboard() {
     return null;
   }
 
+  const canManageJobs = ["super_admin", "admin", "operations"].includes(user?.role || "");
+
   const statCards = [
     {
       title: "Active Jobs",
       value: stats?.activeJobs ?? 0,
       subtitle: `${stats?.totalJobs ?? 0} total jobs`,
       icon: Briefcase,
-      href: "/admin/jobs",
+      href: canManageJobs ? "/admin/jobs" : "/admin/applications",
       color: "text-blue-600",
     },
     {
@@ -103,19 +105,21 @@ export default function AdminDashboard() {
         <div>
           <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/admin/jobs">
-              <Card className="hover-elevate cursor-pointer">
-                <CardContent className="flex items-center gap-3 p-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                    <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <div className="font-medium">Manage Jobs</div>
-                    <div className="text-sm text-muted-foreground">Upload CSV, edit listings</div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
+            {["super_admin", "admin", "operations"].includes(user?.role || "") && (
+              <Link href="/admin/jobs">
+                <Card className="hover-elevate cursor-pointer">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                      <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Manage Jobs</div>
+                      <div className="text-sm text-muted-foreground">Upload CSV, edit listings</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
             <Link href="/admin/applications">
               <Card className="hover-elevate cursor-pointer">
                 <CardContent className="flex items-center gap-3 p-4">
@@ -149,8 +153,8 @@ export default function AdminDashboard() {
                     <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
-                    <div className="font-medium">Team Management</div>
-                    <div className="text-sm text-muted-foreground">Manage admin users</div>
+                    <div className="font-medium">Team Directory</div>
+                    <div className="text-sm text-muted-foreground">View team members</div>
                   </div>
                 </CardContent>
               </Card>

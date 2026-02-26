@@ -62,13 +62,13 @@ const recruitmentMenu = [
     href: "/admin/contacts", 
     label: "Contacts", 
     icon: Mail,
-    roles: ["super_admin", "admin", "hr", "operations"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   { 
     href: "/admin/users", 
     label: "Team", 
     icon: Users,
-    roles: ["super_admin", "admin", "hr", "manager"]
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/audit-logs",
