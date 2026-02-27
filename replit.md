@@ -32,7 +32,7 @@ Preferred communication style: Simple, everyday language.
 ### HR Portal System
 An integrated internal employee management system within the admin panel featuring:
 - **Employee Features**: Dashboard, attendance tracking, leave management, holiday calendar, profile management, tickets, and an organizational chart.
-- **Manager Features**: Team attendance viewing and leave request approvals for direct reports. Leave approval includes an escalation mechanism.
+- **Manager Features**: Team attendance viewing and leave request approvals for direct reports. Leave approval includes an escalation mechanism. Attendance threshold: 8 hours (8 PM - 4 AM IST shift).
 - **HR/Admin Features**: Comprehensive HR settings for managing leave types, holidays, departments, and user management.
 - **Leave Accrual**: Hours-based leave accrual system where leaves are earned monthly based on hours worked.
 - **Regional Holidays**: Employees can select optional regional holidays.

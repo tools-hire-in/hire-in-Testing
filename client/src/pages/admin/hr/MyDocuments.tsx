@@ -34,6 +34,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AdminLayout } from "@/components/admin/AdminLayout";
 import {
   FileCheck,
   Upload,
@@ -129,7 +131,7 @@ const bankFormSchema = z.object({
   accountNumber: z.string().min(1, "Account number is required"),
   ifscCode: z.string().min(1, "IFSC code is required"),
   bankName: z.string().min(1, "Bank name is required"),
-  branchName: z.string().optional(),
+  branchName: z.string().min(1, "Branch name is required"),
 });
 
 const contactFormSchema = z.object({
@@ -333,19 +335,22 @@ export default function MyDocuments() {
 
   if (docsLoading || bankLoading || contactsLoading) {
     return (
-      <div className="space-y-6" data-testid="loading-my-documents">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-full" />
-        <div className="grid gap-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
+      <AdminLayout>
+        <div className="space-y-6" data-testid="loading-my-documents">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-full" />
+          <div className="grid gap-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-48 w-full" />
+            ))}
+          </div>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
 
   return (
+    <AdminLayout>
     <div className="space-y-6" data-testid="page-my-documents">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">My Documents</h1>
@@ -699,6 +704,22 @@ export default function MyDocuments() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={contactForm.control}
+                name="isPrimary"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="input-contact-is-primary"
+                      />
+                    </FormControl>
+                    <FormLabel className="font-normal">Primary contact</FormLabel>
+                  </FormItem>
+                )}
+              />
               <DialogFooter>
                 <Button
                   type="button"
@@ -725,5 +746,6 @@ export default function MyDocuments() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }

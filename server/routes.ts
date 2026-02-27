@@ -1879,7 +1879,7 @@ export async function registerRoutes(
       const getEffectiveStatus = (record: any) => {
         if (record.status === "on_leave" || record.status === "holiday") return record.status;
         if (record.punchIn && record.punchOut && record.totalHours) {
-          return parseFloat(record.totalHours as string) >= 9 ? "present" : "absent";
+          return parseFloat(record.totalHours as string) >= 8 ? "present" : "absent";
         }
         if (record.punchIn && !record.punchOut) return "present";
         return "absent";

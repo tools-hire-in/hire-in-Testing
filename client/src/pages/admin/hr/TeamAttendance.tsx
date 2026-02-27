@@ -145,7 +145,7 @@ export default function TeamAttendance() {
     if (att.status === "on_leave" || att.status === "holiday") return att.status;
     if (att.punchIn && att.punchOut && att.totalHours) {
       const hours = parseFloat(att.totalHours);
-      return hours >= 9 ? "present" : "absent";
+      return hours >= 8 ? "present" : "absent";
     }
     if (att.punchIn && !att.punchOut) return "working";
     return att.status || "absent";
@@ -411,7 +411,7 @@ function MemberMonthlyCalendar({
     if (!record) return isWeekend ? "weekend" : "absent";
     if (record.status === "on_leave" || record.status === "holiday") return record.status;
     if (record.punchIn && record.punchOut && record.totalHours) {
-      return parseFloat(record.totalHours) >= 9 ? "present" : "absent";
+      return parseFloat(record.totalHours) >= 8 ? "present" : "absent";
     }
     return record.status || "absent";
   };

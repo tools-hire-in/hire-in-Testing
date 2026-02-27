@@ -78,6 +78,8 @@ export function registerAuthRoutes(app: Express) {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        isActive: user.isActive,
+        totpEnabled: user.totpEnabled,
       });
     } catch (error) {
       console.error("Login error:", error);

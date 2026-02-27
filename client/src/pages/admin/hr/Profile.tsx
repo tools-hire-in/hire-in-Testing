@@ -69,6 +69,7 @@ function TwoFactorSection() {
     onSuccess: () => {
       toast({ title: "2FA Enabled", description: "Two-factor authentication has been enabled for your account." });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/totp/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setSetupStep("idle");
       setQrData(null);
       setVerifyCode("");
@@ -87,6 +88,7 @@ function TwoFactorSection() {
     onSuccess: () => {
       toast({ title: "2FA Disabled", description: "Two-factor authentication has been disabled." });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/totp/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setShowDisable(false);
       setDisableCode("");
     },

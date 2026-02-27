@@ -45,6 +45,9 @@ import {
   Send,
   Search,
   FileText,
+  FolderPlus,
+  Landmark,
+  Phone,
 } from "lucide-react";
 
 interface ComplianceUser {
@@ -88,6 +91,26 @@ interface ComplianceReport {
     noDocs: number;
   };
   employees: ComplianceEmployee[];
+}
+
+interface BankDetails {
+  id: string;
+  userId: string;
+  accountNumber: string | null;
+  ifscCode: string | null;
+  bankName: string | null;
+  branchName: string | null;
+}
+
+interface EmergencyContact {
+  id: string;
+  userId: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  isPrimary: boolean;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -147,6 +170,8 @@ export default function DocumentCompliance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [verifyDialog, setVerifyDialog] = useState<{ docId: string; action: "verified" | "rejected" } | null>(null);
   const [remarks, setRemarks] = useState("");
+  const [bankDetailsUserId, setBankDetailsUserId] = useState<string | null>(null);
+  const [emergencyContactsUserId, setEmergencyContactsUserId] = useState<string | null>(null);
 
   const { data: report, isLoading } = useQuery<ComplianceReport>({
     queryKey: ["/api/hr/document-compliance"],
@@ -179,6 +204,30 @@ export default function DocumentCompliance() {
     onError: () => {
       toast({ title: "Error", description: "Failed to send reminder.", variant: "destructive" });
     },
+  });
+
+  const initializeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("POST", `/api/hr/employee-documents/initialize/${userId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/document-compliance"] });
+      toast({ title: "Documents initialized", description: "Document checklist has been created for this employee." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to initialize documents.", variant: "destructive" });
+    },
+  });
+
+  const { data: bankDetails, isLoading: bankLoading } = useQuery<BankDetails>({
+    queryKey: ["/api/hr/employee-bank-details", bankDetailsUserId],
+    enabled: !!bankDetailsUserId,
+  });
+
+  const { data: emergencyContacts, isLoading: emergencyLoading } = useQuery<EmergencyContact[]>({
+    queryKey: ["/api/hr/employee-emergency-contacts", emergencyContactsUserId],
+    enabled: !!emergencyContactsUserId,
   });
 
   const departments = report
@@ -340,6 +389,10 @@ export default function DocumentCompliance() {
                     onReject={(docId) => { setVerifyDialog({ docId, action: "rejected" }); setRemarks(""); }}
                     onSendReminder={(userId) => reminderMutation.mutate(userId)}
                     isReminderPending={reminderMutation.isPending}
+                    onInitializeDocs={(userId) => initializeMutation.mutate(userId)}
+                    isInitializePending={initializeMutation.isPending}
+                    onViewBankDetails={(userId) => setBankDetailsUserId(userId)}
+                    onViewEmergencyContacts={(userId) => setEmergencyContactsUserId(userId)}
                   />
                 ))}
               </TableBody>
@@ -391,6 +444,96 @@ export default function DocumentCompliance() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!bankDetailsUserId} onOpenChange={() => setBankDetailsUserId(null)}>
+        <DialogContent data-testid="dialog-bank-details">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Landmark className="h-5 w-5" />
+              Bank Details
+            </DialogTitle>
+          </DialogHeader>
+          {bankLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-5 w-3/4" />
+            </div>
+          ) : bankDetails ? (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-muted-foreground">Account Number</span>
+                <span className="text-sm font-medium font-mono" data-testid="text-bank-account">{bankDetails.accountNumber || "—"}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-muted-foreground">IFSC Code</span>
+                <span className="text-sm font-medium font-mono" data-testid="text-bank-ifsc">{bankDetails.ifscCode || "—"}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-muted-foreground">Bank Name</span>
+                <span className="text-sm font-medium" data-testid="text-bank-name">{bankDetails.bankName || "—"}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm text-muted-foreground">Branch Name</span>
+                <span className="text-sm font-medium" data-testid="text-bank-branch">{bankDetails.branchName || "—"}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6" data-testid="text-no-bank-details">
+              No bank details found for this employee.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBankDetailsUserId(null)} data-testid="button-close-bank-details">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!emergencyContactsUserId} onOpenChange={() => setEmergencyContactsUserId(null)}>
+        <DialogContent data-testid="dialog-emergency-contacts">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              Emergency Contacts
+            </DialogTitle>
+          </DialogHeader>
+          {emergencyLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : emergencyContacts && emergencyContacts.length > 0 ? (
+            <div className="space-y-3">
+              {emergencyContacts.map((contact) => (
+                <div key={contact.id} className="border rounded-md p-3 space-y-1" data-testid={`emergency-contact-${contact.id}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium" data-testid={`text-contact-name-${contact.id}`}>{contact.name}</span>
+                    <Badge variant="secondary" className="text-[10px]">{contact.relationship}</Badge>
+                    {contact.isPrimary && <Badge variant="default" className="text-[10px]">Primary</Badge>}
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <p data-testid={`text-contact-phone-${contact.id}`}>Phone: {contact.phone}</p>
+                    {contact.email && <p data-testid={`text-contact-email-${contact.id}`}>Email: {contact.email}</p>}
+                    {contact.address && <p data-testid={`text-contact-address-${contact.id}`}>Address: {contact.address}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6" data-testid="text-no-emergency-contacts">
+              No emergency contacts found for this employee.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmergencyContactsUserId(null)} data-testid="button-close-emergency-contacts">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -403,9 +546,13 @@ interface EmployeeRowProps {
   onReject: (docId: string) => void;
   onSendReminder: (userId: string) => void;
   isReminderPending: boolean;
+  onInitializeDocs: (userId: string) => void;
+  isInitializePending: boolean;
+  onViewBankDetails: (userId: string) => void;
+  onViewEmergencyContacts: (userId: string) => void;
 }
 
-function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending }: EmployeeRowProps) {
+function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending, onInitializeDocs, isInitializePending, onViewBankDetails, onViewEmergencyContacts }: EmployeeRowProps) {
   const progressPercent = emp.requiredTotal > 0 ? Math.round((emp.requiredUploaded / emp.requiredTotal) * 100) : 0;
   const hasPendingDocs = emp.docs.some((d) => d.isRequired && d.status === "pending");
 
@@ -446,7 +593,19 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
         </TableCell>
         <TableCell>{getEmployeeStatusBadge(emp)}</TableCell>
         <TableCell>
-          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+            {emp.requiredTotal === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isInitializePending}
+                onClick={() => onInitializeDocs(emp.user.id)}
+                data-testid={`button-initialize-docs-${emp.user.id}`}
+              >
+                <FolderPlus className="h-3 w-3 mr-1" />
+                Initialize
+              </Button>
+            )}
             {hasPendingDocs && (
               <Button
                 size="sm"
@@ -459,6 +618,22 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                 Remind
               </Button>
             )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onViewBankDetails(emp.user.id)}
+              data-testid={`button-view-bank-${emp.user.id}`}
+            >
+              <Landmark />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onViewEmergencyContacts(emp.user.id)}
+              data-testid={`button-view-emergency-${emp.user.id}`}
+            >
+              <Phone />
+            </Button>
           </div>
         </TableCell>
         <TableCell>
