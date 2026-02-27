@@ -337,7 +337,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // Disable TOTP 2FA
-  app.post("/api/auth/totp/disable", requireAuth, async (req, res) => {
+  app.post("/api/auth/totp/disable", requireRole("super_admin"), async (req, res) => {
     try {
       const { code } = req.body;
       if (!code || typeof code !== "string") {
@@ -377,6 +377,32 @@ export function registerAuthRoutes(app: Express) {
     } catch (error) {
       console.error("TOTP disable error:", error);
       res.status(500).json({ message: "Failed to disable 2FA" });
+    }
+  });
+
+  app.post("/api/auth/totp/admin-reset/:userId", requireRole("super_admin"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const [targetUser] = await db
+        .select({ id: adminUsers.id, email: adminUsers.email, totpEnabled: adminUsers.totpEnabled })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, userId))
+        .limit(1);
+
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await db
+        .update(adminUsers)
+        .set({ totpEnabled: false, totpSecret: null })
+        .where(eq(adminUsers.id, userId));
+
+      res.json({ message: `2FA reset for ${targetUser.email}` });
+    } catch (error) {
+      console.error("Admin TOTP reset error:", error);
+      res.status(500).json({ message: "Failed to reset 2FA" });
     }
   });
 

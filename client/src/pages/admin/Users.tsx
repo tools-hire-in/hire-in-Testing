@@ -232,6 +232,19 @@ export default function AdminUsers() {
     },
   });
 
+  const reset2FAMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/auth/totp/admin-reset/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "2FA Reset", description: "Two-factor authentication has been reset. The user will need to set it up again on next login." });
+    },
+    onError: () => {
+      toast({ title: "Failed to reset 2FA", variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/admin/users/${id}`);
@@ -427,6 +440,7 @@ export default function AdminUsers() {
                     <TableHead>Manager</TableHead>
                     <TableHead>Joining Date</TableHead>
                     <TableHead>Status</TableHead>
+                    {isSuperAdmin && <TableHead>2FA</TableHead>}
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -434,7 +448,7 @@ export default function AdminUsers() {
                   {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 11 }).map((_, j) => (
+                        {Array.from({ length: isSuperAdmin ? 12 : 11 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
@@ -471,6 +485,17 @@ export default function AdminUsers() {
                             {adminUser.isActive ? "Active" : "Disabled"}
                           </Badge>
                         </TableCell>
+                        {isSuperAdmin && (
+                          <TableCell>
+                            <Badge
+                              variant={(adminUser as any).totpEnabled ? "default" : "outline"}
+                              className={(adminUser as any).totpEnabled ? "bg-green-600" : "text-amber-600 border-amber-600"}
+                              data-testid={`badge-2fa-${adminUser.id}`}
+                            >
+                              {(adminUser as any).totpEnabled ? "Enabled" : "Off"}
+                            </Badge>
+                          </TableCell>
+                        )}
                         <TableCell className="text-right">
                           {(canEditUser(adminUser) || canEditHierarchy || canResetPassword(adminUser)) && (
                             <DropdownMenu>
@@ -508,6 +533,15 @@ export default function AdminUsers() {
                                   >
                                     <Mail className="h-4 w-4 mr-2" />
                                     Resend Invitation
+                                  </DropdownMenuItem>
+                                )}
+                                {isSuperAdmin && adminUser.id !== user?.id && (adminUser as any).totpEnabled && (
+                                  <DropdownMenuItem
+                                    onClick={() => reset2FAMutation.mutate(adminUser.id)}
+                                    data-testid={`menu-reset-2fa-${adminUser.id}`}
+                                  >
+                                    <Shield className="h-4 w-4 mr-2" />
+                                    Reset 2FA
                                   </DropdownMenuItem>
                                 )}
 

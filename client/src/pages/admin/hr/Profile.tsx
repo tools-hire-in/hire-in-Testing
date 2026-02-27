@@ -34,11 +34,14 @@ interface AttendanceRecord {
 
 function TwoFactorSection() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [setupStep, setSetupStep] = useState<"idle" | "qr" | "verify">("idle");
   const [qrData, setQrData] = useState<{ qrCode: string; secret: string } | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
   const [disableCode, setDisableCode] = useState("");
   const [showDisable, setShowDisable] = useState(false);
+
+  const isSuperAdmin = user?.role === "super_admin";
 
   const { data: totpStatus, isLoading: statusLoading } = useQuery<{ totpEnabled: boolean }>({
     queryKey: ["/api/auth/totp/status"],
@@ -221,18 +224,20 @@ function TwoFactorSection() {
               <ShieldCheck className="h-4 w-4 text-green-600" />
               <span>Your account is protected with two-factor authentication</span>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowDisable(true)}
-              data-testid="button-show-disable-2fa"
-            >
-              <ShieldOff className="mr-2 h-4 w-4" />
-              Disable 2FA
-            </Button>
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDisable(true)}
+                data-testid="button-show-disable-2fa"
+              >
+                <ShieldOff className="mr-2 h-4 w-4" />
+                Disable 2FA
+              </Button>
+            )}
           </div>
         )}
 
-        {isEnabled && showDisable && (
+        {isEnabled && showDisable && isSuperAdmin && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Enter your authenticator code to confirm disabling 2FA

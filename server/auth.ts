@@ -82,6 +82,7 @@ const TOTP_EXEMPT_PATHS = [
   "/api/auth/totp/setup",
   "/api/auth/totp/verify",
   "/api/auth/totp/disable",
+  "/api/auth/totp/admin-reset",
   "/api/hr/my-profile",
 ];
 
