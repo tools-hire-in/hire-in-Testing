@@ -53,45 +53,33 @@ import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
 const recruitmentMenu = [
-  { 
-    href: "/admin", 
-    label: "Dashboard", 
+  {
+    href: "/admin",
+    label: "Dashboard",
     icon: LayoutDashboard,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  { 
-    href: "/admin/jobs", 
-    label: "Jobs", 
-    icon: Briefcase,
-    roles: ["super_admin", "admin", "operations"]
-  },
-  { 
-    href: "/admin/applications", 
-    label: "Applications", 
-    icon: FileText,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  { 
-    href: "/admin/contacts", 
-    label: "Contacts", 
-    icon: Mail,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  { 
-    href: "/admin/users", 
-    label: "Team", 
-    icon: Users,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+    roles: ["super_admin", "admin", "operations", "manager"]
   },
   {
-    href: "/admin/audit-logs",
-    label: "Audit Logs",
+    href: "/admin/jobs",
+    label: "Jobs",
+    icon: Briefcase,
+    roles: ["super_admin", "admin", "operations", "manager"]
+  },
+  {
+    href: "/admin/applications",
+    label: "Applications",
     icon: FileText,
-    roles: ["super_admin", "admin"]
+    roles: ["super_admin", "admin", "operations", "manager"]
+  },
+  {
+    href: "/admin/contacts",
+    label: "Contacts",
+    icon: Mail,
+    roles: ["super_admin", "admin", "operations", "manager"]
   },
 ];
 
-const hrPortalMenu = [
+const employeeMenu = [
   {
     href: "/admin/hr",
     label: "My Dashboard",
@@ -100,13 +88,13 @@ const hrPortalMenu = [
   },
   {
     href: "/admin/hr/attendance",
-    label: "Attendance",
+    label: "My Attendance",
     icon: Clock,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
     href: "/admin/hr/leaves",
-    label: "Leave Management",
+    label: "My Leaves",
     icon: CalendarCheck,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
@@ -114,36 +102,6 @@ const hrPortalMenu = [
     href: "/admin/hr/holidays",
     label: "Holiday Calendar",
     icon: CalendarDays,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  {
-    href: "/admin/hr/profile",
-    label: "My Profile",
-    icon: UserCircle,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  {
-    href: "/admin/hr/tickets",
-    label: "Tickets",
-    icon: Ticket,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  {
-    href: "/admin/hr/team-attendance",
-    label: "Team Attendance",
-    icon: Clock,
-    roles: ["super_admin", "admin", "hr", "manager"]
-  },
-  {
-    href: "/admin/hr/leave-approvals",
-    label: "Leave Approvals",
-    icon: CalendarCheck,
-    roles: ["super_admin", "admin", "hr", "manager"]
-  },
-  {
-    href: "/admin/hr/org-chart",
-    label: "Org Chart",
-    icon: Network,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
@@ -159,6 +117,45 @@ const hrPortalMenu = [
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
+    href: "/admin/hr/tickets",
+    label: "Tickets",
+    icon: Ticket,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
+    href: "/admin/hr/org-chart",
+    label: "Org Chart",
+    icon: Network,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+  {
+    href: "/admin/hr/profile",
+    label: "My Profile",
+    icon: UserCircle,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
+  },
+];
+
+const hrOpsMenu = [
+  {
+    href: "/admin/users",
+    label: "Team Management",
+    icon: Users,
+    roles: ["super_admin", "admin", "hr", "operations"]
+  },
+  {
+    href: "/admin/hr/team-attendance",
+    label: "Team Attendance",
+    icon: Clock,
+    roles: ["super_admin", "admin", "hr", "operations", "manager"]
+  },
+  {
+    href: "/admin/hr/leave-approvals",
+    label: "Leave Approvals",
+    icon: CalendarCheck,
+    roles: ["super_admin", "admin", "hr", "manager"]
+  },
+  {
     href: "/admin/hr/salary-reports",
     label: "Salary Reports",
     icon: FileBarChart,
@@ -169,6 +166,12 @@ const hrPortalMenu = [
     label: "Document Compliance",
     icon: ClipboardCheck,
     roles: ["super_admin", "admin", "hr"]
+  },
+  {
+    href: "/admin/audit-logs",
+    label: "Audit Logs",
+    icon: FileText,
+    roles: ["super_admin", "admin"]
   },
   {
     href: "/admin/hr/settings",
@@ -207,7 +210,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     user?.role && item.roles.includes(user.role)
   );
 
-  const filteredHR = hrPortalMenu.filter(item => 
+  const filteredEmployee = employeeMenu.filter(item => 
+    user?.role && item.roles.includes(user.role)
+  );
+
+  const filteredHrOps = hrOpsMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
 
@@ -268,49 +275,77 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </div>
             </SidebarGroup>
 
-            <SidebarGroup>
-              <SidebarGroupLabel>Recruitment</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {filteredRecruitment.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive(item.href)}
-                        data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                      >
-                        <Link href={item.href}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {filteredRecruitment.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Recruitment</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {filteredRecruitment.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive(item.href)}
+                          data-testid={`nav-recruit-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                        >
+                          <Link href={item.href}>
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
 
-            <SidebarGroup>
-              <SidebarGroupLabel>HR Portal</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {filteredHR.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive(item.href)}
-                        data-testid={`nav-hr-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                      >
-                        <Link href={item.href}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {filteredEmployee.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Employee</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {filteredEmployee.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive(item.href)}
+                          data-testid={`nav-emp-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                        >
+                          <Link href={item.href}>
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
+
+            {filteredHrOps.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>HR & Operations</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {filteredHrOps.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive(item.href)}
+                          data-testid={`nav-hrops-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                        >
+                          <Link href={item.href}>
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
 
             <SidebarGroup className="mt-auto">
               <SidebarGroupContent>

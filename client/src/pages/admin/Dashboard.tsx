@@ -25,13 +25,18 @@ export default function AdminDashboard() {
     enabled: isAuthenticated,
   });
 
+  const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager"].includes(user?.role || "");
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       setLocation("/admin/login");
     }
-  }, [authLoading, isAuthenticated, setLocation]);
+    if (!authLoading && isAuthenticated && !hasRecruitmentAccess) {
+      setLocation("/admin/hr");
+    }
+  }, [authLoading, isAuthenticated, hasRecruitmentAccess, setLocation]);
 
-  if (authLoading || !isAuthenticated) {
+  if (authLoading || !isAuthenticated || !hasRecruitmentAccess) {
     return null;
   }
 
