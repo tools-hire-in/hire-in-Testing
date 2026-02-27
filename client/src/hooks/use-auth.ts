@@ -8,6 +8,7 @@ export interface AuthUser {
   lastName: string;
   role: "super_admin" | "admin" | "hr" | "operations" | "manager" | "employee";
   isActive: boolean;
+  totpEnabled: boolean;
 }
 
 async function fetchUser(): Promise<AuthUser | null> {

@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useCallback } from "react";
 import {
   LayoutDashboard,
   Briefcase,
@@ -20,8 +21,19 @@ import {
   Network,
   FileCheck,
   ClipboardCheck,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +48,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useAuth, type AuthUser } from "@/hooks/use-auth";
+import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
@@ -179,8 +192,16 @@ interface AdminLayoutProps {
 }
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+
+  const handleIdleTimeout = useCallback(() => {
+    logout();
+  }, [logout]);
+
+  const { showWarning, remainingSeconds, dismissWarning } = useIdleTimeout(handleIdleTimeout);
+
+  const needs2FA = user && !user.totpEnabled && !location.startsWith("/admin/hr/profile");
 
   const filteredRecruitment = recruitmentMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
@@ -333,9 +354,56 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto p-6 bg-muted/20">{children}</main>
+          <main className="flex-1 overflow-auto p-6 bg-muted/20">
+            {needs2FA ? (
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="max-w-md w-full text-center space-y-6 p-8">
+                  <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <ShieldAlert className="h-8 w-8 text-amber-600" />
+                  </div>
+                  <div className="space-y-2">
+                    <h2 className="text-2xl font-bold" data-testid="text-2fa-required-title">Two-Factor Authentication Required</h2>
+                    <p className="text-muted-foreground">
+                      For security purposes, all employees must enable two-factor authentication before accessing the portal. Please set up 2FA on your profile to continue.
+                    </p>
+                  </div>
+                  <Button
+                    size="lg"
+                    onClick={() => setLocation("/admin/hr/profile")}
+                    data-testid="button-setup-2fa-redirect"
+                  >
+                    <Shield className="mr-2 h-4 w-4" />
+                    Go to Profile & Set Up 2FA
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              children
+            )}
+          </main>
         </div>
       </div>
+
+      <Dialog open={showWarning} onOpenChange={() => dismissWarning()}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-session-timeout">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Session Timeout Warning
+            </DialogTitle>
+            <DialogDescription>
+              You've been inactive for a while. Your session will expire in{" "}
+              <span className="font-bold text-foreground">{Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, "0")}</span>.
+              Click below or interact with the page to stay signed in.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={dismissWarning} data-testid="button-stay-signed-in">
+              Stay Signed In
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }

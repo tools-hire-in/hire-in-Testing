@@ -5,7 +5,7 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser } from "@shared/schema";
-import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth } from "./auth";
+import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail } from "./email";
@@ -161,6 +161,10 @@ export async function registerRoutes(
   // Setup session-based authentication (must be before other routes)
   setupSession(app);
   registerAuthRoutes(app);
+
+  // Enforce 2FA for all admin/HR API routes
+  app.use("/api/admin", require2FA);
+  app.use("/api/hr", require2FA);
   
   // ==========================================
   // PUBLIC API ROUTES

@@ -30,12 +30,13 @@ declare module "express-session" {
 
 // Setup session middleware
 export function setupSession(app: Express) {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtlSeconds = 30 * 60; // 30 minutes in seconds
+  const sessionTtlMs = sessionTtlSeconds * 1000; // 30 minutes in milliseconds (for cookie)
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: false,
-    ttl: sessionTtl,
+    ttl: sessionTtlSeconds,
     tableName: "sessions",
   });
 
@@ -44,7 +45,7 @@ export function setupSession(app: Express) {
   const cookieConfig: session.CookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    maxAge: sessionTtl,
+    maxAge: sessionTtlMs,
     sameSite: "lax" as const,
   };
 
@@ -58,6 +59,7 @@ export function setupSession(app: Express) {
       store: sessionStore,
       resave: false,
       saveUninitialized: false,
+      rolling: true,
       cookie: cookieConfig,
     })
   );
@@ -68,6 +70,40 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
+  next();
+}
+
+// Middleware to enforce 2FA setup - blocks API access if 2FA not enabled
+// Excludes auth routes and TOTP setup routes
+const TOTP_EXEMPT_PATHS = [
+  "/api/auth/me",
+  "/api/auth/logout",
+  "/api/auth/totp/status",
+  "/api/auth/totp/setup",
+  "/api/auth/totp/verify",
+  "/api/auth/totp/disable",
+  "/api/hr/my-profile",
+];
+
+export async function require2FA(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return next();
+  }
+
+  if (TOTP_EXEMPT_PATHS.some(p => req.path === p || req.path.startsWith(p + "/"))) {
+    return next();
+  }
+
+  const [user] = await db
+    .select({ totpEnabled: adminUsers.totpEnabled })
+    .from(adminUsers)
+    .where(eq(adminUsers.id, req.session.userId))
+    .limit(1);
+
+  if (user && !user.totpEnabled) {
+    return res.status(403).json({ message: "Two-factor authentication must be enabled before accessing this resource." });
+  }
+
   next();
 }
 
@@ -98,6 +134,7 @@ export async function getCurrentUser(req: Request) {
       lastName: adminUsers.lastName,
       role: adminUsers.role,
       isActive: adminUsers.isActive,
+      totpEnabled: adminUsers.totpEnabled,
     })
     .from(adminUsers)
     .where(eq(adminUsers.id, req.session.userId))

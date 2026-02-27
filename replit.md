@@ -20,7 +20,7 @@ Preferred communication style: Simple, everyday language.
 - **Language**: TypeScript
 - **API Style**: RESTful JSON APIs
 - **Authentication**: Replit Auth (OpenID Connect) with Passport.js and custom email/password authentication (bcrypt hashing)
-- **Session Management**: Express-session with PostgreSQL store
+- **Session Management**: Express-session with PostgreSQL store (30-minute TTL, rolling sessions)
 - **File Uploads**: Multer with presigned URLs for object storage
 - **Authorization**: Role-Based Access Control (RBAC) with roles: super_admin, admin, hr, operations, manager, employee.
 
@@ -40,6 +40,7 @@ An integrated internal employee management system within the admin panel featuri
 - **Manual Adjustments**: HR can manually adjust leave balances with an audit trail.
 - **Employee ID System**: Auto-generated unique employee IDs.
 - **Post-Onboarding Documents**: A system for managing employee documents, bank details, and emergency contacts with compliance tracking and reminders.
+- **Security**: Mandatory TOTP 2FA for all users (enforced on both frontend and backend), 30-minute auto session timeout with 15-minute idle warning, rolling sessions.
 
 ## External Dependencies
 
