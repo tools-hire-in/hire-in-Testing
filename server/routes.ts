@@ -1753,14 +1753,14 @@ export async function registerRoutes(
   });
 
   // --- Manager: Team Attendance ---
-  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager", "operations"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
       const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
 
       let teamMembers: AdminUser[];
-      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+      if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
         teamMembers = await storage.getAdminUsers();
       } else {
         teamMembers = await storage.getTeamMembers(userId);
@@ -1785,7 +1785,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager", "operations"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -1797,7 +1797,7 @@ export async function registerRoutes(
       }
 
       let teamMembers: AdminUser[];
-      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+      if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
         teamMembers = await storage.getAdminUsers();
       } else {
         teamMembers = await storage.getTeamMembers(userId);
@@ -1819,6 +1819,110 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch team attendance" });
+    }
+  });
+
+  app.get("/api/hr/attendance/member/:memberId/range", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const memberId = req.params.memberId;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      const records = await storage.getAttendanceByUser(memberId, startDate, endDate);
+      const member = await storage.getAdminUser(memberId);
+
+      res.json({
+        member: member ? {
+          id: member.id, firstName: member.firstName, lastName: member.lastName,
+          email: member.email, designation: member.designation, departmentId: member.departmentId
+        } : null,
+        attendance: records
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch member attendance" });
+    }
+  });
+
+  app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      let teamMembers: AdminUser[];
+      if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
+        teamMembers = await storage.getAdminUsers();
+      } else {
+        teamMembers = await storage.getTeamMembers(userId);
+      }
+
+      if (teamMembers.length === 0) {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="attendance_report_${startDate}_${endDate}.csv"`);
+        return res.send("Employee,Email,Designation,Date,Punch In,Punch Out,Duration (Hours),Status\n");
+      }
+
+      const memberIds = teamMembers.map(m => m.id);
+      const records = await storage.getAttendanceByTeamRange(memberIds, startDate, endDate);
+
+      const memberMap = new Map(teamMembers.map(m => [m.id, m]));
+
+      const getEffectiveStatus = (record: any) => {
+        if (record.status === "on_leave" || record.status === "holiday") return record.status;
+        if (record.punchIn && record.punchOut && record.totalHours) {
+          return parseFloat(record.totalHours as string) >= 9 ? "present" : "absent";
+        }
+        if (record.punchIn && !record.punchOut) return "present";
+        return "absent";
+      };
+
+      const csvRows = ["Employee,Email,Designation,Date,Punch In,Punch Out,Duration (Hours),Status"];
+      for (const record of records) {
+        const member = memberMap.get(record.userId);
+        const name = member ? `${member.firstName} ${member.lastName}` : "Unknown";
+        const email = member?.email || "";
+        const designation = member?.designation || "";
+        const punchIn = record.punchIn ? new Date(record.punchIn).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
+        const punchOut = record.punchOut ? new Date(record.punchOut).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
+        const hours = record.totalHours ? parseFloat(record.totalHours as string).toFixed(2) : "0.00";
+        const status = getEffectiveStatus(record);
+        csvRows.push(`"${name}","${email}","${designation}","${record.date}","${punchIn}","${punchOut}","${hours}","${status}"`);
+      }
+
+      const allDates: string[] = [];
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split("T")[0];
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) allDates.push(ds);
+      }
+
+      for (const member of teamMembers) {
+        const memberRecords = records.filter(r => r.userId === member.id);
+        const recordDates = new Set(memberRecords.map(r => r.date));
+        for (const date of allDates) {
+          if (!recordDates.has(date) && date <= new Date().toISOString().split("T")[0]) {
+            csvRows.push(`"${member.firstName} ${member.lastName}","${member.email}","${member.designation || ""}","${date}","","","0.00","absent"`);
+          }
+        }
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="attendance_report_${startDate}_${endDate}.csv"`);
+      res.send(csvRows.join("\n"));
+    } catch (error) {
+      console.error("Download attendance error:", error);
+      res.status(500).json({ error: "Failed to generate attendance report" });
     }
   });
 
