@@ -37,11 +37,13 @@ An integrated internal employee management system within the admin panel featuri
 - **Leave Accrual**: Hours-based leave accrual system where leaves are earned monthly based on hours worked.
 - **Regional Holidays**: Employees can select optional regional holidays.
 - **Salary Processing**: Automated monthly salary reports with CSV attachments and individual salary slip generation.
-- **HR Tools**: Admin/HR tools page (`/admin/hr/tools`) with two generators:
+- **HR Tools**: Admin/HR tools page (`/admin/hr/tools`) with three tabs:
   - **Salary Slip Generator**: Create payslips matching company template (Rayomind Solutions DBA Hire'in Solutions format) with employee info grid, earnings (Basic/HRA/Conveyance/Special Allowance), deductions (PF/ESI/PT/TDS), auto-calculated totals, and number-to-words. Can load from existing salary data or enter custom values. Preview inline and download as PDF.
-  - **Offer Letter Generator**: Produce Word (DOCX) offer letters matching the company legal template with 12 sections + Annexure-R (BYOD). Form-driven with auto-fill from employee records. Uses `docx` npm package for server-side DOCX generation.
+  - **Offer Letter Generator**: Produce Word (DOCX) offer letters matching the company legal template with 12 sections + Annexure-R (BYOD). Form-driven with auto-fill from employee records, department dropdown, reporting manager dropdown, candidate personal email. Uses `docx` npm package for server-side DOCX generation. Can download DOCX or send offer letter directly via email for digital acceptance.
+  - **Offer Letters Dashboard**: Tracks all sent offer letters with statuses (sent/viewed/accepted/onboarded/expired/cancelled). Actions: cancel sent/viewed offers, start onboarding for accepted offers. Start Onboarding modal: enter @hire-in.com email → creates employee profile (with cool employee ID) → sends comprehensive 10-step onboarding welcome email.
+- **Offer Acceptance Flow**: Public page at `/onboard/:token` — candidate views full offer letter, accepts via checkbox + typed name (audit trail with IP/user-agent). Offer letters table tracks token, status, acceptance details, and resulting employee profile.
 - **Manual Adjustments**: HR can manually adjust leave balances with an audit trail.
-- **Employee ID System**: Auto-generated unique employee IDs.
+- **Employee ID System**: Format `HIS-{DEPT}-{WORD}` (e.g., HIS-IT-NOVA, HIS-HC-LYNX). Uses ~200 curated memorable 4-letter words, checks for collisions against existing IDs, fallback to random 4 letters if exhausted.
 - **Post-Onboarding Documents**: A system for managing employee documents, bank details, and emergency contacts with compliance tracking and reminders.
 - **Security**: Mandatory TOTP 2FA for all users (enforced on both frontend and backend), 30-minute auto session timeout with 15-minute idle warning, rolling sessions.
 

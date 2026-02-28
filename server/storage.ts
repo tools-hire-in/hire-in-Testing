@@ -20,6 +20,7 @@ import {
   employeeDocuments,
   employeeBankDetails,
   employeeEmergencyContacts,
+  offerLetters,
   type Job,
   type InsertJob,
   type Application,
@@ -58,6 +59,8 @@ import {
   type InsertEmployeeBankDetails,
   type EmployeeEmergencyContact,
   type InsertEmployeeEmergencyContact,
+  type OfferLetter,
+  type InsertOfferLetter,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -187,6 +190,13 @@ export interface IStorage {
   createEmergencyContact(contact: InsertEmployeeEmergencyContact): Promise<EmployeeEmergencyContact>;
   updateEmergencyContact(id: string, updates: Partial<EmployeeEmergencyContact>): Promise<EmployeeEmergencyContact | undefined>;
   deleteEmergencyContact(id: string): Promise<boolean>;
+
+  // Offer Letters
+  createOfferLetter(data: InsertOfferLetter): Promise<OfferLetter>;
+  getOfferLetterByToken(token: string): Promise<OfferLetter | undefined>;
+  getOfferLetter(id: string): Promise<OfferLetter | undefined>;
+  updateOfferLetter(id: string, updates: Partial<OfferLetter>): Promise<OfferLetter | undefined>;
+  getOfferLetters(): Promise<OfferLetter[]>;
 
   // Stats
   getStats(): Promise<{
@@ -1040,6 +1050,40 @@ export class DatabaseStorage implements IStorage {
   async deleteEmergencyContact(id: string): Promise<boolean> {
     await db.delete(employeeEmergencyContacts).where(eq(employeeEmergencyContacts.id, id));
     return true;
+  }
+
+  // ==========================================
+  // OFFER LETTERS
+  // ==========================================
+
+  async createOfferLetter(data: InsertOfferLetter): Promise<OfferLetter> {
+    const [created] = await db.insert(offerLetters).values(data).returning();
+    return created;
+  }
+
+  async getOfferLetterByToken(token: string): Promise<OfferLetter | undefined> {
+    const [letter] = await db.select().from(offerLetters)
+      .where(eq(offerLetters.token, token));
+    return letter;
+  }
+
+  async getOfferLetter(id: string): Promise<OfferLetter | undefined> {
+    const [letter] = await db.select().from(offerLetters)
+      .where(eq(offerLetters.id, id));
+    return letter;
+  }
+
+  async updateOfferLetter(id: string, updates: Partial<OfferLetter>): Promise<OfferLetter | undefined> {
+    const [updated] = await db.update(offerLetters)
+      .set(updates)
+      .where(eq(offerLetters.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getOfferLetters(): Promise<OfferLetter[]> {
+    return db.select().from(offerLetters)
+      .orderBy(desc(offerLetters.createdAt));
   }
 }
 

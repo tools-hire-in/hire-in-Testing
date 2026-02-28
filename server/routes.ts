@@ -8,7 +8,7 @@ import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAd
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
@@ -16,42 +16,79 @@ import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-function generateEmployeeId(departmentName: string | null, joiningDate: string | null): string {
-  const deptAbbreviations: Record<string, string> = {
-    "information technology": "IT", "it": "IT", "technology": "IT",
-    "human resources": "HR", "hr": "HR",
-    "engineering": "ENG", "eng": "ENG",
-    "operations": "OPS", "ops": "OPS",
-    "finance": "FIN", "fin": "FIN",
-    "marketing": "MKT", "mkt": "MKT",
-    "sales": "SLS", "sls": "SLS",
-    "administration": "ADM", "admin": "ADM",
-    "legal": "LGL", "lgl": "LGL",
-    "healthcare": "HC", "health care": "HC",
-    "delivery": "DLV", "dlv": "DLV",
-    "recruitment": "REC", "rec": "REC",
-    "accounts": "ACC", "acc": "ACC",
-    "management": "MGT", "mgt": "MGT",
-  };
+const DEPT_ABBREVIATIONS: Record<string, string> = {
+  "information technology": "IT", "it": "IT", "technology": "IT",
+  "human resources": "HR", "hr": "HR",
+  "engineering": "ENG", "eng": "ENG",
+  "operations": "OPS", "ops": "OPS",
+  "finance": "FIN", "fin": "FIN",
+  "marketing": "MKT", "mkt": "MKT",
+  "sales": "SLS", "sls": "SLS",
+  "administration": "ADM", "admin": "ADM",
+  "legal": "LGL", "lgl": "LGL",
+  "healthcare": "HC", "health care": "HC",
+  "delivery": "DLV", "dlv": "DLV",
+  "recruitment": "REC", "rec": "REC",
+  "accounts": "ACC", "acc": "ACC",
+  "management": "MGT", "mgt": "MGT",
+};
 
+const COOL_WORDS = [
+  "NOVA","LYNX","BOLT","ARIA","SAGE","FLUX","ONYX","APEX","ECHO","LUNA",
+  "NEON","VIBE","RUNE","AURA","BLIZ","VOLT","ZENO","ORBI","JADE","IRIS",
+  "HAWK","FANG","DUSK","CODA","BYTE","AXON","WREN","VALE","TUSK","SPIN",
+  "RIFT","QUIL","PYRE","OPAL","MYTH","LARK","KNOT","JINX","HAZE","GRIT",
+  "FURY","ELMS","DIVE","CYAN","BRIM","AMPL","ZEST","YUZU","XION","WISP",
+  "TIDE","SOUL","RAZE","PEAK","OMNI","NOVA","MIST","LINK","KITE","JAZZ",
+  "IRON","HELM","GLOW","FINN","EDGE","DUNE","CORE","BLOX","ATOM","ZERO",
+  "YOGI","XENO","WAVE","VOID","UNIT","TREK","STAR","RUST","QUIX","PYRO",
+  "OXID","NEXU","MARS","LYRA","KODA","JOLT","ICON","HYPR","GRID","FUSE",
+  "EPIC","DART","CRUX","BIOS","AXLE","ZION","YARA","XRAY","WING","VEGA",
+  "URSA","TRON","SILO","RIOT","QUAD","PIXL","ORYX","NUKE","MODE","LUSH",
+  "KEEN","JUST","ISLE","HIVE","GALE","FIRE","ENIG","DAWN","CLAY","BANE",
+  "ALFA","ZINC","YOKE","XIST","WARP","VINE","UPRA","TORC","SURF","ROOK",
+  "POLO","NOIR","MEGA","LAVA","KAON","JEDI","IBIS","HORA","GIZA","FLAM",
+  "ELAN","DOJO","CHIP","BOHR","ANSI","ZEPP","YANG","XION","WASP","VORTX",
+  "UMBR","TIKI","STYX","RHEN","QSAR","PHON","OBOE","NERD","MESA","LOOM",
+  "KOEL","JIVY","IKON","HYPO","GUST","FIZZ","EXPO","DRAX","COAX","BARD",
+  "ARCH","ZEAL","YAWL","XACT","WHIZ","VEER","ULNA","TURB","SPAR","RIFF",
+  "QUAY","PLUM","OPUS","NULL","MOXO","LOOP","KUBO","JOBI","INKY","HULK",
+  "GRIN","FRAY","EMIT","DRAM","CUSP","BREW","AVID","ZETA","YARN","XENA",
+];
+
+async function generateEmployeeId(departmentName: string | null): Promise<string> {
   let abbrev = "GEN";
   if (departmentName) {
     const lower = departmentName.toLowerCase().trim();
-    abbrev = deptAbbreviations[lower] || departmentName.substring(0, 3).toUpperCase();
+    abbrev = DEPT_ABBREVIATIONS[lower] || departmentName.substring(0, 3).toUpperCase();
   }
 
-  let dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  if (joiningDate) {
-    dateStr = joiningDate.replace(/-/g, "");
+  const prefix = `HIS-${abbrev}-`;
+
+  const allUsers = await storage.getAdminUsers();
+  const usedWords = new Set(
+    allUsers
+      .map(u => u.employeeId)
+      .filter(id => id && id.startsWith(prefix))
+      .map(id => id!.substring(prefix.length))
+  );
+
+  const available = COOL_WORDS.filter(w => !usedWords.has(w));
+
+  let word: string;
+  if (available.length > 0) {
+    word = available[Math.floor(Math.random() * available.length)];
+  } else {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    do {
+      word = "";
+      for (let i = 0; i < 4; i++) {
+        word += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    } while (usedWords.has(word));
   }
 
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let random4 = "";
-  for (let i = 0; i < 4; i++) {
-    random4 += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-
-  return `HIS-${abbrev}${dateStr}-${random4}`;
+  return `${prefix}${word}`;
 }
 const objectStorageService = new ObjectStorageService();
 
@@ -544,7 +581,7 @@ export async function registerRoutes(
         const dept = await storage.getDepartment(departmentId);
         if (dept) deptName = dept.name;
       }
-      const employeeIdVal = generateEmployeeId(deptName, joiningDate || null);
+      const employeeIdVal = await generateEmployeeId(deptName);
 
       const user = await storage.createAdminUser({
         email: email.toLowerCase(),
@@ -695,7 +732,7 @@ export async function registerRoutes(
             const dept = (await storage.getDepartments?.())?.find((d: any) => d.id === departmentId);
             if (dept) bulkDeptName = dept.name;
           }
-          const bulkEmployeeId = generateEmployeeId(bulkDeptName, joiningDate || null);
+          const bulkEmployeeId = await generateEmployeeId(bulkDeptName);
 
           const newUser = await storage.createAdminUser({
             email,
@@ -2544,6 +2581,333 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Offer letter generation error:", error);
       res.status(500).json({ error: "Failed to generate offer letter" });
+    }
+  });
+
+  // ==========================================
+  // OFFER LETTERS — Send, List, Accept, Onboard
+  // ==========================================
+
+  // Send offer letter
+  app.post("/api/hr/tools/offer-letters", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { candidateTitle, candidateName, candidatePersonalEmail, candidateAddress,
+        designation, subjectDesignation, reportingToUserId, departmentId,
+        employmentType, proposedStartDate, salary, salaryInWords,
+        location, jurisdiction, hrManagerName, offerDate } = req.body;
+
+      if (!candidateName || !candidatePersonalEmail || !designation) {
+        return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const currentUser = req.user as AdminUser;
+
+      const offerLetter = await storage.createOfferLetter({
+        token,
+        status: "sent",
+        candidateTitle: candidateTitle || "Mr.",
+        candidateName,
+        candidatePersonalEmail: candidatePersonalEmail.toLowerCase(),
+        candidateAddress: candidateAddress || null,
+        designation,
+        subjectDesignation: subjectDesignation || designation,
+        reportingToUserId: reportingToUserId || null,
+        departmentId: departmentId || null,
+        employmentType: employmentType || "Full-time / Regular",
+        proposedStartDate: proposedStartDate || null,
+        salary: salary || null,
+        salaryInWords: salaryInWords || null,
+        location: location || "Delhi",
+        jurisdiction: jurisdiction || "Delhi",
+        hrManagerName: hrManagerName || null,
+        offerDate: offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+        createdBy: currentUser.id,
+        expiresAt,
+        hireInEmail: null,
+      });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/onboard/${token}`;
+
+      await sendOfferLetterEmail({
+        to: candidatePersonalEmail.toLowerCase(),
+        candidateName,
+        designation,
+        acceptUrl,
+        expiresAt,
+      });
+
+      await storage.createAuditLog({
+        action: "offer_letter_sent",
+        actorId: currentUser.id,
+        targetId: offerLetter.id,
+        details: { candidateName, designation, email: candidatePersonalEmail },
+      });
+
+      res.json(offerLetter);
+    } catch (error: any) {
+      console.error("Send offer letter error:", error);
+      res.status(500).json({ error: "Failed to send offer letter" });
+    }
+  });
+
+  // List all offer letters
+  app.get("/api/hr/tools/offer-letters", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const letters = await storage.getOfferLetters();
+      const allUsers = await storage.getAdminUsers();
+      const allDepts = await storage.getDepartments();
+
+      const enriched = letters.map(letter => {
+        const creator = allUsers.find(u => u.id === letter.createdBy);
+        const manager = letter.reportingToUserId ? allUsers.find(u => u.id === letter.reportingToUserId) : null;
+        const dept = letter.departmentId ? allDepts.find(d => d.id === letter.departmentId) : null;
+        const onboarder = letter.onboardedBy ? allUsers.find(u => u.id === letter.onboardedBy) : null;
+        return {
+          ...letter,
+          creatorName: creator ? `${creator.firstName} ${creator.lastName}` : "Unknown",
+          managerName: manager ? `${manager.firstName} ${manager.lastName}` : null,
+          departmentName: dept?.name || null,
+          onboarderName: onboarder ? `${onboarder.firstName} ${onboarder.lastName}` : null,
+        };
+      });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("List offer letters error:", error);
+      res.status(500).json({ error: "Failed to fetch offer letters" });
+    }
+  });
+
+  // Public: View offer letter by token
+  app.get("/api/onboard/:token", async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetterByToken(req.params.token);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (new Date() > letter.expiresAt && letter.status === "sent") {
+        await storage.updateOfferLetter(letter.id, { status: "expired" });
+        return res.status(410).json({ error: "This offer has expired", status: "expired" });
+      }
+
+      if (letter.status === "sent") {
+        await storage.updateOfferLetter(letter.id, { status: "viewed" });
+      }
+
+      const allDepts = await storage.getDepartments();
+      const dept = letter.departmentId ? allDepts.find(d => d.id === letter.departmentId) : null;
+      let managerName = null;
+      if (letter.reportingToUserId) {
+        const mgr = await storage.getAdminUser(letter.reportingToUserId);
+        managerName = mgr ? `${mgr.firstName} ${mgr.lastName}` : null;
+      }
+
+      res.json({
+        id: letter.id,
+        status: letter.status === "sent" ? "viewed" : letter.status,
+        candidateTitle: letter.candidateTitle,
+        candidateName: letter.candidateName,
+        candidateAddress: letter.candidateAddress,
+        designation: letter.designation,
+        subjectDesignation: letter.subjectDesignation,
+        employmentType: letter.employmentType,
+        proposedStartDate: letter.proposedStartDate,
+        salary: letter.salary,
+        salaryInWords: letter.salaryInWords,
+        location: letter.location,
+        jurisdiction: letter.jurisdiction,
+        hrManagerName: letter.hrManagerName,
+        offerDate: letter.offerDate,
+        expiresAt: letter.expiresAt,
+        departmentName: dept?.name || null,
+        managerName,
+      });
+    } catch (error) {
+      console.error("View offer letter error:", error);
+      res.status(500).json({ error: "Failed to load offer letter" });
+    }
+  });
+
+  // Public: Accept offer letter
+  app.post("/api/onboard/:token/accept", async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetterByToken(req.params.token);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (letter.status === "accepted" || letter.status === "onboarded") {
+        return res.status(400).json({ error: "This offer has already been accepted", status: letter.status });
+      }
+
+      if (letter.status === "cancelled") {
+        return res.status(400).json({ error: "This offer has been cancelled", status: "cancelled" });
+      }
+
+      if (letter.status === "expired" || new Date() > letter.expiresAt) {
+        if (letter.status !== "expired") {
+          await storage.updateOfferLetter(letter.id, { status: "expired" });
+        }
+        return res.status(410).json({ error: "This offer has expired", status: "expired" });
+      }
+
+      const { acceptedName } = req.body;
+      if (!acceptedName || acceptedName.trim().length < 2) {
+        return res.status(400).json({ error: "Please type your full name to accept" });
+      }
+
+      const clientIp = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.ip || "unknown";
+      const userAgent = req.headers["user-agent"] || "unknown";
+
+      await storage.updateOfferLetter(letter.id, {
+        status: "accepted",
+        acceptedAt: new Date(),
+        acceptedName: acceptedName.trim(),
+        acceptedIp: clientIp,
+        acceptedUserAgent: userAgent,
+      });
+
+      await storage.createAuditLog({
+        action: "offer_letter_accepted",
+        actorId: "system",
+        targetId: letter.id,
+        details: { candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, userAgent: userAgent.substring(0, 200) },
+      });
+
+      res.json({ success: true, message: "Offer accepted successfully" });
+    } catch (error) {
+      console.error("Accept offer letter error:", error);
+      res.status(500).json({ error: "Failed to accept offer" });
+    }
+  });
+
+  // Start onboarding — creates employee profile
+  app.post("/api/hr/tools/offer-letters/:id/start-onboarding", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (letter.status !== "accepted") {
+        return res.status(400).json({ error: `Cannot onboard — offer status is '${letter.status}', must be 'accepted'` });
+      }
+
+      const { hireInEmail } = req.body;
+      if (!hireInEmail || !hireInEmail.endsWith("@hire-in.com")) {
+        return res.status(400).json({ error: "Email must end with @hire-in.com" });
+      }
+
+      const existingUser = await storage.getAdminUserByEmail(hireInEmail.toLowerCase());
+      if (existingUser) {
+        return res.status(400).json({ error: "This @hire-in.com email is already in use" });
+      }
+
+      const nameParts = letter.candidateName.trim().split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      let deptName: string | null = null;
+      if (letter.departmentId) {
+        const dept = await storage.getDepartment(letter.departmentId);
+        if (dept) deptName = dept.name;
+      }
+
+      const employeeId = await generateEmployeeId(deptName);
+
+      const tempPassword = crypto.randomBytes(6).toString("base64url") + "A1!";
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+      const currentUser = req.user as AdminUser;
+
+      const newUser = await storage.createAdminUser({
+        email: hireInEmail.toLowerCase(),
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: "employee",
+        isActive: true,
+        joiningDate: letter.proposedStartDate || new Date().toISOString().slice(0, 10),
+        designation: letter.designation || null,
+        departmentId: letter.departmentId || null,
+        hierarchyLevel: "team_member",
+        salary: letter.salary || null,
+        employeeId,
+        reportingTo: letter.reportingToUserId || null,
+      });
+
+      await storage.updateOfferLetter(letter.id, {
+        status: "onboarded",
+        onboardedAt: new Date(),
+        hireInEmail: hireInEmail.toLowerCase(),
+        resultingUserId: newUser.id,
+        onboardedBy: currentUser.id,
+      });
+
+      await storage.initializeEmployeeDocuments(newUser.id);
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const loginUrl = `${protocol}://${host}/admin/login`;
+
+      await sendOnboardingWelcomeEmail({
+        to: hireInEmail.toLowerCase(),
+        firstName,
+        lastName,
+        employeeId,
+        temporaryPassword: tempPassword,
+        designation: letter.designation,
+        loginUrl,
+      });
+
+      await storage.createAuditLog({
+        action: "employee_onboarded",
+        actorId: currentUser.id,
+        targetId: newUser.id,
+        details: { candidateName: letter.candidateName, email: hireInEmail, employeeId, offerLetterId: letter.id },
+      });
+
+      res.json({ success: true, userId: newUser.id, employeeId });
+    } catch (error: any) {
+      console.error("Start onboarding error:", error);
+      res.status(500).json({ error: error.message || "Failed to start onboarding" });
+    }
+  });
+
+  // Cancel offer letter
+  app.post("/api/hr/tools/offer-letters/:id/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (!["sent", "viewed"].includes(letter.status)) {
+        return res.status(400).json({ error: `Cannot cancel — offer status is '${letter.status}'` });
+      }
+
+      await storage.updateOfferLetter(letter.id, { status: "cancelled" });
+
+      const currentUser = req.user as AdminUser;
+      await storage.createAuditLog({
+        action: "offer_letter_cancelled",
+        actorId: currentUser.id,
+        targetId: letter.id,
+        details: { candidateName: letter.candidateName },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Cancel offer letter error:", error);
+      res.status(500).json({ error: "Failed to cancel offer letter" });
     }
   });
 

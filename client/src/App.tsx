@@ -41,6 +41,7 @@ import SalarySlips from "@/pages/admin/hr/SalarySlips";
 import MyDocuments from "@/pages/admin/hr/MyDocuments";
 import DocumentCompliance from "@/pages/admin/hr/DocumentCompliance";
 import HRTools from "@/pages/admin/hr/HRTools";
+import OnboardAccept from "@/pages/OnboardAccept";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -76,6 +77,7 @@ function PublicRouter() {
       <Route path="/services/non-it-professional" component={ProfessionalServices} />
       <Route path="/services/contract-staffing" component={ContractStaffing} />
       <Route path="/capability-deck" component={CapabilityDeck} />
+      <Route path="/onboard/:token" component={OnboardAccept} />
 
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/forgot-password" component={ForgotPassword} />
@@ -113,6 +115,7 @@ function EmployeeRouter() {
     <Switch>
       <Route path="/">{() => <Redirect to="/admin/login" />}</Route>
       <Route path="/login">{() => <Redirect to="/admin/login" />}</Route>
+      <Route path="/onboard/:token" component={OnboardAccept} />
 
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/forgot-password" component={ForgotPassword} />

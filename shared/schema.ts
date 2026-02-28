@@ -588,6 +588,52 @@ export const insertTicketSchema = createInsertSchema(tickets).omit({
   reviewedAt: true,
 });
 
+// Offer letters table (for tracking sent offers and onboarding)
+export const offerLetters = pgTable("offer_letters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  token: varchar("token").notNull().unique(),
+  status: varchar("status").notNull().default("sent"),
+  candidateTitle: varchar("candidate_title"),
+  candidateName: varchar("candidate_name").notNull(),
+  candidatePersonalEmail: varchar("candidate_personal_email").notNull(),
+  candidateAddress: varchar("candidate_address"),
+  designation: varchar("designation").notNull(),
+  subjectDesignation: varchar("subject_designation"),
+  reportingToUserId: varchar("reporting_to_user_id"),
+  departmentId: varchar("department_id"),
+  employmentType: varchar("employment_type"),
+  proposedStartDate: varchar("proposed_start_date"),
+  salary: varchar("salary"),
+  salaryInWords: varchar("salary_in_words"),
+  location: varchar("location"),
+  jurisdiction: varchar("jurisdiction"),
+  hrManagerName: varchar("hr_manager_name"),
+  offerDate: varchar("offer_date"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  acceptedName: varchar("accepted_name"),
+  acceptedIp: varchar("accepted_ip"),
+  acceptedUserAgent: text("accepted_user_agent"),
+  onboardedAt: timestamp("onboarded_at"),
+  hireInEmail: varchar("hire_in_email"),
+  resultingUserId: varchar("resulting_user_id"),
+  onboardedBy: varchar("onboarded_by"),
+});
+
+export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+  acceptedName: true,
+  acceptedIp: true,
+  acceptedUserAgent: true,
+  onboardedAt: true,
+  resultingUserId: true,
+  onboardedBy: true,
+});
+
 // ==========================================
 // TYPES
 // ==========================================
@@ -630,3 +676,5 @@ export type EmployeeBankDetails = typeof employeeBankDetails.$inferSelect;
 export type InsertEmployeeBankDetails = z.infer<typeof insertEmployeeBankDetailsSchema>;
 export type EmployeeEmergencyContact = typeof employeeEmergencyContacts.$inferSelect;
 export type InsertEmployeeEmergencyContact = z.infer<typeof insertEmployeeEmergencyContactSchema>;
+export type OfferLetter = typeof offerLetters.$inferSelect;
+export type InsertOfferLetter = z.infer<typeof insertOfferLetterSchema>;

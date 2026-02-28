@@ -386,3 +386,151 @@ export async function sendWelcomeEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendOfferLetterEmail(options: {
+  to: string;
+  candidateName: string;
+  designation: string;
+  acceptUrl: string;
+  expiresAt: Date;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const expiryStr = options.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Offer Letter from Hire'in Solutions — ${options.designation}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">AI-Powered Recruitment Platform</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Congratulations, ${options.candidateName}!</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              We are excited to extend an offer to you for the position of <strong>${options.designation}</strong> at Hire'in Solutions.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">
+              Please review your offer letter and accept it by clicking the button below. This offer is valid until <strong>${expiryStr}</strong>.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.acceptUrl}" style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                View & Accept Your Offer
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 16px 0 0;">
+              If the button doesn't work, copy and paste this link in your browser:<br/>
+              <a href="${options.acceptUrl}" style="color: #3b82f6; word-break: break-all;">${options.acceptUrl}</a>
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions DBA). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Congratulations, ${options.candidateName}!\n\nWe are excited to extend an offer for the position of ${options.designation} at Hire'in Solutions.\n\nPlease review and accept your offer by visiting:\n${options.acceptUrl}\n\nThis offer is valid until ${expiryStr}.\n\nBest regards,\nHire'in Solutions`,
+    };
+    await client.send(msg);
+    console.log(`Offer letter email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send offer letter email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendOnboardingWelcomeEmail(options: {
+  to: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+  temporaryPassword: string;
+  designation: string;
+  loginUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Welcome to Hire'in Solutions — Your Onboarding Guide`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Welcome to the Team!</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Welcome aboard, ${options.firstName} ${options.lastName}!</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 20px;">
+              Congratulations on joining Hire'in Solutions as <strong>${options.designation}</strong>! Your employee portal account is ready. Here are your login credentials:
+            </p>
+
+            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
+              <h3 style="color: #0369a1; margin: 0 0 12px; font-size: 16px;">Your Credentials</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="color: #64748b; padding: 4px 0; width: 140px;">Employee ID:</td><td style="color: #1e293b; font-weight: 600;">${options.employeeId}</td></tr>
+                <tr><td style="color: #64748b; padding: 4px 0;">Email:</td><td style="color: #1e293b; font-weight: 600;">${options.to}</td></tr>
+                <tr><td style="color: #64748b; padding: 4px 0;">Temporary Password:</td><td style="color: #1e293b; font-weight: 600; font-family: monospace;">${options.temporaryPassword}</td></tr>
+              </table>
+            </div>
+
+            <h3 style="color: #1e293b; margin: 0 0 12px; font-size: 18px;">📋 Your 10-Step Onboarding Checklist</h3>
+            <ol style="color: #475569; line-height: 2; padding-left: 20px; margin: 0 0 24px;">
+              <li><strong>Log In & Change Password</strong> — Visit <a href="${options.loginUrl}" style="color: #3b82f6;">${options.loginUrl}</a> and change your temporary password immediately</li>
+              <li><strong>Set Up Two-Factor Authentication (2FA)</strong> — Go to Profile → Security and enable TOTP 2FA (required for all employees)</li>
+              <li><strong>Upload KYC Documents</strong> — Upload your government-issued ID (Aadhaar/PAN/Passport) under Documents → KYC</li>
+              <li><strong>Upload Education Certificates</strong> — Add your highest qualification certificates under Documents → Education</li>
+              <li><strong>Upload Employment Documents</strong> — Previous experience letters, relieving letters under Documents → Employment</li>
+              <li><strong>Upload Cancelled Cheque / Voided Check</strong> — Required for payroll setup under Documents → Bank</li>
+              <li><strong>Enter Bank Account Details</strong> — Go to Profile → Bank Details and enter your bank account information for salary processing</li>
+              <li><strong>Add Emergency Contacts</strong> — Go to Profile → Emergency Contacts and add at least one emergency contact</li>
+              <li><strong>Select Your 2 Floating Holidays</strong> — Go to Holidays → Regional and choose 2 optional holidays for the year</li>
+              <li><strong>Start Punching Attendance</strong> — Use the Attendance page to punch in/out daily (8-hour threshold, 8 PM - 4 AM IST shift)</li>
+            </ol>
+
+            <h3 style="color: #1e293b; margin: 0 0 12px; font-size: 18px;">🗺 Portal Navigation</h3>
+            <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 0 0 24px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr><td style="color: #64748b; padding: 6px 0; width: 160px;">Dashboard</td><td style="color: #1e293b;">Overview of your activity & announcements</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Attendance</td><td style="color: #1e293b;">Punch in/out, view history & monthly summary</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Leave Management</td><td style="color: #1e293b;">Apply for leave, view balances & accruals</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Holidays</td><td style="color: #1e293b;">Company holidays & optional regional selections</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Documents</td><td style="color: #1e293b;">Upload & manage KYC, education, employment docs</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Profile</td><td style="color: #1e293b;">Personal info, bank details, emergency contacts, 2FA</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Tickets</td><td style="color: #1e293b;">Raise IT/HR support tickets</td></tr>
+                <tr><td style="color: #64748b; padding: 6px 0;">Org Chart</td><td style="color: #1e293b;">View company hierarchy & team structure</td></tr>
+              </table>
+            </div>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                Log In to Your Portal
+              </a>
+            </div>
+
+            <p style="color: #475569; line-height: 1.6; margin: 16px 0 0;">
+              If you have any questions, reach out to HR via the Tickets section or email your manager directly.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions DBA). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Welcome aboard, ${options.firstName} ${options.lastName}!\n\nYour Hire'in Solutions employee portal account is ready.\n\nCredentials:\n- Employee ID: ${options.employeeId}\n- Email: ${options.to}\n- Temporary Password: ${options.temporaryPassword}\n\n10-Step Onboarding Checklist:\n1. Log in and change your password at ${options.loginUrl}\n2. Set up 2FA (required)\n3. Upload KYC documents\n4. Upload education certificates\n5. Upload employment documents\n6. Upload cancelled cheque/voided check\n7. Enter bank account details\n8. Add emergency contacts\n9. Select 2 floating holidays\n10. Start punching attendance daily\n\nQuestions? Raise a ticket in the portal or contact HR.`,
+    };
+    await client.send(msg);
+    console.log(`Onboarding welcome email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send onboarding email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

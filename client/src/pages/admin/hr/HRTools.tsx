@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Wrench, FileText, Receipt, Download, Loader2, User, Building, Search,
+  Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +13,12 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -623,10 +627,12 @@ function SalarySlipGenerator() {
 interface OfferFormData {
   candidateTitle: string;
   candidateName: string;
+  candidatePersonalEmail: string;
   candidateAddress: string;
   designation: string;
   subjectDesignation: string;
-  reportingTo: string;
+  reportingToUserId: string;
+  departmentId: string;
   employmentType: string;
   proposedStartDate: string;
   salary: number;
@@ -642,10 +648,12 @@ function getDefaultOfferData(): OfferFormData {
   return {
     candidateTitle: "Mr.",
     candidateName: "",
+    candidatePersonalEmail: "",
     candidateAddress: "",
     designation: "",
     subjectDesignation: "",
-    reportingTo: "",
+    reportingToUserId: "",
+    departmentId: "",
     employmentType: "Full-time / Regular",
     proposedStartDate: "",
     salary: 0,
@@ -682,6 +690,10 @@ function OfferLetterGenerator() {
     }
   }, [formData.salary]);
 
+  const { data: departments } = useQuery<any[]>({
+    queryKey: ["/api/admin/departments"],
+  });
+
   const handleLoadEmployee = (userId: string) => {
     setSelectedUserId(userId);
     const user = users?.find((u: any) => u.id === userId);
@@ -695,7 +707,17 @@ function OfferLetterGenerator() {
       salary: parseFloat(user.salary) || 0,
       salaryInWords: parseFloat(user.salary) ? numberToWords(parseFloat(user.salary)) : "",
       proposedStartDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split("T")[0] : "",
+      departmentId: user.departmentId || "",
+      reportingToUserId: user.reportingTo || "",
     }));
+  };
+
+  const [sending, setSending] = useState(false);
+
+  const getReportingToName = () => {
+    if (!formData.reportingToUserId) return "";
+    const mgr = users?.find((u: any) => u.id === formData.reportingToUserId);
+    return mgr ? `${mgr.firstName || ""} ${mgr.lastName || ""}`.trim() : "";
   };
 
   const handleGenerate = async () => {
@@ -711,6 +733,7 @@ function OfferLetterGenerator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          reportingTo: getReportingToName(),
           offerDate: formData.offerDate
             ? new Date(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : undefined,
@@ -740,6 +763,41 @@ function OfferLetterGenerator() {
       toast({ title: err.message || "Failed to generate offer letter", variant: "destructive" });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleSendOffer = async () => {
+    if (!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail) {
+      toast({ title: "Please fill in candidate name, designation, and personal email", variant: "destructive" });
+      return;
+    }
+
+    setSending(true);
+    try {
+      const res = await apiRequest("POST", "/api/hr/tools/offer-letters", {
+        ...formData,
+        salary: formData.salary ? String(formData.salary) : null,
+        offerDate: formData.offerDate
+          ? new Date(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+          : undefined,
+        proposedStartDate: formData.proposedStartDate
+          ? new Date(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+          : "",
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to send");
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter sent successfully!", description: `An email has been sent to ${formData.candidatePersonalEmail}` });
+      setFormData(getDefaultOfferData());
+      setSelectedUserId("");
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to send offer letter", variant: "destructive" });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -809,8 +867,38 @@ function OfferLetterGenerator() {
               </div>
             </div>
             <div>
-              <Label>Reporting To</Label>
-              <Input data-testid="input-offer-reporting" value={formData.reportingTo} onChange={e => updateField("reportingTo", e.target.value)} />
+              <Label>Personal Email</Label>
+              <Input data-testid="input-offer-email" type="email" value={formData.candidatePersonalEmail} onChange={e => updateField("candidatePersonalEmail", e.target.value)} placeholder="candidate@gmail.com" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Reporting Manager</Label>
+                <Select value={formData.reportingToUserId} onValueChange={v => updateField("reportingToUserId", v)}>
+                  <SelectTrigger data-testid="select-offer-reporting">
+                    <SelectValue placeholder="Select manager..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeUsers.map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName} — {u.designation || u.role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Department</Label>
+                <Select value={formData.departmentId} onValueChange={v => updateField("departmentId", v)}>
+                  <SelectTrigger data-testid="select-offer-department">
+                    <SelectValue placeholder="Select department..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(departments || []).filter((d: any) => d.isActive).map((d: any) => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -875,15 +963,232 @@ function OfferLetterGenerator() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
-              The offer letter will be generated as a Word document (.docx) matching the company template with all 12 legal sections and the BYOD Annexure.
+              Generate the DOCX for records, or send the offer directly to the candidate's email for digital acceptance.
             </div>
-            <Button onClick={handleGenerate} disabled={generating || !formData.candidateName || !formData.designation} data-testid="button-generate-offer">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-              Generate & Download
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleGenerate} disabled={generating || !formData.candidateName || !formData.designation} data-testid="button-generate-offer">
+                {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+                Download DOCX
+              </Button>
+              <Button onClick={handleSendOffer} disabled={sending || !formData.candidateName || !formData.designation || !formData.candidatePersonalEmail} data-testid="button-send-offer">
+                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                Send Offer Letter
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+const STATUS_BADGES: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; icon: any }> = {
+  sent: { variant: "secondary", label: "Sent", icon: Mail },
+  viewed: { variant: "default", label: "Viewed", icon: Eye },
+  accepted: { variant: "outline", label: "Accepted", icon: CheckCircle },
+  onboarded: { variant: "default", label: "Onboarded", icon: UserPlus },
+  expired: { variant: "destructive", label: "Expired", icon: Clock },
+  cancelled: { variant: "destructive", label: "Cancelled", icon: XCircle },
+};
+
+function OfferLettersDashboard() {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [onboardingModal, setOnboardingModal] = useState<any>(null);
+  const [hireInEmail, setHireInEmail] = useState("");
+  const [onboarding, setOnboarding] = useState(false);
+
+  const { data: letters, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/offer-letters"],
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${id}/cancel`);
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter cancelled" });
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  const handleStartOnboarding = async () => {
+    if (!hireInEmail || !hireInEmail.endsWith("@hire-in.com")) {
+      toast({ title: "Email must end with @hire-in.com", variant: "destructive" });
+      return;
+    }
+
+    setOnboarding(true);
+    try {
+      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${onboardingModal.id}/start-onboarding`, {
+        hireInEmail,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error);
+      }
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({
+        title: "Onboarding complete!",
+        description: `Employee ID: ${data.employeeId} — Welcome email sent to ${hireInEmail}`,
+      });
+      setOnboardingModal(null);
+      setHireInEmail("");
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to start onboarding", variant: "destructive" });
+    } finally {
+      setOnboarding(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {(!letters || letters.length === 0) ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-1" data-testid="text-no-offers">No Offer Letters Yet</h3>
+            <p className="text-muted-foreground text-sm">
+              Send your first offer letter from the "Offer Letter Generator" tab.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left p-3 font-medium">Candidate</th>
+                    <th className="text-left p-3 font-medium">Personal Email</th>
+                    <th className="text-left p-3 font-medium">Designation</th>
+                    <th className="text-left p-3 font-medium">Department</th>
+                    <th className="text-left p-3 font-medium">Status</th>
+                    <th className="text-left p-3 font-medium">Sent</th>
+                    <th className="text-left p-3 font-medium">Sent By</th>
+                    <th className="text-left p-3 font-medium">Hire-in Email</th>
+                    <th className="text-left p-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {letters.map((letter: any) => {
+                    const statusInfo = STATUS_BADGES[letter.status] || STATUS_BADGES.sent;
+                    const StatusIcon = statusInfo.icon;
+                    return (
+                      <tr key={letter.id} className="border-b hover:bg-muted/20" data-testid={`row-offer-${letter.id}`}>
+                        <td className="p-3 font-medium" data-testid={`text-candidate-${letter.id}`}>{letter.candidateName}</td>
+                        <td className="p-3 text-muted-foreground">{letter.candidatePersonalEmail}</td>
+                        <td className="p-3">{letter.designation}</td>
+                        <td className="p-3">{letter.departmentName || "—"}</td>
+                        <td className="p-3">
+                          <Badge variant={statusInfo.variant} className="gap-1" data-testid={`badge-status-${letter.id}`}>
+                            <StatusIcon className="h-3 w-3" />
+                            {statusInfo.label}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-muted-foreground">
+                          {letter.createdAt ? new Date(letter.createdAt).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="p-3">{letter.creatorName}</td>
+                        <td className="p-3">{letter.hireInEmail || "—"}</td>
+                        <td className="p-3">
+                          <div className="flex gap-1">
+                            {(letter.status === "sent" || letter.status === "viewed") && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => cancelMutation.mutate(letter.id)}
+                                disabled={cancelMutation.isPending}
+                                data-testid={`button-cancel-${letter.id}`}
+                              >
+                                <XCircle className="h-4 w-4 mr-1" />
+                                Cancel
+                              </Button>
+                            )}
+                            {letter.status === "accepted" && (
+                              <Button
+                                size="sm"
+                                onClick={() => { setOnboardingModal(letter); setHireInEmail(""); }}
+                                data-testid={`button-onboard-${letter.id}`}
+                              >
+                                <UserPlus className="h-4 w-4 mr-1" />
+                                Start Onboarding
+                              </Button>
+                            )}
+                            {letter.status === "onboarded" && letter.resultingUserId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setLocation(`/admin/users`)}
+                                data-testid={`button-view-employee-${letter.id}`}
+                              >
+                                <ExternalLink className="h-4 w-4 mr-1" />
+                                View Employee
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={!!onboardingModal} onOpenChange={(open) => { if (!open) setOnboardingModal(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start Onboarding</DialogTitle>
+            <DialogDescription>
+              Create an employee profile for <strong>{onboardingModal?.candidateName}</strong> ({onboardingModal?.designation}).
+              An onboarding welcome email will be sent to their @hire-in.com address with login credentials and a 10-step onboarding guide.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Hire-in Email Address</Label>
+              <Input
+                data-testid="input-hirein-email"
+                type="email"
+                placeholder="firstname.lastname@hire-in.com"
+                value={hireInEmail}
+                onChange={e => setHireInEmail(e.target.value)}
+              />
+              {hireInEmail && !hireInEmail.endsWith("@hire-in.com") && (
+                <p className="text-xs text-destructive mt-1">Email must end with @hire-in.com</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOnboardingModal(null)} data-testid="button-cancel-onboard">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStartOnboarding}
+              disabled={onboarding || !hireInEmail.endsWith("@hire-in.com")}
+              data-testid="button-confirm-onboard"
+            >
+              {onboarding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Send Onboarding Email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -926,18 +1231,22 @@ export default function HRTools() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-hr-tools-title">HR Tools</h1>
-          <p className="text-muted-foreground">Generate salary slips and offer letters</p>
+          <p className="text-muted-foreground">Generate salary slips, offer letters, and manage onboarding</p>
         </div>
 
         <Tabs defaultValue="salary-slip" className="space-y-6">
           <TabsList data-testid="tabs-hr-tools">
             <TabsTrigger value="salary-slip" data-testid="tab-salary-slip">
               <Receipt className="h-4 w-4 mr-2" />
-              Salary Slip Generator
+              Salary Slip
             </TabsTrigger>
             <TabsTrigger value="offer-letter" data-testid="tab-offer-letter">
               <FileText className="h-4 w-4 mr-2" />
               Offer Letter Generator
+            </TabsTrigger>
+            <TabsTrigger value="offer-letters" data-testid="tab-offer-letters">
+              <Mail className="h-4 w-4 mr-2" />
+              Offer Letters
             </TabsTrigger>
           </TabsList>
 
@@ -947,6 +1256,10 @@ export default function HRTools() {
 
           <TabsContent value="offer-letter">
             <OfferLetterGenerator />
+          </TabsContent>
+
+          <TabsContent value="offer-letters">
+            <OfferLettersDashboard />
           </TabsContent>
         </Tabs>
       </div>
