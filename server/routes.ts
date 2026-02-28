@@ -12,6 +12,7 @@ import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentRe
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
+import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -2481,6 +2482,68 @@ export async function registerRoutes(
       res.json(contacts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch emergency contacts" });
+    }
+  });
+
+  // HR Tools: Admin fetch salary slips for any user
+  app.get("/api/hr/admin/salary-slips/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const slips = await storage.getSalarySlipsByUser(req.params.userId);
+      res.json(slips);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary slips" });
+    }
+  });
+
+  app.get("/api/hr/admin/salary-slip/:id", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const slip = await storage.getSalarySlip(req.params.id);
+      if (!slip) {
+        return res.status(404).json({ error: "Salary slip not found" });
+      }
+      const user = await storage.getAdminUser(slip.userId);
+      const allDepts = await storage.getDepartments();
+      const dept = allDepts.find(d => d.id === user?.departmentId);
+      const bankDetails = await storage.getBankDetails(slip.userId);
+      res.json({ ...slip, user, department: dept, bankDetails });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary slip" });
+    }
+  });
+
+  // HR Tools: Generate offer letter DOCX
+  app.post("/api/hr/tools/generate-offer-letter", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const data: OfferLetterData = {
+        candidateTitle: req.body.candidateTitle || "Mr.",
+        candidateName: req.body.candidateName || "",
+        candidateAddress: req.body.candidateAddress || "",
+        designation: req.body.designation || "",
+        subjectDesignation: req.body.subjectDesignation || req.body.designation || "",
+        reportingTo: req.body.reportingTo || "",
+        employmentType: req.body.employmentType || "Full-time / Regular",
+        proposedStartDate: req.body.proposedStartDate || "",
+        salary: parseFloat(req.body.salary) || 0,
+        salaryInWords: req.body.salaryInWords || "",
+        location: req.body.location || "Delhi",
+        jurisdiction: req.body.jurisdiction || "Delhi",
+        hrManagerName: req.body.hrManagerName || "Alina Carter",
+        offerDate: req.body.offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+      };
+
+      if (!data.candidateName || !data.designation) {
+        return res.status(400).json({ error: "Candidate name and designation are required" });
+      }
+
+      const buffer = await generateOfferLetterDocx(data);
+      const fileName = `${data.candidateName.replace(/\s+/g, "_")}_Offer_Letter.docx`;
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error("Offer letter generation error:", error);
+      res.status(500).json({ error: "Failed to generate offer letter" });
     }
   });
 

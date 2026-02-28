@@ -23,6 +23,7 @@ import {
   ClipboardCheck,
   AlertTriangle,
   ShieldAlert,
+  Wrench,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,6 +173,12 @@ const hrOpsMenu = [
     label: "Audit Logs",
     icon: FileText,
     roles: ["super_admin", "admin"]
+  },
+  {
+    href: "/admin/hr/tools",
+    label: "HR Tools",
+    icon: Wrench,
+    roles: ["super_admin", "admin", "hr"]
   },
   {
     href: "/admin/hr/settings",

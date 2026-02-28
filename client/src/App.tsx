@@ -40,6 +40,7 @@ import SalaryReports from "@/pages/admin/hr/SalaryReports";
 import SalarySlips from "@/pages/admin/hr/SalarySlips";
 import MyDocuments from "@/pages/admin/hr/MyDocuments";
 import DocumentCompliance from "@/pages/admin/hr/DocumentCompliance";
+import HRTools from "@/pages/admin/hr/HRTools";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -100,6 +101,7 @@ function PublicRouter() {
       <Route path="/admin/hr/salary-slips" component={SalarySlips} />
       <Route path="/admin/hr/my-documents" component={MyDocuments} />
       <Route path="/admin/hr/document-compliance" component={DocumentCompliance} />
+      <Route path="/admin/hr/tools" component={HRTools} />
 
       <Route component={NotFound} />
     </Switch>
@@ -136,6 +138,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/salary-slips" component={SalarySlips} />
       <Route path="/admin/hr/my-documents" component={MyDocuments} />
       <Route path="/admin/hr/document-compliance" component={DocumentCompliance} />
+      <Route path="/admin/hr/tools" component={HRTools} />
 
       <Route component={NotFound} />
     </Switch>
