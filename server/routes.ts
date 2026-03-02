@@ -2044,15 +2044,61 @@ export async function registerRoutes(
     }
   });
 
+  // Salary report recipients - Get
+  app.get("/api/hr/reports/salary/recipients", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const setting = await storage.getSystemSetting("salary_report_recipients");
+      const defaults = { to: ["accounts@hire-in.com"], cc: ["simranjeet@hire-in.com"] };
+      res.json(setting?.value || defaults);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch recipients" });
+    }
+  });
+
+  // Salary report recipients - Update
+  app.put("/api/hr/reports/salary/recipients", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { to, cc } = req.body;
+      if (!Array.isArray(to) || to.length === 0) {
+        return res.status(400).json({ error: "At least one 'To' recipient is required" });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const allEmails = [...to, ...(cc || [])];
+      for (const email of allEmails) {
+        if (!emailRegex.test(email)) {
+          return res.status(400).json({ error: `Invalid email address: ${email}` });
+        }
+      }
+
+      const currentUser = req.user as AdminUser;
+      await storage.upsertSystemSetting("salary_report_recipients", { to, cc: cc || [] }, currentUser.id);
+
+      await storage.createAuditLog({
+        action: "salary_report_recipients_updated",
+        actorId: currentUser.id,
+        targetId: "salary_report_recipients",
+        details: { to, cc: cc || [] },
+      });
+
+      res.json({ success: true, to, cc: cc || [] });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update recipients" });
+    }
+  });
+
   app.post("/api/hr/reports/salary", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
       const report = await generateMonthlySalaryReport(year, month);
 
+      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
+      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+
       const emailResult = await sendSalaryReport({
         csvContent: report.csv,
         summary: report.summary,
+        recipients,
       });
 
       if (emailResult.success) {

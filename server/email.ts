@@ -264,6 +264,7 @@ export async function sendPasswordResetEmail(options: {
 export async function sendSalaryReport(options: {
   csvContent: string;
   summary: { year: number; month: number; monthName: string; totalEmployees: number; totalPayable: number; totalHoursWorked: number; generatedAt: string };
+  recipients?: { to: string[]; cc: string[] };
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
@@ -271,9 +272,12 @@ export async function sendSalaryReport(options: {
     const csvBase64 = Buffer.from(options.csvContent).toString("base64");
     const fileName = `Salary_Report_${options.summary.monthName}_${options.summary.year}.csv`;
 
-    const msg = {
-      to: "accounts@hire-in.com",
-      cc: "simranjeet.sidana@hire-in.com",
+    const toAddresses = options.recipients?.to?.length ? options.recipients.to : ["accounts@hire-in.com"];
+    const ccAddresses = options.recipients?.cc?.length ? options.recipients.cc : ["simranjeet@hire-in.com"];
+
+    const msg: any = {
+      to: toAddresses,
+      cc: ccAddresses,
       from: { email: fromEmail, name: "Hire'in Solutions" },
       subject: `Monthly Salary Processing Report - ${options.summary.monthName} ${options.summary.year}`,
       html: `

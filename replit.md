@@ -36,7 +36,7 @@ An integrated internal employee management system within the admin panel featuri
 - **HR/Admin Features**: Comprehensive HR settings for managing leave types, holidays, departments, and user management.
 - **Leave Accrual**: Hours-based leave accrual system where leaves are earned monthly based on hours worked.
 - **Regional Holidays**: Employees can select optional regional holidays.
-- **Salary Processing**: Automated monthly salary reports with CSV attachments and individual salary slip generation.
+- **Salary Processing**: Automated monthly salary reports with CSV attachments and individual salary slip generation. Report recipients (To/CC) are configurable by HR/super_admin on the Salary Reports page, stored in system_settings table.
 - **HR Tools**: Admin/HR tools page (`/admin/hr/tools`) with three tabs:
   - **Salary Slip Generator**: Create payslips matching company template (Rayomind Solutions DBA Hire'in Solutions format) with employee info grid, earnings (Basic/HRA/Conveyance/Special Allowance), deductions (PF/ESI/PT/TDS), auto-calculated totals, and number-to-words. Can load from existing salary data or enter custom values. Preview inline and download as PDF.
   - **Offer Letter Generator**: Produce Word (DOCX) offer letters matching the company legal template with 12 sections + Annexure-R (BYOD). Form-driven with auto-fill from employee records, department dropdown, reporting manager dropdown, candidate personal email. Uses `docx` npm package for server-side DOCX generation. Can download DOCX or send offer letter directly via email for digital acceptance.

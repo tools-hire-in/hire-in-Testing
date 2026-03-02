@@ -634,10 +634,22 @@ export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
   onboardedBy: true,
 });
 
+// System settings table (key-value config store)
+export const systemSettings = pgTable("system_settings", {
+  key: varchar("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by"),
+});
+
+export const insertSystemSettingSchema = createInsertSchema(systemSettings);
+
 // ==========================================
 // TYPES
 // ==========================================
 
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
 export type Department = typeof departments.$inferSelect;
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;

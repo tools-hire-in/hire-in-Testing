@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2 } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, Settings, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface EmployeeReportRow {
   employeeName: string;
@@ -59,6 +62,170 @@ const MONTHS = [
   { value: "11", label: "November" },
   { value: "12", label: "December" },
 ];
+
+function ReportRecipientsCard() {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [toEmails, setToEmails] = useState<string[]>([]);
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [newTo, setNewTo] = useState("");
+  const [newCc, setNewCc] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const { data: recipients } = useQuery<{ to: string[]; cc: string[] }>({
+    queryKey: ["/api/hr/reports/salary/recipients"],
+  });
+
+  useEffect(() => {
+    if (recipients && !loaded) {
+      setToEmails(recipients.to || []);
+      setCcEmails(recipients.cc || []);
+      setLoaded(true);
+    }
+  }, [recipients, loaded]);
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const addEmail = (type: "to" | "cc") => {
+    const value = type === "to" ? newTo.trim() : newCc.trim();
+    if (!value) return;
+    if (!emailRegex.test(value)) {
+      toast({ title: "Invalid email format", variant: "destructive" });
+      return;
+    }
+    if (type === "to") {
+      if (toEmails.includes(value)) return;
+      setToEmails(prev => [...prev, value]);
+      setNewTo("");
+    } else {
+      if (ccEmails.includes(value)) return;
+      setCcEmails(prev => [...prev, value]);
+      setNewCc("");
+    }
+  };
+
+  const removeEmail = (type: "to" | "cc", email: string) => {
+    if (type === "to") {
+      setToEmails(prev => prev.filter(e => e !== email));
+    } else {
+      setCcEmails(prev => prev.filter(e => e !== email));
+    }
+  };
+
+  const handleSave = async () => {
+    if (toEmails.length === 0) {
+      toast({ title: "At least one 'To' recipient is required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await apiRequest("PUT", "/api/hr/reports/salary/recipients", {
+        to: toEmails,
+        cc: ccEmails,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/recipients"] });
+      toast({ title: "Report recipients updated" });
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to save", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader
+        className="cursor-pointer select-none"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            Report Recipients
+            {!expanded && recipients && (
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                To: {recipients.to.join(", ")}{recipients.cc.length > 0 ? ` | CC: ${recipients.cc.join(", ")}` : ""}
+              </span>
+            )}
+          </CardTitle>
+          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="space-y-4">
+          <div>
+            <Label className="text-sm font-medium">To (Primary Recipients)</Label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {toEmails.map(email => (
+                <Badge key={email} variant="secondary" className="gap-1 pr-1" data-testid={`badge-to-${email}`}>
+                  {email}
+                  <button onClick={() => removeEmail("to", email)} className="ml-1 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Input
+                data-testid="input-add-to"
+                type="email"
+                placeholder="Add To recipient..."
+                value={newTo}
+                onChange={e => setNewTo(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addEmail("to"))}
+                className="flex-1"
+              />
+              <Button variant="outline" size="sm" onClick={() => addEmail("to")} data-testid="button-add-to">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label className="text-sm font-medium">CC (Copy Recipients)</Label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {ccEmails.map(email => (
+                <Badge key={email} variant="outline" className="gap-1 pr-1" data-testid={`badge-cc-${email}`}>
+                  {email}
+                  <button onClick={() => removeEmail("cc", email)} className="ml-1 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              {ccEmails.length === 0 && (
+                <span className="text-sm text-muted-foreground">No CC recipients</span>
+              )}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Input
+                data-testid="input-add-cc"
+                type="email"
+                placeholder="Add CC recipient..."
+                value={newCc}
+                onChange={e => setNewCc(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addEmail("cc"))}
+                className="flex-1"
+              />
+              <Button variant="outline" size="sm" onClick={() => addEmail("cc")} data-testid="button-add-cc">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button onClick={handleSave} disabled={saving || toEmails.length === 0} data-testid="button-save-recipients">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Recipients
+            </Button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
 
 export default function SalaryReports() {
   const [, setLocation] = useLocation();
@@ -227,6 +394,8 @@ export default function SalaryReports() {
             </div>
           </CardContent>
         </Card>
+
+        <ReportRecipientsCard />
 
         {previewData && (
           <>

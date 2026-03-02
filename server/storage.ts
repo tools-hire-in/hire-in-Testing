@@ -21,6 +21,7 @@ import {
   employeeBankDetails,
   employeeEmergencyContacts,
   offerLetters,
+  systemSettings,
   type Job,
   type InsertJob,
   type Application,
@@ -61,6 +62,7 @@ import {
   type InsertEmployeeEmergencyContact,
   type OfferLetter,
   type InsertOfferLetter,
+  type SystemSetting,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -190,6 +192,10 @@ export interface IStorage {
   createEmergencyContact(contact: InsertEmployeeEmergencyContact): Promise<EmployeeEmergencyContact>;
   updateEmergencyContact(id: string, updates: Partial<EmployeeEmergencyContact>): Promise<EmployeeEmergencyContact | undefined>;
   deleteEmergencyContact(id: string): Promise<boolean>;
+
+  // System Settings
+  getSystemSetting(key: string): Promise<SystemSetting | undefined>;
+  upsertSystemSetting(key: string, value: any, updatedBy?: string): Promise<SystemSetting>;
 
   // Offer Letters
   createOfferLetter(data: InsertOfferLetter): Promise<OfferLetter>;
@@ -1050,6 +1056,31 @@ export class DatabaseStorage implements IStorage {
   async deleteEmergencyContact(id: string): Promise<boolean> {
     await db.delete(employeeEmergencyContacts).where(eq(employeeEmergencyContacts.id, id));
     return true;
+  }
+
+  // ==========================================
+  // SYSTEM SETTINGS
+  // ==========================================
+
+  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+    const [setting] = await db.select().from(systemSettings)
+      .where(eq(systemSettings.key, key));
+    return setting;
+  }
+
+  async upsertSystemSetting(key: string, value: any, updatedBy?: string): Promise<SystemSetting> {
+    const existing = await this.getSystemSetting(key);
+    if (existing) {
+      const [updated] = await db.update(systemSettings)
+        .set({ value, updatedAt: new Date(), updatedBy: updatedBy || null })
+        .where(eq(systemSettings.key, key))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(systemSettings)
+      .values({ key, value, updatedBy: updatedBy || null })
+      .returning();
+    return created;
   }
 
   // ==========================================

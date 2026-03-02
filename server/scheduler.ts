@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import { sendSalaryReport } from "./email";
+import { storage } from "./storage";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -25,9 +26,13 @@ export function startScheduler() {
       const report = await generateMonthlySalaryReport(year, month);
       console.log(`[scheduler] Report generated: ${report.summary.totalEmployees} employees, $${report.summary.totalPayable} total payable.`);
 
+      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
+      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+
       const emailResult = await sendSalaryReport({
         csvContent: report.csv,
         summary: report.summary,
+        recipients,
       });
 
       if (emailResult.success) {
