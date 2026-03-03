@@ -8,6 +8,7 @@ import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAd
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -199,6 +200,7 @@ export async function registerRoutes(
   // Setup session-based authentication (must be before other routes)
   setupSession(app);
   registerAuthRoutes(app);
+  registerObjectStorageRoutes(app);
 
   // Enforce 2FA for all admin/HR API routes
   app.use("/api/admin", require2FA);
