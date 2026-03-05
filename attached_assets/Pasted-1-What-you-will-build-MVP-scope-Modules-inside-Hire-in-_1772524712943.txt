@@ -1,0 +1,352 @@
+1) What you will build (MVP scope)
+Modules inside Hire-in Social Media Portal
+
+Account Connections
+
+Connect LinkedIn (user) + select Company Page(s) they manage
+
+Connect Meta (Facebook) + select Page(s) and linked Instagram Business accounts
+
+Content Studio
+
+AI content generator (copy + hashtags + variations)
+
+Creative upload/library (images, brand templates)
+
+Post composer with preview per platform
+
+Approvals
+
+Draft → In Review → Approved/Rejected
+
+Role-based approval (Marketing Admin / Manager)
+
+Scheduler + Publisher
+
+Schedule date/time
+
+Publish now
+
+Retry rules + error handling
+
+Audit & Analytics (basic)
+
+Log every action: connect, draft, approve, publish, fail, retry
+
+2) How “access” works (OAuth) — simple and correct
+A) LinkedIn connection flow
+
+User clicks Connect LinkedIn
+
+Redirect to LinkedIn OAuth consent
+
+You receive authorization code
+
+Your backend exchanges code → access token (and refresh token if supported/available)
+
+User selects which organization/company pages they can post to
+
+Save mapping: user → organization/page IDs → permissions
+
+B) Meta (Facebook + Instagram) connection flow
+
+User clicks Connect Facebook/Instagram
+
+Redirect to Meta OAuth consent
+
+Your backend exchanges code → long-lived token
+
+Fetch Pages the user manages
+
+For each Page:
+
+get Page access token
+
+discover connected Instagram Business account (if exists)
+
+Save mapping: user → page IDs → ig business IDs → tokens
+
+Important reality: Instagram direct publishing generally requires Instagram Business + Facebook Page connection. Your UI should detect and guide users when it’s not eligible.
+
+3) Permission model (roles + guardrails)
+Roles you should implement
+
+Creator: can draft, request approval
+
+Approver: can approve/reject
+
+Publisher: can publish/schedule (often same as Approver)
+
+Admin: can manage connections, brand assets, policies
+
+Guardrails
+
+Only allow posting to pages/accounts that:
+
+are connected through OAuth
+
+are explicitly granted to that user’s workspace/team
+
+Require approval for:
+
+company-wide channels
+
+job campaigns
+
+regulated statements (optional rules)
+
+4) Token storage and security (must-have)
+
+Do not store tokens in the browser. Store server-side only.
+
+Minimum security:
+
+Encrypt tokens at rest (AES-256 via KMS/secret manager)
+
+Store:
+
+provider (linkedin/meta)
+
+access_token (encrypted)
+
+refresh_token (encrypted if exists)
+
+expires_at
+
+scopes
+
+external_account_id (page/org)
+
+Rotate encryption keys if possible
+
+Support Disconnect (revocation) + immediate token delete
+
+Audit log every publish action with user ID
+
+5) Data model (tables you can implement)
+social_connections
+
+id
+
+workspace_id
+
+user_id
+
+provider: linkedin | meta
+
+external_principal_id (LinkedIn member id / Meta user id)
+
+scopes (json)
+
+access_token_enc
+
+refresh_token_enc (nullable)
+
+expires_at
+
+created_at, updated_at
+
+social_destinations
+
+(Where you can post)
+
+id
+
+connection_id
+
+provider: linkedin/meta
+
+type: linkedin_org | facebook_page | instagram_business
+
+destination_id (org id / page id / ig id)
+
+destination_name
+
+metadata (json) (page category, ig username, etc.)
+
+is_enabled
+
+social_posts
+
+id
+
+workspace_id
+
+created_by
+
+status: draft | in_review | approved | scheduled | publishing | published | failed
+
+content_text
+
+hashtags (json array)
+
+media_assets (json array: urls/keys)
+
+platforms (json: selected destinations)
+
+scheduled_for (nullable)
+
+approved_by (nullable)
+
+approved_at (nullable)
+
+created_at, updated_at
+
+social_post_attempts
+
+id
+
+post_id
+
+destination_id
+
+attempt_no
+
+status: success/failed
+
+provider_response (json)
+
+error_code, error_message
+
+posted_external_id (the post URN / post id)
+
+created_at
+
+audit_log
+
+id
+
+workspace_id
+
+actor_user_id
+
+action
+
+entity_type/entity_id
+
+details (json)
+
+created_at
+
+6) Scheduler design (reliable posting)
+
+Use a background job system (examples):
+
+DB-backed queue (pg-boss), Redis queue (BullMQ), or a worker service.
+
+Flow:
+
+Approved post + scheduled time → enqueue job
+
+Worker wakes at time → posts to each destination
+
+Record success/failure per destination
+
+If partial failure:
+
+retry with backoff (ex: 3 retries)
+
+mark final status as failed but keep partial posts visible
+
+7) Posting workflow UX (recommended screens)
+
+Connections
+
+Connect LinkedIn
+
+Connect Meta
+
+Show list of destinations (pages/orgs/ig) with toggles
+
+Create Post
+
+Choose campaign (optional)
+
+Choose destinations (checkboxes)
+
+Write text (or “Generate with AI”)
+
+Upload media / pick from brand library
+
+Preview per platform tab
+
+Submit for approval
+
+Approval Queue
+
+Approver sees diff/preview
+
+Approve / request changes
+
+Add comments
+
+Schedule
+
+Calendar picker
+
+Time zone shown (America/Los_Angeles)
+
+Confirm schedule
+
+Publishing Status
+
+Per destination status + links to published posts (when available)
+
+Retry button (admin only)
+
+8) The exact prompts you’ll use with ChatGPT (copy/paste)
+Prompt A — Generate copy for multiple platforms
+You are a senior B2B social copywriter.
+
+Create 3 versions of a social post for each platform: LinkedIn, Instagram, Facebook.
+Business: Hire-in (staffing + recruiting)
+Goal: {goal}
+Audience: {audience}
+Offer/Content: {offer_or_topic}
+Tone: professional, confident, trustworthy.
+Constraints:
+- LinkedIn: 600–900 characters, 3–6 hashtags, no emojis (or minimal).
+- Instagram: 150–250 characters, 8–15 hashtags, can use 1–3 emojis.
+- Facebook: 200–400 characters, 3–6 hashtags, friendly-professional.
+Include a clear CTA: {cta}.
+Output in JSON with keys: linkedin[], instagram[], facebook[].
+Prompt B — Compliance / risk check (highly recommended)
+Act as a compliance and brand-risk reviewer for a staffing company.
+
+Review the following post copy for risks:
+- misleading claims
+- discriminatory language
+- sensitive/regulated statements
+- overpromises
+- privacy issues (PII)
+Provide:
+1) Risk level (low/medium/high)
+2) What to change (bullet list)
+3) A revised safe version
+
+Post copy:
+{copy}
+Prompt C — Image text for poster
+You are a senior creative director.
+
+Create poster text for a 1080x1350 design:
+- Headline: max 7 words
+- Subheadline: max 12 words
+- 3 bullets: each max 6 words
+- CTA button text: max 4 words
+
+Topic/Offer: {topic}
+Brand vibe: premium, clean, minimal.
+9) Reality checks (so you don’t get stuck)
+
+LinkedIn + Meta integrations usually require:
+
+developer app setup
+
+platform permission review (especially for publishing)
+
+strict compliance and policy alignment
+
+Instagram publishing specifically can be picky about account type and Page linkage.
+
+This is normal — plan for an “integration readiness” checklist in the product.
