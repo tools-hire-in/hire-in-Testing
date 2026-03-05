@@ -79,7 +79,7 @@ export interface IStorage {
   getJobFilters(): Promise<{ specialties: string[]; states: string[]; jobTypes: string[] }>;
 
   // Applications
-  getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string })[]>;
+  getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]>;
   getApplication(id: string): Promise<Application | undefined>;
   createApplication(app: InsertApplication): Promise<Application>;
   updateApplication(id: string, app: Partial<Application>): Promise<Application | undefined>;
@@ -316,12 +316,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Applications
-  async getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string })[]> {
+  async getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]> {
     const rows = await db
       .select({
         application: applications,
         jobTitle: jobs.title,
         jobRequirementId: jobs.jobId,
+        ceipalJobId: jobs.ceipalJobId,
+        jobDescription: jobs.description,
+        jobCity: jobs.city,
+        jobState: jobs.state,
+        jobType: jobs.jobType,
       })
       .from(applications)
       .leftJoin(jobs, eq(applications.jobId, jobs.id))
@@ -330,6 +335,11 @@ export class DatabaseStorage implements IStorage {
       ...r.application,
       jobTitle: r.jobTitle ?? undefined,
       jobRequirementId: r.jobRequirementId ?? undefined,
+      ceipalJobId: r.ceipalJobId ?? undefined,
+      jobDescription: r.jobDescription ?? undefined,
+      jobCity: r.jobCity ?? undefined,
+      jobState: r.jobState ?? undefined,
+      jobType: r.jobType ?? undefined,
     }));
   }
 
