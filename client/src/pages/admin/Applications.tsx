@@ -35,6 +35,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Application } from "@shared/schema";
 
+type ApplicationWithJob = Application & { jobTitle?: string; jobRequirementId?: string };
+
 const statusConfig = {
   new: { label: "New", icon: Clock, color: "bg-blue-100 text-blue-800" },
   reviewed: { label: "Reviewed", icon: Eye, color: "bg-yellow-100 text-yellow-800" },
@@ -48,9 +50,9 @@ export default function AdminApplications() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedApp, setSelectedApp] = useState<Application | null>(null);
+  const [selectedApp, setSelectedApp] = useState<ApplicationWithJob | null>(null);
 
-  const { data: applications, isLoading } = useQuery<Application[]>({
+  const { data: applications, isLoading } = useQuery<ApplicationWithJob[]>({
     queryKey: ["/api/admin/applications"],
     enabled: isAuthenticated,
   });
@@ -125,6 +127,7 @@ export default function AdminApplications() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Candidate</TableHead>
+                  <TableHead>Position</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Experience</TableHead>
                   <TableHead>Status</TableHead>
@@ -137,6 +140,7 @@ export default function AdminApplications() {
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -150,6 +154,12 @@ export default function AdminApplications() {
                     return (
                       <TableRow key={app.id} data-testid={`row-application-${app.id}`}>
                         <TableCell className="font-medium">{app.candidateName}</TableCell>
+                        <TableCell>
+                          <div className="text-sm font-medium">{app.jobTitle || "—"}</div>
+                          {app.jobRequirementId && (
+                            <div className="text-xs text-muted-foreground">Req: {app.jobRequirementId}</div>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div className="text-sm">{app.email}</div>
                           <div className="text-xs text-muted-foreground">{app.phone}</div>
@@ -180,7 +190,7 @@ export default function AdminApplications() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No applications found.
                     </TableCell>
                   </TableRow>
@@ -198,6 +208,22 @@ export default function AdminApplications() {
                 <DialogTitle>{selectedApp.candidateName}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                {(selectedApp.jobTitle || selectedApp.jobRequirementId) && (
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Position</label>
+                        <p className="font-medium" data-testid="text-app-position">{selectedApp.jobTitle || "—"}</p>
+                      </div>
+                      {selectedApp.jobRequirementId && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Requirement ID</label>
+                          <p data-testid="text-app-requirement-id">{selectedApp.jobRequirementId}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Email</label>
@@ -216,6 +242,23 @@ export default function AdminApplications() {
                     <p>{selectedApp.currentEmployer || "Not specified"}</p>
                   </div>
                 </div>
+                {selectedApp.resumePath && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Resume</label>
+                    <p>
+                      <a
+                        href={selectedApp.resumePath}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1"
+                        data-testid="link-app-resume"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download Resume
+                      </a>
+                    </p>
+                  </div>
+                )}
                 {selectedApp.linkedinUrl && (
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>

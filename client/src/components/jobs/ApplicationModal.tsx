@@ -47,6 +47,7 @@ interface ApplicationModalProps {
 export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalProps) {
   const { toast } = useToast();
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -63,29 +64,28 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
+      if (!resumeFile) {
+        throw new Error("RESUME_REQUIRED");
+      }
+
       let resumeUrl: string | undefined;
       
-      // Upload resume if provided
-      if (resumeFile) {
-        try {
-          // Get signed upload URL
-          const uploadResponse = await apiRequest("POST", "/api/upload-url");
-          const { uploadUrl } = await uploadResponse.json();
-          
-          // Upload file to object storage
-          await fetch(uploadUrl, {
-            method: "PUT",
-            body: resumeFile,
-            headers: {
-              "Content-Type": resumeFile.type,
-            },
-          });
-          
-          resumeUrl = uploadUrl;
-        } catch (error) {
-          console.error("Resume upload failed:", error);
-          // Continue without resume if upload fails
-        }
+      try {
+        const uploadResponse = await apiRequest("POST", "/api/upload-url");
+        const { uploadUrl } = await uploadResponse.json();
+        
+        await fetch(uploadUrl, {
+          method: "PUT",
+          body: resumeFile,
+          headers: {
+            "Content-Type": resumeFile.type,
+          },
+        });
+        
+        resumeUrl = uploadUrl;
+      } catch (error) {
+        console.error("Resume upload failed:", error);
+        throw new Error("Resume upload failed. Please try again.");
       }
       
       return apiRequest("POST", "/api/applications", {
@@ -103,16 +103,25 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
       setResumeFile(null);
       onOpenChange(false);
     },
-    onError: () => {
+    onError: (error: Error) => {
+      if (error.message === "RESUME_REQUIRED") {
+        setResumeError("Please upload your resume to apply");
+        return;
+      }
       toast({
         title: "Something went wrong",
-        description: "Please try again or contact us directly.",
+        description: error.message || "Please try again or contact us directly.",
         variant: "destructive",
       });
     },
   });
 
   const onSubmit = (data: FormData) => {
+    if (!resumeFile) {
+      setResumeError("Please upload your resume to apply");
+      return;
+    }
+    setResumeError(null);
     mutation.mutate(data);
   };
 
@@ -128,6 +137,7 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
         return;
       }
       setResumeFile(file);
+      setResumeError(null);
     }
   };
 
@@ -200,9 +210,12 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
 
             {/* Resume Upload */}
             <div>
-              <FormLabel>Resume (Optional)</FormLabel>
+              <FormLabel>Resume *</FormLabel>
               <div className="mt-2">
-                <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
+                <label
+                  className={`flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors ${resumeError ? "border-destructive" : ""}`}
+                  data-testid="label-resume-upload"
+                >
                   {resumeFile ? (
                     <>
                       <CheckCircle className="h-5 w-5 text-green-500" />
@@ -221,8 +234,14 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
                     className="hidden"
                     accept=".pdf,.doc,.docx"
                     onChange={handleFileChange}
+                    data-testid="input-resume-file"
                   />
                 </label>
+                {resumeError && (
+                  <p className="text-sm font-medium text-destructive mt-1" data-testid="text-resume-error">
+                    {resumeError}
+                  </p>
+                )}
               </div>
             </div>
 

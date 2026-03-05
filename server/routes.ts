@@ -268,6 +268,10 @@ export async function registerRoutes(
         body.resumePath = objectStorageService.normalizeObjectEntityPath(body.resumeUrl);
         delete body.resumeUrl;
       }
+
+      if (!body.resumePath) {
+        return res.status(400).json({ error: "Resume is required" });
+      }
       
       const result = insertApplicationSchema.safeParse(body);
       if (!result.success) {

@@ -79,7 +79,7 @@ export interface IStorage {
   getJobFilters(): Promise<{ specialties: string[]; states: string[]; jobTypes: string[] }>;
 
   // Applications
-  getApplications(): Promise<Application[]>;
+  getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string })[]>;
   getApplication(id: string): Promise<Application | undefined>;
   createApplication(app: InsertApplication): Promise<Application>;
   updateApplication(id: string, app: Partial<Application>): Promise<Application | undefined>;
@@ -316,8 +316,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Applications
-  async getApplications(): Promise<Application[]> {
-    return db.select().from(applications).orderBy(desc(applications.createdAt));
+  async getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string })[]> {
+    const rows = await db
+      .select({
+        application: applications,
+        jobTitle: jobs.title,
+        jobRequirementId: jobs.jobId,
+      })
+      .from(applications)
+      .leftJoin(jobs, eq(applications.jobId, jobs.id))
+      .orderBy(desc(applications.createdAt));
+    return rows.map((r) => ({
+      ...r.application,
+      jobTitle: r.jobTitle ?? undefined,
+      jobRequirementId: r.jobRequirementId ?? undefined,
+    }));
   }
 
   async getApplication(id: string): Promise<Application | undefined> {
