@@ -301,26 +301,22 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
 
     const token = await authenticate();
 
-    const formData = new FormData();
-
-    if (ceipalJobId) {
-      formData.append("job_id", ceipalJobId);
-    }
-
-    formData.append("first_name", firstName);
-    formData.append("last_name", lastName);
-    formData.append("email", application.email || "");
-    formData.append("phone", application.phone || "");
-    formData.append("source", "Website");
+    const applicantObj: Record<string, any> = {
+      first_name: firstName,
+      last_name: lastName,
+      email_address: application.email || "",
+      mobile_number: (application.phone || "").replace(/\D/g, ""),
+      source: "Website",
+    };
 
     if (application.currentEmployer) {
-      formData.append("current_employer", application.currentEmployer);
+      applicantObj.current_company = application.currentEmployer;
     }
     if (application.yearsExperience) {
-      formData.append("experience", String(application.yearsExperience));
+      applicantObj.experience = String(application.yearsExperience);
     }
     if (application.linkedinUrl) {
-      formData.append("linkedin_url", application.linkedinUrl);
+      applicantObj.linkedin_profile_url = application.linkedinUrl;
     }
 
     if (application.resumePath) {
@@ -333,11 +329,12 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
         const resumeResponse = await fetch(resumeUrl);
         if (resumeResponse.ok) {
           const resumeBuffer = await resumeResponse.arrayBuffer();
+          const base64Content = Buffer.from(resumeBuffer).toString("base64");
           const pathParts = application.resumePath.split("/");
           const fileName = pathParts[pathParts.length - 1] || "resume.pdf";
-          const resumeBlob = new Blob([resumeBuffer], { type: resumeResponse.headers.get("content-type") || "application/octet-stream" });
-          formData.append("resume", resumeBlob, fileName);
-          console.log(`[ceipal] Attached resume: ${fileName} (${resumeBuffer.byteLength} bytes)`);
+          applicantObj.resume_content = base64Content;
+          applicantObj.filename = fileName;
+          console.log(`[ceipal] Attached resume: ${fileName} (${resumeBuffer.byteLength} bytes, base64: ${base64Content.length} chars)`);
         } else {
           console.warn(`[ceipal] Could not fetch resume from ${resumeUrl}: ${resumeResponse.status}`);
         }
@@ -346,20 +343,22 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
       }
     }
 
-    const formEntries: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      if (typeof value === "string") formEntries[key] = value;
-      else formEntries[key] = `[File: ${(value as any).name || "blob"}]`;
-    });
+    const payload = [applicantObj];
+
+    const logObj = { ...applicantObj };
+    if (logObj.resume_content) {
+      logObj.resume_content = `[base64, ${logObj.resume_content.length} chars]`;
+    }
     console.log(`[ceipal] Pushing applicant ${applicationId} to endpoint: ${endpoint}`);
-    console.log(`[ceipal] Form data:`, JSON.stringify(formEntries));
+    console.log(`[ceipal] Payload:`, JSON.stringify([logObj]));
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      body: formData,
+      body: JSON.stringify(payload),
     });
 
     const responseText = await res.text();

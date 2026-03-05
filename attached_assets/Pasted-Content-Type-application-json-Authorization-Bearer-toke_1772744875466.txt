@@ -1,0 +1,55 @@
+Content-Type: application/json
+Authorization: Bearer <token> (auto-fetched using your credentials)
+Body is a JSON array wrapping a single applicant object
+Full payload shape
+[
+  {
+    "first_name": "Maria",
+    "last_name": "Smith",
+    "email_address": "maria.smith@email.com",
+    "middle_name": "A",
+    "mobile_number": "7135559012",
+    "city": "Houston",
+    "zip_code": "77001",
+    "linkedin_profile_url": "https://www.linkedin.com/in/mariasmith",
+    "work_authorization": "US Citizen",
+    "job_title": "Registered Nurse",
+    "current_company": "Houston Methodist",
+    "experience": "8",
+    "primary_skills": "ICU, ACLS, BLS, Telemetry, Epic",
+    "skills": "ICU, ACLS, BLS, Telemetry, Epic, PALS, Charge Nurse",
+    "technology": "ICU, ACLS, BLS, Telemetry, Epic, PALS, Charge Nurse",
+    "education_degree": "Bachelor'S",
+    "education_institution": "University Of Texas",
+    "source": "klerIQ",
+    "resume_content": "<base64-encoded file>",
+    "filename": "Maria_Smith_Resume.pdf"
+  }
+]
+Field-by-field source map
+CEIPAL Field	Source	Notes
+first_name	AI extracted → title-cased	Required, always sent
+last_name	AI extracted → title-cased	Required, always sent
+email_address	Regex first, then AI	Lowercased
+middle_name	AI extracted	Omitted if blank
+mobile_number	Regex first, then AI	Digits only, 10 digits
+city	AI extracted	Omitted if blank
+zip_code	Regex first, then AI	Omitted if blank
+linkedin_profile_url	Regex first, then AI	Normalised to https://
+work_authorization	AI extracted → mapped to CEIPAL enum	e.g. "H-1B", "Green Card", "US Citizen"
+job_title	AI extracted	Title-cased
+current_company	AI extracted	Omitted if blank
+experience	AI extracted	Numeric string only (e.g. "8")
+primary_skills	First 5 from skills list	Comma-separated
+skills	All skills	Comma-separated
+technology	Same as skills	Duplicate field CEIPAL expects
+education_degree	AI extracted	Omitted if blank
+education_institution	AI extracted	Omitted if blank
+source	Hardcoded	Always "klerIQ"
+resume_content	Base64 encoded file	Full PDF/DOC/DOCX
+filename	Original upload filename	
+Two things worth flagging
+state is not sent — the state field is extracted from the resume but the current formatter does not include it in the CEIPAL payload. If CEIPAL's API accepts a state field, this is something we could add.
+
+technology mirrors skills — this is intentional. CEIPAL has two separate fields and expects both to be populated with the same skills list for searchability.
+
