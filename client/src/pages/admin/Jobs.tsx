@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download, CheckSquare, RefreshCw } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -103,6 +103,11 @@ export default function AdminJobs() {
 
   const { data: jobs, isLoading } = useQuery<Job[]>({
     queryKey: ["/api/admin/jobs"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: applicationCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/admin/jobs/application-counts"],
     enabled: isAuthenticated,
   });
 
@@ -403,8 +408,10 @@ export default function AdminJobs() {
                     />
                   </TableHead>
                   <TableHead>Title</TableHead>
+                  <TableHead>Job ID</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Applications</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -415,8 +422,10 @@ export default function AdminJobs() {
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
                     </TableRow>
@@ -444,9 +453,29 @@ export default function AdminJobs() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <span className="text-sm text-muted-foreground font-mono" data-testid={`text-jobid-${job.id}`}>
+                          {job.jobId || job.ceipalJobCode || job.ceipalJobId || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
                         {[job.city, job.state].filter(Boolean).join(", ") || "Remote"}
                       </TableCell>
                       <TableCell>{job.jobType || "—"}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const count = applicationCounts?.[job.id] || 0;
+                          if (count > 0) {
+                            return (
+                              <Link href={`/admin/applications/job/${job.id}`}>
+                                <Badge variant="default" className="cursor-pointer" data-testid={`badge-app-count-${job.id}`}>
+                                  {count}
+                                </Badge>
+                              </Link>
+                            );
+                          }
+                          return <span className="text-muted-foreground text-sm" data-testid={`text-app-count-${job.id}`}>0</span>;
+                        })()}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={job.isActive ? "default" : "secondary"}>
                           {job.isActive ? "Active" : "Inactive"}
@@ -499,7 +528,7 @@ export default function AdminJobs() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No jobs found. Upload a CSV or add a job manually.
                     </TableCell>
                   </TableRow>

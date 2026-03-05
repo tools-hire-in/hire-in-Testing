@@ -493,10 +493,20 @@ export async function registerRoutes(
   // Admin Applications (HR and Operations roles can access)
   app.get("/api/admin/applications", requireAuth, async (req, res) => {
     try {
-      const applications = await storage.getApplications();
+      const jobId = req.query.jobId as string | undefined;
+      const applications = await storage.getApplications(jobId);
       res.json(applications);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  app.get("/api/admin/jobs/application-counts", requireAuth, async (req, res) => {
+    try {
+      const counts = await storage.getApplicationCountsByJob();
+      res.json(counts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch application counts" });
     }
   });
 

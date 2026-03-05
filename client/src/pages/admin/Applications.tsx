@@ -1,27 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, Eye, Download, CheckCircle, XCircle, Clock, ExternalLink, Briefcase, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, Briefcase, MapPin, Clock, Users, LinkIcon } from "lucide-react";
 import { format } from "date-fns";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -30,9 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Application } from "@shared/schema";
 
 type ApplicationWithJob = Application & {
@@ -46,66 +30,44 @@ type ApplicationWithJob = Application & {
   jobType?: string;
 };
 
-const statusConfig = {
-  new: { label: "New", icon: Clock, color: "bg-blue-100 text-blue-800" },
-  reviewed: { label: "Reviewed", icon: Eye, color: "bg-yellow-100 text-yellow-800" },
-  shortlisted: { label: "Shortlisted", icon: CheckCircle, color: "bg-green-100 text-green-800" },
-  rejected: { label: "Rejected", icon: XCircle, color: "bg-red-100 text-red-800" },
+type JobGroup = {
+  jobId: string | null;
+  jobTitle: string;
+  jobRequirementId?: string;
+  ceipalJobCode?: string;
+  ceipalJobId?: string;
+  jobCity?: string;
+  jobState?: string;
+  jobType?: string;
+  applications: ApplicationWithJob[];
+  statusCounts: Record<string, number>;
+  ceipalStatusCounts: Record<string, number>;
+  latestAppliedDate: string | null;
 };
 
-const ceipalSyncConfig: Record<string, { label: string; color: string }> = {
-  synced: { label: "Synced", color: "bg-green-100 text-green-800" },
-  pending: { label: "Pending", color: "bg-yellow-100 text-yellow-800" },
-  failed: { label: "Failed", color: "bg-red-100 text-red-800" },
-  skipped: { label: "Skipped", color: "bg-gray-100 text-gray-800" },
+const statusLabels: Record<string, string> = {
+  new: "New",
+  reviewed: "Reviewed",
+  shortlisted: "Shortlisted",
+  rejected: "Rejected",
+};
+
+const statusColors: Record<string, string> = {
+  new: "bg-blue-100 text-blue-800",
+  reviewed: "bg-yellow-100 text-yellow-800",
+  shortlisted: "bg-green-100 text-green-800",
+  rejected: "bg-red-100 text-red-800",
 };
 
 export default function AdminApplications() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedApp, setSelectedApp] = useState<ApplicationWithJob | null>(null);
-  const [jobDetailApp, setJobDetailApp] = useState<ApplicationWithJob | null>(null);
 
   const { data: applications, isLoading } = useQuery<ApplicationWithJob[]>({
     queryKey: ["/api/admin/applications"],
     enabled: isAuthenticated,
-  });
-
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      return apiRequest("PATCH", `/api/admin/applications/${id}`, { status });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/applications"] });
-      toast({ title: "Status updated" });
-    },
-  });
-
-  const retryCeipalMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/admin/applications/${id}/retry-ceipal`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/applications"] });
-      if (data.success) {
-        toast({ title: "Synced to Ceipal", description: data.ceipalId ? `Ceipal ID: ${data.ceipalId}` : "Successfully synced" });
-        if (selectedApp) {
-          setSelectedApp({ ...selectedApp, ceipalSyncStatus: "synced", ceipalApplicantId: data.ceipalId || null });
-        }
-      } else {
-        toast({ title: "Ceipal sync failed", description: data.error || "Unknown error", variant: "destructive" });
-        if (selectedApp) {
-          setSelectedApp({ ...selectedApp, ceipalSyncStatus: "failed" });
-        }
-      }
-    },
-    onError: () => {
-      toast({ title: "Retry failed", description: "Could not connect to Ceipal", variant: "destructive" });
-    },
   });
 
   useEffect(() => {
@@ -114,32 +76,121 @@ export default function AdminApplications() {
     }
   }, [authLoading, isAuthenticated, setLocation]);
 
+  const jobGroups = useMemo(() => {
+    if (!applications) return [];
+
+    const groupMap = new Map<string, JobGroup>();
+
+    for (const app of applications) {
+      const key = app.jobId || "__unlinked__";
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          jobId: app.jobId || null,
+          jobTitle: app.jobTitle || (app.jobId ? "Unknown Job" : "Unlinked Applications"),
+          jobRequirementId: app.jobRequirementId,
+          ceipalJobCode: app.ceipalJobCode,
+          ceipalJobId: app.ceipalJobId,
+          jobCity: app.jobCity,
+          jobState: app.jobState,
+          jobType: app.jobType,
+          applications: [],
+          statusCounts: {},
+          ceipalStatusCounts: {},
+          latestAppliedDate: null,
+        });
+      }
+
+      const group = groupMap.get(key)!;
+      group.applications.push(app);
+
+      const status = app.status || "new";
+      group.statusCounts[status] = (group.statusCounts[status] || 0) + 1;
+
+      const ceipalStatus = app.ceipalSyncStatus || "pending";
+      group.ceipalStatusCounts[ceipalStatus] = (group.ceipalStatusCounts[ceipalStatus] || 0) + 1;
+
+      if (app.createdAt) {
+        const appDate = new Date(app.createdAt).toISOString();
+        if (!group.latestAppliedDate || appDate > group.latestAppliedDate) {
+          group.latestAppliedDate = appDate;
+        }
+      }
+    }
+
+    const groups = Array.from(groupMap.values());
+    groups.sort((a, b) => {
+      if (a.jobId === null) return 1;
+      if (b.jobId === null) return -1;
+      return b.applications.length - a.applications.length;
+    });
+
+    return groups;
+  }, [applications]);
+
+  const filteredGroups = useMemo(() => {
+    return jobGroups.filter((group) => {
+      const searchLower = search.toLowerCase();
+      const matchesSearch =
+        !search ||
+        group.jobTitle.toLowerCase().includes(searchLower) ||
+        (group.jobRequirementId || "").toLowerCase().includes(searchLower) ||
+        (group.ceipalJobCode || "").toLowerCase().includes(searchLower) ||
+        group.applications.some(
+          (app) =>
+            app.candidateName.toLowerCase().includes(searchLower) ||
+            app.email.toLowerCase().includes(searchLower)
+        );
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        group.applications.some((app) => app.status === statusFilter);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [jobGroups, search, statusFilter]);
+
+  const totalApplications = applications?.length ?? 0;
+  const totalJobsWithApps = jobGroups.filter((g) => g.jobId !== null).length;
+
   if (authLoading || !isAuthenticated) {
     return null;
   }
-
-  const filteredApps = applications?.filter((app) => {
-    const matchesSearch =
-      app.candidateName.toLowerCase().includes(search.toLowerCase()) ||
-      app.email.toLowerCase().includes(search.toLowerCase()) ||
-      (app.jobTitle || "").toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || app.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Applications</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">Applications</h1>
           <p className="text-muted-foreground">Review and manage job applications</p>
+        </div>
+
+        <div className="flex items-center gap-4 flex-wrap">
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-total-applications">{isLoading ? "—" : totalApplications}</p>
+                <p className="text-xs text-muted-foreground">Total Applications</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <Briefcase className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-total-jobs">{isLoading ? "—" : totalJobsWithApps}</p>
+                <p className="text-xs text-muted-foreground">Jobs with Applications</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by name, email, or position..."
+              placeholder="Search by job title, ID, or candidate..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -147,7 +198,7 @@ export default function AdminApplications() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -160,342 +211,115 @@ export default function AdminApplications() {
           </Select>
         </div>
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Experience</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Ceipal</TableHead>
-                  <TableHead>Applied</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : filteredApps && filteredApps.length > 0 ? (
-                  filteredApps.map((app) => {
-                    const status = statusConfig[app.status as keyof typeof statusConfig] || statusConfig.new;
-                    const syncStatus = ceipalSyncConfig[app.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending;
-                    return (
-                      <TableRow key={app.id} data-testid={`row-application-${app.id}`}>
-                        <TableCell className="font-medium">{app.candidateName}</TableCell>
-                        <TableCell>
-                          <div className="text-sm font-medium">{app.jobTitle || "—"}</div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {app.jobRequirementId && (
-                              <span className="text-xs text-muted-foreground">Req: {app.jobRequirementId}</span>
-                            )}
-                            {(app.ceipalJobCode || app.ceipalJobId) && (
-                              <span className="text-xs text-muted-foreground">Ceipal: {app.ceipalJobCode || app.ceipalJobId}</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">{app.email}</div>
-                          <div className="text-xs text-muted-foreground">{app.phone}</div>
-                        </TableCell>
-                        <TableCell>
-                          {app.yearsExperience ? `${app.yearsExperience} years` : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={status.color}>{status.label}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={syncStatus.color} data-testid={`badge-ceipal-sync-${app.id}`}>
-                            {syncStatus.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {app.createdAt
-                            ? format(new Date(app.createdAt), "MMM d, yyyy")
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedApp(app)}
-                            data-testid={`button-view-application-${app.id}`}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No applications found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-5 space-y-3">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-10 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredGroups.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredGroups.map((group) => {
+              const isUnlinked = group.jobId === null;
+              const location = [group.jobCity, group.jobState].filter(Boolean).join(", ");
+              const codeDisplay = group.ceipalJobCode || group.ceipalJobId || group.jobRequirementId;
 
-        {selectedApp && (
-          <Dialog open={!!selectedApp} onOpenChange={() => setSelectedApp(null)}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{selectedApp.candidateName}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {(selectedApp.jobTitle || selectedApp.jobRequirementId || selectedApp.ceipalJobId) && (
-                  <div className="p-3 bg-muted rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold">Job Details</h4>
-                      {selectedApp.jobId && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setJobDetailApp(selectedApp);
-                          }}
-                          data-testid="button-view-job-details"
-                        >
-                          <Briefcase className="h-3 w-3 mr-1" />
-                          View Full Job
-                        </Button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Position</label>
-                        <p className="text-sm font-medium" data-testid="text-app-position">{selectedApp.jobTitle || "—"}</p>
-                      </div>
-                      {selectedApp.jobRequirementId && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground">Requirement ID</label>
-                          <p className="text-sm" data-testid="text-app-requirement-id">{selectedApp.jobRequirementId}</p>
-                        </div>
-                      )}
-                      {(selectedApp.ceipalJobCode || selectedApp.ceipalJobId) && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground">Ceipal Job ID</label>
-                          <p className="text-sm" data-testid="text-app-ceipal-job-id">{selectedApp.ceipalJobCode || selectedApp.ceipalJobId}</p>
-                        </div>
-                      )}
-                      {(selectedApp.jobCity || selectedApp.jobState) && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground">Location</label>
-                          <p className="text-sm">{[selectedApp.jobCity, selectedApp.jobState].filter(Boolean).join(", ")}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Email</label>
-                    <p>{selectedApp.email}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Phone</label>
-                    <p>{selectedApp.phone}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Experience</label>
-                    <p>{selectedApp.yearsExperience ? `${selectedApp.yearsExperience} years` : "Not specified"}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Current Employer</label>
-                    <p>{selectedApp.currentEmployer || "Not specified"}</p>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="grid grid-cols-2 gap-3 flex-1">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Ceipal Sync Status</label>
-                        <div className="mt-1">
-                          <Badge className={(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).color}>
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            {(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).label}
-                          </Badge>
+              return (
+                <Card
+                  key={group.jobId || "__unlinked__"}
+                  className="cursor-pointer hover-elevate transition-colors"
+                  onClick={() => {
+                    if (isUnlinked) {
+                      setLocation("/admin/applications/job/unlinked");
+                    } else {
+                      setLocation(`/admin/applications/job/${group.jobId}`);
+                    }
+                  }}
+                  data-testid={`card-job-group-${group.jobId || "unlinked"}`}
+                >
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate" data-testid={`text-job-title-${group.jobId || "unlinked"}`}>
+                          {isUnlinked ? (
+                            <span className="flex items-center gap-1.5">
+                              <LinkIcon className="h-4 w-4 flex-shrink-0" />
+                              {group.jobTitle}
+                            </span>
+                          ) : (
+                            group.jobTitle
+                          )}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          {codeDisplay && !isUnlinked && (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-job-code-${group.jobId}`}>
+                              {group.jobRequirementId ? `Req: ${group.jobRequirementId}` : ""}
+                              {group.jobRequirementId && (group.ceipalJobCode || group.ceipalJobId) ? " · " : ""}
+                              {(group.ceipalJobCode || group.ceipalJobId) ? `Ceipal: ${group.ceipalJobCode || group.ceipalJobId}` : ""}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      {selectedApp.ceipalApplicantId && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground">Ceipal Applicant ID</label>
-                          <p className="text-sm font-mono" data-testid="text-ceipal-applicant-id">{selectedApp.ceipalApplicantId}</p>
-                        </div>
-                      )}
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-3xl font-bold" data-testid={`text-app-count-${group.jobId || "unlinked"}`}>
+                          {group.applications.length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          application{group.applications.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
                     </div>
-                    {(selectedApp.ceipalSyncStatus === "failed" || selectedApp.ceipalSyncStatus === "pending") && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => retryCeipalMutation.mutate(selectedApp.id)}
-                        disabled={retryCeipalMutation.isPending}
-                        data-testid="button-retry-ceipal"
-                      >
-                        <RefreshCw className={`h-3 w-3 mr-1 ${retryCeipalMutation.isPending ? "animate-spin" : ""}`} />
-                        {retryCeipalMutation.isPending ? "Syncing..." : "Retry Sync"}
-                      </Button>
+
+                    {location && !isUnlinked && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3 flex-shrink-0" />
+                        <span>{location}</span>
+                        {group.jobType && (
+                          <>
+                            <span className="mx-1">·</span>
+                            <span>{group.jobType}</span>
+                          </>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </div>
 
-                {selectedApp.resumePath && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Resume</label>
-                    <p>
-                      <a
-                        href={selectedApp.resumePath}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline inline-flex items-center gap-1"
-                        data-testid="link-app-resume"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download Resume
-                      </a>
-                    </p>
-                  </div>
-                )}
-                {selectedApp.linkedinUrl && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>
-                    <p>
-                      <a
-                        href={selectedApp.linkedinUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        {selectedApp.linkedinUrl}
-                      </a>
-                    </p>
-                  </div>
-                )}
-                {selectedApp.coverLetter && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Cover Letter</label>
-                    <p className="whitespace-pre-wrap text-sm bg-muted p-3 rounded-lg">
-                      {selectedApp.coverLetter}
-                    </p>
-                  </div>
-                )}
-                <div className="flex items-center gap-4 pt-4 border-t">
-                  <label className="text-sm font-medium">Update Status:</label>
-                  <Select
-                    value={selectedApp.status}
-                    onValueChange={(status) => {
-                      updateStatusMutation.mutate({ id: selectedApp.id, status });
-                      setSelectedApp({ ...selectedApp, status });
-                    }}
-                  >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new">New</SelectItem>
-                      <SelectItem value="reviewed">Reviewed</SelectItem>
-                      <SelectItem value="shortlisted">Shortlisted</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-
-        {jobDetailApp && (
-          <Dialog open={!!jobDetailApp} onOpenChange={() => setJobDetailApp(null)}>
-            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Briefcase className="h-5 w-5" />
-                  {jobDetailApp.jobTitle || "Job Details"}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {jobDetailApp.jobRequirementId && (
-                    <div className="p-2 bg-muted rounded">
-                      <label className="text-xs font-medium text-muted-foreground">Requirement ID</label>
-                      <p className="text-sm font-medium">{jobDetailApp.jobRequirementId}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {Object.entries(group.statusCounts).map(([status, count]) => (
+                        <Badge
+                          key={status}
+                          variant="secondary"
+                          className={`text-xs ${statusColors[status] || ""}`}
+                          data-testid={`badge-status-${status}-${group.jobId || "unlinked"}`}
+                        >
+                          {count} {statusLabels[status] || status}
+                        </Badge>
+                      ))}
                     </div>
-                  )}
-                  {(jobDetailApp.ceipalJobCode || jobDetailApp.ceipalJobId) && (
-                    <div className="p-2 bg-muted rounded">
-                      <label className="text-xs font-medium text-muted-foreground">Ceipal Job ID</label>
-                      <p className="text-sm font-medium">{jobDetailApp.ceipalJobCode || jobDetailApp.ceipalJobId}</p>
-                    </div>
-                  )}
-                  {jobDetailApp.jobType && (
-                    <div className="p-2 bg-muted rounded">
-                      <label className="text-xs font-medium text-muted-foreground">Employment Type</label>
-                      <p className="text-sm font-medium">{jobDetailApp.jobType}</p>
-                    </div>
-                  )}
-                  {(jobDetailApp.jobCity || jobDetailApp.jobState) && (
-                    <div className="p-2 bg-muted rounded">
-                      <label className="text-xs font-medium text-muted-foreground">Location</label>
-                      <p className="text-sm font-medium">{[jobDetailApp.jobCity, jobDetailApp.jobState].filter(Boolean).join(", ")}</p>
-                    </div>
-                  )}
-                </div>
 
-                {jobDetailApp.jobDescription && (
-                  <div>
-                    <label className="text-sm font-semibold">Job Description</label>
-                    <div
-                      className="mt-2 prose prose-sm max-w-none bg-muted/50 p-4 rounded-lg text-sm"
-                      dangerouslySetInnerHTML={{
-                        __html: jobDetailApp.jobDescription
-                          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-                          .replace(/on\w+\s*=/gi, "data-removed=")
-                      }}
-                      data-testid="text-job-description"
-                    />
-                  </div>
-                )}
-
-                {!jobDetailApp.jobDescription && (
-                  <p className="text-center text-muted-foreground py-4">No job description available.</p>
-                )}
-
-                {jobDetailApp.jobId && (
-                  <div className="pt-2 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(`/jobs/${jobDetailApp.jobId}`, "_blank")}
-                      data-testid="button-open-job-page"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                      Open Job Page
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
+                    {group.latestAppliedDate && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Latest: {format(new Date(group.latestAppliedDate), "MMM d, yyyy")}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No applications found.
+            </CardContent>
+          </Card>
         )}
       </div>
     </AdminLayout>

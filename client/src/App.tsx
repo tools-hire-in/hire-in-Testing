@@ -41,6 +41,7 @@ import SalarySlips from "@/pages/admin/hr/SalarySlips";
 import MyDocuments from "@/pages/admin/hr/MyDocuments";
 import DocumentCompliance from "@/pages/admin/hr/DocumentCompliance";
 import HRTools from "@/pages/admin/hr/HRTools";
+import JobApplications from "@/pages/admin/JobApplications";
 import OnboardAccept from "@/pages/OnboardAccept";
 
 function isEmployeeSubdomain(): boolean {
@@ -85,6 +86,7 @@ function PublicRouter() {
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/jobs" component={AdminJobs} />
       <Route path="/admin/applications" component={AdminApplications} />
+      <Route path="/admin/applications/job/:jobId" component={JobApplications} />
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/audit-logs" component={AuditLogs} />
@@ -123,6 +125,7 @@ function EmployeeRouter() {
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/jobs" component={AdminJobs} />
       <Route path="/admin/applications" component={AdminApplications} />
+      <Route path="/admin/applications/job/:jobId" component={JobApplications} />
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/audit-logs" component={AuditLogs} />

@@ -63,7 +63,13 @@ An integrated internal employee management system within the admin panel featuri
 - **SendGrid**: For transactional emails including invitations, welcome emails, password resets, and document reminders.
 
 ### ATS Integration
-- **Ceipal ATS**: Integration for job synchronization (pull from Ceipal, upsert to platform) and applicant data pushing (push applications from platform to Ceipal). Uses JWT token-based authentication.
+- **Ceipal ATS**: Integration for job synchronization (pull from Ceipal, upsert to platform) and applicant data pushing (push applications from platform to Ceipal via `savecustomapplicantdetails` endpoint — JSON array payload with `first_name`, `last_name`, `email_address`, `mobile_number`, `resume_content` (base64), `filename`, `source`). Uses JWT token-based authentication. Jobs have both `ceipalJobId` (internal hash) and `ceipalJobCode` (human-readable, e.g., JPC-3); the UI shows `ceipalJobCode` prominently.
+
+### Admin Applications Page
+- **Grouped View**: Applications page (`/admin/applications`) shows applications grouped by job as card tiles. Each tile shows job title, Req ID, Ceipal code, location, prominent application count, status breakdown, and latest applied date. Clicking navigates to `/admin/applications/job/:jobId`.
+- **Job Applications Detail**: `/admin/applications/job/:jobId` shows all applications for a specific job with full table, detail modals, status updates, Ceipal retry sync, resume download. Supports `jobId=unlinked` for applications without a linked job.
+- **Jobs Page Columns**: Admin jobs table includes Job ID column (Req ID / Ceipal code) and Applications count column with clickable badge navigating to the job's applications.
+- **Backend**: `GET /api/admin/applications?jobId=X` filters by job (supports `unlinked` for null jobId). `GET /api/admin/jobs/application-counts` returns `{jobId: count}` map.
 
 ### External Services
 - **Google Fonts**: For typography.

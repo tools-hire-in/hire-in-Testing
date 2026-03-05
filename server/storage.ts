@@ -79,10 +79,11 @@ export interface IStorage {
   getJobFilters(): Promise<{ specialties: string[]; states: string[]; jobTypes: string[] }>;
 
   // Applications
-  getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; ceipalJobCode?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]>;
+  getApplications(jobId?: string): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; ceipalJobCode?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]>;
   getApplication(id: string): Promise<Application | undefined>;
   createApplication(app: InsertApplication): Promise<Application>;
   updateApplication(id: string, app: Partial<Application>): Promise<Application | undefined>;
+  getApplicationCountsByJob(): Promise<Record<string, number>>;
 
   // Contacts
   getContacts(): Promise<Contact[]>;
@@ -316,8 +317,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Applications
-  async getApplications(): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; ceipalJobCode?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]> {
-    const rows = await db
+  async getApplications(jobId?: string): Promise<(Application & { jobTitle?: string; jobRequirementId?: string; ceipalJobId?: string; ceipalJobCode?: string; jobDescription?: string; jobCity?: string; jobState?: string; jobType?: string })[]> {
+    let query = db
       .select({
         application: applications,
         jobTitle: jobs.title,
@@ -332,6 +333,14 @@ export class DatabaseStorage implements IStorage {
       .from(applications)
       .leftJoin(jobs, eq(applications.jobId, jobs.id))
       .orderBy(desc(applications.createdAt));
+
+    if (jobId === "unlinked") {
+      query = query.where(sql`${applications.jobId} IS NULL`) as any;
+    } else if (jobId) {
+      query = query.where(eq(applications.jobId, jobId)) as any;
+    }
+
+    const rows = await query;
     return rows.map((r) => ({
       ...r.application,
       jobTitle: r.jobTitle ?? undefined,
@@ -361,6 +370,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(applications.id, id))
       .returning();
     return updated;
+  }
+
+  async getApplicationCountsByJob(): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        jobId: applications.jobId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(applications)
+      .groupBy(applications.jobId);
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.jobId) {
+        result[row.jobId] = row.count;
+      }
+    }
+    return result;
   }
 
   // Contacts
