@@ -299,33 +299,51 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
     const firstName = nameParts[0] || "";
     const lastName = nameParts.slice(1).join(" ") || firstName;
 
-    const applicantData: Record<string, any> = {
-      first_name: firstName,
-      last_name: lastName,
-      email: application.email,
-      phone: application.phone || "",
-      current_employer: application.currentEmployer || "",
-      experience: application.yearsExperience ? `${application.yearsExperience} years` : "",
-      linkedin_url: application.linkedinUrl || "",
-      source: "Website",
-    };
-
-    if (ceipalJobId) {
-      applicantData.job_id = ceipalJobId;
-    }
-
     const token = await authenticate();
 
+    const formData = new FormData();
+
+    if (ceipalJobId) {
+      formData.append("job_id", ceipalJobId);
+    }
+
+    formData.append("standard_fields.firstname", firstName);
+    formData.append("standard_fields.lastname", lastName);
+    formData.append("standard_fields.email", application.email || "");
+    formData.append("standard_fields.mobile_number", application.phone || "");
+
+    if (application.resumePath) {
+      try {
+        const resumeUrl = application.resumePath;
+        const resumeResponse = await fetch(resumeUrl);
+        if (resumeResponse.ok) {
+          const resumeBuffer = await resumeResponse.arrayBuffer();
+          const fileName = resumeUrl.split("/").pop() || "resume.pdf";
+          const resumeBlob = new Blob([resumeBuffer], { type: resumeResponse.headers.get("content-type") || "application/octet-stream" });
+          formData.append("document_fields.1", resumeBlob, fileName);
+          console.log(`[ceipal] Attached resume: ${fileName}`);
+        } else {
+          console.warn(`[ceipal] Could not fetch resume from ${resumeUrl}: ${resumeResponse.status}`);
+        }
+      } catch (resumeErr: any) {
+        console.warn(`[ceipal] Resume fetch error: ${resumeErr.message}`);
+      }
+    }
+
+    const formEntries: Record<string, string> = {};
+    formData.forEach((value, key) => {
+      if (typeof value === "string") formEntries[key] = value;
+      else formEntries[key] = `[File: ${(value as any).name || "blob"}]`;
+    });
     console.log(`[ceipal] Pushing applicant ${applicationId} to endpoint: ${endpoint}`);
-    console.log(`[ceipal] Applicant data:`, JSON.stringify(applicantData));
+    console.log(`[ceipal] Form data:`, JSON.stringify(formEntries));
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify(applicantData),
+      body: formData,
     });
 
     const responseText = await res.text();

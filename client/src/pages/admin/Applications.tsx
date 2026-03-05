@@ -39,6 +39,7 @@ type ApplicationWithJob = Application & {
   jobTitle?: string;
   jobRequirementId?: string;
   ceipalJobId?: string;
+  ceipalJobCode?: string;
   jobDescription?: string;
   jobCity?: string;
   jobState?: string;
@@ -201,8 +202,8 @@ export default function AdminApplications() {
                             {app.jobRequirementId && (
                               <span className="text-xs text-muted-foreground">Req: {app.jobRequirementId}</span>
                             )}
-                            {app.ceipalJobId && (
-                              <span className="text-xs text-muted-foreground">Ceipal: {app.ceipalJobId}</span>
+                            {(app.ceipalJobCode || app.ceipalJobId) && (
+                              <span className="text-xs text-muted-foreground">Ceipal: {app.ceipalJobCode || app.ceipalJobId}</span>
                             )}
                           </div>
                         </TableCell>
@@ -288,10 +289,10 @@ export default function AdminApplications() {
                           <p className="text-sm" data-testid="text-app-requirement-id">{selectedApp.jobRequirementId}</p>
                         </div>
                       )}
-                      {selectedApp.ceipalJobId && (
+                      {(selectedApp.ceipalJobCode || selectedApp.ceipalJobId) && (
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Ceipal Job ID</label>
-                          <p className="text-sm" data-testid="text-app-ceipal-job-id">{selectedApp.ceipalJobId}</p>
+                          <p className="text-sm" data-testid="text-app-ceipal-job-id">{selectedApp.ceipalJobCode || selectedApp.ceipalJobId}</p>
                         </div>
                       )}
                       {(selectedApp.jobCity || selectedApp.jobState) && (
@@ -440,10 +441,10 @@ export default function AdminApplications() {
                       <p className="text-sm font-medium">{jobDetailApp.jobRequirementId}</p>
                     </div>
                   )}
-                  {jobDetailApp.ceipalJobId && (
+                  {(jobDetailApp.ceipalJobCode || jobDetailApp.ceipalJobId) && (
                     <div className="p-2 bg-muted rounded">
                       <label className="text-xs font-medium text-muted-foreground">Ceipal Job ID</label>
-                      <p className="text-sm font-medium">{jobDetailApp.ceipalJobId}</p>
+                      <p className="text-sm font-medium">{jobDetailApp.ceipalJobCode || jobDetailApp.ceipalJobId}</p>
                     </div>
                   )}
                   {jobDetailApp.jobType && (
