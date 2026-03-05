@@ -316,6 +316,9 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
 
     const token = await authenticate();
 
+    console.log(`[ceipal] Pushing applicant ${applicationId} to endpoint: ${endpoint}`);
+    console.log(`[ceipal] Applicant data:`, JSON.stringify(applicantData));
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -333,6 +336,8 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
       responseData = { raw: responseText };
     }
 
+    console.log(`[ceipal] Response status: ${res.status}, body:`, JSON.stringify(responseData).substring(0, 500));
+
     if (res.ok) {
       const ceipalApplicantId = responseData?.id || responseData?.applicant_id || null;
 
@@ -344,9 +349,11 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
         })
         .where(eq(applications.id, applicationId));
 
+      console.log(`[ceipal] Successfully synced applicant ${applicationId}, ceipalId: ${ceipalApplicantId}`);
       return { success: true, ceipalId: ceipalApplicantId ? String(ceipalApplicantId) : undefined };
     } else {
-      console.error("Ceipal applicant push failed:", res.status, responseData);
+      const errorMsg = `Ceipal returned ${res.status}: ${JSON.stringify(responseData)}`;
+      console.error(`[ceipal] Applicant push failed for ${applicationId}:`, errorMsg);
 
       await db.update(applications)
         .set({
@@ -355,10 +362,10 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
         })
         .where(eq(applications.id, applicationId));
 
-      return { success: false, error: `Ceipal returned ${res.status}: ${JSON.stringify(responseData)}` };
+      return { success: false, error: errorMsg };
     }
   } catch (err: any) {
-    console.error("Ceipal applicant push error:", err);
+    console.error(`[ceipal] Applicant push error for ${applicationId}:`, err.message, err.stack);
 
     await db.update(applications)
       .set({

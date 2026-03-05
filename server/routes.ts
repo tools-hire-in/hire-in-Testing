@@ -513,6 +513,28 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/applications/:id/retry-ceipal", requireRole("hr", "operations"), async (req, res) => {
+    try {
+      const applicationId = req.params.id as string;
+      const application = await storage.getApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      console.log(`[ceipal] Retry sync requested for application ${applicationId} by user ${(req as any).user?.email}`);
+      const result = await pushApplicantToCeipal(applicationId);
+
+      if (result.success) {
+        res.json({ success: true, ceipalId: result.ceipalId, message: "Successfully synced to Ceipal" });
+      } else {
+        res.json({ success: false, error: result.error, message: `Sync failed: ${result.error}` });
+      }
+    } catch (error: any) {
+      console.error("[ceipal] Retry sync error:", error);
+      res.status(500).json({ error: "Failed to retry Ceipal sync", details: error.message });
+    }
+  });
+
   // Admin Contacts (HR and Operations roles can access - view)
   app.get("/api/admin/contacts", requireAuth, async (req, res) => {
     try {

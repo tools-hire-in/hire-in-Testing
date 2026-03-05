@@ -83,6 +83,30 @@ export default function AdminApplications() {
     },
   });
 
+  const retryCeipalMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/applications/${id}/retry-ceipal`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/applications"] });
+      if (data.success) {
+        toast({ title: "Synced to Ceipal", description: data.ceipalId ? `Ceipal ID: ${data.ceipalId}` : "Successfully synced" });
+        if (selectedApp) {
+          setSelectedApp({ ...selectedApp, ceipalSyncStatus: "synced", ceipalApplicantId: data.ceipalId || null });
+        }
+      } else {
+        toast({ title: "Ceipal sync failed", description: data.error || "Unknown error", variant: "destructive" });
+        if (selectedApp) {
+          setSelectedApp({ ...selectedApp, ceipalSyncStatus: "failed" });
+        }
+      }
+    },
+    onError: () => {
+      toast({ title: "Retry failed", description: "Could not connect to Ceipal", variant: "destructive" });
+    },
+  });
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       setLocation("/admin/login");
@@ -300,21 +324,35 @@ export default function AdminApplications() {
                 </div>
 
                 <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Ceipal Sync Status</label>
-                      <div className="mt-1">
-                        <Badge className={(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).color}>
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          {(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).label}
-                        </Badge>
-                      </div>
-                    </div>
-                    {selectedApp.ceipalApplicantId && (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="grid grid-cols-2 gap-3 flex-1">
                       <div>
-                        <label className="text-xs font-medium text-muted-foreground">Ceipal Applicant ID</label>
-                        <p className="text-sm font-mono" data-testid="text-ceipal-applicant-id">{selectedApp.ceipalApplicantId}</p>
+                        <label className="text-xs font-medium text-muted-foreground">Ceipal Sync Status</label>
+                        <div className="mt-1">
+                          <Badge className={(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).color}>
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            {(ceipalSyncConfig[selectedApp.ceipalSyncStatus || "pending"] || ceipalSyncConfig.pending).label}
+                          </Badge>
+                        </div>
                       </div>
+                      {selectedApp.ceipalApplicantId && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">Ceipal Applicant ID</label>
+                          <p className="text-sm font-mono" data-testid="text-ceipal-applicant-id">{selectedApp.ceipalApplicantId}</p>
+                        </div>
+                      )}
+                    </div>
+                    {(selectedApp.ceipalSyncStatus === "failed" || selectedApp.ceipalSyncStatus === "pending") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => retryCeipalMutation.mutate(selectedApp.id)}
+                        disabled={retryCeipalMutation.isPending}
+                        data-testid="button-retry-ceipal"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${retryCeipalMutation.isPending ? "animate-spin" : ""}`} />
+                        {retryCeipalMutation.isPending ? "Syncing..." : "Retry Sync"}
+                      </Button>
                     )}
                   </div>
                 </div>
