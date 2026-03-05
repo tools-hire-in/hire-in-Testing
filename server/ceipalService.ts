@@ -307,21 +307,37 @@ export async function pushApplicantToCeipal(applicationId: string): Promise<{ su
       formData.append("job_id", ceipalJobId);
     }
 
-    formData.append("standard_fields.firstname", firstName);
-    formData.append("standard_fields.lastname", lastName);
-    formData.append("standard_fields.email", application.email || "");
-    formData.append("standard_fields.mobile_number", application.phone || "");
+    formData.append("first_name", firstName);
+    formData.append("last_name", lastName);
+    formData.append("email", application.email || "");
+    formData.append("phone", application.phone || "");
+    formData.append("source", "Website");
+
+    if (application.currentEmployer) {
+      formData.append("current_employer", application.currentEmployer);
+    }
+    if (application.yearsExperience) {
+      formData.append("experience", String(application.yearsExperience));
+    }
+    if (application.linkedinUrl) {
+      formData.append("linkedin_url", application.linkedinUrl);
+    }
 
     if (application.resumePath) {
       try {
-        const resumeUrl = application.resumePath;
+        const baseUrl = `http://127.0.0.1:${process.env.PORT || 5000}`;
+        const resumeUrl = application.resumePath.startsWith("http")
+          ? application.resumePath
+          : `${baseUrl}${application.resumePath}`;
+        console.log(`[ceipal] Fetching resume from: ${resumeUrl}`);
         const resumeResponse = await fetch(resumeUrl);
         if (resumeResponse.ok) {
           const resumeBuffer = await resumeResponse.arrayBuffer();
-          const fileName = resumeUrl.split("/").pop() || "resume.pdf";
+          const pathParts = application.resumePath.split("/");
+          const fileName = pathParts[pathParts.length - 1] || "resume.pdf";
           const resumeBlob = new Blob([resumeBuffer], { type: resumeResponse.headers.get("content-type") || "application/octet-stream" });
-          formData.append("document_fields.1", resumeBlob, fileName);
-          console.log(`[ceipal] Attached resume: ${fileName}`);
+          formData.append("resume", resumeBlob, fileName);
+          console.log(`[ceipal] Attached resume: ${fileName} (${resumeBuffer.byteLength} bytes)`);
         } else {
           console.warn(`[ceipal] Could not fetch resume from ${resumeUrl}: ${resumeResponse.status}`);
         }
