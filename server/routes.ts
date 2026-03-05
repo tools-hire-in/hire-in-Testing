@@ -1210,6 +1210,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid holiday data", details: result.error.issues });
       }
       const holiday = await storage.createHoliday(result.data);
+
+      if (holiday.type === "public" || holiday.type === "mandatory") {
+        const stamped = await storage.stampHolidayForAllActiveEmployees(holiday.date);
+        console.log(`[holidays] Auto-stamped ${stamped} attendance records for ${holiday.type} holiday "${holiday.name}" on ${holiday.date}`);
+      }
+
       res.status(201).json(holiday);
     } catch (error) {
       res.status(500).json({ error: "Failed to create holiday" });
@@ -1265,6 +1271,7 @@ export async function registerRoutes(
               isOptional: false,
             });
             created.push(h);
+            await storage.stampHolidayForAllActiveEmployees(parsedDate);
           } catch (e: any) {
             errors.push(`Row ${rowNum}: Failed to create holiday "${holidayName}"`);
           }
@@ -1309,6 +1316,11 @@ export async function registerRoutes(
 
   app.delete("/api/hr/holidays/:id", requireRole("hr"), async (req, res) => {
     try {
+      const holiday = await storage.getHoliday(req.params.id as string);
+      if (holiday && (holiday.type === "public" || holiday.type === "mandatory")) {
+        const removed = await storage.removeHolidayAttendanceStamps(holiday.date);
+        console.log(`[holidays] Removed ${removed} holiday attendance stamps for "${holiday.name}" on ${holiday.date}`);
+      }
       await storage.deleteHoliday(req.params.id as string);
       res.status(204).send();
     } catch (error) {
@@ -1355,6 +1367,10 @@ export async function registerRoutes(
         holidayId,
         year: holidayYear,
       });
+
+      await storage.stampHolidayAttendance(userId, holiday.date, "regional");
+      console.log(`[holidays] Auto-stamped regional holiday "${holiday.name}" on ${holiday.date} for user ${userId}`);
+
       res.status(201).json(selection);
     } catch (error) {
       console.error("Regional holiday selection error:", error);
@@ -1362,9 +1378,24 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/regional-holiday-selections/:id", requireRole("hr"), async (req, res) => {
+  app.delete("/api/hr/regional-holiday-selections/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteRegionalHolidaySelection(req.params.id as string);
+      const selectionId = req.params.id as string;
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+
+      const allSelections = await storage.getRegionalHolidaySelections(userId, new Date().getFullYear());
+      const selection = allSelections.find(s => s.id === selectionId);
+
+      if (selection) {
+        const holiday = await storage.getHoliday(selection.holidayId);
+        if (holiday) {
+          await storage.removeUserHolidayAttendanceStamp(userId, holiday.date, "regional");
+        }
+      }
+
+      const isAdmin = ["super_admin", "admin", "hr"].includes(userRole!);
+      await storage.deleteRegionalHolidaySelection(selectionId, isAdmin ? undefined : userId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to remove regional holiday selection" });
@@ -1889,6 +1920,7 @@ export async function registerRoutes(
 
   app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations"), async (req, res) => {
     try {
+      const ExcelJS = await import("exceljs");
       const userId = req.session.userId!;
       const userRole = req.session.role;
       const startDate = req.query.startDate as string;
@@ -1905,19 +1937,26 @@ export async function registerRoutes(
         teamMembers = await storage.getTeamMembers(userId);
       }
 
-      if (teamMembers.length === 0) {
-        res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", `attachment; filename="attendance_report_${startDate}_${endDate}.csv"`);
-        return res.send("Employee,Email,Designation,Date,Punch In,Punch Out,Duration (Hours),Status\n");
-      }
+      teamMembers.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
       const memberIds = teamMembers.map(m => m.id);
       const records = await storage.getAttendanceByTeamRange(memberIds, startDate, endDate);
-
       const memberMap = new Map(teamMembers.map(m => [m.id, m]));
 
-      const getEffectiveStatus = (record: any) => {
-        if (record.status === "on_leave" || record.status === "holiday") return record.status;
+      const allDates: string[] = [];
+      const allCalendarDates: { date: string; dayOfWeek: number }[] = [];
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const todayStr = new Date().toISOString().split("T")[0];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split("T")[0];
+        allCalendarDates.push({ date: ds, dayOfWeek: d.getDay() });
+        if (d.getDay() !== 0 && d.getDay() !== 6) allDates.push(ds);
+      }
+
+      const getEffectiveStatus = (record: any): string => {
+        if (record.status === "on_leave") return "leave";
+        if (record.status === "holiday") return "holiday";
         if (record.punchIn && record.punchOut && record.totalHours) {
           return parseFloat(record.totalHours as string) >= 8 ? "present" : "absent";
         }
@@ -1925,41 +1964,189 @@ export async function registerRoutes(
         return "absent";
       };
 
-      const csvRows = ["Employee,Email,Designation,Date,Punch In,Punch Out,Duration (Hours),Status"];
-      for (const record of records) {
-        const member = memberMap.get(record.userId);
-        const name = member ? `${member.firstName} ${member.lastName}` : "Unknown";
-        const email = member?.email || "";
-        const designation = member?.designation || "";
-        const punchIn = record.punchIn ? new Date(record.punchIn).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
-        const punchOut = record.punchOut ? new Date(record.punchOut).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
-        const hours = record.totalHours ? parseFloat(record.totalHours as string).toFixed(2) : "0.00";
-        const status = getEffectiveStatus(record);
-        csvRows.push(`"${name}","${email}","${designation}","${record.date}","${punchIn}","${punchOut}","${hours}","${status}"`);
+      const recordsByUser = new Map<string, Map<string, any>>();
+      for (const rec of records) {
+        if (!recordsByUser.has(rec.userId)) recordsByUser.set(rec.userId, new Map());
+        recordsByUser.get(rec.userId)!.set(rec.date, rec);
       }
 
-      const allDates: string[] = [];
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split("T")[0];
-        const dow = d.getDay();
-        if (dow !== 0 && dow !== 6) allDates.push(ds);
+      interface DayData {
+        name: string;
+        email: string;
+        designation: string;
+        date: string;
+        punchIn: string;
+        punchOut: string;
+        hours: number;
+        status: string;
       }
+
+      const allRowData: DayData[] = [];
+      const summaryData: {
+        name: string; email: string; designation: string;
+        totalWorkingDays: number; present: number; absent: number;
+        holidays: number; leaves: number; totalHours: number; avgHours: number;
+      }[] = [];
 
       for (const member of teamMembers) {
-        const memberRecords = records.filter(r => r.userId === member.id);
-        const recordDates = new Set(memberRecords.map(r => r.date));
+        const name = `${member.firstName} ${member.lastName}`;
+        const userRecords = recordsByUser.get(member.id) || new Map();
+        let present = 0, absent = 0, holidayCount = 0, leaveCount = 0, totalHours = 0;
+
         for (const date of allDates) {
-          if (!recordDates.has(date) && date <= new Date().toISOString().split("T")[0]) {
-            csvRows.push(`"${member.firstName} ${member.lastName}","${member.email}","${member.designation || ""}","${date}","","","0.00","absent"`);
+          const record = userRecords.get(date);
+          let status = "absent";
+          let punchIn = "";
+          let punchOut = "";
+          let hours = 0;
+
+          if (record) {
+            status = getEffectiveStatus(record);
+            punchIn = record.punchIn ? new Date(record.punchIn).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
+            punchOut = record.punchOut ? new Date(record.punchOut).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
+            hours = record.totalHours ? parseFloat(record.totalHours as string) : 0;
+          } else if (date > todayStr) {
+            status = "-";
+          }
+
+          if (status === "present") present++;
+          else if (status === "absent") absent++;
+          else if (status === "holiday") holidayCount++;
+          else if (status === "leave") leaveCount++;
+          totalHours += hours;
+
+          allRowData.push({
+            name, email: member.email, designation: member.designation || "",
+            date, punchIn, punchOut, hours, status,
+          });
+        }
+
+        const totalWorkingDays = allDates.filter(d => d <= todayStr).length;
+        summaryData.push({
+          name, email: member.email, designation: member.designation || "",
+          totalWorkingDays, present, absent, holidays: holidayCount, leaves: leaveCount,
+          totalHours: Math.round(totalHours * 100) / 100,
+          avgHours: present > 0 ? Math.round((totalHours / present) * 100) / 100 : 0,
+        });
+      }
+
+      const workbook = new ExcelJS.Workbook();
+
+      const summarySheet = workbook.addWorksheet("Summary");
+      summarySheet.columns = [
+        { header: "Employee", key: "name", width: 25 },
+        { header: "Email", key: "email", width: 30 },
+        { header: "Designation", key: "designation", width: 25 },
+        { header: "Working Days", key: "totalWorkingDays", width: 14 },
+        { header: "Present", key: "present", width: 10 },
+        { header: "Absent", key: "absent", width: 10 },
+        { header: "Holidays", key: "holidays", width: 10 },
+        { header: "Leaves", key: "leaves", width: 10 },
+        { header: "Total Hours", key: "totalHours", width: 12 },
+        { header: "Avg Hours/Day", key: "avgHours", width: 14 },
+      ];
+      summarySheet.getRow(1).font = { bold: true };
+      summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
+      summarySheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      for (const row of summaryData) {
+        summarySheet.addRow(row);
+      }
+
+      const calendarSheet = workbook.addWorksheet("Calendar Grid");
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const calendarHeaders = ["Employee"];
+      for (const cd of allCalendarDates) {
+        const d = new Date(cd.date);
+        calendarHeaders.push(`${d.getDate()} ${dayNames[cd.dayOfWeek]}`);
+      }
+      calendarHeaders.push("P", "A", "H", "L");
+
+      const headerRow = calendarSheet.addRow(calendarHeaders);
+      headerRow.font = { bold: true, size: 9 };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 9 };
+      calendarSheet.getColumn(1).width = 25;
+      for (let i = 2; i <= allCalendarDates.length + 1; i++) {
+        calendarSheet.getColumn(i).width = 7;
+      }
+      for (let i = allCalendarDates.length + 2; i <= allCalendarDates.length + 5; i++) {
+        calendarSheet.getColumn(i).width = 5;
+      }
+
+      const statusColors: Record<string, string> = {
+        present: "FF92D050", absent: "FFFF6B6B", holiday: "FF5B9BD5",
+        leave: "FFFFC000", weekend: "FFD9D9D9", "-": "FFF2F2F2",
+      };
+      const statusCodes: Record<string, string> = {
+        present: "P", absent: "A", holiday: "H", leave: "L", weekend: "W", "-": "-",
+      };
+
+      for (const member of teamMembers) {
+        const name = `${member.firstName} ${member.lastName}`;
+        const userRecords = recordsByUser.get(member.id) || new Map();
+        const rowValues: string[] = [name];
+        let pCount = 0, aCount = 0, hCount = 0, lCount = 0;
+
+        for (const cd of allCalendarDates) {
+          if (cd.dayOfWeek === 0 || cd.dayOfWeek === 6) {
+            rowValues.push("W");
+          } else if (cd.date > todayStr) {
+            rowValues.push("-");
+          } else {
+            const record = userRecords.get(cd.date);
+            const status = record ? getEffectiveStatus(record) : "absent";
+            rowValues.push(statusCodes[status] || "A");
+            if (status === "present") pCount++;
+            else if (status === "absent") aCount++;
+            else if (status === "holiday") hCount++;
+            else if (status === "leave") lCount++;
+          }
+        }
+        rowValues.push(String(pCount), String(aCount), String(hCount), String(lCount));
+
+        const row = calendarSheet.addRow(rowValues);
+        row.font = { size: 9 };
+        for (let i = 2; i <= allCalendarDates.length + 1; i++) {
+          const cellValue = row.getCell(i).value as string;
+          const statusKey = Object.entries(statusCodes).find(([, v]) => v === cellValue)?.[0] || "";
+          if (statusColors[statusKey]) {
+            row.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusColors[statusKey] } };
+            row.getCell(i).alignment = { horizontal: "center" };
+            row.getCell(i).font = { size: 9, bold: true, color: { argb: statusKey === "weekend" || statusKey === "-" ? "FF666666" : "FFFFFFFF" } };
           }
         }
       }
 
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="attendance_report_${startDate}_${endDate}.csv"`);
-      res.send(csvRows.join("\n"));
+      const legendRow = calendarSheet.addRow([]);
+      calendarSheet.addRow(["Legend:", "P = Present", "A = Absent", "H = Holiday", "L = Leave", "W = Weekend"]);
+
+      const detailSheet = workbook.addWorksheet("Daily Detail");
+      detailSheet.columns = [
+        { header: "Employee", key: "name", width: 25 },
+        { header: "Email", key: "email", width: 30 },
+        { header: "Designation", key: "designation", width: 25 },
+        { header: "Date", key: "date", width: 12 },
+        { header: "Punch In", key: "punchIn", width: 12 },
+        { header: "Punch Out", key: "punchOut", width: 12 },
+        { header: "Duration (Hours)", key: "hours", width: 16 },
+        { header: "Status", key: "status", width: 12 },
+      ];
+      detailSheet.getRow(1).font = { bold: true };
+      detailSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
+      detailSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      for (const row of allRowData) {
+        if (row.status !== "-") {
+          detailSheet.addRow({
+            ...row,
+            hours: row.hours.toFixed(2),
+          });
+        }
+      }
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="attendance_report_${startDate}_${endDate}.xlsx"`);
+      await workbook.xlsx.write(res);
+      res.end();
     } catch (error) {
       console.error("Download attendance error:", error);
       res.status(500).json({ error: "Failed to generate attendance report" });

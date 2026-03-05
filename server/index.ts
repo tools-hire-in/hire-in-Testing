@@ -4,8 +4,8 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { db } from "./db";
-import { adminUsers } from "@shared/schema";
-import { isNull, eq, or } from "drizzle-orm";
+import { adminUsers, holidays, attendance, regionalHolidaySelections } from "@shared/schema";
+import { isNull, eq, or, and, gte, lte, inArray } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -90,8 +90,82 @@ async function backfillEmployeeIds() {
   }
 }
 
+async function backfillHolidayAttendance() {
+  try {
+    const currentYear = new Date().getFullYear();
+    const startDate = `${currentYear}-01-01`;
+    const endDate = `${currentYear}-12-31`;
+
+    const allHolidays = await db.select().from(holidays)
+      .where(and(gte(holidays.date, startDate), lte(holidays.date, endDate)));
+
+    const publicHolidays = allHolidays.filter(h => h.type === "public" || h.type === "mandatory");
+    const activeUsers = await db.select({ id: adminUsers.id }).from(adminUsers)
+      .where(eq(adminUsers.isActive, true));
+
+    let stamped = 0;
+
+    for (const holiday of publicHolidays) {
+      const existingRecords = await db.select({ userId: attendance.userId }).from(attendance)
+        .where(and(eq(attendance.date, holiday.date), eq(attendance.status, "holiday")));
+      const existingUserIds = new Set(existingRecords.map(r => r.userId));
+
+      for (const user of activeUsers) {
+        if (existingUserIds.has(user.id)) continue;
+        const anyRecord = await db.select({ id: attendance.id }).from(attendance)
+          .where(and(eq(attendance.userId, user.id), eq(attendance.date, holiday.date)));
+        if (anyRecord.length > 0) continue;
+
+        await db.insert(attendance).values({
+          userId: user.id,
+          date: holiday.date,
+          status: "holiday",
+          punchIn: null,
+          punchOut: null,
+          totalHours: "0",
+          notes: "Auto-stamped holiday (backfill)",
+        });
+        stamped++;
+      }
+    }
+
+    const regionalSelections = await db.select().from(regionalHolidaySelections)
+      .where(eq(regionalHolidaySelections.year, currentYear));
+
+    const activeUserIds = new Set(activeUsers.map(u => u.id));
+
+    for (const sel of regionalSelections) {
+      if (!activeUserIds.has(sel.userId)) continue;
+      const holiday = allHolidays.find(h => h.id === sel.holidayId);
+      if (!holiday) continue;
+
+      const existing = await db.select({ id: attendance.id }).from(attendance)
+        .where(and(eq(attendance.userId, sel.userId), eq(attendance.date, holiday.date)));
+      if (existing.length > 0) continue;
+
+      await db.insert(attendance).values({
+        userId: sel.userId,
+        date: holiday.date,
+        status: "holiday",
+        punchIn: null,
+        punchOut: null,
+        totalHours: "0",
+        notes: "Auto-stamped regional holiday (backfill)",
+      });
+      stamped++;
+    }
+
+    if (stamped > 0) {
+      log(`Backfilled ${stamped} holiday attendance record(s) for ${currentYear}`);
+    }
+  } catch (err) {
+    console.error("Holiday attendance backfill error:", err);
+  }
+}
+
 (async () => {
   await backfillEmployeeIds();
+  await backfillHolidayAttendance();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

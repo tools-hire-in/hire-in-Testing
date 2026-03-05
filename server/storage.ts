@@ -118,8 +118,15 @@ export interface IStorage {
 
   // Regional Holiday Selections
   getRegionalHolidaySelections(userId: string, year: number): Promise<RegionalHolidaySelection[]>;
+  getAllRegionalHolidaySelectionsForYear(year: number): Promise<RegionalHolidaySelection[]>;
   createRegionalHolidaySelection(data: InsertRegionalHolidaySelection): Promise<RegionalHolidaySelection>;
   deleteRegionalHolidaySelection(id: string, userId?: string): Promise<boolean>;
+
+  // Holiday Attendance Stamping
+  stampHolidayAttendance(userId: string, date: string, holidayType?: "public" | "regional"): Promise<void>;
+  stampHolidayForAllActiveEmployees(date: string): Promise<number>;
+  removeHolidayAttendanceStamps(date: string): Promise<number>;
+  removeUserHolidayAttendanceStamp(userId: string, date: string, holidayType?: "public" | "regional"): Promise<boolean>;
 
   // Attendance
   getAttendanceByUser(userId: string, startDate?: string, endDate?: string): Promise<Attendance[]>;
@@ -489,6 +496,74 @@ export class DatabaseStorage implements IStorage {
     }
     await db.delete(regionalHolidaySelections).where(and(...conditions));
     return true;
+  }
+
+  async getAllRegionalHolidaySelectionsForYear(year: number): Promise<RegionalHolidaySelection[]> {
+    return await db.select().from(regionalHolidaySelections)
+      .where(eq(regionalHolidaySelections.year, year));
+  }
+
+  async stampHolidayAttendance(userId: string, date: string, holidayType: "public" | "regional" = "public"): Promise<void> {
+    const existing = await db.select().from(attendance)
+      .where(and(eq(attendance.userId, userId), eq(attendance.date, date)));
+    if (existing.length > 0) return;
+    const noteText = holidayType === "regional" ? "Auto-stamped regional holiday" : "Auto-stamped public holiday";
+    await db.insert(attendance).values({
+      userId,
+      date,
+      status: "holiday",
+      punchIn: null,
+      punchOut: null,
+      totalHours: "0",
+      notes: noteText,
+    });
+  }
+
+  async stampHolidayForAllActiveEmployees(date: string): Promise<number> {
+    const activeUsers = await db.select({ id: adminUsers.id }).from(adminUsers)
+      .where(eq(adminUsers.isActive, true));
+    let stamped = 0;
+    for (const user of activeUsers) {
+      const existing = await db.select({ id: attendance.id }).from(attendance)
+        .where(and(eq(attendance.userId, user.id), eq(attendance.date, date)));
+      if (existing.length === 0) {
+        await db.insert(attendance).values({
+          userId: user.id,
+          date,
+          status: "holiday",
+          punchIn: null,
+          punchOut: null,
+          totalHours: "0",
+          notes: "Auto-stamped public holiday",
+        });
+        stamped++;
+      }
+    }
+    return stamped;
+  }
+
+  async removeHolidayAttendanceStamps(date: string): Promise<number> {
+    const result = await db.delete(attendance)
+      .where(and(
+        eq(attendance.date, date),
+        eq(attendance.status, "holiday"),
+        sql`${attendance.notes} LIKE '%public holiday%'`,
+      ))
+      .returning();
+    return result.length;
+  }
+
+  async removeUserHolidayAttendanceStamp(userId: string, date: string, holidayType: "public" | "regional" = "regional"): Promise<boolean> {
+    const notePattern = holidayType === "regional" ? "%regional holiday%" : "%public holiday%";
+    const result = await db.delete(attendance)
+      .where(and(
+        eq(attendance.userId, userId),
+        eq(attendance.date, date),
+        eq(attendance.status, "holiday"),
+        sql`${attendance.notes} LIKE ${notePattern}`,
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   // ==========================================

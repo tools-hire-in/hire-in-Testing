@@ -372,7 +372,7 @@ export default function TeamAttendance() {
             </div>
             <Button onClick={handleDownload} className="w-full" data-testid="button-confirm-download">
               <Download className="h-4 w-4 mr-2" />
-              Download CSV
+              Download Excel
             </Button>
           </div>
         </DialogContent>

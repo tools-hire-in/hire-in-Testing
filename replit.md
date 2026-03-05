@@ -35,7 +35,7 @@ An integrated internal employee management system within the admin panel featuri
 - **Manager Features**: Team attendance viewing and leave request approvals for direct reports. Leave approval includes an escalation mechanism. Attendance threshold: 8 hours (8 PM - 4 AM IST shift).
 - **HR/Admin Features**: Comprehensive HR settings for managing leave types, holidays, departments, and user management.
 - **Leave Accrual**: Hours-based leave accrual system where leaves are earned monthly based on hours worked.
-- **Regional Holidays**: Employees can select optional regional holidays.
+- **Regional Holidays**: Employees can select optional regional holidays. Holiday attendance is auto-stamped: creating a public/mandatory holiday auto-creates "holiday" attendance records for all active employees; selecting a regional holiday stamps that employee's attendance. Backfill runs on server startup for the current year.
 - **Salary Processing**: Automated monthly salary reports with CSV attachments and individual salary slip generation. Report recipients (To/CC) are configurable by HR/super_admin on the Salary Reports page, stored in system_settings table.
 - **HR Tools**: Admin/HR tools page (`/admin/hr/tools`) with three tabs:
   - **Salary Slip Generator**: Create payslips matching company template (Rayomind Solutions DBA Hire'in Solutions format) with employee info grid, earnings (Basic/HRA/Conveyance/Special Allowance), deductions (PF/ESI/PT/TDS), auto-calculated totals, and number-to-words. Can load from existing salary data or enter custom values. Preview inline and download as PDF.

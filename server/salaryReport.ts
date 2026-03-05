@@ -101,14 +101,17 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     const presentDays = userAttendance.filter(a =>
       a.status === "present" || a.status === "late" || a.status === "half_day"
     ).length;
+    const userHolidayStamps = userAttendance.filter(a => a.status === "holiday");
+    const regionalHolidayDays = userHolidayStamps.filter(a => !holidayDates.has(a.date)).length;
+    const totalHolidaysForUser = holidayDates.size + regionalHolidayDays;
     const totalHours = userAttendance.reduce((sum, a) => sum + (Number(a.totalHours) || 0), 0);
     const approvedLeaves = leavesByUser.get(user.id) || 0;
 
-    const effectivePresentDays = presentDays + approvedLeaves;
+    const effectivePresentDays = presentDays + approvedLeaves + regionalHolidayDays;
     const absentDays = Math.max(0, workingDays - effectivePresentDays);
     const attendancePercentage = workingDays > 0 ? Math.round((effectivePresentDays / workingDays) * 100) : 0;
 
-    const dailyRate = monthlySalary / workingDays;
+    const dailyRate = workingDays > 0 ? monthlySalary / workingDays : 0;
     const deductions = absentDays * dailyRate;
     const netPayable = Math.max(0, monthlySalary - deductions);
 
@@ -122,7 +125,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
       presentDays,
       absentDays,
       approvedLeaves,
-      holidays: holidayDates.size,
+      holidays: totalHolidaysForUser,
       totalHours: Math.round(totalHours * 100) / 100,
       attendancePercentage,
       grossSalary: monthlySalary,
