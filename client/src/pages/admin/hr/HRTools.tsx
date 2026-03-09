@@ -691,7 +691,7 @@ function OfferLetterGenerator() {
   }, [formData.salary]);
 
   const { data: departments } = useQuery<any[]>({
-    queryKey: ["/api/admin/departments"],
+    queryKey: ["/api/departments"],
   });
 
   const handleLoadEmployee = (userId: string) => {
