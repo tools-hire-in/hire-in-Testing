@@ -792,11 +792,21 @@ function OfferLetterGenerator() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Failed to send");
+        throw new Error(err.detail || err.error || "Failed to send");
       }
 
+      const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
-      toast({ title: "Offer letter sent successfully!", description: `An email has been sent to ${formData.candidatePersonalEmail}` });
+
+      if (result.emailSent === false) {
+        toast({
+          title: "Offer letter saved, but email delivery failed",
+          description: `The offer letter was created but the email to ${formData.candidatePersonalEmail} could not be sent. Check server logs for details.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Offer letter sent successfully!", description: `An email has been sent to ${formData.candidatePersonalEmail}` });
+      }
       setFormData(getDefaultOfferData());
       setSelectedUserId("");
     } catch (err: any) {

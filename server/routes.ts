@@ -2912,7 +2912,7 @@ export async function registerRoutes(
       const host = req.headers.host || "localhost";
       const acceptUrl = `${protocol}://${host}/onboard/${token}`;
 
-      await sendOfferLetterEmail({
+      const emailResult = await sendOfferLetterEmail({
         to: candidatePersonalEmail.toLowerCase(),
         candidateName,
         designation,
@@ -2920,16 +2920,22 @@ export async function registerRoutes(
         expiresAt,
       });
 
+      if (!emailResult.success) {
+        console.error(`[OfferLetter] Email delivery failed for ${candidatePersonalEmail}: ${emailResult.error}`);
+      } else {
+        console.log(`[OfferLetter] Email sent to ${candidatePersonalEmail}, acceptUrl: ${acceptUrl}`);
+      }
+
       await storage.createAuditLog({
         action: "offer_letter_sent",
         actorId: currentUser.id,
-        changes: { offerId: offerLetter.id, candidateName, designation, email: candidatePersonalEmail },
+        changes: { offerId: offerLetter.id, candidateName, designation, email: candidatePersonalEmail, emailSent: emailResult.success },
       });
 
-      res.json(offerLetter);
+      res.json({ ...offerLetter, emailSent: emailResult.success, emailError: emailResult.success ? undefined : emailResult.error });
     } catch (error: any) {
-      console.error("Send offer letter error:", error);
-      res.status(500).json({ error: "Failed to send offer letter" });
+      console.error("[OfferLetter] Send error:", error?.message || error, error?.stack);
+      res.status(500).json({ error: "Failed to send offer letter", detail: error?.message });
     }
   });
 
