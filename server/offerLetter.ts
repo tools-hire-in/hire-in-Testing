@@ -27,6 +27,7 @@ export interface OfferLetterData {
   salaryInWords: string;
   location: string;
   jurisdiction: string;
+  department: string;
   hrManagerName: string;
   offerDate: string;
 }
@@ -192,6 +193,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
 
           heading("1. Position, Reporting & Start Date"),
           bodyText(`Designation: ${data.designation}`),
+          ...(data.department ? [bodyText(`Department: ${data.department}`)] : []),
           bodyText(`Reporting To: ${data.reportingTo}`),
           bodyText(`Employment Type: ${data.employmentType}`),
           bodyText(`Proposed Start Date: ${data.proposedStartDate}`),

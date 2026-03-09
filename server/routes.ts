@@ -2822,6 +2822,12 @@ export async function registerRoutes(
   // HR Tools: Generate offer letter DOCX
   app.post("/api/hr/tools/generate-offer-letter", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
+      let departmentName = "";
+      if (req.body.departmentId) {
+        const dept = await storage.getDepartment(req.body.departmentId);
+        departmentName = dept?.name || "";
+      }
+
       const data: OfferLetterData = {
         candidateTitle: req.body.candidateTitle || "Mr.",
         candidateName: req.body.candidateName || "",
@@ -2835,6 +2841,7 @@ export async function registerRoutes(
         salaryInWords: req.body.salaryInWords || "",
         location: req.body.location || "Delhi",
         jurisdiction: req.body.jurisdiction || "Delhi",
+        department: departmentName,
         hrManagerName: req.body.hrManagerName || "Alina Carter",
         offerDate: req.body.offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
       };
@@ -2916,8 +2923,7 @@ export async function registerRoutes(
       await storage.createAuditLog({
         action: "offer_letter_sent",
         actorId: currentUser.id,
-        targetId: offerLetter.id,
-        details: { candidateName, designation, email: candidatePersonalEmail },
+        changes: { offerId: offerLetter.id, candidateName, designation, email: candidatePersonalEmail },
       });
 
       res.json(offerLetter);
@@ -3047,9 +3053,8 @@ export async function registerRoutes(
 
       await storage.createAuditLog({
         action: "offer_letter_accepted",
-        actorId: "system",
-        targetId: letter.id,
-        details: { candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, userAgent: userAgent.substring(0, 200) },
+        actorId: letter.createdBy,
+        changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp },
       });
 
       res.json({ success: true, message: "Offer accepted successfully" });
@@ -3143,7 +3148,7 @@ export async function registerRoutes(
         action: "employee_onboarded",
         actorId: currentUser.id,
         targetId: newUser.id,
-        details: { candidateName: letter.candidateName, email: hireInEmail, employeeId, offerLetterId: letter.id },
+        changes: { candidateName: letter.candidateName, email: hireInEmail, employeeId, offerLetterId: letter.id },
       });
 
       res.json({ success: true, userId: newUser.id, employeeId });
@@ -3171,8 +3176,7 @@ export async function registerRoutes(
       await storage.createAuditLog({
         action: "offer_letter_cancelled",
         actorId: currentUser.id,
-        targetId: letter.id,
-        details: { candidateName: letter.candidateName },
+        changes: { offerId: letter.id, candidateName: letter.candidateName },
       });
 
       res.json({ success: true });
