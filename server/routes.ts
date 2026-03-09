@@ -2295,14 +2295,13 @@ export async function registerRoutes(
         }
       }
 
-      const currentUser = req.user as AdminUser;
-      await storage.upsertSystemSetting("salary_report_recipients", { to, cc: cc || [] }, currentUser.id);
+      const actorId = req.session.userId!;
+      await storage.upsertSystemSetting("salary_report_recipients", { to, cc: cc || [] }, actorId);
 
       await storage.createAuditLog({
         action: "salary_report_recipients_updated",
-        actorId: currentUser.id,
-        targetId: "salary_report_recipients",
-        details: { to, cc: cc || [] },
+        actorId,
+        changes: { to, cc: cc || [] },
       });
 
       res.json({ success: true, to, cc: cc || [] });
@@ -2882,7 +2881,7 @@ export async function registerRoutes(
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      const currentUser = req.user as AdminUser;
+      const actorId = req.session.userId!;
 
       const offerLetter = await storage.createOfferLetter({
         token,
@@ -2903,7 +2902,7 @@ export async function registerRoutes(
         jurisdiction: jurisdiction || "Delhi",
         hrManagerName: hrManagerName || null,
         offerDate: offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-        createdBy: currentUser.id,
+        createdBy: actorId,
         expiresAt,
         hireInEmail: null,
       });
@@ -2928,7 +2927,7 @@ export async function registerRoutes(
 
       await storage.createAuditLog({
         action: "offer_letter_sent",
-        actorId: currentUser.id,
+        actorId,
         changes: { offerId: offerLetter.id, candidateName, designation, email: candidatePersonalEmail, emailSent: emailResult.success },
       });
 
@@ -3108,7 +3107,7 @@ export async function registerRoutes(
       const bcrypt = await import("bcryptjs");
       const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
-      const currentUser = req.user as AdminUser;
+      const actorId = req.session.userId!;
 
       const newUser = await storage.createAdminUser({
         email: hireInEmail.toLowerCase(),
@@ -3131,7 +3130,7 @@ export async function registerRoutes(
         onboardedAt: new Date(),
         hireInEmail: hireInEmail.toLowerCase(),
         resultingUserId: newUser.id,
-        onboardedBy: currentUser.id,
+        onboardedBy: actorId,
       });
 
       await storage.initializeEmployeeDocuments(newUser.id);
@@ -3152,7 +3151,7 @@ export async function registerRoutes(
 
       await storage.createAuditLog({
         action: "employee_onboarded",
-        actorId: currentUser.id,
+        actorId,
         targetId: newUser.id,
         changes: { candidateName: letter.candidateName, email: hireInEmail, employeeId, offerLetterId: letter.id },
       });
@@ -3178,10 +3177,9 @@ export async function registerRoutes(
 
       await storage.updateOfferLetter(letter.id, { status: "cancelled" });
 
-      const currentUser = req.user as AdminUser;
       await storage.createAuditLog({
         action: "offer_letter_cancelled",
-        actorId: currentUser.id,
+        actorId: req.session.userId!,
         changes: { offerId: letter.id, candidateName: letter.candidateName },
       });
 
