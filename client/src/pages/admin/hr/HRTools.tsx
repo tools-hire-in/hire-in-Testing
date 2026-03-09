@@ -720,6 +720,11 @@ function OfferLetterGenerator() {
     return mgr ? `${mgr.firstName || ""} ${mgr.lastName || ""}`.trim() : "";
   };
 
+  const parseDateLocal = (s: string) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const handleGenerate = async () => {
     if (!formData.candidateName || !formData.designation) {
       toast({ title: "Please fill in candidate name and designation", variant: "destructive" });
@@ -735,10 +740,10 @@ function OfferLetterGenerator() {
           ...formData,
           reportingTo: getReportingToName(),
           offerDate: formData.offerDate
-            ? new Date(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            ? parseDateLocal(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : undefined,
           proposedStartDate: formData.proposedStartDate
-            ? new Date(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : "",
         }),
       });
@@ -778,10 +783,10 @@ function OfferLetterGenerator() {
         ...formData,
         salary: formData.salary ? String(formData.salary) : null,
         offerDate: formData.offerDate
-          ? new Date(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+          ? parseDateLocal(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : undefined,
         proposedStartDate: formData.proposedStartDate
-          ? new Date(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+          ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : "",
       });
 
