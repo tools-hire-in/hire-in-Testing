@@ -1,13 +1,17 @@
+import fs from "fs";
+import path from "path";
 import {
   Document,
   Packer,
   Paragraph,
   TextRun,
   AlignmentType,
-  HeadingLevel,
+  ImageRun,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
   BorderStyle,
-  TabStopPosition,
-  TabStopType,
 } from "docx";
 
 export interface OfferLetterData {
@@ -41,15 +45,110 @@ function bodyText(text: string, options?: { bold?: boolean; spacing?: { before?:
   });
 }
 
-function signatureLine(label: string): Paragraph {
-  return new Paragraph({
-    spacing: { before: 200 },
-    children: [new TextRun({ text: `${label}: _____________________________`, size: 20 })],
+function noBorderCell(children: (Paragraph)[]) {
+  return new TableCell({
+    width: { size: 50, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0 },
+      bottom: { style: BorderStyle.NONE, size: 0 },
+      left: { style: BorderStyle.NONE, size: 0 },
+      right: { style: BorderStyle.NONE, size: 0 },
+    },
+    children,
   });
 }
 
 export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Buffer> {
   const salaryStr = `₹${data.salary.toLocaleString("en-IN")} (${data.salaryInWords}) monthly`;
+
+  const logoPath = path.resolve("attached_assets/HS_logo_500_1769977401589.jpg");
+  let logoImageRun: ImageRun | null = null;
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoImageRun = new ImageRun({
+      data: logoBuffer,
+      transformation: { width: 140, height: 60 },
+      type: "jpg",
+    });
+  } catch {
+    // if logo file not found, skip it
+  }
+
+  const headerParagraph = new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 50 },
+    children: logoImageRun
+      ? [logoImageRun]
+      : [new TextRun({ text: "Hire'in Solutions", bold: true, size: 36, font: "Calibri" })],
+  });
+
+  const companyNameParagraph = logoImageRun
+    ? new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+        children: [new TextRun({ text: "Hire'in Solutions", bold: true, size: 28, font: "Calibri" })],
+      })
+    : new Paragraph({ children: [] });
+
+  const signatureTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0 },
+      bottom: { style: BorderStyle.NONE, size: 0 },
+      left: { style: BorderStyle.NONE, size: 0 },
+      right: { style: BorderStyle.NONE, size: 0 },
+      insideH: { style: BorderStyle.NONE, size: 0 },
+      insideV: { style: BorderStyle.NONE, size: 0 },
+    },
+    rows: [
+      new TableRow({
+        children: [
+          noBorderCell([
+            new Paragraph({
+              children: [new TextRun({ text: "For Hire'in Solutions", bold: true, size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 100 },
+              children: [new TextRun({ text: `Name: ${data.hrManagerName}`, size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 100 },
+              children: [new TextRun({ text: "Title: HR Manager", size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 400 },
+              children: [new TextRun({ text: "Signature: _______________________", size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 200 },
+              children: [new TextRun({ text: "Date: ____________________________", size: 20 })],
+            }),
+          ]),
+          noBorderCell([
+            new Paragraph({
+              children: [new TextRun({ text: "Accepted & Agreed by Employee", bold: true, size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 100 },
+              children: [new TextRun({ text: `Name: ${data.candidateTitle} ${data.candidateName}`, size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 100 },
+              children: [new TextRun({ text: " ", size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 400 },
+              children: [new TextRun({ text: "Signature: _______________________", size: 20 })],
+            }),
+            new Paragraph({
+              spacing: { before: 200 },
+              children: [new TextRun({ text: "Date: ____________________________", size: 20 })],
+            }),
+          ]),
+        ],
+      }),
+    ],
+  });
 
   const doc = new Document({
     sections: [
@@ -60,13 +159,8 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           },
         },
         children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
-            children: [
-              new TextRun({ text: "Hire'in Solutions", bold: true, size: 36, font: "Calibri" }),
-            ],
-          }),
+          headerParagraph,
+          companyNameParagraph,
 
           new Paragraph({
             spacing: { after: 100 },
@@ -157,22 +251,9 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           heading("Acceptance"),
           bodyText("Please sign the offer letter."),
 
-          new Paragraph({
-            spacing: { before: 200 },
-            children: [new TextRun({ text: "For Hire'in Solutions", bold: true, size: 20 })],
-          }),
-          bodyText(`Name: ${data.hrManagerName}`),
-          bodyText("Title: HR Manager"),
-          signatureLine("Signature"),
-          signatureLine("Date"),
-
           new Paragraph({ spacing: { before: 300 }, children: [] }),
-          new Paragraph({
-            children: [new TextRun({ text: "Accepted & Agreed by Employee", bold: true, size: 20 })],
-          }),
-          bodyText(`Name: ${data.candidateTitle} ${data.candidateName}`),
-          signatureLine("Signature"),
-          signatureLine("Date"),
+
+          signatureTable,
 
           new Paragraph({ spacing: { before: 600 }, children: [] }),
           new Paragraph({
