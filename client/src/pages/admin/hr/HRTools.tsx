@@ -1081,6 +1081,7 @@ function OfferLettersDashboard() {
       }
       const data = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({
         title: "Onboarding complete!",
         description: `Employee ID: ${data.employeeId} — Welcome email sent to ${hireInEmail}`,
