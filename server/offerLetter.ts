@@ -59,8 +59,49 @@ function noBorderCell(children: (Paragraph)[]) {
   });
 }
 
+function numberToWords(num: number): string {
+  if (num === 0) return "Zero";
+  const a = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+    "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+  ];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  const formatIndian = (n: number): string => {
+    let str = "";
+    if (n >= 10000000) {
+      str += formatIndian(Math.floor(n / 10000000)) + " Crore ";
+      n %= 10000000;
+    }
+    if (n >= 100000) {
+      str += formatIndian(Math.floor(n / 100000)) + " Lakh ";
+      n %= 100000;
+    }
+    if (n >= 1000) {
+      str += formatIndian(Math.floor(n / 1000)) + " Thousand ";
+      n %= 1000;
+    }
+    if (n >= 100) {
+      str += a[Math.floor(n / 100)] + " Hundred ";
+      n %= 100;
+    }
+    if (n > 0) {
+      if (str !== "") str += "and ";
+      if (n < 20) str += a[n];
+      else {
+        str += b[Math.floor(n / 10)];
+        if (n % 10 > 0) str += " " + a[n % 10];
+      }
+    }
+    return str.trim();
+  };
+
+  return formatIndian(Math.floor(num)) + " Rupees Only";
+}
+
 export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Buffer> {
-  const salaryStr = `₹${data.salary.toLocaleString("en-IN")} (${data.salaryInWords}) monthly`;
+  const annualSalary = data.salary * 12;
+  const salaryStr = `₹${annualSalary.toLocaleString("en-IN")} (${numberToWords(annualSalary)}) per annum`;
 
   const logoPath = path.resolve("attached_assets/HS_logo_500_1769977401589.jpg");
   let logoImageRun: ImageRun | null = null;
@@ -80,14 +121,14 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
     spacing: { after: 50 },
     children: logoImageRun
       ? [logoImageRun]
-      : [new TextRun({ text: "Hire'in Solutions", bold: true, size: 36, font: "Calibri" })],
+      : [new TextRun({ text: "Rayomind Solutions", bold: true, size: 36, font: "Calibri" })],
   });
 
   const companyNameParagraph = logoImageRun
     ? new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { after: 200 },
-        children: [new TextRun({ text: "Hire'in Solutions", bold: true, size: 28, font: "Calibri" })],
+        children: [new TextRun({ text: "Rayomind Solutions", bold: true, size: 28, font: "Calibri" })],
       })
     : new Paragraph({ children: [] });
 
@@ -98,15 +139,15 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
       bottom: { style: BorderStyle.NONE, size: 0 },
       left: { style: BorderStyle.NONE, size: 0 },
       right: { style: BorderStyle.NONE, size: 0 },
-      insideH: { style: BorderStyle.NONE, size: 0 },
-      insideV: { style: BorderStyle.NONE, size: 0 },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0 },
+      insideVertical: { style: BorderStyle.NONE, size: 0 },
     },
     rows: [
       new TableRow({
         children: [
           noBorderCell([
             new Paragraph({
-              children: [new TextRun({ text: "For Hire'in Solutions", bold: true, size: 20 })],
+              children: [new TextRun({ text: "For Rayomind Solutions", bold: true, size: 20 })],
             }),
             new Paragraph({
               spacing: { before: 100 },

@@ -620,6 +620,15 @@ export const offerLetters = pgTable("offer_letters", {
   hireInEmail: varchar("hire_in_email"),
   resultingUserId: varchar("resulting_user_id"),
   onboardedBy: varchar("onboarded_by"),
+  acceptanceDate: varchar("acceptance_date"),
+  authCode: varchar("auth_code"),
+  documentHash: varchar("document_hash"),
+  counterSignedBy: varchar("counter_signed_by").references(() => adminUsers.id),
+  counterSignedAt: timestamp("counter_signed_at"),
+  counterSignedName: varchar("counter_signed_name"),
+  counterSignedDate: varchar("counter_signed_date"),
+  counterAuthCode: varchar("counter_auth_code"),
+  counterDocumentHash: varchar("counter_document_hash"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({

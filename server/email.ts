@@ -420,7 +420,7 @@ export async function sendOfferLetterEmail(options: {
               Please review your offer letter and accept it by clicking the button below. This offer is valid until <strong>${expiryStr}</strong>.
             </p>
             <div style="text-align: center; margin: 24px 0;">
-              <a href="${options.acceptUrl}" style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+              <a href="${options.acceptUrl}" style="display: inline-block; background-color: #1e40af; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
                 View & Accept Your Offer
               </a>
             </div>
@@ -431,7 +431,7 @@ export async function sendOfferLetterEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions DBA). All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
             </p>
           </div>
         </div>
@@ -523,7 +523,7 @@ export async function sendOnboardingWelcomeEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions DBA). All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
             </p>
           </div>
         </div>

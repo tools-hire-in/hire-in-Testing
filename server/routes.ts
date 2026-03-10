@@ -3040,32 +3040,123 @@ export async function registerRoutes(
         return res.status(410).json({ error: "This offer has expired", status: "expired" });
       }
 
-      const { acceptedName } = req.body;
-      if (!acceptedName || acceptedName.trim().length < 2) {
-        return res.status(400).json({ error: "Please type your full name to accept" });
+      const { acceptedName, acceptanceDate } = req.body;
+      if (!acceptedName || acceptedName.trim().toLowerCase() !== letter.candidateName.trim().toLowerCase()) {
+        return res.status(400).json({ error: `Please type your full name exactly as it appears on the offer: "${letter.candidateName}"` });
+      }
+
+      const signingKey = process.env.OFFER_SIGNING_KEY;
+      if (!signingKey) {
+        console.error("OFFER_SIGNING_KEY is not set in environment");
+        return res.status(500).json({ error: "Server configuration error" });
       }
 
       const clientIp = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.ip || "unknown";
       const userAgent = req.headers["user-agent"] || "unknown";
+      const serverTimestamp = new Date();
+
+      // 1. Compute document hash
+      const docContents = JSON.stringify({
+        id: letter.id,
+        candidateName: letter.candidateName,
+        designation: letter.designation,
+        salary: letter.salary,
+        proposedStartDate: letter.proposedStartDate,
+        offerDate: letter.offerDate,
+        location: letter.location
+      });
+      const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
+
+      // 2. Generate authCode
+      const hmacPayload = `${letter.id}|${acceptedName.trim()}|${serverTimestamp.toISOString()}|${documentHash}`;
+      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
+      const authCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
 
       await storage.updateOfferLetter(letter.id, {
         status: "accepted",
-        acceptedAt: new Date(),
+        acceptedAt: serverTimestamp,
         acceptedName: acceptedName.trim(),
+        acceptanceDate: acceptanceDate || serverTimestamp.toISOString().split("T")[0],
         acceptedIp: clientIp,
         acceptedUserAgent: userAgent,
+        authCode,
+        documentHash
       });
 
       await storage.createAuditLog({
         action: "offer_letter_accepted",
         actorId: letter.createdBy,
-        changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp },
+        changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, authCode },
       });
 
-      res.json({ success: true, message: "Offer accepted successfully" });
+      res.json({ success: true, message: "Offer accepted successfully", authCode, documentHash });
     } catch (error) {
       console.error("Accept offer letter error:", error);
       res.status(500).json({ error: "Failed to accept offer" });
+    }
+  });
+
+  // Counter-sign offer letter
+  app.post("/api/admin/offer-letters/:id/countersign", requireAuth, requireRole("hr", "super_admin", "admin"), async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (letter.status !== "accepted") {
+        return res.status(400).json({ error: `Cannot counter-sign — offer status is '${letter.status}', must be 'accepted'` });
+      }
+
+      const { counterSignedName, counterSignedDate } = req.body;
+      if (!counterSignedName || !counterSignedName.trim()) {
+        return res.status(400).json({ error: "Counter-signer name is required" });
+      }
+
+      const signingKey = process.env.OFFER_SIGNING_KEY;
+      if (!signingKey) {
+        console.error("OFFER_SIGNING_KEY is not set in environment");
+        return res.status(500).json({ error: "Server configuration error" });
+      }
+
+      const now = new Date();
+      
+      // 1. Compute document hash for counter-signature (incorporating candidate signature)
+      const counterDocContents = JSON.stringify({
+        id: letter.id,
+        candidateName: letter.candidateName,
+        acceptedName: letter.acceptedName,
+        acceptanceDate: letter.acceptanceDate,
+        authCode: letter.authCode,
+        documentHash: letter.documentHash
+      });
+      const counterDocumentHash = crypto.createHash("sha256").update(counterDocContents).digest("hex");
+
+      // 2. Generate counterAuthCode
+      const hmacPayload = `${letter.id}|counter|${counterSignedName.trim()}|${now.toISOString()}|${counterDocumentHash}`;
+      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
+      const counterAuthCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+
+      await storage.updateOfferLetter(letter.id, {
+        status: "countersigned",
+        counterSignedBy: req.session.userId,
+        counterSignedAt: now,
+        counterSignedName: counterSignedName.trim(),
+        counterSignedDate: counterSignedDate || now.toISOString().split("T")[0],
+        counterAuthCode,
+        counterDocumentHash
+      });
+
+      await storage.createAuditLog({
+        action: "offer_letter_countersigned",
+        actorId: req.session.userId!,
+        changes: { offerId: letter.id, counterSignedName: counterSignedName.trim(), counterAuthCode },
+      });
+
+      res.json({ success: true, message: "Offer counter-signed successfully", counterAuthCode });
+    } catch (error) {
+      console.error("Counter-sign offer letter error:", error);
+      res.status(500).json({ error: "Failed to counter-sign offer" });
     }
   });
 
@@ -3077,8 +3168,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Offer letter not found" });
       }
 
-      if (letter.status !== "accepted") {
-        return res.status(400).json({ error: `Cannot onboard — offer status is '${letter.status}', must be 'accepted'` });
+      if (letter.status !== "countersigned") {
+        return res.status(400).json({ error: `Cannot onboard — offer status is '${letter.status}', must be 'countersigned'` });
       }
 
       const { hireInEmail } = req.body;
@@ -3122,7 +3213,7 @@ export async function registerRoutes(
         hierarchyLevel: "team_member",
         salary: letter.salary || null,
         employeeId,
-        reportingTo: letter.reportingToUserId || null,
+        managerId: letter.reportingToUserId || null,
       });
 
       await storage.updateOfferLetter(letter.id, {

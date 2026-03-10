@@ -136,7 +136,7 @@ function generatePayslipHTML(data: SlipFormData): string {
 <body>
 <div class="slip">
   <div class="header">
-    <h1>Rayomind Solutions DBA Hire'in Solutions</h1>
+    <h1>Rayomind Solutions</h1>
     <div class="address">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi, 110085, India</div>
   </div>
   <div class="blue-line"></div>
@@ -211,7 +211,7 @@ function generatePayslipHTML(data: SlipFormData): string {
       ${data.otherDeductions > 0 ? `<tr>
         <td></td>
         <td class="amount"></td>
-        <td>Other Deductions</td>
+        <td>${data.lop > 0 ? `LOP Deduction (${data.lop} days)` : 'Other Deductions'}</td>
         <td class="amount">${formatCurrency(data.otherDeductions)}</td>
         <td class="amount"></td>
       </tr>` : ''}
@@ -348,8 +348,16 @@ function SalarySlipGenerator() {
   };
 
   const totalEarnings = formData.basic + formData.hra + formData.conveyance + formData.specialAllowance;
+  const perDayRate = Math.round((totalEarnings * 12) / 365);
+  const lopDeduction = Math.round(perDayRate * formData.lop);
   const totalDeductions = formData.pfDeduction + formData.esiDeduction + formData.professionalTax + formData.tds + formData.otherDeductions;
   const netPay = totalEarnings - totalDeductions;
+
+  useEffect(() => {
+    if (formData.lop > 0) {
+      updateField("otherDeductions", lopDeduction);
+    }
+  }, [formData.lop, lopDeduction]);
 
   const handlePreview = () => {
     if (!formData.employeeName) {
@@ -491,6 +499,12 @@ function SalarySlipGenerator() {
               <div>
                 <Label>LOP (Days)</Label>
                 <Input data-testid="input-slip-lop" type="number" value={formData.lop} onChange={e => updateField("lop", parseInt(e.target.value) || 0)} />
+                {formData.lop > 0 && (
+                  <div className="text-[10px] mt-1 text-muted-foreground flex flex-col gap-0.5">
+                    <span>Per Day Rate: ₹{formatCurrency(perDayRate)}</span>
+                    <span className="font-medium text-red-600">LOP Deduction: ₹{formatCurrency(lopDeduction)}</span>
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Effective Workdays</Label>
@@ -1002,6 +1016,7 @@ const STATUS_BADGES: Record<string, { variant: "default" | "secondary" | "destru
   viewed: { variant: "default", label: "Viewed", icon: Eye },
   accepted: { variant: "outline", label: "Accepted", icon: CheckCircle },
   onboarded: { variant: "default", label: "Onboarded", icon: UserPlus },
+  countersigned: { variant: "default", label: "Countersigned", icon: CheckCircle },
   expired: { variant: "destructive", label: "Expired", icon: Clock },
   cancelled: { variant: "destructive", label: "Cancelled", icon: XCircle },
 };
@@ -1010,11 +1025,31 @@ function OfferLettersDashboard() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
+  const [countersignModal, setCountersignModal] = useState<any>(null);
   const [hireInEmail, setHireInEmail] = useState("");
+  const [counterSignedName, setCounterSignedName] = useState("Alina Carter");
+  const [counterSignedDate, setCounterSignedDate] = useState(new Date().toISOString().split("T")[0]);
   const [onboarding, setOnboarding] = useState(false);
+  const [countersigning, setCountersigning] = useState(false);
 
   const { data: letters, isLoading } = useQuery<any[]>({
     queryKey: ["/api/hr/tools/offer-letters"],
+  });
+
+  const countersignMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/offer-letters/${id}/countersign`, {
+        counterSignedName,
+        counterSignedDate
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter counter-signed" });
+      setCountersignModal(null);
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
   });
 
   const cancelMutation = useMutation({
@@ -1133,6 +1168,32 @@ function OfferLettersDashboard() {
                               </Button>
                             )}
                             {letter.status === "accepted" && (
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setCountersignModal(letter);
+                                    setCounterSignedName("Alina Carter");
+                                    setCounterSignedDate(new Date().toISOString().split("T")[0]);
+                                  }}
+                                  data-testid={`button-countersign-${letter.id}`}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
+                                  Counter Sign
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => cancelMutation.mutate(letter.id)}
+                                  disabled={cancelMutation.isPending}
+                                  data-testid={`button-cancel-${letter.id}`}
+                                >
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  Cancel
+                                </Button>
+                              </div>
+                            )}
+                            {letter.status === "countersigned" && (
                               <Button
                                 size="sm"
                                 onClick={() => { setOnboardingModal(letter); setHireInEmail(""); }}
@@ -1200,6 +1261,85 @@ function OfferLettersDashboard() {
             >
               {onboarding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Send Onboarding Email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!countersignModal} onOpenChange={(open) => { if (!open) setCountersignModal(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Counter-Sign Offer Letter</DialogTitle>
+            <DialogDescription>
+              Digitally sign the offer letter for <strong>{countersignModal?.candidateName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-muted/30 p-3 rounded-md space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Candidate Name:</span>
+                <span className="font-medium">{countersignModal?.candidateName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Designation:</span>
+                <span className="font-medium">{countersignModal?.designation}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Candidate Signed:</span>
+                <span className="font-medium">{countersignModal?.acceptedName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Acceptance Date:</span>
+                <span className="font-medium">{countersignModal?.acceptanceDate}</span>
+              </div>
+              <div className="flex flex-col gap-1 mt-1 border-t pt-1">
+                <span className="text-muted-foreground">Candidate Auth Code:</span>
+                <code className="bg-muted p-1 rounded font-mono text-[10px] break-all">{countersignModal?.authCode}</code>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>HR Manager Name (Fixed Signatory)</Label>
+              <Input
+                data-testid="input-countersign-name"
+                value={counterSignedName}
+                onChange={e => setCounterSignedName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Signing Date</Label>
+              <Input
+                data-testid="input-countersign-date"
+                type="date"
+                value={counterSignedDate}
+                onChange={e => setCounterSignedDate(e.target.value)}
+              />
+            </div>
+
+            {counterSignedName && (
+              <div className="pt-2">
+                <Label className="text-xs text-muted-foreground mb-1 block">Signature Preview</Label>
+                <div 
+                  className="p-4 border rounded-md bg-white flex items-center justify-center min-h-[80px]"
+                  style={{ fontFamily: "'Dancing Script', cursive" }}
+                >
+                  <span className="text-3xl text-slate-800">{counterSignedName}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCountersignModal(null)} data-testid="button-cancel-countersign">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => countersignMutation.mutate(countersignModal.id)}
+              disabled={countersignMutation.isPending || !counterSignedName.trim()}
+              data-testid="button-confirm-countersign"
+            >
+              {countersignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+              Complete Counter-Signature
             </Button>
           </DialogFooter>
         </DialogContent>
