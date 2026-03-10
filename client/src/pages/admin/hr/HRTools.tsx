@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
+import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
@@ -727,6 +729,7 @@ function OfferLetterGenerator() {
   };
 
   const [sending, setSending] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const getReportingToName = () => {
     if (!formData.reportingToUserId) return "";
@@ -738,6 +741,37 @@ function OfferLetterGenerator() {
     const [y, m, d] = s.split("-").map(Number);
     return new Date(y, m - 1, d);
   };
+
+  const previewOffer = useMemo(() => {
+    const deptName = departments?.find((d: any) => d.id === formData.departmentId)?.name ?? null;
+    const manager = users?.find((u: any) => u.id === formData.reportingToUserId);
+    const managerName = manager
+      ? `${manager.firstName || ""} ${manager.lastName || ""}`.trim()
+      : null;
+    const offerDateFormatted = formData.offerDate
+      ? parseDateLocal(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      : "";
+    const startDateFormatted = formData.proposedStartDate
+      ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      : "";
+    return {
+      candidateTitle: formData.candidateTitle,
+      candidateName: formData.candidateName,
+      candidateAddress: formData.candidateAddress || null,
+      designation: formData.designation,
+      subjectDesignation: formData.subjectDesignation || null,
+      departmentName: deptName,
+      managerName,
+      location: formData.location,
+      proposedStartDate: startDateFormatted || null,
+      employmentType: formData.employmentType,
+      salary: formData.salary ? String(formData.salary) : null,
+      hrManagerName: formData.hrManagerName || null,
+      offerDate: offerDateFormatted,
+      jurisdiction: formData.jurisdiction || null,
+      refId: null,
+    };
+  }, [formData, departments, users]);
 
   const handleGenerate = async () => {
     if (!formData.candidateName || !formData.designation) {
@@ -823,6 +857,7 @@ function OfferLetterGenerator() {
       }
       setFormData(getDefaultOfferData());
       setSelectedUserId("");
+      setShowPreview(false);
     } catch (err: any) {
       toast({ title: err.message || "Failed to send offer letter", variant: "destructive" });
     } finally {
@@ -992,21 +1027,53 @@ function OfferLetterGenerator() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
-              Generate the DOCX for records, or send the offer directly to the candidate's email for digital acceptance.
+              Generate the DOCX for records, or preview and send the offer to the candidate for digital acceptance.
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleGenerate} disabled={generating || !formData.candidateName || !formData.designation} data-testid="button-generate-offer">
                 {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
                 Download DOCX
               </Button>
-              <Button onClick={handleSendOffer} disabled={sending || !formData.candidateName || !formData.designation || !formData.candidatePersonalEmail} data-testid="button-send-offer">
-                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                Send Offer Letter
+              <Button onClick={() => setShowPreview(true)} disabled={!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail} data-testid="button-preview-offer">
+                <Eye className="h-4 w-4 mr-2" />
+                Preview Offer
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <Sheet open={showPreview} onOpenChange={setShowPreview}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col p-0">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <SheetTitle className="flex items-center gap-2 text-blue-900">
+              <Eye className="h-5 w-5" />
+              Offer Letter Preview
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              Review the offer letter as the candidate will see it, then confirm to send.
+            </p>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <OfferLetterBody offer={previewOffer} />
+          </div>
+
+          <SheetFooter className="px-6 py-4 border-t shrink-0 flex flex-row gap-2 justify-end">
+            <Button variant="outline" onClick={() => setShowPreview(false)} data-testid="button-preview-back">
+              ← Back to Edit
+            </Button>
+            <Button
+              onClick={handleSendOffer}
+              disabled={sending}
+              data-testid="button-confirm-send"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Confirm &amp; Send
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
