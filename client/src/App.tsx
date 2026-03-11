@@ -43,6 +43,9 @@ import DocumentCompliance from "@/pages/admin/hr/DocumentCompliance";
 import HRTools from "@/pages/admin/hr/HRTools";
 import JobApplications from "@/pages/admin/JobApplications";
 import OnboardAccept from "@/pages/OnboardAccept";
+import MyTraining from "@/pages/admin/hr/MyTraining";
+import TrainingManagement from "@/pages/admin/hr/TrainingManagement";
+import TrainingProgress from "@/pages/admin/hr/TrainingProgress";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -106,6 +109,9 @@ function PublicRouter() {
       <Route path="/admin/hr/my-documents" component={MyDocuments} />
       <Route path="/admin/hr/document-compliance" component={DocumentCompliance} />
       <Route path="/admin/hr/tools" component={HRTools} />
+      <Route path="/admin/hr/my-training" component={MyTraining} />
+      <Route path="/admin/hr/training" component={TrainingManagement} />
+      <Route path="/admin/hr/training-progress" component={TrainingProgress} />
 
       <Route component={NotFound} />
     </Switch>
@@ -145,6 +151,9 @@ function EmployeeRouter() {
       <Route path="/admin/hr/my-documents" component={MyDocuments} />
       <Route path="/admin/hr/document-compliance" component={DocumentCompliance} />
       <Route path="/admin/hr/tools" component={HRTools} />
+      <Route path="/admin/hr/my-training" component={MyTraining} />
+      <Route path="/admin/hr/training" component={TrainingManagement} />
+      <Route path="/admin/hr/training-progress" component={TrainingProgress} />
 
       <Route component={NotFound} />
     </Switch>

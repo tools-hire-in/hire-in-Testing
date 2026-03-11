@@ -44,6 +44,81 @@ interface Department {
   isActive: boolean;
 }
 
+function TrainingSettingsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+
+  const { data: flagData, isLoading } = useQuery<{ value: any }>({
+    queryKey: ["/api/system-settings/onboarding_training_enabled"],
+    queryFn: async () => {
+      const res = await fetch("/api/system-settings/onboarding_training_enabled", { credentials: "include" });
+      if (!res.ok) return { value: false };
+      return res.json();
+    },
+    enabled: isHrOrAbove,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PUT", "/api/system-settings/onboarding_training_enabled", { value: enabled });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system-settings/onboarding_training_enabled"] });
+      toast({
+        title: data.value ? "Training module enabled for all employees" : "Training module hidden from employees",
+        description: data.value
+          ? "Employees can now see and access My Training."
+          : "Admins and managers can still access training.",
+      });
+    },
+    onError: () => toast({ title: "Failed to update setting", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  const enabled = flagData?.value === true;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Training &amp; Onboarding
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4 py-1">
+          <div>
+            <p className="font-medium text-sm">Enable Training Module for Employees</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              When enabled, employees see "My Training" in their sidebar and can access assigned tracks.
+              Admins, HR, and managers always have access regardless of this setting.
+            </p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(v) => toggleMutation.mutate(v)}
+            disabled={isLoading || toggleMutation.isPending}
+            data-testid="switch-training-enabled"
+          />
+        </div>
+        {enabled && (
+          <div className="mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">
+            Training module is currently <strong>visible to all employees</strong>. Toggle off to restrict access during review.
+          </div>
+        )}
+        {!enabled && !isLoading && (
+          <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700">
+            Training module is currently <strong>in review mode</strong> — only admins, HR, and managers can access it.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -742,6 +817,8 @@ export default function HRSettings() {
             </CardContent>
           </Card>
         )}
+
+        <TrainingSettingsSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>
           <DialogContent className="sm:max-w-lg">

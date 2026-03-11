@@ -1,0 +1,1266 @@
+HIRE’IN SOLUTIONS
+Employee Onboarding, Training, SOP, and Assessment Pack
+
+For Healthcare Recruitment and IT Recruitment Teams
+
+1. EMPLOYEE ONBOARDING HANDBOOK
+Welcome to Hire’in Solutions
+
+Welcome to Hire’in Solutions. Our mission is simple: making lives better, one placement at a time. Every employee is expected to represent the company with professionalism, urgency, discipline, transparency, and care.
+
+This onboarding pack is designed for employees joining our recruitment teams, especially:
+
+Healthcare Recruitment
+
+IT Recruitment
+
+Some sections are common for all employees, while some are team-specific.
+
+What success looks like at Hire’in Solutions
+
+A successful recruiter at Hire’in Solutions:
+
+communicates clearly and professionally
+
+stays active and responsive during working hours
+
+uses Microsoft Teams as the official work platform
+
+documents work properly and consistently
+
+understands the requirement before sourcing
+
+screens candidates thoroughly
+
+avoids poor-fit or incomplete submissions
+
+protects company reputation with clients and candidates
+
+follows process discipline at every stage
+
+Core work principles
+
+At Hire’in Solutions, we work by the following principles:
+
+Integrity over shortcuts
+
+Transparency over side conversations
+
+Speed with quality
+
+Ownership with accountability
+
+Respect in communication
+
+Strong follow-through
+
+Clear documentation
+
+Early escalation of issues
+
+Onboarding structure
+
+Every new employee will complete the following:
+
+Common onboarding
+
+company introduction
+
+communication policies
+
+Microsoft Teams expectations
+
+documentation standards
+
+email signature setup
+
+communication templates
+
+general process expectations
+
+Team-specific onboarding
+
+Healthcare recruitment process and standards
+
+IT recruitment process and standards
+
+Definition of Done by workflow stage
+
+team-specific screening and submission quality
+
+Standard onboarding timeline
+Day 1
+
+company overview
+
+services, mission, and values
+
+review of companywide policies
+
+Microsoft Teams setup and working norms
+
+Outlook signature setup
+
+review of role expectations
+
+Day 2
+
+recruitment lifecycle overview
+
+sourcing expectations
+
+screening expectations
+
+documentation expectations
+
+communication templates training
+
+Day 3
+
+team-specific SOP training
+
+healthcare or IT process walkthrough
+
+sample requisition practice
+
+candidate quality review
+
+Day 4
+
+mock sourcing exercise
+
+mock screening exercise
+
+mock submission exercise
+
+internal escalation and discussion norms
+
+Day 5
+
+written assessment
+
+practical assessment
+
+feedback and coaching
+
+final acknowledgement signoff
+
+Mandatory expectations for all employees
+
+Every employee must:
+
+remain active on Microsoft Teams during working hours
+
+acknowledge relevant internal messages
+
+keep recruiter notes and activity updated
+
+avoid work communication on WhatsApp or personal texts
+
+communicate professionally with candidates and team members
+
+escalate blockers early
+
+follow the approved workflow rather than improvising process
+
+Quality standard
+
+You are expected to submit only those candidates who are:
+
+genuinely interested
+
+relevant to the requirement
+
+reasonably screened
+
+aligned on compensation or pay expectations
+
+available for the role timeline
+
+documented properly in recruiter notes
+
+ready for the next action
+
+Final onboarding completion criteria
+
+An employee is considered fully onboarded only after:
+
+all onboarding documents are studied
+
+team-specific SOP is reviewed
+
+signature is configured
+
+written and practical assessments are completed
+
+acknowledgement form is signed
+
+2. COMPANYWIDE POLICIES AND COMMUNICATION STANDARDS
+Companywide Policies
+
+Please note and start following these strictly going forward.
+
+2.1 Pay Rate and Requisition Discussions
+
+If you have any concerns about pay rates or open requisitions, bring them up in the designated work discussion channel.
+
+Policy
+
+Do not keep pay or requirement concerns limited to private silos
+
+Avoid one-on-one side discussions unless specifically required
+
+Bring relevant concerns to the approved team discussion area
+
+Open discussion creates alignment and prevents confusion
+
+Escalate blockers early instead of delaying action
+
+2.2 Remote Team Communication
+
+Since we are a remote team, clear and transparent communication is essential.
+
+Policy
+
+It is better to slightly over-communicate than to miss critical details
+
+Important work updates must be visible to relevant stakeholders
+
+Assumptions should be minimized
+
+Silence causes delays, confusion, and missed accountability
+
+2.3 Official Work Communication Platform
+
+No work communication should happen on WhatsApp, personal texts, or personal chat channels.
+
+Policy
+
+Microsoft Teams is the official company work platform
+
+All work discussions, updates, clarifications, and decisions must happen in Teams
+
+Personal messaging channels must not be used for work operations
+
+Documentation and visibility are mandatory
+
+2.4 Microsoft Teams Etiquette
+
+All team members must be active and consistently available on MS Teams during working hours.
+
+Mandatory expectations
+
+Be present and engaged during working hours
+
+Acknowledge relevant messages with a reaction or brief reply
+
+Silence is not acceptable when awareness is expected
+
+Use threads to keep conversations organized
+
+Keep communication professional, concise, and respectful
+
+Share documents and updates in Teams for visibility
+
+Update Teams status when away or unavailable
+
+2.5 Professional Conduct
+
+Every employee is expected to maintain a professional standard in all interactions.
+
+Expectations
+
+be respectful
+
+be clear and factual
+
+avoid blame-driven communication
+
+focus on resolution and ownership
+
+do not overpromise to candidates or clients
+
+do not misrepresent rates, roles, or next steps
+
+2.6 Documentation Discipline
+
+If work is not documented, it is treated as incomplete.
+
+Expectations
+
+candidate interactions must be documented
+
+important updates must be visible
+
+recruiter notes must be useful and factual
+
+status fields must be updated properly
+
+another team member should be able to review your work without needing verbal explanation
+
+2.7 Responsiveness
+
+Prompt acknowledgment and timely response are required.
+
+Expectations
+
+acknowledge internal messages promptly
+
+respond to urgent candidate/client items quickly
+
+inform the team early if a delay or blocker arises
+
+do not allow critical communication to go unanswered
+
+2.8 Attendance and Availability
+
+Employees must maintain proper workday discipline.
+
+Expectations
+
+follow assigned working hours
+
+accurately reflect attendance if a portal/system is used
+
+record check-in and check-out properly when required
+
+update availability status correctly to avoid reporting or payroll issues
+
+2.9 Confidentiality
+
+Candidate and client information is confidential and must be handled carefully.
+
+Expectations
+
+do not share resumes or contact details outside approved channels
+
+do not circulate pay rates or client information casually
+
+use only company-approved systems and storage
+
+maintain confidentiality in all communications
+
+2.10 Policy Violations
+
+Failure to follow communication, documentation, responsiveness, or process standards may lead to performance action.
+
+3. HEALTHCARE RECRUITMENT SOP AND DEFINITION OF DONE
+Objective
+
+To ensure every healthcare candidate submission is accurate, timely, compliant, and aligned to the client requirement.
+
+Why healthcare recruiting requires extra discipline
+
+Healthcare recruiting is highly sensitive because errors in specialty match, credential review, shift alignment, or compliance can quickly damage trust with the client and waste critical time.
+
+Step 1: Requisition Intake
+Review the following
+
+client or facility name
+
+role title
+
+specialty
+
+location
+
+shift
+
+duration
+
+bill rate or pay guidance
+
+years of experience required
+
+mandatory certifications
+
+active license requirements
+
+EMR or specialty system experience
+
+start date
+
+submission deadline
+
+Definition of Done
+
+A requisition is intake-complete only when:
+
+role title and specialty are clear
+
+location and shift are understood
+
+required license/certifications are identified
+
+compensation guidance is understood or escalated
+
+submission timeline is known
+
+must-have criteria are clear
+
+Step 2: Sourcing
+Source from
+
+internal database
+
+job boards
+
+prior redeployable candidates
+
+referrals
+
+healthcare specialty talent pools
+
+previous pipelines
+
+Definition of Done
+
+Sourcing is complete for the current cycle when:
+
+a reasonable number of relevant candidates have been identified
+
+outreach has started
+
+candidate pool is segmented by quality and readiness
+
+sourcing effort is documented
+
+Step 3: Candidate Screening
+Validate the following
+
+specialty alignment
+
+active license status
+
+required certifications
+
+recent relevant experience
+
+shift fit
+
+location fit
+
+start availability
+
+travel readiness if applicable
+
+compensation expectations
+
+onboarding or compliance blockers
+
+Definition of Done
+
+A healthcare screen is complete only when:
+
+major compliance items are checked
+
+availability is confirmed
+
+candidate interest is confirmed
+
+pay expectations are discussed
+
+recruiter notes are entered clearly
+
+Step 4: Submission Preparation
+Submission should include
+
+updated resume
+
+candidate fit summary
+
+license details
+
+certification details
+
+availability
+
+compensation expectations if process requires
+
+recruiter notes
+
+known risks or limitations
+
+Definition of Done
+
+Submission is complete only when:
+
+all client-required fields are complete
+
+resume is current and clean
+
+specialty fit is explained properly
+
+compliance-related details are not missing
+
+notes are documented accurately
+
+Step 5: Interview Coordination
+Recruiter responsibilities
+
+confirm interview availability
+
+prepare candidate on role, unit, and client context
+
+reconfirm interest before interview
+
+collect immediate post-interview feedback
+
+Definition of Done
+
+Interview stage is complete when:
+
+interview is confirmed
+
+candidate is prepared
+
+feedback is collected
+
+next steps are documented
+
+Step 6: Offer and Pre-Onboarding
+Verify
+
+candidate acceptance terms
+
+joining or start timeline
+
+document readiness
+
+credentialing readiness
+
+location and travel logistics if applicable
+
+Definition of Done
+
+Offer stage is complete when:
+
+verbal acceptance is confirmed
+
+next documentation step is initiated
+
+start-date risks are assessed
+
+follow-up ownership is clear
+
+Healthcare red flags
+
+unclear or inactive license status
+
+specialty mismatch
+
+inconsistent experience details
+
+unstable compensation expectations
+
+slow or unreliable communication
+
+inability to start within required window
+
+hidden location or shift restrictions
+
+Healthcare submission quality rules
+
+Do not submit candidates:
+
+with unclear license status
+
+with poor specialty alignment
+
+without discussing pay expectations
+
+without confirming availability
+
+without proper recruiter notes
+
+without reviewing basic compliance items
+
+4. IT RECRUITMENT SOP AND DEFINITION OF DONE
+Objective
+
+To ensure every IT candidate submission is technically aligned, properly screened, well-documented, and ready for client review.
+
+Why IT recruiting needs strong requirement interpretation
+
+In IT recruiting, weak interpretation of must-have skills leads to poor submissions, lost client confidence, and wasted time. Recruiters must understand role depth, not just keywords.
+
+Step 1: Requisition Intake
+Review the following
+
+client name
+
+role title
+
+contract, CTH, or full-time nature
+
+location or remote expectation
+
+required tech stack
+
+nice-to-have skills
+
+years of experience
+
+domain or industry preference
+
+interview process
+
+salary or rate range
+
+work authorization constraints
+
+urgency and timeline
+
+Definition of Done
+
+Intake is complete only when:
+
+must-have and nice-to-have skills are separated
+
+work model is understood
+
+compensation is clear or escalated
+
+visa/work authorization expectations are known
+
+target profile is understood
+
+Step 2: Sourcing
+Focus areas
+
+exact skill match
+
+adjacent transferable experience
+
+recent project relevance
+
+location and work model fit
+
+availability to interview and join
+
+Definition of Done
+
+Sourcing is complete for the current cycle when:
+
+enough relevant candidates have been targeted
+
+sourcing channels are documented
+
+candidates are ranked by fit and readiness
+
+Step 3: Technical Screening
+Validate the following
+
+hands-on technical skills
+
+years of recent experience
+
+current or recent project relevance
+
+tools/platform depth
+
+communication quality
+
+reason for move
+
+salary/rate expectations
+
+notice period
+
+work authorization
+
+location or remote alignment
+
+Definition of Done
+
+A technical screen is complete only when:
+
+must-have skill match is validated
+
+recent hands-on depth is discussed
+
+candidate interest is genuine
+
+compensation is discussed
+
+work authorization is confirmed
+
+notes explain both fit and risk
+
+Step 4: Submission Preparation
+Submission should include
+
+updated resume
+
+recruiter summary
+
+must-have skill match notes
+
+availability
+
+salary/rate expectations if needed
+
+work authorization
+
+interview constraints
+
+location or relocation constraints if relevant
+
+Definition of Done
+
+Submission is complete only when:
+
+recruiter summary clearly explains fit
+
+must-have alignment is addressed
+
+availability is confirmed
+
+work authorization is captured
+
+resume quality is acceptable
+
+major risks are noted
+
+Step 5: Interview Coordination
+Recruiter responsibilities
+
+confirm candidate timing
+
+prepare the candidate on client, role, and interview expectations
+
+ensure candidate represents skill depth honestly
+
+gather feedback immediately after interview
+
+Definition of Done
+
+Interview stage is complete when:
+
+interview is confirmed
+
+candidate is prepared
+
+recruiter captures feedback
+
+next action is documented
+
+Step 6: Offer and Close
+Verify
+
+compensation agreement
+
+notice period
+
+counteroffer risk
+
+joining date
+
+documentation readiness
+
+Definition of Done
+
+Offer stage is complete when:
+
+verbal acceptance is confirmed
+
+joining risks are identified
+
+follow-up cadence is defined
+
+candidate control is maintained until joining
+
+IT red flags
+
+weak must-have skill match
+
+inconsistent technical claims
+
+inability to explain recent projects
+
+unstable compensation expectations
+
+location mismatch
+
+unclear work authorization
+
+poor communication quality
+
+IT submission quality rules
+
+Do not submit candidates:
+
+based only on keywords without proper validation
+
+with weak must-have alignment
+
+without discussing compensation
+
+without confirming work authorization
+
+without a recruiter summary
+
+without documenting risks
+
+5. RECRUITER COMMUNICATION TEMPLATES AND PLAYBOOK
+5.1 Initial Candidate Outreach
+
+Hello [Candidate Name],
+I hope you are doing well. I came across your profile and wanted to connect regarding a [Job Title] opportunity with [Client/Industry]. Based on your experience in [Skill/Domain], I believe this could be relevant. Please let me know if you would be open to a quick discussion.
+
+5.2 Follow-Up Outreach
+
+Hello [Candidate Name],
+Following up on my earlier note regarding the [Job Title] opportunity. This role looks relevant to your background, and I would be happy to share more details if you are open to exploring it.
+
+5.3 Screening Invite
+
+Hello [Candidate Name],
+Thank you for your interest. I would like to schedule a short screening discussion to understand your recent experience, availability, compensation expectations, and fit for the role. Please share a few suitable time slots.
+
+5.4 Candidate Submission Confirmation
+
+Hello [Candidate Name],
+Thank you for speaking with me. Based on our discussion, I am moving forward with your profile for the [Job Title] role. Please let me know immediately if anything changes regarding your availability, interest, interview schedule, compensation, or ongoing opportunities.
+
+5.5 Interview Confirmation
+
+Hello [Candidate Name],
+Your interview has been scheduled for [Date/Time]. Please be available a little early and ensure you are in a quiet setting. I am sharing the interview details and preparation notes separately.
+
+5.6 Post-Interview Feedback Request
+
+Hello [Candidate Name],
+Thank you for attending the interview. Please share your feedback as soon as possible, including how the discussion went, your interest level, and any concerns you may have.
+
+5.7 Offer Discussion
+
+Hello [Candidate Name],
+I am pleased to inform you that the client would like to proceed further. Before we move ahead, please reconfirm your acceptance parameters, joining timeline, compensation understanding, and any risks or pending interviews.
+
+5.8 Rejection Message
+
+Hello [Candidate Name],
+Thank you for your time and interest. At this stage, the client has decided not to move forward with the application. I appreciate your time and would be glad to stay in touch regarding future opportunities that align with your profile.
+
+5.9 Internal Clarification Template
+
+Hi Team,
+Need clarification on the following for requisition [Req ID / Role]:
+
+rate or pay question:
+
+must-have skill question:
+
+submission requirement question:
+
+timeline concern:
+Please advise so we can move ahead correctly.
+
+Communication rules for recruiters
+
+keep communication professional and concise
+
+do not overpromise
+
+do not misrepresent the role
+
+do not hide constraints
+
+do not pressure candidates unreasonably
+
+document all important communication
+
+follow up with discipline, not spam
+
+6. OUTLOOK SIGNATURE SETUP GUIDE
+Objective
+
+Every employee must use a professional, standardized email signature.
+
+Standard signature fields
+
+Full Name
+
+Job Title
+
+Hire’in Solutions
+
+Company Email Address
+
+Website
+
+Location
+
+Optional approved logo
+
+Suggested format
+
+[Full Name]
+[Job Title]
+Hire’in Solutions
+[Email Address]
+[Website]
+[Location]
+
+Example
+
+Simranjeet S Sidana
+Founder and CEO
+Hire’in Solutions
+simranjeet@hire-in.com
+
+https://hire-in.com
+
+San Jose, CA
+
+Outlook Desktop Setup
+
+Open Outlook
+
+Click File
+
+Click Options
+
+Click Mail
+
+Click Signatures
+
+Create a new signature
+
+Paste the approved signature
+
+Set it as default for new emails and replies if needed
+
+Save
+
+Outlook Web Setup
+
+Open Outlook Web
+
+Open Settings
+
+Search for Email Signature
+
+Paste the approved signature
+
+Enable auto-insert if required
+
+Save
+
+Signature editing rules
+
+use approved company title only
+
+use company email only
+
+do not add personal quotes
+
+do not add unapproved slogans
+
+do not use personal branding instead of company branding
+
+keep formatting clean and professional
+
+Signature quality checklist
+
+Before using your signature, confirm:
+
+name spelling is correct
+
+title is correct
+
+email is correct
+
+website link works
+
+formatting is professional
+
+7. TRAINING CURRICULUM, TEST, AND ANSWER KEY
+Training Modules
+Module 1: Company Onboarding
+
+Topics:
+
+mission and company values
+
+communication expectations
+
+Teams etiquette
+
+documentation discipline
+
+confidentiality
+
+responsiveness
+
+Module 2: Recruitment Process Fundamentals
+
+Topics:
+
+requisition intake
+
+sourcing
+
+screening
+
+submission quality
+
+interview coordination
+
+offer and close process
+
+Module 3: Team-Specific Process
+
+Topics:
+
+Healthcare recruitment SOP
+
+IT recruitment SOP
+
+Definition of Done by stage
+
+quality standards by team
+
+Module 4: Communication Excellence
+
+Topics:
+
+candidate outreach
+
+follow-up discipline
+
+candidate control
+
+escalation language
+
+internal communication norms
+
+Module 5: Tools and Professional Setup
+
+Topics:
+
+Microsoft Teams expectations
+
+Outlook signature setup
+
+workday discipline
+
+notes and status updates
+
+Written Assessment
+Common Section
+
+What is the official work communication platform at Hire’in Solutions?
+
+Why is acknowledgment in Teams required?
+
+Where should pay rate or requisition concerns be raised?
+
+Name three things that must always be documented.
+
+What does healthy over-communication mean in a remote team?
+
+Healthcare Section
+
+Name five things you must verify in a healthcare screen.
+
+What makes a healthcare submission incomplete?
+
+Name three healthcare recruiting red flags.
+
+IT Section
+
+What must be separated clearly during IT requisition intake?
+
+What should a recruiter summary explain in an IT submission?
+
+Name three IT recruiting red flags.
+
+Practical Assessment
+Common Exercise
+
+Draft the following:
+
+one initial outreach message
+
+one follow-up message
+
+one internal clarification note
+
+Healthcare Practical
+
+Review a sample healthcare requirement and prepare:
+
+intake summary
+
+screening checklist
+
+candidate fit summary
+
+go/no-go recommendation
+
+IT Practical
+
+Review a sample IT requirement and prepare:
+
+must-have vs nice-to-have separation
+
+screening notes
+
+candidate summary
+
+go/no-go recommendation
+
+Answer Key
+Common Section Answers
+
+Microsoft Teams
+
+To ensure visibility, alignment, and accountability
+
+In the designated team discussion channel or approved forum
+
+Candidate interactions, recruiter notes, status updates, escalations
+
+Sharing enough information early to avoid confusion, missed actions, or delays
+
+Healthcare Section Answers
+
+Specialty, active license, required certifications, recent relevant experience, availability, compensation, location/shift fit
+
+Missing required fields, unclear fit summary, missing compliance details, poor documentation
+
+Inactive license, inconsistent experience, unstable availability, compensation mismatch, poor communication
+
+IT Section Answers
+
+Must-have and nice-to-have skills
+
+Why the candidate fits, relevant skills, recent hands-on experience, availability, and any key risks
+
+Weak must-have match, inconsistent technical claims, unconfirmed work authorization, location mismatch, poor communication
+
+Passing Standard
+
+Written test: minimum 80%
+
+Practical test: acceptable judgment, documentation quality, and recruiter reasoning
+
+Final signoff only after manager review
+
+8. EMPLOYEE ONBOARDING ACKNOWLEDGEMENT FORM
+
+I, ________________________________, acknowledge that I have received, read, and understood the onboarding and training materials provided by Hire’in Solutions.
+
+I understand that I am required to follow:
+
+companywide policies
+
+Microsoft Teams communication standards
+
+official documentation practices
+
+role-specific recruitment SOPs
+
+quality and submission standards
+
+confidentiality expectations
+
+I confirm that:
+
+I will use Microsoft Teams as the official work communication platform
+
+I will not use WhatsApp or personal messaging for official work communication
+
+I will maintain professional communication standards
+
+I will document my work accurately
+
+I will escalate concerns early when needed
+
+I will follow the Definition of Done at each recruitment stage
+
+Employee Name: ________________________________
+Role: ________________________________________
+Team: ________________________________________
+Date: ________________________________________
+Signature: ___________________________________
+
+9. MANAGER IMPLEMENTATION NOTES
+
+This section is for internal leadership use when rolling this out.
+
+Recommended onboarding delivery format
+
+Use this pack in the following way:
+
+Day 1
+
+send handbook
+
+review companywide policies live
+
+set up Teams and email signature
+
+Day 2
+
+train on common recruitment process
+
+review communication templates
+
+explain documentation expectations
+
+Day 3
+
+split team into Healthcare and IT tracks
+
+run role-specific SOP training
+
+walk through sample requisitions
+
+Day 4
+
+assign mock sourcing and screening exercise
+
+review recruiter notes quality
+
+coach on escalation behavior
+
+Day 5
+
+written test
+
+practical assignment
+
+sign acknowledgement form
+
+Suggested scoring model
+
+policy understanding: 20%
+
+communication quality: 20%
+
+documentation quality: 20%
+
+workflow understanding: 20%
+
+practical judgment: 20%
+
+Suggested manager checks before a recruiter starts live work
+
+Manager should verify:
+
+signature is set up
+
+Teams discipline is understood
+
+recruiter can explain the workflow
+
+recruiter can screen candidates with structure
+
+recruiter can write a fit summary
+
+recruiter understands escalation rules
+
+recruiter passed assessment

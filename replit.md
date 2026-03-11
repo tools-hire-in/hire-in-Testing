@@ -47,6 +47,14 @@ An integrated internal employee management system within the admin panel featuri
 - **Employee ID System**: Format `HIS-{DEPT}-{WORD}` (e.g., HIS-IT-NOVA, HIS-HC-LYNX). Uses ~200 curated memorable 4-letter words, checks for collisions against existing IDs, fallback to random 4 letters if exhausted.
 - **Post-Onboarding Documents**: A system for managing employee documents, bank details, and emergency contacts with compliance tracking and reminders.
 - **Security**: Mandatory TOTP 2FA for all users (enforced on both frontend and backend), 30-minute auto session timeout with 15-minute idle warning, rolling sessions.
+- **Onboarding Training & SOPs System**: Structured learning track system for employee onboarding. Hierarchy: Track → Section → Content + Quiz Question → Section Acknowledgement → Track Completion Receipt.
+  - **HR Admin — Training Management** (`/admin/hr/training`): Authors tracks with sections, per-section markdown content, comprehension quiz (4 options, 1 correct, explanation), assign to employees with optional due date. Publish/unpublish/archive tracks. "Load SOP Content" button seeds 3 pre-built tracks from company SOPs.
+  - **Employee — My Training** (`/admin/hr/my-training`): Card list of assigned tracks with progress bars. Track player with 3 steps per section: (1) Read with minimum dwell timer gate, (2) Quiz with retry logic (max 3 attempts), (3) Sign-off by typing full name. Track completion generates a receipt with cryptographic hash.
+  - **Manager/HR — Training Progress** (`/admin/hr/training-progress`): Matrix of employees × published tracks with colour-coded status cells. Click to drill into per-section detail (dwell time, quiz attempts, acknowledgement timestamp). CSV export.
+  - **Feature Flag**: `onboarding_training_enabled` in `system_settings`. Admins/HR/managers bypass flag; employees require flag=true to see "My Training" nav item. Toggle in HR Settings page under "Training & Onboarding" section.
+  - **Database Tables**: `learning_tracks`, `track_sections`, `section_quiz_questions`, `section_quiz_options`, `track_assignments`, `section_progress`, `section_acknowledgements`, `track_completions`, `onboarding_audit_events`.
+  - **Backend**: `server/onboardingRoutes.ts` (registered in routes.ts). `server/onboardingSeed.ts` with 3 full tracks: Common Onboarding (6 sections), Healthcare Recruitment SOP (5 steps), IT Recruitment SOP (5 steps).
+  - **System Settings API**: `GET/PUT /api/system-settings/:key` (HR_ROLES only) for generic key-value settings.
 
 ## External Dependencies
 

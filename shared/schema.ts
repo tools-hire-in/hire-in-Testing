@@ -643,6 +643,125 @@ export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
   onboardedBy: true,
 });
 
+// ==========================================
+// ONBOARDING TRAINING SYSTEM
+// ==========================================
+
+// Learning tracks (e.g. "Common Onboarding", "Healthcare SOP")
+export const learningTracks = pgTable("learning_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  targetRole: varchar("target_role"), // null = all roles
+  targetDepartmentId: varchar("target_department_id").references(() => departments.id),
+  version: varchar("version").notNull().default("1.0"),
+  status: varchar("status").notNull().default("draft"), // draft | published | archived
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Ordered sections inside a learning track
+export const trackSections = pgTable("track_sections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackId: varchar("track_id").notNull().references(() => learningTracks.id, { onDelete: "cascade" }),
+  title: varchar("title").notNull(),
+  body: text("body").notNull().default(""), // markdown / rich text
+  orderIndex: integer("order_index").notNull().default(0),
+  minDwellSeconds: integer("min_dwell_seconds").notNull().default(30),
+  estimatedMinutes: integer("estimated_minutes").notNull().default(5),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Inline quiz question per section (one per section)
+export const sectionQuizQuestions = pgTable("section_quiz_questions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sectionId: varchar("section_id").notNull().references(() => trackSections.id, { onDelete: "cascade" }).unique(),
+  questionText: text("question_text").notNull(),
+  explanation: text("explanation"), // shown after answering
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Answer options for quiz questions
+export const sectionQuizOptions = pgTable("section_quiz_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull().references(() => sectionQuizQuestions.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  isCorrect: boolean("is_correct").notNull().default(false),
+  orderIndex: integer("order_index").notNull().default(0),
+});
+
+// Track assigned to an employee
+export const trackAssignments = pgTable("track_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackId: varchar("track_id").notNull().references(() => learningTracks.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  assignedBy: varchar("assigned_by").references(() => adminUsers.id),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  dueDate: timestamp("due_date"),
+  status: varchar("status").notNull().default("not_started"), // not_started | in_progress | completed
+  completedAt: timestamp("completed_at"),
+});
+
+// Per-section progress for an assignment
+export const sectionProgress = pgTable("section_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull().references(() => trackAssignments.id, { onDelete: "cascade" }),
+  sectionId: varchar("section_id").notNull().references(() => trackSections.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  status: varchar("status").notNull().default("not_started"), // not_started | in_progress | completed
+  dwellSeconds: integer("dwell_seconds").notNull().default(0),
+  quizPassed: boolean("quiz_passed"),
+  quizAttempts: integer("quiz_attempts").notNull().default(0),
+  completedAt: timestamp("completed_at"),
+  lastViewedAt: timestamp("last_viewed_at"),
+});
+
+// Immutable section acknowledgements (digital sign-off)
+export const sectionAcknowledgements = pgTable("section_acknowledgements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull().references(() => trackAssignments.id),
+  sectionId: varchar("section_id").notNull().references(() => trackSections.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  typedName: varchar("typed_name").notNull(),
+  acknowledgedAt: timestamp("acknowledged_at").defaultNow(),
+  ipAddress: varchar("ip_address"),
+  documentHash: varchar("document_hash"), // sha256 of section body at time of ack
+});
+
+// Track completion receipts
+export const trackCompletions = pgTable("track_completions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull().references(() => trackAssignments.id).unique(),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  completedAt: timestamp("completed_at").defaultNow(),
+  receiptHash: varchar("receipt_hash"), // sha256 of all ack hashes concatenated
+  receiptData: jsonb("receipt_data"), // snapshot of all acknowledgements
+});
+
+// Immutable audit event stream
+export const onboardingAuditEvents = pgTable("onboarding_audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => adminUsers.id),
+  trackId: varchar("track_id"),
+  sectionId: varchar("section_id"),
+  assignmentId: varchar("assignment_id"),
+  eventType: varchar("event_type").notNull(), // section_viewed | quiz_answered | section_acknowledged | track_completed | track_assigned | track_published
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas
+export const insertLearningTrackSchema = createInsertSchema(learningTracks).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTrackSectionSchema = createInsertSchema(trackSections).omit({ id: true, createdAt: true });
+export const insertSectionQuizQuestionSchema = createInsertSchema(sectionQuizQuestions).omit({ id: true, createdAt: true });
+export const insertSectionQuizOptionSchema = createInsertSchema(sectionQuizOptions).omit({ id: true });
+export const insertTrackAssignmentSchema = createInsertSchema(trackAssignments).omit({ id: true, assignedAt: true, completedAt: true });
+export const insertSectionProgressSchema = createInsertSchema(sectionProgress).omit({ id: true, completedAt: true, lastViewedAt: true });
+export const insertSectionAcknowledgementSchema = createInsertSchema(sectionAcknowledgements).omit({ id: true, acknowledgedAt: true });
+export const insertTrackCompletionSchema = createInsertSchema(trackCompletions).omit({ id: true, completedAt: true });
+export const insertOnboardingAuditEventSchema = createInsertSchema(onboardingAuditEvents).omit({ id: true, createdAt: true });
+
 // System settings table (key-value config store)
 export const systemSettings = pgTable("system_settings", {
   key: varchar("key").primaryKey(),
@@ -699,3 +818,21 @@ export type EmployeeEmergencyContact = typeof employeeEmergencyContacts.$inferSe
 export type InsertEmployeeEmergencyContact = z.infer<typeof insertEmployeeEmergencyContactSchema>;
 export type OfferLetter = typeof offerLetters.$inferSelect;
 export type InsertOfferLetter = z.infer<typeof insertOfferLetterSchema>;
+export type LearningTrack = typeof learningTracks.$inferSelect;
+export type InsertLearningTrack = z.infer<typeof insertLearningTrackSchema>;
+export type TrackSection = typeof trackSections.$inferSelect;
+export type InsertTrackSection = z.infer<typeof insertTrackSectionSchema>;
+export type SectionQuizQuestion = typeof sectionQuizQuestions.$inferSelect;
+export type InsertSectionQuizQuestion = z.infer<typeof insertSectionQuizQuestionSchema>;
+export type SectionQuizOption = typeof sectionQuizOptions.$inferSelect;
+export type InsertSectionQuizOption = z.infer<typeof insertSectionQuizOptionSchema>;
+export type TrackAssignment = typeof trackAssignments.$inferSelect;
+export type InsertTrackAssignment = z.infer<typeof insertTrackAssignmentSchema>;
+export type SectionProgress = typeof sectionProgress.$inferSelect;
+export type InsertSectionProgress = z.infer<typeof insertSectionProgressSchema>;
+export type SectionAcknowledgement = typeof sectionAcknowledgements.$inferSelect;
+export type InsertSectionAcknowledgement = z.infer<typeof insertSectionAcknowledgementSchema>;
+export type TrackCompletion = typeof trackCompletions.$inferSelect;
+export type InsertTrackCompletion = z.infer<typeof insertTrackCompletionSchema>;
+export type OnboardingAuditEvent = typeof onboardingAuditEvents.$inferSelect;
+export type InsertOnboardingAuditEvent = z.infer<typeof insertOnboardingAuditEventSchema>;

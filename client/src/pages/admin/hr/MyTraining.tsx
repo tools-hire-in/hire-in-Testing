@@ -1,0 +1,664 @@
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
+  Loader2, AlertCircle, Trophy, Download, ArrowLeft,
+} from "lucide-react";
+import { AdminLayout } from "@/components/admin/AdminLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+
+const STATUS_COLORS: Record<string, string> = {
+  not_started: "bg-slate-100 text-slate-600",
+  in_progress: "bg-amber-100 text-amber-700",
+  completed: "bg-green-100 text-green-700",
+  overdue: "bg-red-100 text-red-700",
+};
+
+function formatDate(d: string | null | undefined) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function DwellTimer({
+  minSeconds,
+  onComplete,
+  assignmentId,
+  sectionId,
+}: {
+  minSeconds: number;
+  onComplete: () => void;
+  assignmentId: string;
+  sectionId: string;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  const [done, setDone] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const postRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setElapsed(prev => {
+        const next = prev + 1;
+        if (next >= minSeconds && !done) {
+          setDone(true);
+          onComplete();
+        }
+        return next;
+      });
+    }, 1000);
+
+    // Post dwell every 15s
+    postRef.current = setInterval(async () => {
+      await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsed });
+    }, 15000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (postRef.current) clearInterval(postRef.current);
+    };
+  }, []);
+
+  const remaining = Math.max(0, minSeconds - elapsed);
+  const pct = Math.min(100, (elapsed / minSeconds) * 100);
+
+  if (done) return null;
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 text-blue-700">
+          <Clock className="h-4 w-4" />
+          Reading this section...
+        </span>
+        <span className="font-mono text-blue-800 font-medium">{remaining}s remaining</span>
+      </div>
+      <Progress value={pct} className="h-2" />
+    </div>
+  );
+}
+
+function QuizBlock({
+  quiz,
+  assignmentId,
+  sectionId,
+  onPassed,
+}: {
+  quiz: any;
+  assignmentId: string;
+  sectionId: string;
+  onPassed: () => void;
+}) {
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [result, setResult] = useState<any | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      const res = await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/quiz`, { optionId: selected });
+      const data = await res.json();
+      setResult(data);
+      if (data.passed) onPassed();
+    } catch {
+      toast({ title: "Failed to submit answer", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const canRetry = result && !result.passed && result.attempts < 3;
+
+  return (
+    <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+      <p className="font-semibold text-sm flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 text-blue-600" />
+        Comprehension Check
+      </p>
+      <p className="text-sm font-medium">{quiz.questionText}</p>
+
+      <div className="space-y-2">
+        {quiz.options.map((opt: any) => {
+          const isChosen = selected === opt.id;
+          const isCorrectReveal = result?.passed && opt.id === result?.correctOptionId;
+          const isWrongReveal = result && !result.isCorrect && isChosen;
+          return (
+            <label
+              key={opt.id}
+              className={`flex items-center gap-3 p-2.5 rounded-md border cursor-pointer transition-colors text-sm
+                ${isCorrectReveal ? "bg-green-50 border-green-400 text-green-800" : ""}
+                ${isWrongReveal ? "bg-red-50 border-red-400 text-red-800" : ""}
+                ${!result && isChosen ? "bg-blue-50 border-blue-400" : ""}
+                ${!result && !isChosen ? "hover:bg-muted border-border" : ""}
+              `}
+            >
+              <input
+                type="radio"
+                name={`quiz-${sectionId}`}
+                value={opt.id}
+                checked={isChosen}
+                onChange={() => !result && setSelected(opt.id)}
+                disabled={!!result}
+              />
+              {opt.optionText}
+            </label>
+          );
+        })}
+      </div>
+
+      {result && (
+        <div className={`text-sm p-3 rounded-md ${result.isCorrect ? "bg-green-50 text-green-800 border border-green-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
+          <p className="font-semibold mb-1">{result.isCorrect ? "✓ Correct!" : result.passed ? "✓ Moving on — correct answer shown above" : `✗ Incorrect (attempt ${result.attempts}/3)`}</p>
+          {result.explanation && <p>{result.explanation}</p>}
+        </div>
+      )}
+
+      {!result && (
+        <Button size="sm" onClick={handleSubmit} disabled={!selected || submitting} data-testid="button-submit-quiz">
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          Submit Answer
+        </Button>
+      )}
+      {canRetry && (
+        <Button size="sm" variant="outline" onClick={() => { setResult(null); setSelected(null); }}>
+          Try Again
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function SectionPlayer({
+  section,
+  isUnlocked,
+  isCompleted,
+  assignmentId,
+  userName,
+  onCompleted,
+}: {
+  section: any;
+  isUnlocked: boolean;
+  isCompleted: boolean;
+  assignmentId: string;
+  userName: string;
+  onCompleted: () => void;
+}) {
+  const { toast } = useToast();
+  const [step, setStep] = useState<"read" | "quiz" | "signoff">("read");
+  const [dwellDone, setDwellDone] = useState(false);
+  const [quizPassed, setQuizPassed] = useState(false);
+  const [typedName, setTypedName] = useState("");
+  const [acknowledging, setAcknowledging] = useState(false);
+  const [viewStarted, setViewStarted] = useState(false);
+
+  const hasQuiz = !!section.quiz;
+  const nameMatch = typedName.trim().toLowerCase() === userName.trim().toLowerCase();
+
+  useEffect(() => {
+    if (isUnlocked && !isCompleted && !viewStarted) {
+      setViewStarted(true);
+      apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${section.id}/view`);
+    }
+    // Reset step when section changes
+    setStep("read");
+    setDwellDone(section.progress?.dwellSeconds >= section.minDwellSeconds);
+    setQuizPassed(section.progress?.quizPassed ?? false);
+  }, [section.id]);
+
+  const handleAcknowledge = async () => {
+    if (!nameMatch) return;
+    setAcknowledging(true);
+    try {
+      await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${section.id}/acknowledge`, { typedName: typedName.trim() });
+      toast({ title: "Section acknowledged!" });
+      onCompleted();
+    } catch {
+      toast({ title: "Failed to acknowledge", variant: "destructive" });
+    } finally {
+      setAcknowledging(false);
+    }
+  };
+
+  if (!isUnlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <Lock className="h-12 w-12 mb-3 opacity-30" />
+        <p className="font-medium">Complete previous sections to unlock this one</p>
+      </div>
+    );
+  }
+
+  if (isCompleted) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg p-4">
+          <CheckCircle className="h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-semibold">Section completed and signed off</p>
+            {section.acknowledgement && (
+              <p className="text-sm text-green-600 mt-0.5">
+                Signed as "{section.acknowledgement.typedName}" on {formatDate(section.acknowledgement.acknowledgedAt)}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="prose prose-sm max-w-none">
+          <pre className="whitespace-pre-wrap font-sans text-sm text-muted-foreground leading-relaxed bg-muted/30 p-4 rounded-lg border">
+            {section.body}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Step indicators */}
+      <div className="flex items-center gap-2 text-sm">
+        {["read", "quiz", "signoff"].map((s, i) => (
+          <div key={s} className="flex items-center gap-2">
+            {i > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${step === s ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground"}`}>
+              {i + 1}. {s === "read" ? "Read" : s === "quiz" ? "Quiz" : "Sign Off"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {step === "read" && (
+        <>
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-muted/20 p-4 rounded-lg border">
+            {section.body}
+          </pre>
+
+          {!dwellDone && (
+            <DwellTimer
+              minSeconds={section.minDwellSeconds}
+              assignmentId={assignmentId}
+              sectionId={section.id}
+              onComplete={() => setDwellDone(true)}
+            />
+          )}
+
+          {dwellDone && (
+            <Button onClick={() => setStep(hasQuiz ? "quiz" : "signoff")} data-testid="button-continue-to-quiz">
+              Continue →
+            </Button>
+          )}
+        </>
+      )}
+
+      {step === "quiz" && hasQuiz && (
+        <div className="space-y-4">
+          <QuizBlock
+            quiz={section.quiz}
+            assignmentId={assignmentId}
+            sectionId={section.id}
+            onPassed={() => { setQuizPassed(true); setTimeout(() => setStep("signoff"), 1200); }}
+          />
+          {quizPassed && (
+            <Button onClick={() => setStep("signoff")} data-testid="button-continue-to-signoff">
+              Continue to Sign Off →
+            </Button>
+          )}
+        </div>
+      )}
+
+      {step === "signoff" && (
+        <div className="space-y-5">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="font-semibold text-blue-900 mb-1">Section Acknowledgement</p>
+            <p className="text-sm text-blue-700">
+              By signing, you confirm you have read and understood this section. Your signature is cryptographically recorded with a timestamp.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Type your full name to confirm</Label>
+            <Input
+              value={typedName}
+              onChange={e => setTypedName(e.target.value)}
+              placeholder={userName}
+              className={typedName && !nameMatch ? "border-red-500" : ""}
+              data-testid="input-section-ack-name"
+            />
+            {typedName && !nameMatch && (
+              <p className="text-xs text-red-600">Name must match exactly: "{userName}"</p>
+            )}
+          </div>
+
+          {typedName.length > 1 && (
+            <div className="p-4 bg-white border border-dashed rounded-lg text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Digital Signature Preview</p>
+              <p className="text-3xl text-blue-900" style={{ fontFamily: "'Dancing Script', cursive" }}>{typedName}</p>
+            </div>
+          )}
+
+          <Button
+            onClick={handleAcknowledge}
+            disabled={!nameMatch || acknowledging}
+            className="w-full"
+            data-testid="button-acknowledge-section"
+          >
+            {acknowledging ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+            Acknowledge &amp; Continue
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackPlayer({
+  assignmentId,
+  onBack,
+}: {
+  assignmentId: string;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [receiptData, setReceiptData] = useState<any>(null);
+
+  const { data, isLoading, refetch } = useQuery<any>({
+    queryKey: ["/api/onboarding/assignments", assignmentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/onboarding/assignments/${assignmentId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (data?.sections?.length > 0 && !activeSectionId) {
+      setActiveSectionId(data.sections[0].id);
+    }
+    if (data?.assignment?.status === "completed") setCompleted(true);
+  }, [data]);
+
+  const isSectionUnlocked = (idx: number) => {
+    if (idx === 0) return true;
+    const prev = data?.sections?.[idx - 1];
+    return prev?.progress?.status === "completed";
+  };
+
+  const allDone = data?.sections?.every((s: any) => s.progress?.status === "completed");
+
+  const handleComplete = async () => {
+    setCompleting(true);
+    try {
+      const res = await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/complete`);
+      const result = await res.json();
+      setReceiptData(result.receiptData);
+      setCompleted(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-assignments"] });
+      toast({ title: "Track completed! Well done!" });
+    } catch {
+      toast({ title: "Failed to complete track", variant: "destructive" });
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const handleDownloadReceipt = () => {
+    if (!receiptData) return;
+    const content = [
+      "TRAINING COMPLETION RECEIPT",
+      "===========================",
+      `Employee: ${user?.firstName} ${user?.lastName}`,
+      `Track: ${data?.track?.title}`,
+      `Completed: ${new Date().toLocaleString("en-IN")}`,
+      "",
+      "SECTION ACKNOWLEDGEMENTS",
+      "------------------------",
+      ...(receiptData.acknowledgements || []).map((a: any) =>
+        `- ${a.sectionId}: signed as "${a.typedName}" at ${new Date(a.acknowledgedAt).toLocaleString("en-IN")}`
+      ),
+      "",
+      `Receipt Hash: ${receiptData.completedAt ? "[computed]" : ""}`,
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `training-receipt-${data?.track?.title?.replace(/\s+/g, "-")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-24">
+      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+    </div>
+  );
+
+  if (completed) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center space-y-6">
+        <div className="py-8">
+          <div className="text-7xl mb-4">🎉</div>
+          <Trophy className="h-12 w-12 mx-auto text-amber-500 mb-3" />
+          <h2 className="text-2xl font-bold">Track Completed!</h2>
+          <p className="text-muted-foreground mt-2">
+            You've successfully completed <strong>{data?.track?.title}</strong>. All sections are acknowledged and recorded.
+          </p>
+        </div>
+        <div className="flex gap-3 justify-center flex-wrap">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to My Training
+          </Button>
+          {receiptData && (
+            <Button onClick={handleDownloadReceipt} data-testid="button-download-receipt">
+              <Download className="h-4 w-4 mr-2" />
+              Download Receipt
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const activeSection = data?.sections?.find((s: any) => s.id === activeSectionId);
+  const activeSectionIdx = data?.sections?.findIndex((s: any) => s.id === activeSectionId) ?? 0;
+
+  return (
+    <div className="flex h-full">
+      {/* Sidebar */}
+      <div className="w-64 border-r bg-muted/30 p-4 space-y-2 shrink-0">
+        <Button variant="ghost" size="sm" onClick={onBack} className="mb-2 -ml-2 text-muted-foreground">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back
+        </Button>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          {data?.track?.title}
+        </p>
+        {data?.sections?.map((section: any, idx: number) => {
+          const isComplete = section.progress?.status === "completed";
+          const isActive = section.id === activeSectionId;
+          const unlocked = isSectionUnlocked(idx);
+          return (
+            <button
+              key={section.id}
+              onClick={() => unlocked && setActiveSectionId(section.id)}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors
+                ${isActive ? "bg-blue-100 text-blue-900 font-medium" : "hover:bg-muted"}
+                ${!unlocked ? "opacity-40 cursor-not-allowed" : ""}
+              `}
+              data-testid={`nav-section-${section.id}`}
+            >
+              {isComplete
+                ? <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                : unlocked
+                  ? <BookOpen className="h-4 w-4 text-blue-600 shrink-0" />
+                  : <Lock className="h-4 w-4 shrink-0" />
+              }
+              <span className="truncate">{section.title}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {activeSection && (
+          <>
+            <div className="mb-4">
+              <h2 className="text-xl font-bold">{activeSection.title}</h2>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{activeSection.estimatedMinutes} min read</span>
+                <span>Section {activeSectionIdx + 1} of {data?.sections?.length}</span>
+              </div>
+            </div>
+            <Separator className="mb-5" />
+
+            <SectionPlayer
+              key={activeSection.id}
+              section={activeSection}
+              isUnlocked={isSectionUnlocked(activeSectionIdx)}
+              isCompleted={activeSection.progress?.status === "completed"}
+              assignmentId={assignmentId}
+              userName={`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
+              onCompleted={async () => {
+                await refetch();
+                // Auto advance to next section
+                const nextIdx = activeSectionIdx + 1;
+                if (nextIdx < (data?.sections?.length ?? 0)) {
+                  setTimeout(() => setActiveSectionId(data.sections[nextIdx].id), 500);
+                }
+              }}
+            />
+
+            {allDone && !completed && (
+              <div className="mt-8 p-4 bg-green-50 border border-green-200 rounded-lg text-center space-y-3">
+                <p className="font-semibold text-green-900">All sections complete!</p>
+                <p className="text-sm text-green-700">Click below to finalize your completion receipt.</p>
+                <Button onClick={handleComplete} disabled={completing} className="bg-green-700 hover:bg-green-800" data-testid="button-complete-track">
+                  {completing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trophy className="h-4 w-4 mr-2" />}
+                  Complete Track &amp; Get Receipt
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function MyTraining() {
+  const { user } = useAuth();
+  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+
+  const { data: assignments = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/onboarding/my-assignments"],
+    queryFn: async () => {
+      const res = await fetch("/api/onboarding/my-assignments", { credentials: "include" });
+      if (!res.ok) {
+        if (res.status === 403) return [];
+        throw new Error("Failed to load");
+      }
+      return res.json();
+    },
+  });
+
+  if (activeAssignmentId) {
+    return (
+      <AdminLayout>
+        <TrackPlayer assignmentId={activeAssignmentId} onBack={() => setActiveAssignmentId(null)} />
+      </AdminLayout>
+    );
+  }
+
+  return (
+    <AdminLayout>
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <GraduationCap className="h-6 w-6 text-blue-600" />
+            My Training
+          </h1>
+          <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading...
+          </div>
+        )}
+
+        {!isLoading && assignments.length === 0 && (
+          <Card className="border-dashed">
+            <CardContent className="py-16 text-center text-muted-foreground">
+              <GraduationCap className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No training assigned yet</p>
+              <p className="text-sm mt-1">Your manager will assign training tracks when ready.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {assignments.map((a: any) => {
+            const now = new Date();
+            let status = a.status;
+            if (status !== "completed" && a.dueDate && new Date(a.dueDate) < now) status = "overdue";
+
+            return (
+              <Card
+                key={a.id}
+                className="hover:shadow-md transition-all cursor-pointer"
+                onClick={() => setActiveAssignmentId(a.id)}
+                data-testid={`card-assignment-${a.id}`}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}>
+                      {status.replace("_", " ")}
+                    </span>
+                  </div>
+                  {a.track?.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">{a.track.description}</p>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{a.completedSections} / {a.totalSections} sections</span>
+                      <span className="font-medium">{a.progressPct}%</span>
+                    </div>
+                    <Progress value={a.progressPct} className="h-2" />
+                    {a.dueDate && (
+                      <p className="text-xs text-muted-foreground">Due: {formatDate(a.dueDate)}</p>
+                    )}
+                    {status === "completed" && (
+                      <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
+                    )}
+                  </div>
+                  <Button size="sm" className="mt-3 w-full" variant={status === "completed" ? "outline" : "default"}>
+                    {status === "completed" ? "Review" : status === "not_started" ? "Start" : "Continue"} →
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </AdminLayout>
+  );
+}

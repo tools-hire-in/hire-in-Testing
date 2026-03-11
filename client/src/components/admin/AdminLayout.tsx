@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Briefcase,
@@ -24,6 +25,8 @@ import {
   AlertTriangle,
   ShieldAlert,
   Wrench,
+  GraduationCap,
+  BarChart3,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,6 +138,13 @@ const employeeMenu = [
     icon: UserCircle,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
+  {
+    href: "/admin/hr/my-training",
+    label: "My Training",
+    icon: GraduationCap,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+    trainingGated: true,
+  },
 ];
 
 const hrOpsMenu = [
@@ -181,6 +191,18 @@ const hrOpsMenu = [
     roles: ["super_admin", "admin", "hr"]
   },
   {
+    href: "/admin/hr/training",
+    label: "Training Management",
+    icon: GraduationCap,
+    roles: ["super_admin", "admin", "hr", "manager"]
+  },
+  {
+    href: "/admin/hr/training-progress",
+    label: "Training Progress",
+    icon: BarChart3,
+    roles: ["super_admin", "admin", "hr", "manager"]
+  },
+  {
     href: "/admin/hr/settings",
     label: "HR Settings",
     icon: Settings,
@@ -213,13 +235,34 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const needs2FA = user && !user.totpEnabled && !location.startsWith("/admin/hr/profile");
 
+  const ADMIN_TRAINING_ROLES = ["super_admin", "admin", "hr", "manager"];
+
+  const { data: trainingFlagData } = useQuery<{ value: any }>({
+    queryKey: ["/api/system-settings/onboarding_training_enabled"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/system-settings/onboarding_training_enabled", { credentials: "include" });
+        if (!res.ok) return { value: null };
+        return res.json();
+      } catch {
+        return { value: null };
+      }
+    },
+    enabled: !!user,
+    staleTime: 60000,
+  });
+
+  const trainingEnabled = trainingFlagData?.value === true || ADMIN_TRAINING_ROLES.includes(user?.role || "");
+
   const filteredRecruitment = recruitmentMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
 
-  const filteredEmployee = employeeMenu.filter(item => 
-    user?.role && item.roles.includes(user.role)
-  );
+  const filteredEmployee = (employeeMenu as any[]).filter(item => {
+    if (!user?.role || !item.roles.includes(user.role)) return false;
+    if (item.trainingGated) return trainingEnabled;
+    return true;
+  });
 
   const filteredHrOps = hrOpsMenu.filter(item => 
     user?.role && item.roles.includes(user.role)

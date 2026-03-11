@@ -14,6 +14,7 @@ import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
+import { registerOnboardingRoutes } from "./onboardingRoutes";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -3280,6 +3281,8 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to cancel offer letter" });
     }
   });
+
+  registerOnboardingRoutes(app);
 
   return httpServer;
 }
