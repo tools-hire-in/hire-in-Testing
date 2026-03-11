@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, CalendarDays, CalendarCheck, TrendingUp, LogIn, LogOut as LogOutIcon, Globe, Lock, Check } from "lucide-react";
+import { Clock, CalendarDays, CalendarCheck, TrendingUp, LogIn, LogOut as LogOutIcon, Globe, Lock, Check, GraduationCap, AlertTriangle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,21 @@ export default function HRDashboard() {
     queryKey: ["/api/hr/dashboard-stats"],
     enabled: isAuthenticated,
     refetchInterval: 30000,
+  });
+
+  const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
+    queryKey: ["/api/onboarding/my-training-alerts"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/my-training-alerts", { credentials: "include" });
+        if (!res.ok) return { overdue: 0, dueSoon: 0, total: 0 };
+        return res.json();
+      } catch {
+        return { overdue: 0, dueSoon: 0, total: 0 };
+      }
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 60000,
   });
 
   const { data: leaveTypes } = useQuery<LeaveType[]>({
@@ -249,6 +264,41 @@ export default function HRDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {(trainingAlerts?.total ?? 0) > 0 && (
+          <div
+            className={`flex items-center justify-between gap-4 p-4 rounded-lg border-l-4 ${(trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
+            data-testid="dashboard-training-alert"
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`h-5 w-5 shrink-0 ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`} />
+              <div>
+                <p className={`font-semibold text-sm ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
+                  Training Reminder
+                </p>
+                <p className={`text-xs ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {(trainingAlerts?.overdue ?? 0) > 0 && (
+                    <span>{trainingAlerts!.overdue} overdue{(trainingAlerts?.dueSoon ?? 0) > 0 ? `, ${trainingAlerts!.dueSoon} due soon` : ""}</span>
+                  )}
+                  {(trainingAlerts?.overdue ?? 0) === 0 && (trainingAlerts?.dueSoon ?? 0) > 0 && (
+                    <span>{trainingAlerts!.dueSoon} {trainingAlerts!.dueSoon === 1 ? "track" : "tracks"} due within 3 days</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className={(trainingAlerts?.overdue ?? 0) > 0 ? "border-red-300 text-red-700 hover:bg-red-100" : "border-amber-300 text-amber-700 hover:bg-amber-100"}
+              asChild
+            >
+              <a href="/admin/hr/my-training" data-testid="link-go-to-training">
+                <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
+                Go to My Training
+              </a>
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>

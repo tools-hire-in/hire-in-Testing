@@ -281,9 +281,10 @@ export function registerOnboardingRoutes(app: Express) {
           continue;
         }
 
+        const autoDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
         const [assignment] = await db.insert(trackAssignments).values({
           trackId: id, userId, assignedBy: req.session.userId!,
-          dueDate: dueDate ? new Date(dueDate) : null,
+          dueDate: dueDate ? new Date(dueDate) : autoDate,
           status: "not_started",
         }).returning();
 
@@ -297,6 +298,32 @@ export function registerOnboardingRoutes(app: Express) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to assign track" });
+    }
+  });
+
+  app.get("/api/onboarding/my-training-alerts", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+    const enabled = await isFeatureEnabledOrAdmin(req.session.role!);
+    if (!enabled) return res.json({ overdue: 0, dueSoon: 0, total: 0 });
+
+    try {
+      const userId = req.session.userId!;
+      const now = new Date();
+      const in3days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+      const rows = await db.select().from(trackAssignments)
+        .where(eq(trackAssignments.userId, userId));
+
+      const active = rows.filter(a => a.status !== "completed" && a.dueDate);
+      const overdue = active.filter(a => new Date(a.dueDate!) < now).length;
+      const dueSoon = active.filter(a => {
+        const d = new Date(a.dueDate!);
+        return d >= now && d <= in3days;
+      }).length;
+
+      res.json({ overdue, dueSoon, total: overdue + dueSoon });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch training alerts" });
     }
   });
 

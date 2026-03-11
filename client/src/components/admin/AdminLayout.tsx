@@ -237,6 +237,21 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const ADMIN_TRAINING_ROLES = ["super_admin", "admin", "hr", "manager"];
 
+  const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
+    queryKey: ["/api/onboarding/my-training-alerts"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/my-training-alerts", { credentials: "include" });
+        if (!res.ok) return { overdue: 0, dueSoon: 0, total: 0 };
+        return res.json();
+      } catch {
+        return { overdue: 0, dueSoon: 0, total: 0 };
+      }
+    },
+    refetchInterval: 60000,
+    enabled: isAuthenticated,
+  });
+
   const { data: trainingFlagData } = useQuery<{ value: any }>({
     queryKey: ["/api/system-settings/onboarding_training_enabled"],
     queryFn: async () => {
@@ -354,20 +369,30 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <SidebarGroupLabel>Employee</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {filteredEmployee.map((item) => (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={isActive(item.href)}
-                          data-testid={`nav-emp-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                        >
-                          <Link href={item.href}>
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
+                    {filteredEmployee.map((item) => {
+                      const isTraining = item.href === "/admin/hr/my-training";
+                      const alertCount = trainingAlerts?.total ?? 0;
+                      const isOverdue = (trainingAlerts?.overdue ?? 0) > 0;
+                      return (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={isActive(item.href)}
+                            data-testid={`nav-emp-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                          >
+                            <Link href={item.href}>
+                              <item.icon className="h-4 w-4" />
+                              <span className="flex-1">{item.label}</span>
+                              {isTraining && alertCount > 0 && (
+                                <span className={`ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center ${isOverdue ? "bg-red-500 text-white" : "bg-amber-500 text-white"}`} data-testid="badge-training-alerts">
+                                  {alertCount > 9 ? "9+" : alertCount}
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

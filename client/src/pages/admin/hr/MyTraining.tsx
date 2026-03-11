@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
-  Loader2, AlertCircle, Trophy, Download, ArrowLeft,
+  Loader2, AlertCircle, Trophy, Download, ArrowLeft, X, AlertTriangle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -557,6 +557,7 @@ function TrackPlayer({
 export default function MyTraining() {
   const { user } = useAuth();
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const { data: assignments = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/onboarding/my-assignments"],
@@ -569,6 +570,17 @@ export default function MyTraining() {
       return res.json();
     },
   });
+
+  const now = new Date();
+  const in3days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const activeAssignments = assignments.filter((a: any) => a.status !== "completed");
+  const overdueCount = activeAssignments.filter((a: any) => a.dueDate && new Date(a.dueDate) < now).length;
+  const dueSoonCount = activeAssignments.filter((a: any) => {
+    if (!a.dueDate) return false;
+    const d = new Date(a.dueDate);
+    return d >= now && d <= in3days;
+  }).length;
+  const showBanner = !bannerDismissed && !isLoading && (overdueCount > 0 || dueSoonCount > 0);
 
   if (activeAssignmentId) {
     return (
@@ -588,6 +600,35 @@ export default function MyTraining() {
           </h1>
           <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
         </div>
+
+        {showBanner && (
+          <div
+            className={`flex items-start gap-3 p-4 rounded-lg border-l-4 ${overdueCount > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
+            data-testid="banner-training-due"
+          >
+            <AlertTriangle className={`h-5 w-5 mt-0.5 shrink-0 ${overdueCount > 0 ? "text-red-600" : "text-amber-600"}`} />
+            <div className="flex-1 min-w-0">
+              <p className={`font-semibold text-sm ${overdueCount > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
+                {overdueCount > 0
+                  ? `${overdueCount} training ${overdueCount === 1 ? "track is" : "tracks are"} overdue`
+                  : `${dueSoonCount} training ${dueSoonCount === 1 ? "track is" : "tracks are"} due within 3 days`}
+              </p>
+              <p className={`text-xs mt-0.5 ${overdueCount > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+                {overdueCount > 0 && dueSoonCount > 0
+                  ? `Also ${dueSoonCount} more due soon. `
+                  : ""}
+                Complete them to stay on track.
+              </p>
+            </div>
+            <button
+              onClick={() => setBannerDismissed(true)}
+              className={`shrink-0 p-1 rounded hover:bg-black/10 ${overdueCount > 0 ? "text-red-500" : "text-amber-500"}`}
+              data-testid="button-dismiss-training-banner"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {isLoading && (
           <div className="flex items-center gap-2 text-muted-foreground">
