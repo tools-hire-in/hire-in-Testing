@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  BookOpen, Plus, ChevronDown, ChevronUp, Trash2, Pencil, Users, Send,
+  BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
+  AlertCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,9 +35,10 @@ export default function TrainingManagement() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTrackId, setAssignTrackId] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Track form state
-  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "", version: "1.0" });
+  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "all_roles", version: "1.0" });
 
   // Section form state
   const [sectionForm, setSectionForm] = useState({
@@ -56,7 +58,6 @@ export default function TrainingManagement() {
     enabled: !!selectedTrackId,
   });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/admin/users"] });
-  const { data: departments = [] } = useQuery<any[]>({ queryKey: ["/api/departments"] });
   const { data: trackAssignments = [] } = useQuery<any[]>({
     queryKey: ["/api/onboarding/tracks", assignTrackId, "assignments"],
     enabled: !!assignTrackId,
@@ -66,11 +67,17 @@ export default function TrainingManagement() {
   const selectedTrack = tracks.find((t: any) => t.id === selectedTrackId);
 
   const createTrack = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/onboarding/tracks", trackForm),
+    mutationFn: () => {
+      const payload = {
+        ...trackForm,
+        targetRole: trackForm.targetRole === "all_roles" ? "" : trackForm.targetRole,
+      };
+      return apiRequest("POST", "/api/onboarding/tracks", payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
       setShowTrackForm(false);
-      setTrackForm({ title: "", description: "", targetRole: "", version: "1.0" });
+      setTrackForm({ title: "", description: "", targetRole: "all_roles", version: "1.0" });
       toast({ title: "Track created" });
     },
     onError: () => toast({ title: "Failed to create track", variant: "destructive" }),
@@ -96,8 +103,19 @@ export default function TrainingManagement() {
 
   const saveSection = useMutation({
     mutationFn: async () => {
-      const hasQuiz = sectionForm.questionText.trim().length > 0;
+      const hasQuestion = sectionForm.questionText.trim().length > 0;
+      const filledOptions = sectionForm.options.filter(o => o.optionText.trim().length > 0);
       const hasCorrectOption = sectionForm.options.some(o => o.isCorrect);
+
+      // Validate quiz: if a question is provided, need at least 2 options AND a correct one marked
+      if (hasQuestion) {
+        if (filledOptions.length < 2) {
+          throw new Error("Please fill in at least 2 answer options for the quiz.");
+        }
+        if (!hasCorrectOption) {
+          throw new Error("Please select the correct answer by clicking the radio button next to the right option.");
+        }
+      }
 
       let section;
       if (editingSection?.id) {
@@ -120,22 +138,29 @@ export default function TrainingManagement() {
         section = await res.json();
       }
 
-      if (hasQuiz && hasCorrectOption) {
-        await apiRequest("PUT", `/api/onboarding/sections/${section.id}/quiz`, {
+      if (hasQuestion && hasCorrectOption) {
+        const quizRes = await apiRequest("PUT", `/api/onboarding/sections/${section.id}/quiz`, {
           questionText: sectionForm.questionText,
           explanation: sectionForm.explanation,
-          options: sectionForm.options.filter(o => o.optionText.trim()),
+          options: filledOptions,
         });
+        if (!quizRes.ok) {
+          throw new Error("Section saved but quiz failed to save. Please edit the section to add the quiz again.");
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks", selectedTrackId, "sections"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
       setShowSectionForm(false);
       setEditingSection(null);
       resetSectionForm();
-      toast({ title: "Section saved" });
+      toast({ title: "Section saved successfully" });
     },
-    onError: () => toast({ title: "Failed to save section", variant: "destructive" }),
+    onError: (err: any) => toast({
+      title: err?.message || "Failed to save section",
+      variant: "destructive",
+    }),
   });
 
   const deleteSection = useMutation({
@@ -202,13 +227,33 @@ export default function TrainingManagement() {
       questionText: section.quiz?.questionText || "",
       explanation: section.quiz?.explanation || "",
       options: section.quiz?.options?.length > 0
-        ? section.quiz.options.map((o: any) => ({ optionText: o.optionText, isCorrect: o.isCorrect }))
-        : [{ optionText: "", isCorrect: false }, { optionText: "", isCorrect: false }, { optionText: "", isCorrect: false }, { optionText: "", isCorrect: false }],
+        ? (() => {
+            const loaded = section.quiz.options.map((o: any) => ({ optionText: o.optionText, isCorrect: o.isCorrect }));
+            // Pad to 4 options
+            while (loaded.length < 4) loaded.push({ optionText: "", isCorrect: false });
+            return loaded;
+          })()
+        : [
+            { optionText: "", isCorrect: false },
+            { optionText: "", isCorrect: false },
+            { optionText: "", isCorrect: false },
+            { optionText: "", isCorrect: false },
+          ],
     });
     setShowSectionForm(true);
   };
 
   const canAdmin = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
+
+  // Quiz validation state for inline feedback
+  const hasQuestion = sectionForm.questionText.trim().length > 0;
+  const filledOptionsCount = sectionForm.options.filter(o => o.optionText.trim().length > 0).length;
+  const hasCorrectMarked = sectionForm.options.some(o => o.isCorrect);
+  const quizValidationMsg = hasQuestion && filledOptionsCount < 2
+    ? "Fill in at least 2 answer options"
+    : hasQuestion && !hasCorrectMarked
+    ? "Click a radio button to mark the correct answer"
+    : null;
 
   return (
     <AdminLayout>
@@ -268,6 +313,7 @@ export default function TrainingManagement() {
                         <span className="text-xs text-muted-foreground">{track.assignmentCount} assigned</span>
                       </div>
                     </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                   </div>
                 </CardContent>
               </Card>
@@ -303,7 +349,16 @@ export default function TrainingManagement() {
                         </div>
                       </div>
                       {canAdmin && (
-                        <div className="flex gap-2 shrink-0">
+                        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowPreview(true)}
+                            data-testid="button-preview-track"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Preview
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -439,7 +494,7 @@ export default function TrainingManagement() {
                     <SelectValue placeholder="All roles" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All roles</SelectItem>
+                    <SelectItem value="all_roles">All roles</SelectItem>
                     <SelectItem value="employee">Employee</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="hr">HR</SelectItem>
@@ -517,7 +572,8 @@ export default function TrainingManagement() {
 
             <Separator />
             <div>
-              <p className="font-semibold text-sm mb-3">Comprehension Quiz (optional but recommended)</p>
+              <p className="font-semibold text-sm mb-1">Comprehension Quiz (optional but recommended)</p>
+              <p className="text-xs text-muted-foreground mb-3">Leave the question blank to skip the quiz for this section.</p>
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label>Question</Label>
@@ -530,9 +586,10 @@ export default function TrainingManagement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Answer Options (mark the correct one)</Label>
+                  <Label>Answer Options</Label>
+                  <p className="text-xs text-muted-foreground -mt-1">Fill in the options, then click the circle next to the correct answer.</p>
                   {sectionForm.options.map((opt, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                    <div key={idx} className={`flex items-center gap-2 p-2 rounded-md border ${opt.isCorrect ? "border-green-400 bg-green-50" : "border-transparent"}`}>
                       <input
                         type="radio"
                         name="correct-option"
@@ -541,7 +598,7 @@ export default function TrainingManagement() {
                           ...p,
                           options: p.options.map((o, i) => ({ ...o, isCorrect: i === idx })),
                         }))}
-                        className="shrink-0"
+                        className="shrink-0 w-4 h-4 accent-green-600"
                       />
                       <Input
                         value={opt.optionText}
@@ -550,14 +607,24 @@ export default function TrainingManagement() {
                           options: p.options.map((o, i) => i === idx ? { ...o, optionText: e.target.value } : o),
                         }))}
                         placeholder={`Option ${idx + 1}`}
+                        className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
                         data-testid={`input-quiz-option-${idx}`}
                       />
+                      {opt.isCorrect && <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />}
                     </div>
                   ))}
-                  <p className="text-xs text-muted-foreground">Select the radio button next to the correct answer</p>
                 </div>
+
+                {/* Inline quiz validation hint */}
+                {quizValidationMsg && (
+                  <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {quizValidationMsg}
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label>Explanation (shown after answering)</Label>
+                  <Label>Explanation (shown to employee after answering)</Label>
                   <Textarea
                     value={sectionForm.explanation}
                     onChange={e => setSectionForm(p => ({ ...p, explanation: e.target.value }))}
@@ -572,10 +639,107 @@ export default function TrainingManagement() {
             <Button variant="outline" onClick={() => { setShowSectionForm(false); setEditingSection(null); resetSectionForm(); }}>
               Cancel
             </Button>
-            <Button onClick={() => saveSection.mutate()} disabled={saveSection.isPending || !sectionForm.title || !sectionForm.body}>
+            <Button
+              onClick={() => saveSection.mutate()}
+              disabled={saveSection.isPending || !sectionForm.title || !sectionForm.body || !!quizValidationMsg}
+              data-testid="button-save-section"
+            >
               {saveSection.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
               Save Section
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Modal */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-blue-600" />
+              Preview — {selectedTrack?.title}
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingSections ? (
+            <div className="py-8 text-center text-muted-foreground">Loading sections...</div>
+          ) : sections.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">No sections added yet.</div>
+          ) : (
+            <div className="space-y-6 py-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                <BookOpen className="h-4 w-4" />
+                <span>{sections.length} section{sections.length !== 1 ? "s" : ""} · {sections.reduce((acc: number, s: any) => acc + (s.estimatedMinutes || 5), 0)} min total</span>
+              </div>
+
+              {(sections as any[]).map((section: any, idx: number) => (
+                <div key={section.id} className="border rounded-xl overflow-hidden">
+                  {/* Section header */}
+                  <div className="bg-muted/50 px-5 py-3 flex items-center gap-3 border-b">
+                    <span className="text-xs font-mono bg-background border rounded px-2 py-0.5 font-semibold">
+                      {idx + 1}
+                    </span>
+                    <h3 className="font-semibold text-base">{section.title}</h3>
+                    <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{section.estimatedMinutes} min</span>
+                      {section.quiz
+                        ? <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" />Quiz</span>
+                        : <span className="text-amber-500">No quiz</span>
+                      }
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="px-5 py-4">
+                    <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{section.body}</pre>
+                  </div>
+
+                  {/* Quiz preview */}
+                  {section.quiz && (
+                    <div className="border-t bg-blue-50/40 px-5 py-4 space-y-3">
+                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Comprehension Quiz</p>
+                      <p className="text-sm font-medium">{section.quiz.questionText}</p>
+                      <div className="space-y-1.5">
+                        {(section.quiz.options || []).map((opt: any, oi: number) => (
+                          <div
+                            key={oi}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm border ${opt.isCorrect ? "bg-green-50 border-green-300 text-green-800 font-medium" : "bg-white border-gray-200"}`}
+                          >
+                            <span className="text-xs font-mono shrink-0 w-5 h-5 flex items-center justify-center border rounded-full">
+                              {String.fromCharCode(65 + oi)}
+                            </span>
+                            {opt.optionText}
+                            {opt.isCorrect && <CheckCircle className="h-3.5 w-3.5 ml-auto text-green-600" />}
+                          </div>
+                        ))}
+                      </div>
+                      {section.quiz.explanation && (
+                        <p className="text-xs text-muted-foreground italic">{section.quiz.explanation}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreview(false)}>Close</Button>
+            {selectedTrack?.status !== "published" && canAdmin && (
+              <Button
+                onClick={() => {
+                  updateTrack.mutate({
+                    id: selectedTrack.id,
+                    data: { ...selectedTrack, status: "published" },
+                  });
+                  setShowPreview(false);
+                }}
+                data-testid="button-publish-from-preview"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Publish Track
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
