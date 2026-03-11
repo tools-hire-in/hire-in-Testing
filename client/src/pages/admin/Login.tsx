@@ -22,6 +22,7 @@ export default function AdminLogin() {
   const [totpCode, setTotpCode] = useState("");
   const [showTotpStep, setShowTotpStep] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [totpError, setTotpError] = useState("");
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -41,10 +42,18 @@ export default function AdminLogin() {
       return;
     }
     
+    if (showTotpStep) {
+      if (!totpCode || totpCode.length < 6) {
+        setTotpError("Please enter the 6-digit code from your authenticator app.");
+        return;
+      }
+      setTotpError("");
+    }
+
     setIsSubmitting(true);
     try {
       const payload: any = { email, password };
-      if (showTotpStep && totpCode) {
+      if (showTotpStep) {
         payload.totpCode = totpCode;
       }
 
@@ -53,6 +62,7 @@ export default function AdminLogin() {
 
       if (data.totpRequired) {
         setShowTotpStep(true);
+        setTotpError("");
         setIsSubmitting(false);
         return;
       }
@@ -61,13 +71,15 @@ export default function AdminLogin() {
       setLocation("/admin");
     } catch (error: any) {
       const message = error?.message || "Login failed. Please try again.";
-      toast({
-        title: "Login Failed",
-        description: message,
-        variant: "destructive",
-      });
       if (showTotpStep) {
+        setTotpError(message);
         setTotpCode("");
+      } else {
+        toast({
+          title: "Login Failed",
+          description: message,
+          variant: "destructive",
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -78,6 +90,7 @@ export default function AdminLogin() {
     setShowTotpStep(false);
     setTotpCode("");
     setPassword("");
+    setTotpError("");
   };
 
   if (authLoading) {
@@ -169,12 +182,17 @@ export default function AdminLogin() {
                   maxLength={6}
                   placeholder="000000"
                   value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
-                  required
+                  onChange={(e) => {
+                    setTotpCode(e.target.value.replace(/\D/g, ""));
+                    if (totpError) setTotpError("");
+                  }}
                   autoFocus
-                  className="text-center text-2xl tracking-widest font-mono"
+                  className={`text-center text-2xl tracking-widest font-mono ${totpError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                   data-testid="input-totp-code"
                 />
+                {totpError && (
+                  <p className="text-sm text-destructive" data-testid="text-totp-error">{totpError}</p>
+                )}
               </div>
             )}
 
