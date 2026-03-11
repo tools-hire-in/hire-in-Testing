@@ -198,7 +198,12 @@ export default function TrainingManagement() {
       const res = await apiRequest("POST", "/api/onboarding/seed");
       const data = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
-      toast({ title: `Seeded: ${data.created.join(", ") || "none new"}${data.skipped.length > 0 ? ` (skipped: ${data.skipped.length})` : ""}` });
+      const parts: string[] = [];
+      if (data.created?.length) parts.push(`${data.created.length} new track(s) created`);
+      if (data.skipped?.length) parts.push(`${data.skipped.length} track(s) already existed`);
+      if (data.sectionsAdded?.length) parts.push(`${data.sectionsAdded.length} new section(s) added`);
+      if (data.sectionsSkipped?.length) parts.push(`${data.sectionsSkipped.length} section(s) already present`);
+      toast({ title: parts.join(" · ") || "Content already up to date" });
     } catch {
       toast({ title: "Seed failed", variant: "destructive" });
     } finally {

@@ -7,7 +7,7 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
-import { seedOnboardingContent } from "./onboardingSeed";
+import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
 
 const ADMIN_ROLES = ["super_admin", "admin", "hr", "manager"];
 const HR_ROLES = ["super_admin", "admin", "hr"];
@@ -810,8 +810,14 @@ export function registerOnboardingRoutes(app: Express) {
     if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
 
     try {
-      const result = await seedOnboardingContent(req.session.userId!);
-      res.json(result);
+      const tracksResult = await seedOnboardingContent(req.session.userId!);
+      const sectionsResult = await seedSectionAdditions(req.session.userId!);
+      res.json({
+        created: tracksResult.created,
+        skipped: tracksResult.skipped,
+        sectionsAdded: sectionsResult.added,
+        sectionsSkipped: sectionsResult.skipped,
+      });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Seed failed" });
