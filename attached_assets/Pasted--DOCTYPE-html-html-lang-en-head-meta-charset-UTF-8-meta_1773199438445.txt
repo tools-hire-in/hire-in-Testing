@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hire'in Solutions Signature Generator</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 24px;
+      background: #f7f7f9;
+      color: #222;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    h1, h2 {
+      margin-top: 0;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin: 12px 0 6px;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .btns {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: none;
+      background: #1f4e79;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.secondary {
+      background: #f47c20;
+    }
+    .note {
+      font-size: 12px;
+      color: #555;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+    .preview-box {
+      background: #fff;
+      border: 1px dashed #bbb;
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .small {
+      font-size: 12px;
+      color: #666;
+    }
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Hire'in Signature Generator</h1>
+
+      <label for="logoUrl">Logo URL</label>
+      <input id="logoUrl" value="https://hire-in.com/path-to-logo.png" />
+
+      <label for="fullName">Full Name</label>
+      <input id="fullName" value="Simranjeet S Sidana" />
+
+      <label for="title">Job Title</label>
+      <input id="title" value="Founder and CEO" />
+
+      <label for="company">Company Name</label>
+      <input id="company" value="Hire’in Solutions" />
+
+      <label for="email">Email</label>
+      <input id="email" value="simranjeet@hire-in.com" />
+
+      <label for="website">Website</label>
+      <input id="website" value="https://hire-in.com" />
+
+      <label for="location">Location</label>
+      <input id="location" value="San Jose, CA" />
+
+      <div class="btns">
+        <button onclick="renderSignature()">Update Preview</button>
+        <button class="secondary" onclick="copyHTML()">Copy Signature HTML</button>
+        <button onclick="downloadHTML()">Download HTML</button>
+      </div>
+
+      <div class="note">
+        Use a public HTTPS logo URL for best Outlook rendering.  
+        After generating, you can paste the preview into Outlook Signature settings,
+        or download the HTML and keep it as a reusable file.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Preview</h2>
+      <div id="preview" class="preview-box"></div>
+
+      <h2 style="margin-top:20px;">Generated HTML</h2>
+      <div class="small">This is the signature block only.</div>
+      <textarea id="htmlOutput" readonly></textarea>
+    </div>
+  </div>
+
+  <script>
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function getValues() {
+      return {
+        logoUrl: document.getElementById("logoUrl").value.trim(),
+        fullName: document.getElementById("fullName").value.trim(),
+        title: document.getElementById("title").value.trim(),
+        company: document.getElementById("company").value.trim(),
+        email: document.getElementById("email").value.trim(),
+        website: document.getElementById("website").value.trim(),
+        location: document.getElementById("location").value.trim()
+      };
+    }
+
+    function buildSignatureHTML(data) {
+      const websiteText = data.website.replace(/^https?:\/\//, "");
+      return `
+<table cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, Helvetica, sans-serif; color: #222222; line-height: 1.2;">
+  <tr>
+    <td valign="top" style="padding-right: 22px;">
+      <img src="${esc(data.logoUrl)}" alt="Hire'in Solutions Logo" width="170" style="display:block; width:170px; max-width:170px; height:auto; border:0;">
+    </td>
+    <td valign="top" style="padding-top: 2px;">
+      <div style="font-size: 22px; font-weight: 700; color: #111111; margin: 0 0 6px 0;">
+        ${esc(data.fullName)}
+      </div>
+      <div style="font-size: 18px; color: #444444; margin: 0 0 6px 0;">
+        ${esc(data.title)}
+      </div>
+      <div style="font-size: 18px; font-weight: 700; color: #111111; margin: 0 0 12px 0;">
+        ${esc(data.company)}
+      </div>
+
+      <div style="font-size: 16px; margin: 0 0 10px 0;">
+        <span style="display:inline-block; width:24px;">&#128231;</span>
+        <a href="mailto:${esc(data.email)}" style="color:#145cb3; text-decoration: underline;">${esc(data.email)}</a>
+      </div>
+
+      <div style="font-size: 16px; margin: 0 0 10px 0;">
+        <span style="display:inline-block; width:24px;">&#127760;</span>
+        <a href="${esc(data.website)}" style="color:#145cb3; text-decoration: underline;" target="_blank">${esc(websiteText)}</a>
+      </div>
+
+      <div style="font-size: 16px; margin: 0;">
+        <span style="display:inline-block; width:24px;">&#128205;</span>
+        <span style="color:#222222;">${esc(data.location)}</span>
+      </div>
+    </td>
+  </tr>
+</table>`.trim();
+    }
+
+    function renderSignature() {
+      const data = getValues();
+      const html = buildSignatureHTML(data);
+      document.getElementById("preview").innerHTML = html;
+      document.getElementById("htmlOutput").value = html;
+    }
+
+    async function copyHTML() {
+      const html = document.getElementById("htmlOutput").value;
+      try {
+        await navigator.clipboard.writeText(html);
+        alert("Signature HTML copied.");
+      } catch (e) {
+        alert("Copy failed. Please copy manually from the box.");
+      }
+    }
+
+    function downloadHTML() {
+      const html = document.getElementById("htmlOutput").value;
+      const fullDoc = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Hire'in Signature</title></head>
+<body>${html}</body>
+</html>`;
+      const blob = new Blob([fullDoc], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "hirein-signature.html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    renderSignature();
+  </script>
+</body>
+</html>

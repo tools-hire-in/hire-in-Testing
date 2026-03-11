@@ -1,0 +1,2437 @@
+Healthcare Talent Acquisition Training Track
+Training goal
+
+Train recruiters to understand healthcare staffing language, screen for compliance-sensitive roles, and submit faster without sacrificing credential accuracy.
+
+What they must learn
+
+They must understand:
+
+role types: RN, LPN/LVN, CNA, Allied, Therapy, Imaging, Lab, Respiratory, Physician/APP if you support them
+
+assignment types: travel, local, per diem, permanent, contract
+
+care settings: acute care, ICU, ER, OR, Med-Surg, LTAC, SNF, clinic, home health
+
+shift models: days, nights, rotating, 3x12, 5x8, weekend requirements
+
+must-have vs preferred items
+
+how licensure, certifications, and recent specialty experience affect submittability
+
+how to screen for location, start date, shift fit, float expectations, and pay expectations
+
+5-day healthcare curriculum
+
+Day 1: Healthcare staffing fundamentals
+
+how healthcare staffing works
+
+common facility types and units
+
+role families and common abbreviations
+
+travel vs perm vs local
+
+why credential accuracy matters
+
+Day 2: Healthcare screening and credential basics
+
+active license vs pending vs expired
+
+common certifications such as BLS, ACLS, PALS, NRP, TNCC as role-dependent
+
+recent specialty experience
+
+compact vs state-specific license concept
+
+screening for shift, float, and start-date fit
+
+Day 3: Healthcare requisition breakdown
+
+reading a healthcare job order
+
+identifying non-negotiables
+
+identifying hidden risks
+
+candidate-fit scoring
+
+documenting recruiter notes clearly
+
+Day 4: Submission and interview readiness
+
+what makes a clean healthcare submittal
+
+candidate prep before facility interview
+
+how to handle compensation, location objections, and competing offers
+
+how to track post-interview feedback and close risk
+
+Day 5: Practical drills
+
+mock healthcare intake
+
+mock credential review
+
+mock candidate screening
+
+mock submittal summary
+
+written assessment and manager feedback
+
+Healthcare screening template
+
+Every healthcare recruiter should confirm:
+
+exact specialty match
+
+active required license
+
+required certifications
+
+recent relevant experience
+
+unit/facility type match
+
+shift flexibility
+
+location willingness
+
+start availability
+
+pay expectation
+
+any onboarding blocker
+
+Healthcare sample screening questions
+
+What unit are you currently working in?
+
+How many years of recent experience do you have in this specialty?
+
+Is your license active and unrestricted?
+
+Which certifications do you currently hold, and when do they expire?
+
+Are you open to this shift and floating requirement?
+
+When can you start?
+
+Have you worked travel/local contract before?
+
+What compensation range are you targeting?
+
+Are you interviewing elsewhere right now?
+
+Healthcare red flags
+
+unclear or expired license
+
+specialty mismatch
+
+old experience presented as current
+
+pay instability
+
+unwillingness on shift/location after initial interest
+
+poor communication speed
+
+incomplete credential information
+
+multiple submissions without transparency
+
+Healthcare recruiter quality KPIs
+
+qualified screens completed
+
+submittals-to-interviews ratio
+
+interview-to-offer ratio
+
+offer-to-start ratio
+
+falloff rate
+
+documentation accuracy
+
+credential mismatch rate
+
+response time to requisitions
+
+Healthcare readiness test
+
+A recruiter is ready for live work when they can:
+
+explain the difference between must-have and preferred requirements
+
+screen a nurse/allied profile without missing the key checks
+
+write a usable recruiter summary
+
+identify a non-submittable candidate quickly
+
+escalate a pay/compliance issue properly
+
+IT Talent Acquisition Training Track
+Training goal
+
+Train recruiters to understand technical job requirements, separate true fit from keyword noise, and submit candidates with stronger technical alignment and closing control.
+
+What they must learn
+
+They must understand:
+
+role families: software engineering, QA, data, DevOps, cloud, security, product, project/program, support
+
+how to separate must-have from nice-to-have
+
+recent hands-on experience vs legacy experience
+
+work model: onsite, hybrid, remote, timezone constraints
+
+contract vs full-time vs contract-to-hire
+
+work authorization and location constraints
+
+rate realism and market alignment
+
+how to write recruiter summaries that reflect real fit
+
+5-day IT curriculum
+
+Day 1: IT staffing fundamentals
+
+IT role families and what they do
+
+contract vocabulary
+
+work authorization basics
+
+rate/salary discussion discipline
+
+technical recruiting mindset
+
+Day 2: Reading technical job descriptions
+
+how to break down a JD
+
+must-have vs preferred
+
+years of experience vs depth of experience
+
+recognizing stack combinations
+
+common false positives in resumes
+
+Day 3: Technical screening fundamentals
+
+validating recent hands-on work
+
+screening for tools, frameworks, cloud, API, CI/CD, databases, agile, domain experience
+
+verifying communication quality
+
+checking availability, salary/rate, location, authorization
+
+Day 4: Submission and candidate marketing
+
+writing a sharp recruiter summary
+
+documenting risks honestly
+
+candidate prep for technical interviews
+
+handling counteroffers and competing interviews
+
+post-interview follow-through
+
+Day 5: Practical drills
+
+mock IT intake
+
+mock screening call
+
+mock technical summary
+
+weak-fit vs strong-fit comparison
+
+written assessment and coaching
+
+IT screening template
+
+Every IT recruiter should confirm:
+
+current role and recent project
+
+actual hands-on tools used
+
+years of recent relevant experience
+
+must-have skill match
+
+domain/industry fit if relevant
+
+communication quality
+
+work authorization
+
+location/work model fit
+
+notice period
+
+compensation expectation
+
+IT sample screening questions
+
+What are you working on in your current role?
+
+Which tools or technologies do you use hands-on today?
+
+How recently have you used [must-have skill]?
+
+What percentage of your current work is hands-on vs coordination?
+
+Are you open to this location/work model?
+
+What is your expected compensation?
+
+What is your notice period or availability to join?
+
+Do you require sponsorship now or later?
+
+Are you interviewing elsewhere?
+
+IT red flags
+
+resume loaded with keywords but weak project explanation
+
+old experience presented as current
+
+unclear hands-on depth
+
+weak communication for client-facing roles
+
+compensation mismatch
+
+remote-only expectation against hybrid/onsite role
+
+unclear work authorization
+
+inflated ownership claims
+
+IT recruiter quality KPIs
+
+qualified screens completed
+
+submittals-to-interviews ratio
+
+interview-to-offer ratio
+
+offer-to-join ratio
+
+falloff rate
+
+JD understanding accuracy
+
+weak-submission rejection rate
+
+speed to first qualified candidate
+
+IT readiness test
+
+A recruiter is ready for live work when they can:
+
+break a JD into must-have and nice-to-have buckets
+
+explain why a profile is a fit without reading resume bullets back
+
+validate recent technical depth
+
+identify a weak-match profile quickly
+
+write a clear candidate marketing summary
+
+surface work authorization and location risk before submission
+
+Best operating model for your teams
+
+I would run onboarding in three layers:
+
+Layer 1: common company onboarding for everyone
+Layer 2: healthcare specialist training or IT specialist training
+Layer 3: manager-led mock drills and certification before live requisitions
+
+That structure is stronger than giving one generic recruiting handbook to both teams.
+
+If you want, I can next turn this into a single master onboarding handbook in clean copy-paste format with:
+
+common training,
+
+healthcare track,
+
+IT track,
+
+quizzes,
+
+mock exercises,
+
+manager scorecards,
+
+and employee signoff pages.
+
+we need to ahve seprate script and tempalte for sms and also calling to reachout tot he candidates in seprate stages, reaching them first itme presenting the job oppertunity and what all work they should do to before reaching out to candidate so that the leads cna be converted with easy communication including VM and SMS, what you think IT and Healhtcare TA director expert level BA 
+Thought for 8s
+
+Yes — you should absolutely have separate call, voicemail, and SMS scripts by stage, not just one generic outreach template.
+
+From a TA operations standpoint, this is one of the biggest gaps in most recruiting teams: recruiters are given a requisition and told to “reach out,” but they are not trained on:
+
+what to prepare before outreach,
+
+what to say on first contact,
+
+how to present the role clearly,
+
+how to handle objections,
+
+how to leave a useful voicemail,
+
+how to follow up by SMS without sounding spammy,
+
+and how to move the candidate from interest to screening to submission.
+
+That is exactly where conversion improves.
+
+Below is a director-level outreach framework you can use for both Healthcare and IT talent acquisition, with role-specific adjustments.
+
+Candidate Outreach Communication Playbook
+For Healthcare and IT Recruitment Teams
+1. PRINCIPLE: OUTREACH SHOULD NEVER START COLD IN YOUR HEAD
+
+Before a recruiter calls, texts, or leaves a voicemail, they should already know what they are trying to accomplish.
+
+The goal of first outreach is usually not to close the candidate instantly.
+The goal is to:
+
+get a response,
+
+build credibility,
+
+create enough interest for a conversation,
+
+qualify quickly,
+
+and move the candidate to the next stage.
+
+A recruiter who sounds unprepared kills trust in the first 20 seconds.
+
+2. WHAT RECRUITERS MUST DO BEFORE REACHING OUT
+Common pre-outreach checklist for all recruiters
+
+Before contacting a candidate, the recruiter must review:
+
+Candidate basics
+
+full name
+
+current title
+
+current employer if known
+
+location
+
+likely work model fit
+
+years of relevant experience
+
+top skills / specialty
+
+recent role relevance
+
+any prior contact history in your ATS/CRM
+
+whether candidate was already contacted by someone internally
+
+Job basics
+
+exact job title
+
+client name if shareable
+
+location / remote / hybrid / onsite
+
+compensation range or pay guidance
+
+contract / full-time / travel / local / perm / temp nature
+
+start timeline
+
+top 3 must-haves
+
+top 2 preferred items
+
+biggest risk factor in the role
+
+why the role is worth taking a call on
+
+Recruiter objective
+
+Before outreach, recruiter must know:
+
+am I trying to get a callback?
+
+am I trying to schedule a screen?
+
+am I trying to confirm interest?
+
+am I trying to re-engage a warm lead?
+
+am I trying to recover a candidate who went silent?
+
+If the recruiter cannot answer that, the outreach is weak already.
+
+3. STAGES OF CANDIDATE OUTREACH
+
+You should train your team on scripts by these stages:
+
+Stage 1: First-Time Contact
+
+Goal: get response and spark interest
+
+Stage 2: Live Conversation / Opportunity Presentation
+
+Goal: explain role and qualify fit
+
+Stage 3: Screening / Qualification
+
+Goal: validate real fit, readiness, and risk
+
+Stage 4: Submission Readiness Confirmation
+
+Goal: confirm candidate is truly submittable
+
+Stage 5: Interview Coordination
+
+Goal: keep momentum and reduce falloff
+
+Stage 6: Post-Interview Follow-Up
+
+Goal: gather feedback and hold candidate control
+
+Stage 7: Offer / Close / Joining Control
+
+Goal: reduce drop-off and protect conversion
+
+Each stage should have:
+
+phone script
+
+voicemail script
+
+SMS template
+
+4. FIRST-TIME CONTACT: COMMON BEST PRACTICES
+What recruiters should do before first contact
+
+review the resume or profile for at least 60–90 seconds
+
+identify one specific reason the role matches
+
+know compensation guidance before calling
+
+know the location / schedule / work model
+
+prepare one concise value statement
+
+prepare one fallback line if candidate is busy
+
+What recruiters should not do
+
+do not start with a robotic script
+
+do not dump the entire JD
+
+do not hide key constraints
+
+do not oversell vague opportunities
+
+do not ask 12 questions before earning interest
+
+do not sound like they are reading from a system
+
+5. STAGE 1 SCRIPTS — FIRST CONTACT
+A. General first-time call opening
+
+“Hi, is this [Candidate Name]?
+This is [Recruiter Name] with Hire’in Solutions. I’m reaching out because I came across your background in [skill/specialty], and I’m working on an opportunity that looked relevant to your experience. Did I catch you at an okay time for a quick one-minute overview?”
+
+This opening works because it:
+
+identifies the recruiter
+
+gives a credible reason for the call
+
+shows relevance
+
+asks permission without sounding weak
+
+B. If candidate says they are busy
+
+“No problem at all. I can be brief. The role is for a [Job Title] opportunity in [location/work model] and based on your background in [specific area], I thought it may be worth a short conversation. Would later today or tomorrow be better?”
+
+C. First-time voicemail script
+
+“Hi [Candidate Name], this is [Recruiter Name] with Hire’in Solutions. I’m reaching out regarding a [Job Title] opportunity that looked relevant to your background in [skill/specialty]. Please call or text me back at [number]. Again, this is [Recruiter Name] with Hire’in Solutions at [number]. I’ll also send you a quick text. Thank you.”
+
+Voicemail rules
+
+20 to 30 seconds
+
+say your number slowly once
+
+mention relevance, not a generic “job opportunity”
+
+always send a follow-up SMS after voicemail
+
+D. First-time SMS template
+
+“Hi [Candidate Name], this is [Recruiter Name] from Hire’in Solutions. I tried calling regarding a [Job Title] opportunity in [location/work model]. Based on your background in [skill/specialty], it seemed relevant. Let me know if you’d be open to a quick conversation.”
+
+Why this works
+
+short
+
+clear
+
+credible
+
+not overly aggressive
+
+gives the candidate an easy yes/no response path
+
+6. STAGE 2 SCRIPTS — PRESENTING THE JOB OPPORTUNITY
+
+This is where many recruiters fail. They either read the JD or sound too vague.
+
+The role should be presented in this order:
+
+what the role is
+
+where it is / work model
+
+why it may fit the candidate
+
+one or two standout reasons
+
+then move into qualification
+
+Common structure for presenting a job
+
+“I’m working on a [Job Title] role with [client/industry if shareable]. It is based in [location/work model]. The reason I thought of your profile is your experience with [specific skill/specialty]. The role is focused on [brief role purpose]. Before I go deeper, does that sound broadly aligned with what you’d consider?”
+
+That last line is important. It prevents the recruiter from pitching for five minutes to someone who is already not open.
+
+7. HEALTHCARE-SPECIFIC OUTREACH SCRIPTS
+
+Healthcare candidates often care first about:
+
+specialty fit
+
+location
+
+shift
+
+pay package
+
+start timeline
+
+travel vs local status
+
+credential expectations
+
+So healthcare outreach should be practical and direct.
+
+Healthcare first-time call
+
+“Hi [Candidate Name], this is [Recruiter Name] with Hire’in Solutions. I’m calling because I came across your background in [ICU/ER/Med-Surg/etc.], and I’m working on a [Job Title] opening in [location] for [shift/type]. Based on your recent experience, I thought it may be relevant. Did I catch you at an okay time for a quick overview?”
+
+Healthcare role presentation
+
+“This is a [travel/local/permanent] [specialty] opening in [location], primarily for [shift], with a start around [timeline]. I thought of you because of your recent [specialty/unit] background. Before I go into the full details, are you open to opportunities in that area and shift range?”
+
+Healthcare voicemail
+
+“Hi [Candidate Name], this is [Recruiter Name] from Hire’in Solutions. I’m reaching out about a [specialty] opportunity in [location] on [shift/type], and your background looked relevant. Please call or text me back at [number]. I’ll also send a quick text. Thank you.”
+
+Healthcare SMS
+
+“Hi [Candidate Name], this is [Recruiter Name] from Hire’in Solutions. I tried calling about a [specialty] opening in [location] for [shift/type]. Your recent background looked relevant. Let me know if you’d be open to a quick conversation.”
+
+8. IT-SPECIFIC OUTREACH SCRIPTS
+
+IT candidates usually care first about:
+
+role title
+
+remote/hybrid/onsite
+
+tech stack
+
+contract vs full-time
+
+compensation range
+
+visa/work authorization fit
+
+real role relevance
+
+So IT outreach must sound informed, not keyword-stuffed.
+
+IT first-time call
+
+“Hi [Candidate Name], this is [Recruiter Name] with Hire’in Solutions. I came across your background in [Playwright/Java/Cloud/Data/etc.] and wanted to reach out regarding a [Job Title] role I’m working on. It looked relevant to your recent experience. Do you have a minute for a quick overview?”
+
+IT role presentation
+
+“This is a [contract/full-time] [Job Title] role with a [remote/hybrid/onsite] setup based in [location if relevant]. The reason I thought of your profile is your recent work with [specific tools/stack]. The role is focused on [brief project/role focus]. Before I go deeper, does that sound like something you’d be open to discussing?”
+
+IT voicemail
+
+“Hi [Candidate Name], this is [Recruiter Name] with Hire’in Solutions. I’m reaching out regarding a [Job Title] role that looked relevant to your background in [tool/stack/domain]. Please call or text me back at [number]. I’ll also send a quick text. Thank you.”
+
+IT SMS
+
+“Hi [Candidate Name], this is [Recruiter Name] from Hire’in Solutions. I tried calling regarding a [Job Title] role with [remote/hybrid/onsite] setup. Based on your experience in [stack/skill], it looked relevant. Let me know if you’d be open to a brief conversation.”
+
+9. SCREENING TRANSITION SCRIPT
+
+Once the candidate shows interest, the recruiter should transition cleanly into screening.
+
+Common transition
+
+“Great. To make sure I don’t waste your time, let me quickly confirm a few basics around your recent experience, availability, and what you’d consider next.”
+
+This line is strong because it frames the screen as respectful and efficient.
+
+10. SCREENING QUESTIONS — HEALTHCARE
+Healthcare screen flow
+
+Recruiters should confirm in this order:
+
+recent specialty
+
+active license
+
+required certifications
+
+shift/location fit
+
+availability
+
+compensation expectation
+
+contract/travel interest
+
+any blocker
+
+Healthcare screening script
+
+“Just to make sure this is a real fit, can I confirm a few things?
+What specialty are you currently working in?
+Do you hold an active [state/compact] license?
+Are your required certifications current?
+Are you open to [shift/location]?
+When could you start?
+What compensation range would make sense for you?
+Any upcoming commitments or blockers I should know about before we move forward?”
+
+11. SCREENING QUESTIONS — IT
+IT screen flow
+
+Recruiters should confirm in this order:
+
+current role
+
+recent hands-on tools
+
+must-have match
+
+work model fit
+
+compensation/rate
+
+availability
+
+authorization
+
+interview process readiness
+
+IT screening script
+
+“To make sure this is aligned before I go further, can I confirm a few basics?
+What are you working on currently?
+How hands-on are you with [must-have tool/skill]?
+How recent is that experience?
+Would [remote/hybrid/onsite] work for you?
+What compensation range are you targeting?
+What is your notice period or availability?
+Do you require sponsorship now or later?”
+
+12. SUBMISSION READINESS CONFIRMATION SCRIPT
+
+Before submission, recruiters should not assume the candidate is still aligned.
+
+Common script
+
+“Before I move your profile forward, I want to reconfirm a few things so we don’t create confusion later. You are still interested in this role, comfortable with the location/work model, aligned on the compensation range we discussed, and available for interviews in the expected timeline. Is that correct?”
+
+Must confirm before submission
+
+active interest
+
+compensation alignment
+
+location/work model
+
+interview availability
+
+joining/start window
+
+no major undisclosed blocker
+
+13. INTERVIEW COORDINATION SCRIPT
+Common interview confirmation call
+
+“I wanted to confirm your interview for [date/time]. I’ll send the details in writing as well. Before that, I want to make sure you feel clear on the role, the client context, and what they’re likely to focus on. Do you have a few minutes to review that now?”
+
+Interview prep should include
+
+role reminder
+
+why they were shortlisted
+
+likely interview focus
+
+practical preparation tips
+
+reminder to join early
+
+post-interview feedback expectation
+
+14. POST-INTERVIEW FOLLOW-UP SCRIPT
+Common call
+
+“Hi [Candidate Name], I wanted to check in right after the interview while it’s still fresh. How did the conversation go from your side, what did they focus on, and how interested are you in moving forward if selected?”
+
+Common SMS
+
+“Hi [Candidate Name], hope the interview went well. Please send me a quick update on how it went, your interest level, and any concerns so I can represent you properly.”
+
+15. OFFER / CLOSING SCRIPT
+Common closing call
+
+“I’m glad to share that the team would like to move forward. Before we treat this as confirmed, I want to walk through the final details carefully so there are no surprises. Let’s reconfirm compensation, joining/start timeline, other active processes, and any possible risks to acceptance.”
+
+What recruiter must verify
+
+final compensation comfort
+
+joining timeline
+
+counteroffer risk
+
+pending interviews
+
+resignation readiness
+
+any late-stage blocker
+
+16. GHOSTING / NO RESPONSE FOLLOW-UP PLAYBOOK
+
+Recruiters need a controlled cadence.
+
+After first missed call
+
+leave voicemail
+
+send SMS within 5 minutes
+
+After no response for 24 hours
+
+SMS:
+“Hi [Candidate Name], following up on the [Job Title] opportunity I mentioned. Based on your background, I thought it may be worth a short conversation. Let me know if you’d like details.”
+
+After no response for 48–72 hours
+
+Call again, then SMS:
+“Hi [Candidate Name], just checking once more regarding the [Job Title] opportunity. If timing is not right, no problem at all. A quick yes, no, or later would be helpful.”
+
+That line works because it reduces pressure and often gets a response.
+
+17. VOICEMAIL + SMS COMBINATION RULE
+
+Every recruiter should be trained on this sequence:
+
+Best sequence
+
+call
+
+voicemail if no answer
+
+SMS immediately after
+
+second attempt later same day or next day if role is urgent
+
+Why this works
+
+Voicemail alone is weak.
+SMS alone can look impersonal.
+Call + voicemail + SMS creates credibility and response opportunity.
+
+18. WHAT TO INCLUDE IN SMS BY STAGE
+First contact SMS
+
+Include:
+
+recruiter/company name
+
+role title
+
+relevance cue
+
+soft CTA
+
+Post-voicemail SMS
+
+Include:
+
+mention that you called
+
+quick role context
+
+response option
+
+Screening confirmation SMS
+
+Include:
+
+time
+
+what will be discussed
+
+no long detail dump
+
+Interview SMS
+
+Include:
+
+confirmation
+
+date/time
+
+reminder to be available
+
+Post-interview SMS
+
+Include:
+
+request feedback
+
+keep it immediate
+
+Offer-stage SMS
+
+Include:
+
+request callback
+
+avoid sending sensitive detail casually unless approved process allows
+
+19. SAMPLE SMS TEMPLATES BY STAGE
+First contact
+
+“Hi [Name], this is [Recruiter] from Hire’in Solutions. I came across your background in [skill/specialty] and wanted to connect regarding a [Job Title] opportunity. Let me know if you’d be open to a brief conversation.”
+
+After voicemail
+
+“Hi [Name], this is [Recruiter] from Hire’in Solutions. I just tried calling regarding a [Job Title] opportunity that looked relevant to your background. Let me know a good time to connect.”
+
+Screening confirmation
+
+“Hi [Name], confirming our call at [time]. I’ll walk you through the role and ask a few quick questions around your recent experience, availability, and expectations.”
+
+Interview reminder
+
+“Hi [Name], just a reminder for your interview at [time]. Please join a few minutes early and keep your phone nearby in case of any issue.”
+
+Post-interview
+
+“Hi [Name], hope the interview went well. Please send me a quick update when free on how it went and your interest level.”
+
+Offer-stage
+
+“Hi [Name], I have an important update on the role. Please call me when you’re free so we can go over the next steps carefully.”
+
+20. SAMPLE VOICEMAIL TEMPLATES BY STAGE
+First-time voicemail
+
+“Hi [Name], this is [Recruiter] with Hire’in Solutions. I’m reaching out regarding a [Job Title] opportunity that looked relevant to your background. Please call or text me back at [number]. I’ll send a quick text as well. Thank you.”
+
+Follow-up voicemail
+
+“Hi [Name], this is [Recruiter] again from Hire’in Solutions following up on the [Job Title] role. I still think your background may be relevant, so please call or text me back at [number] if you’d like to explore it.”
+
+Urgent interview or offer voicemail
+
+“Hi [Name], this is [Recruiter] from Hire’in Solutions. I’m calling with an important update regarding your application. Please call me back at [number] as soon as you can. Thank you.”
+
+21. OBJECTION HANDLING
+“I’m not looking right now.”
+
+Response:
+“I understand. I’m not asking for a commitment right now. I just thought the role was relevant enough to be worth a brief conversation. If not now, would you prefer I reconnect later?”
+
+“What is the pay?”
+
+Response:
+“I can absolutely discuss compensation. Before I misrepresent anything, I want to make sure the role itself is aligned on title, location, and core fit. Then I can speak to the range properly.”
+
+“Send me the JD.”
+
+Response:
+“I can send a summary, absolutely. Before I do, I just want to make sure the basics align so I’m not sending you something irrelevant.”
+
+“I only want remote.”
+
+Response:
+“Understood. This role is [hybrid/onsite/etc.], so I don’t want to waste your time if that’s a hard stop. Should I keep you in mind only for fully remote openings?”
+
+“I’m already interviewing elsewhere.”
+
+Response:
+“Thanks for sharing that. That’s helpful. Would you still be open to considering this if the fit and process timing made sense?”
+
+22. TEAM RULES FOR EASY CONVERSION
+
+This is the BA / operations side that matters most.
+
+Your team should be trained to do these before every outreach:
+
+research the candidate enough to personalize one line
+
+know the role well enough to explain it in 30 seconds
+
+know the CTA before contacting
+
+use the right script for the right stage
+
+document outcome immediately after contact
+
+disposition every outreach attempt correctly
+
+Standard dispositions should include
+
+no answer
+
+voicemail left
+
+SMS sent
+
+interested
+
+not interested
+
+call back later
+
+screened
+
+not qualified
+
+submitted
+
+interview scheduled
+
+offer stage
+
+closed / lost / no response
+
+Without disciplined dispositions, outreach becomes noise instead of process.
+
+23. DIRECTOR-LEVEL RECOMMENDATION FOR HIRE’IN
+
+For your teams, I would implement this as two separate playbooks:
+
+A. Healthcare Candidate Outreach Playbook
+
+Include:
+
+first-time outreach scripts
+
+specialty/location/shift-focused messaging
+
+license/certification screening cues
+
+travel/local role positioning
+
+compensation and start-date handling
+
+healthcare objections and red flags
+
+B. IT Candidate Outreach Playbook
+
+Include:
+
+first-time outreach scripts
+
+stack-based role positioning
+
+must-have vs nice-to-have questioning
+
+work model and authorization screening
+
+technical summary prep
+
+IT objections and red flags
+
+Common Playbook
+
+Include:
+
+voicemail standards
+
+SMS standards
+
+cadence rules
+
+documentation standards
+
+objection handling
+
+stage-based templates
+
+manager QA checklist
+
+That structure is much stronger than giving everyone one mixed recruiting script sheet.
+
+24. MANAGER QA CHECKLIST FOR OUTREACH QUALITY
+
+Managers should review whether the recruiter:
+
+sounded prepared
+
+explained role clearly
+
+used candidate-relevant language
+
+asked for the correct next step
+
+did not oversell
+
+documented outcomes properly
+
+followed the voicemail + SMS sequence
+
+screened before submitting
+
+confirmed alignment before interview and submission
+
+25. COPY-READY MICRO PLAYBOOK FOR RECRUITERS
+Before outreach
+
+review candidate
+
+review role
+
+know the ask
+
+know compensation guidance
+
+know location/work model
+
+know top 3 fit reasons
+
+First call
+
+introduce self and company
+
+mention relevance
+
+ask for 1-minute overview permission
+
+If no answer
+
+leave voicemail
+
+send SMS immediately
+
+If candidate engages
+
+present role briefly
+
+confirm broad interest
+
+move to qualification
+
+Before submission
+
+reconfirm interest, pay, location, timing, and availability
+
+After interview
+
+get feedback immediately
+
+At offer stage
+
+assess risks, not just excitement
+
+This should definitely be part of onboarding and ongoing recruiter training.
+
+Next, I can build you a fully separated Healthcare and IT outreach handbook with:
+
+call scripts,
+
+voicemail scripts,
+
+SMS templates,
+
+objection handling,
+
+stage-by-stage recruiter actions,
+
+and manager scorecards for outreach quality.
+
+lets have it as its on sections communication adn quality training, what you think under IT and healthcare sections in traiing also think about maintaining the candidate relationship after placiong them what should be done tips and keep having perodic tocuhbase to be in touch ,w hat you think? 
+Thought for 8s
+
+Yes — that is the right structure.
+
+I would not keep communication and quality training as a single general chapter only. I would keep:
+
+one common company-level Communication and Quality Training section, and
+
+separate Healthcare Communication and Quality Training and IT Communication and Quality Training sections inside each track.
+
+That gives you consistency at the company level, while still training recruiters on the very different realities of Healthcare and IT candidate conversations.
+
+Also, you are absolutely right to include post-placement candidate relationship management. A strong TA team does not disappear after placement. That is where repeat placements, redeployment, referrals, retention, and brand trust are built.
+
+Below is the structure I would recommend, written in a copy-ready way for your handbook.
+
+COMMUNICATION AND QUALITY TRAINING FRAMEWORK
+For Hire’in Solutions Recruitment Onboarding
+1. HOW THIS SHOULD BE STRUCTURED
+Recommended training structure
+Section A: Common Communication and Quality Training
+
+This section is mandatory for all recruiters and covers:
+
+company communication standards
+
+candidate experience expectations
+
+internal communication etiquette
+
+outreach discipline
+
+documentation standards
+
+quality checkpoints
+
+escalation behavior
+
+relationship management standards
+
+Section B: Healthcare Communication and Quality Training
+
+This section should train healthcare recruiters on:
+
+how to communicate with nurses, allied, and healthcare professionals
+
+how to present shift, pay, location, and credential-sensitive roles
+
+how to avoid compliance-related communication mistakes
+
+how to maintain candidate trust before and after placement
+
+Section C: IT Communication and Quality Training
+
+This section should train IT recruiters on:
+
+how to communicate with technical candidates without sounding generic
+
+how to position the role by stack, work model, and project relevance
+
+how to screen without relying on buzzwords
+
+how to maintain long-term technical talent relationships
+
+Section D: Candidate Relationship Management and Redeployment
+
+This section should apply to both Healthcare and IT, but with track-specific examples:
+
+pre-start touchpoints
+
+post-placement follow-up
+
+issue escalation
+
+periodic relationship-building
+
+referral and redeployment strategy
+
+2. COMMON COMMUNICATION AND QUALITY TRAINING
+Purpose
+
+The purpose of this section is to ensure every recruiter communicates professionally, documents clearly, follows process discipline, and protects the company’s reputation.
+
+Communication training objectives
+
+Every recruiter must learn how to:
+
+communicate clearly and professionally
+
+tailor communication by stage
+
+avoid overpromising
+
+avoid vague or robotic messaging
+
+create confidence in the first conversation
+
+move candidates smoothly from one stage to the next
+
+document every meaningful interaction
+
+Quality training objectives
+
+Every recruiter must learn how to:
+
+understand the requirement before outreach
+
+separate strong-fit from weak-fit candidates
+
+confirm candidate alignment before submission
+
+escalate issues early
+
+document risks honestly
+
+maintain candidate control through the full process
+
+Common communication principles
+
+Every recruiter must:
+
+sound prepared
+
+speak with clarity, not speed
+
+present the opportunity simply
+
+ask relevant questions in the right order
+
+never hide key constraints
+
+always confirm understanding before moving to the next stage
+
+maintain a respectful and responsive tone
+
+Common quality principles
+
+Every recruiter must:
+
+review the requisition fully before outreach
+
+know the compensation guidance before discussion
+
+know the next intended action before contacting a candidate
+
+document the outcome of every meaningful touchpoint
+
+never submit based on assumptions
+
+never allow silent process drift
+
+Common communication stages to train
+
+All recruiters should be trained separately on:
+
+first outreach
+
+voicemail
+
+SMS
+
+live opportunity presentation
+
+screening transition
+
+submission confirmation
+
+interview scheduling
+
+post-interview follow-up
+
+offer-stage communication
+
+pre-start relationship maintenance
+
+post-placement touchpoints
+
+3. HEALTHCARE COMMUNICATION AND QUALITY TRAINING
+Purpose
+
+Healthcare recruiters must communicate with urgency and empathy while staying highly accurate on credentials, specialty fit, shift expectations, and onboarding readiness.
+
+What healthcare communication should sound like
+
+Healthcare communication should be:
+
+practical
+
+respectful
+
+efficient
+
+transparent
+
+shift and location aware
+
+compensation-aware
+
+credential-aware
+
+Healthcare professionals usually respond best when the recruiter is clear about:
+
+specialty
+
+facility type if shareable
+
+shift
+
+location
+
+pay range or package direction
+
+start timeline
+
+contract type
+
+credential expectations
+
+Healthcare communication training topics
+A. First-contact communication
+
+Recruiters should learn how to:
+
+identify specialty relevance quickly
+
+mention the role without overloading detail
+
+respect the candidate’s time
+
+secure interest for a proper screen
+
+B. Opportunity presentation
+
+Healthcare recruiters should be trained to present:
+
+specialty
+
+shift
+
+location
+
+contract type
+
+expected start
+
+top must-have credentials
+
+any float or unit expectations
+
+C. Screening communication
+
+Healthcare screening should validate:
+
+active license
+
+specialty alignment
+
+certifications
+
+recent experience
+
+shift flexibility
+
+location fit
+
+pay expectations
+
+availability
+
+onboarding blockers
+
+D. Candidate care and trust
+
+Healthcare candidates often drop when:
+
+pay was presented unclearly
+
+shift details were softened too much
+
+location expectations were vague
+
+float expectations were not explained
+
+credential steps were not discussed early
+
+Recruiters must be trained to avoid those mistakes.
+
+Healthcare quality training topics
+Intake quality
+
+Before outreach, the recruiter must know:
+
+specialty
+
+shift
+
+location
+
+duration
+
+required certifications
+
+license requirement
+
+whether travel/local/perm
+
+any non-negotiables
+
+Screening quality
+
+A healthcare screen is not complete until:
+
+specialty is validated
+
+license is checked verbally
+
+certifications are confirmed
+
+availability is confirmed
+
+compensation is discussed
+
+shift/location is confirmed
+
+recruiter notes are documented
+
+Submission quality
+
+A healthcare submission should include:
+
+accurate specialty fit
+
+credential summary
+
+availability
+
+compensation understanding
+
+clear recruiter notes
+
+known risk factors if any
+
+Healthcare communication coaching examples
+
+Managers should coach recruiters on:
+
+not sounding rushed or transactional
+
+not leading only with pay
+
+not submitting before validating credentials
+
+not avoiding difficult questions on shift, floating, or start date
+
+4. IT COMMUNICATION AND QUALITY TRAINING
+Purpose
+
+IT recruiters must communicate with credibility, understand technical alignment, and present the role in a way that feels relevant rather than generic.
+
+What IT communication should sound like
+
+IT communication should be:
+
+informed
+
+concise
+
+role-relevant
+
+stack-aware
+
+honest about work model
+
+honest about compensation range
+
+respectful of technical depth
+
+IT candidates usually respond best when the recruiter clearly explains:
+
+role title
+
+work model
+
+contract or full-time nature
+
+relevant stack
+
+project or business context
+
+compensation direction
+
+why their profile looked relevant
+
+IT communication training topics
+A. First-contact communication
+
+Recruiters should learn how to:
+
+personalize the message by stack or recent project
+
+avoid buzzword dumping
+
+sound informed, not scripted
+
+create enough interest for a conversation
+
+B. Opportunity presentation
+
+IT recruiters should be trained to present:
+
+title
+
+remote/hybrid/onsite model
+
+required technologies
+
+role scope
+
+contract/full-time type
+
+compensation direction
+
+timeline
+
+C. Screening communication
+
+IT screening should validate:
+
+current role
+
+recent hands-on tools
+
+must-have skill match
+
+work model fit
+
+authorization
+
+availability
+
+compensation
+
+communication quality
+
+D. Candidate trust in IT recruiting
+
+IT candidates disengage when:
+
+recruiter sounds technically uninformed
+
+role is presented too vaguely
+
+work model is hidden until late stage
+
+salary/rate is avoided too long
+
+recruiter cannot explain why the role is relevant
+
+That is why IT communication training should include relevance-based role positioning.
+
+IT quality training topics
+Intake quality
+
+Before outreach, the recruiter must know:
+
+must-have skills
+
+nice-to-have skills
+
+work model
+
+location/time zone constraints
+
+compensation guidance
+
+contract/full-time type
+
+work authorization expectations
+
+Screening quality
+
+An IT screen is not complete until:
+
+recent hands-on experience is validated
+
+must-have match is confirmed
+
+compensation is discussed
+
+work authorization is confirmed
+
+location/work model fit is confirmed
+
+availability is captured
+
+recruiter notes explain the fit clearly
+
+Submission quality
+
+An IT submission should include:
+
+recruiter summary
+
+skill match against must-haves
+
+current technical relevance
+
+availability
+
+work authorization
+
+location/work model alignment
+
+known risks if any
+
+IT communication coaching examples
+
+Managers should coach recruiters on:
+
+not reading the JD
+
+not relying only on resume keywords
+
+not skipping current project depth
+
+not ignoring work authorization or work model fit
+
+not sending weak-fit profiles with generic summaries
+
+5. CANDIDATE RELATIONSHIP MANAGEMENT TRAINING
+Why this should be part of onboarding
+
+A recruiter’s job does not end at submission or placement.
+
+Strong relationship management helps with:
+
+lower fallout
+
+better starts
+
+stronger retention
+
+redeployment
+
+referrals
+
+repeat business
+
+brand reputation
+
+warmer future pipelines
+
+This should be taught as part of the recruiting lifecycle, not as an optional add-on.
+
+6. PRE-PLACEMENT RELATIONSHIP MAINTENANCE
+From submission to interview
+
+The recruiter should:
+
+confirm continued interest
+
+keep the candidate informed on timelines
+
+prepare them for interview expectations
+
+reduce anxiety with clear updates
+
+stay responsive without overwhelming them
+
+From interview to offer
+
+The recruiter should:
+
+collect feedback quickly
+
+understand concerns early
+
+reaffirm interest level
+
+keep communication warm and controlled
+
+stay alert to competing opportunities
+
+From offer to start
+
+This is where many drop-offs happen.
+
+The recruiter should:
+
+confirm acceptance carefully
+
+check in regularly without sounding desperate
+
+ask about counteroffer risk
+
+confirm paperwork readiness
+
+confirm joining readiness
+
+escalate signs of hesitation early
+
+7. POST-PLACEMENT CANDIDATE RELATIONSHIP MANAGEMENT
+Core principle
+
+After placement, the candidate should still feel that Hire’in Solutions is their recruiting partner, not just the company that called them until they joined.
+
+What should happen after placement
+
+The recruiter should:
+
+check how the start went
+
+identify early issues before they become exits
+
+maintain goodwill
+
+stay useful, not intrusive
+
+keep the relationship warm for future opportunities and referrals
+
+8. RECOMMENDED TOUCHPOINT CADENCE
+Common post-placement cadence
+Before start date
+
+48 to 72 hours before start: confirmation touchpoint
+
+24 hours before start: reminder and support check
+
+Day 1
+
+message or call to confirm candidate started smoothly
+
+ask if there were any access, reporting, or onboarding issues
+
+End of Week 1
+
+check on first-week experience
+
+ask about manager/team onboarding
+
+identify any early concerns
+
+End of Week 2
+
+confirm adjustment level
+
+ask about role clarity and working conditions
+
+note any risks
+
+30-Day Touchpoint
+
+relationship check
+
+job satisfaction check
+
+issue escalation if needed
+
+keep brand relationship warm
+
+60-Day Touchpoint
+
+retention and satisfaction check
+
+ask how things are progressing
+
+capture referrals if relationship is strong
+
+90-Day Touchpoint
+
+milestone check-in
+
+request testimonial/referral if appropriate
+
+discuss long-term career goals where relevant
+
+Periodic touchbase after 90 days
+
+For active consultants or relationship-based talent:
+
+monthly for active healthcare contractors if engagement is short-cycle
+
+every 30 to 45 days for contract talent in IT
+
+quarterly for long-term placed candidates
+
+periodic holiday/festival or milestone touchpoints where appropriate
+
+9. WHAT TO ASK IN POST-PLACEMENT TOUCHPOINTS
+Good post-placement check-in themes
+
+Keep it human and useful.
+
+Ask about:
+
+how the start has gone
+
+whether expectations matched what was discussed
+
+whether there are any issues with manager/team/site/process
+
+whether scheduling/pay/onboarding is going smoothly
+
+whether they need support
+
+how they are feeling about the role overall
+
+Questions for a post-start conversation
+
+How has the experience been so far?
+
+Has the role matched what was explained?
+
+Has onboarding gone smoothly?
+
+Any concerns I should know about early?
+
+Is there anything you need support with from our side?
+
+How are you feeling about the opportunity overall?
+
+10. HEALTHCARE-SPECIFIC POST-PLACEMENT TOUCHPOINTS
+
+Healthcare placements often require more proactive care because of:
+
+shift strain
+
+floating issues
+
+facility mismatch
+
+onboarding/documentation delays
+
+housing/travel issues in travel roles
+
+burnout risk
+
+fast redeployment cycles
+
+Healthcare touchpoint focus
+
+During touchpoints, recruiters should ask about:
+
+unit experience
+
+shift reality vs expectation
+
+floating frequency
+
+facility support
+
+schedule changes
+
+payroll or package issues
+
+contract extension interest
+
+redeployment planning
+
+Additional healthcare best practice
+
+For healthcare contract talent, recruiters should begin extension or redeployment conversations early, usually before the final weeks of assignment.
+
+11. IT-SPECIFIC POST-PLACEMENT TOUCHPOINTS
+
+IT placements often require more subtle but still meaningful relationship management around:
+
+manager fit
+
+project clarity
+
+remote/hybrid adjustment
+
+tool or environment mismatch
+
+workload expectations
+
+long-term career alignment
+
+contract extension or conversion opportunity
+
+IT touchpoint focus
+
+During touchpoints, recruiters should ask about:
+
+whether the project aligns with what was presented
+
+team/manager experience
+
+work model experience
+
+role clarity
+
+onboarding/tool access
+
+likelihood of staying long term
+
+interest in future opportunities if contract-based
+
+Additional IT best practice
+
+For contract IT talent, recruiters should keep the relationship warm before extension conversations and not wait until the contract is nearly over.
+
+12. RELATIONSHIP MANAGEMENT DO’S AND DON’TS
+Do
+
+be timely
+
+be warm but professional
+
+ask useful questions
+
+listen for early risk signals
+
+document every touchpoint
+
+keep the relationship alive even when there is no issue
+
+look for redeployment and referral opportunities naturally
+
+Don’t
+
+disappear after start
+
+contact only when you need something
+
+sound scripted in every check-in
+
+ignore complaints because the placement already happened
+
+wait too long to address a small issue
+
+over-contact candidates unnecessarily
+
+13. MANAGER QUALITY CHECK FOR RELATIONSHIP MANAGEMENT
+
+Managers should review whether recruiters:
+
+completed touchpoints on time
+
+documented each touchpoint
+
+identified early risk signals
+
+escalated issues properly
+
+maintained a professional relationship
+
+generated redeployment or referral opportunities where appropriate
+
+14. BEST WAY TO PLACE THIS IN YOUR TRAINING HANDBOOK
+
+I would structure your handbook like this:
+
+Part 1: Common Onboarding
+
+company overview
+
+policies
+
+systems
+
+communication discipline
+
+documentation discipline
+
+Part 2: Communication and Quality Training
+
+common communication standards
+
+common quality standards
+
+stage-based outreach logic
+
+relationship management basics
+
+Part 3: Healthcare Recruitment Training
+
+healthcare process
+
+healthcare communication training
+
+healthcare quality training
+
+healthcare post-placement relationship management
+
+Part 4: IT Recruitment Training
+
+IT process
+
+IT communication training
+
+IT quality training
+
+IT post-placement relationship management
+
+Part 5: Assessments and Mock Exercises
+
+communication drills
+
+screening drills
+
+submission drills
+
+post-placement touchpoint scenarios
+
+That structure is clean and scalable.
+
+The strongest version is to treat communication, quality, and relationship management as part of the workflow itself, not as side topics.
+
+Next, I can draft the exact copy-ready handbook sections for:
+Healthcare Communication Training, Healthcare Quality Training, IT Communication Training, IT Quality Training, and Post-Placement Candidate Relationship Management in final polished form.
+
+lets do them here I think you dont add details rite? but keep the sections small what yotuhink?
+Thought for a few seconds
+
+Yes — that is the better approach.
+
+Keep the sections short, operational, and copy-ready, but still specific enough that a new recruiter knows exactly what good looks like. If the sections get too long, people stop reading. If they are too thin, they are useless.
+
+Below is a tighter version you can place directly into the handbook.
+
+Communication and Quality Training
+Purpose
+
+Communication and quality are part of the recruiter’s core job, not optional soft skills. Every recruiter must communicate clearly, screen carefully, document accurately, and maintain candidate trust through the full hiring cycle.
+
+Communication Standard
+
+Every recruiter must:
+
+sound prepared before reaching out
+
+communicate professionally and clearly
+
+use the correct message for the correct stage
+
+avoid overpromising or vague language
+
+confirm candidate understanding before moving forward
+
+document meaningful communication in the system
+
+Quality Standard
+
+Every recruiter must:
+
+understand the requirement before outreach
+
+confirm fit before submission
+
+discuss compensation, availability, and work model early
+
+identify risks honestly
+
+escalate blockers quickly
+
+treat incomplete documentation as incomplete work
+
+Candidate Relationship Standard
+
+A recruiter’s job does not end at submission or placement. Recruiters are expected to maintain professional candidate relationships before start date and after joining, so the company builds stronger trust, retention, referrals, and redeployment opportunities.
+
+Healthcare Communication Training
+Purpose
+
+Healthcare recruiters must communicate with clarity, urgency, and care. Healthcare candidates usually care most about specialty, shift, location, pay, start date, and credential expectations.
+
+What Good Communication Looks Like
+
+A healthcare recruiter should:
+
+lead with specialty relevance
+
+clearly state shift and location
+
+explain travel, local, or permanent nature of the role
+
+discuss pay direction honestly
+
+confirm licensing and certifications early
+
+avoid hiding float, schedule, or onboarding expectations
+
+Required Communication Behavior
+
+Before speaking to a healthcare candidate, the recruiter must know:
+
+specialty
+
+shift
+
+location
+
+contract type
+
+start date
+
+credential requirements
+
+compensation guidance
+
+If the recruiter does not know those basics, the outreach is not ready.
+
+Healthcare Quality Training
+Purpose
+
+Healthcare quality means submitting candidates who are actually placeable, not just interested.
+
+Minimum Quality Check
+
+Before a healthcare candidate is submitted, the recruiter must confirm:
+
+exact specialty fit
+
+active license status
+
+required certifications
+
+recent relevant experience
+
+shift and location alignment
+
+start availability
+
+compensation expectations
+
+any onboarding blocker
+
+Quality Rule
+
+A healthcare submission is incomplete if the recruiter has not validated credentials, availability, and actual role fit. Recruiters must never submit based on assumptions or partial information.
+
+Healthcare Candidate Relationship Management
+Purpose
+
+Healthcare candidates often need more frequent touchpoints because of credentialing, shift reality, facility expectations, travel logistics, and burnout risk.
+
+Required Touchpoints
+
+The recruiter should stay in touch:
+
+after submission
+
+before interview
+
+after interview
+
+after offer acceptance
+
+48 to 72 hours before start
+
+on Day 1
+
+at the end of Week 1
+
+periodically during the assignment
+
+What to Check
+
+During touchpoints, the recruiter should ask:
+
+Is the assignment matching what was discussed?
+
+Is the shift or unit experience as expected?
+
+Are there any onboarding, scheduling, or payroll issues?
+
+Is the candidate comfortable continuing?
+
+Is extension or redeployment likely?
+
+IT Communication Training
+Purpose
+
+IT recruiters must communicate with relevance and credibility. IT candidates respond better when the recruiter sounds informed about the role, work model, stack, and business need.
+
+What Good Communication Looks Like
+
+An IT recruiter should:
+
+explain why the role is relevant to the candidate
+
+separate must-have skills from preferred skills
+
+state remote, hybrid, or onsite expectations clearly
+
+discuss compensation direction without delay
+
+avoid reading the JD word-for-word
+
+sound specific, not generic
+
+Required Communication Behavior
+
+Before speaking to an IT candidate, the recruiter must know:
+
+job title
+
+work model
+
+contract or full-time nature
+
+must-have skills
+
+preferred skills
+
+compensation guidance
+
+work authorization expectation
+
+likely interview process
+
+If the recruiter cannot explain why the candidate is a fit in two or three clear lines, the outreach is not ready.
+
+IT Quality Training
+Purpose
+
+IT quality means evaluating actual technical relevance, not just matching keywords from a resume.
+
+Minimum Quality Check
+
+Before an IT candidate is submitted, the recruiter must confirm:
+
+recent hands-on experience
+
+must-have skill alignment
+
+current or recent project relevance
+
+location or work model fit
+
+compensation expectation
+
+notice period or availability
+
+work authorization
+
+communication quality
+
+Quality Rule
+
+A recruiter should never submit a candidate based only on resume keywords. The recruiter summary must explain why the candidate is a fit, what the strongest match points are, and what risks exist if any.
+
+IT Candidate Relationship Management
+Purpose
+
+IT candidates may not need the same style of follow-up as healthcare candidates, but they still require relationship management to prevent fallout, improve retention, and support future redeployment.
+
+Required Touchpoints
+
+The recruiter should stay in touch:
+
+after submission
+
+before interview
+
+after interview
+
+after offer acceptance
+
+before joining
+
+during Week 1
+
+around 30, 60, and 90 days
+
+before contract end if applicable
+
+What to Check
+
+During touchpoints, the recruiter should ask:
+
+Is the role matching what was explained?
+
+Has onboarding and access gone smoothly?
+
+Is the manager/team experience positive?
+
+Is the work model as expected?
+
+Are there any early concerns that may affect retention?
+
+Would the candidate be open to future opportunities or referrals later?
+
+Post-Placement Relationship Management
+Purpose
+
+Post-placement follow-up helps reduce fallout, improve retention, create referral opportunities, and strengthen the company’s reputation.
+
+Standard
+
+Recruiters must not disappear after placement. A placed candidate should still feel supported and respected by Hire’in Solutions.
+
+Minimum Follow-Up Cadence
+
+All recruiters should follow a basic cadence:
+
+before start date
+
+Day 1
+
+end of Week 1
+
+30-day check-in
+
+60-day check-in
+
+90-day check-in
+
+periodic touchpoints after that based on assignment type
+
+Relationship Rule
+
+The purpose of follow-up is not to “check a box.” It is to identify concerns early, maintain trust, and keep the relationship warm for future placements, extensions, referrals, and redeployment.
+
+Manager Coaching Note
+
+Managers should coach recruiters on three things consistently:
+
+communication clarity
+
+submission quality
+
+candidate relationship follow-through
+
+A recruiter who sources well but communicates poorly will lose candidates. A recruiter who communicates well but screens poorly will lose client trust. A recruiter who places candidates but disappears afterward will lose long-term value.
+
+This is the right size for the handbook: short, clear, and usable.
+
+Next, I can do the same style for SMS, call script, voicemail, and stage-based communication templates as compact handbook sections.
