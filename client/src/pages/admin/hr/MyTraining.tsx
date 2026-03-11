@@ -30,58 +30,57 @@ function formatDate(d: string | null | undefined) {
 
 function DwellTimer({
   minSeconds,
-  onComplete,
   assignmentId,
   sectionId,
 }: {
   minSeconds: number;
-  onComplete: () => void;
   assignmentId: string;
   sectionId: string;
 }) {
   const [elapsed, setElapsed] = useState(0);
-  const [done, setDone] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const postRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef = useRef(0);
 
   useEffect(() => {
     intervalRef.current = setInterval(() => {
       setElapsed(prev => {
         const next = prev + 1;
-        if (next >= minSeconds && !done) {
-          setDone(true);
-          onComplete();
-        }
+        elapsedRef.current = next;
         return next;
       });
     }, 1000);
 
     // Post dwell every 15s
     postRef.current = setInterval(async () => {
-      await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsed });
+      await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsedRef.current });
     }, 15000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (postRef.current) clearInterval(postRef.current);
+      // Final dwell post on unmount
+      if (elapsedRef.current > 0) {
+        apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsedRef.current });
+      }
     };
   }, []);
 
-  const remaining = Math.max(0, minSeconds - elapsed);
   const pct = Math.min(100, (elapsed / minSeconds) * 100);
+  const done = elapsed >= minSeconds;
 
   if (done) return null;
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-1.5 text-blue-700">
+    <div className="bg-muted/40 border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span className="flex items-center gap-1.5">
           <Clock className="h-4 w-4" />
-          Reading this section...
+          Suggested reading time: {minSeconds}s
         </span>
-        <span className="font-mono text-blue-800 font-medium">{remaining}s remaining</span>
+        <span className="font-mono text-xs">{elapsed}s read</span>
       </div>
-      <Progress value={pct} className="h-2" />
+      <Progress value={pct} className="h-1.5" />
     </div>
   );
 }
@@ -195,7 +194,6 @@ function SectionPlayer({
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState<"read" | "quiz" | "signoff">("read");
-  const [dwellDone, setDwellDone] = useState(false);
   const [quizPassed, setQuizPassed] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [acknowledging, setAcknowledging] = useState(false);
@@ -211,7 +209,6 @@ function SectionPlayer({
     }
     // Reset step when section changes
     setStep("read");
-    setDwellDone(section.progress?.dwellSeconds >= section.minDwellSeconds);
     setQuizPassed(section.progress?.quizPassed ?? false);
   }, [section.id]);
 
@@ -281,20 +278,17 @@ function SectionPlayer({
             {section.body}
           </pre>
 
-          {!dwellDone && (
+          {(section.progress?.dwellSeconds ?? 0) < section.minDwellSeconds && (
             <DwellTimer
               minSeconds={section.minDwellSeconds}
               assignmentId={assignmentId}
               sectionId={section.id}
-              onComplete={() => setDwellDone(true)}
             />
           )}
 
-          {dwellDone && (
-            <Button onClick={() => setStep(hasQuiz ? "quiz" : "signoff")} data-testid="button-continue-to-quiz">
-              Continue →
-            </Button>
-          )}
+          <Button onClick={() => setStep(hasQuiz ? "quiz" : "signoff")} data-testid="button-continue-to-quiz">
+            Continue →
+          </Button>
         </>
       )}
 
