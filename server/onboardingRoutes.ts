@@ -9,7 +9,7 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
 
-const ADMIN_ROLES = ["super_admin", "admin", "hr", "manager"];
+const ADMIN_ROLES = ["super_admin", "admin", "hr", "manager", "operations"];
 const HR_ROLES = ["super_admin", "admin", "hr"];
 
 function requireOnboardingAccess(req: Request, res: Response): boolean {

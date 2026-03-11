@@ -194,13 +194,13 @@ const hrOpsMenu = [
     href: "/admin/hr/training",
     label: "Training Management",
     icon: GraduationCap,
-    roles: ["super_admin", "admin", "hr", "manager"]
+    roles: ["super_admin", "admin", "hr", "manager", "operations"]
   },
   {
     href: "/admin/hr/training-progress",
     label: "Training Progress",
     icon: BarChart3,
-    roles: ["super_admin", "admin", "hr", "manager"]
+    roles: ["super_admin", "admin", "hr", "manager", "operations"]
   },
   {
     href: "/admin/hr/settings",
