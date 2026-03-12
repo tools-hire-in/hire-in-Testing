@@ -1,0 +1,49 @@
+
+Great feature. Let me look at the current schema and relevant pages before giving my recommendation:
+
+Let me look at the assign endpoint and My Training card layout:
+
+Let me look at the training card list and sidebar badge infrastructure:
+
+Good, I have everything I need. Let me share my design thinking, then build it all:
+
+BA: When an assignment has no explicit due date, auto-set it to 15 days from today. "Alert" = any incomplete assignment that is either overdue or due within 3 days.
+
+Design:
+
+Sidebar — a small red/amber number bubble right after the "My Training" label text (like a notification count). Red = overdue, amber = due soon. Stays live as a background fetch so it updates without navigating.
+Banner — at the top of My Training (between the heading and cards), a left-bordered alert stripe. Red variant if anything is overdue, amber if only due-soon. Dismissible per session (localStorage).
+Dashboard — a compact card row below attendance. Shows overdue count (red) and due-soon count (amber), with a "Go to My Training →" link.
+Building all four pieces now:
+
+Good, now I'll build all four pieces in parallel:
+
+Now add the alerts endpoint to the backend, and update all three frontend files in parallel:
+
+Now update all three frontend files in parallel:
+
+Now add the badge to the Employee sidebar menu's "My Training" item:
+
+Now update MyTraining.tsx to add the banner and update HRDashboard.tsx to add the training card:
+
+Now add the banner to the list view component in MyTraining.tsx:
+
+Now update HRDashboard.tsx to add the training due card:
+
+Now add the training card to the dashboard — I'll place it between the stats row and the leave/holiday section:
+
+All clean — everything compiled and hot-reloaded without errors. Here's the full summary of what went in:
+
+Backend
+
+Any training assignment made without an explicit due date now automatically gets set to today + 15 days
+New lightweight /api/onboarding/my-training-alerts endpoint counts overdue and due-within-3-days items — used by both sidebar and dashboard without loading full assignment data
+Sidebar badge (AdminLayout)
+
+A small number bubble appears after "My Training" in the nav — red if anything is overdue, amber if only due-soon. Refreshes every 60 seconds. Disappears once everything is done.
+Banner (My Training page)
+
+A left-bordered alert stripe appears between the heading and your track cards when you have overdue or due-soon items. Red variant for overdue, amber for due-soon. Has an ✕ to dismiss for the session (reappears on next login).
+Dashboard widget (HR Dashboard)
+
+A horizontal alert row appears between the attendance stats and the leave/holiday cards. Shows exact counts ("2 overdue, 1 due soon") with a direct "Go to My Training →" button in matching color. Only visible when there are actual alerts — completely hidden when everything is on track.
