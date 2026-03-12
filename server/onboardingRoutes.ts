@@ -3,9 +3,9 @@ import { db } from "./db";
 import {
   learningTracks, trackSections, sectionQuizQuestions, sectionQuizOptions,
   trackAssignments, sectionProgress, sectionAcknowledgements, trackCompletions, onboardingAuditEvents,
-  systemSettings,
+  systemSettings, trainingExtensionRequests, adminUsers, attendance,
 } from "@shared/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull, lt, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
 
@@ -828,6 +828,404 @@ export function registerOnboardingRoutes(app: Express) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to update setting" });
+    }
+  });
+
+  // ==========================================
+  // COMPLIANCE STATUS & EXTENSION REQUESTS
+  // ==========================================
+
+  const EXEMPT_ROLES = ["super_admin", "admin"];
+  const LOCKABLE_ROLES = ["hr", "manager", "operations", "employee"];
+
+  const ENDORSER_ROLES: Record<string, string[]> = {
+    employee: ["manager"],
+    manager: ["hr", "admin"],
+    hr: ["admin"],
+    operations: ["admin"],
+  };
+
+  async function getComplianceStatus(userId: string, userRole: string) {
+    if (EXEMPT_ROLES.includes(userRole) || !LOCKABLE_ROLES.includes(userRole)) {
+      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+    }
+
+    const now = new Date();
+    const assignments = await db.select({
+      id: trackAssignments.id,
+      trackId: trackAssignments.trackId,
+      status: trackAssignments.status,
+      dueDate: trackAssignments.dueDate,
+    }).from(trackAssignments).where(eq(trackAssignments.userId, userId));
+
+    const overdueAssignments = assignments.filter(a =>
+      a.status !== "completed" && a.dueDate && new Date(a.dueDate) < now
+    );
+
+    if (overdueAssignments.length === 0) {
+      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+    }
+
+    const approvedExtensions = await db.select()
+      .from(trainingExtensionRequests)
+      .where(and(
+        eq(trainingExtensionRequests.userId, userId),
+        eq(trainingExtensionRequests.status, "approved"),
+      ));
+
+    const approvedByAssignment = new Map<string, Date>();
+    for (const ext of approvedExtensions) {
+      const existing = approvedByAssignment.get(ext.assignmentId);
+      if (!existing || new Date(ext.newDueDate) > existing) {
+        approvedByAssignment.set(ext.assignmentId, new Date(ext.newDueDate));
+      }
+    }
+
+    const stillOverdue = overdueAssignments.filter(a => {
+      const approvedNewDate = approvedByAssignment.get(a.id);
+      if (approvedNewDate && approvedNewDate > now) return false;
+      return true;
+    });
+
+    if (stillOverdue.length === 0) {
+      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+    }
+
+    const overdueTrackIds = stillOverdue.map(a => a.trackId);
+    const tracks = await db.select({ id: learningTracks.id, title: learningTracks.title })
+      .from(learningTracks).where(inArray(learningTracks.id, overdueTrackIds));
+    const trackTitles = tracks.map(t => t.title);
+
+    const pendingExts = await db.select()
+      .from(trainingExtensionRequests)
+      .where(and(
+        eq(trainingExtensionRequests.userId, userId),
+        eq(trainingExtensionRequests.status, "pending"),
+      ));
+
+    return {
+      locked: true,
+      overdueCount: stillOverdue.length,
+      trackTitles,
+      pendingExtensions: pendingExts,
+    };
+  }
+
+  app.get("/api/onboarding/compliance-status", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const result = await getComplianceStatus(req.session.userId, req.session.role!);
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to check compliance status" });
+    }
+  });
+
+  // Create extension request (locked user submits)
+  app.post("/api/onboarding/extension-requests", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const { assignmentId, reason, newDueDate } = req.body;
+      if (!assignmentId || !reason || !newDueDate) {
+        return res.status(400).json({ error: "assignmentId, reason, and newDueDate are required" });
+      }
+
+      const requestedDate = new Date(newDueDate);
+      if (isNaN(requestedDate.getTime()) || requestedDate <= new Date()) {
+        return res.status(400).json({ error: "newDueDate must be a valid future date" });
+      }
+
+      const [assignment] = await db.select().from(trackAssignments)
+        .where(and(eq(trackAssignments.id, assignmentId), eq(trackAssignments.userId, req.session.userId)));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      if (assignment.status === "completed") {
+        return res.status(400).json({ error: "Cannot request extension for a completed assignment" });
+      }
+
+      const isOverdue = assignment.dueDate && new Date(assignment.dueDate) < new Date();
+      if (!isOverdue) {
+        return res.status(400).json({ error: "Extension requests are only allowed for overdue assignments" });
+      }
+
+      if (assignment.dueDate && requestedDate <= new Date(assignment.dueDate)) {
+        return res.status(400).json({ error: "Requested new due date must be after the current due date" });
+      }
+
+      const existingActive = await db.select().from(trainingExtensionRequests)
+        .where(and(
+          eq(trainingExtensionRequests.assignmentId, assignmentId),
+          inArray(trainingExtensionRequests.status, ["pending", "endorsed"]),
+        ));
+      if (existingActive.length > 0) {
+        return res.status(400).json({ error: "An extension request is already in progress for this assignment" });
+      }
+
+      const [request] = await db.insert(trainingExtensionRequests).values({
+        assignmentId,
+        userId: req.session.userId,
+        requestedById: req.session.userId,
+        reason,
+        newDueDate: new Date(newDueDate),
+        status: "pending",
+      }).returning();
+
+      await appendAuditEvent(req.session.userId, "extension_requested", {
+        assignmentId,
+        extensionRequestId: request.id,
+        newDueDate,
+        reason,
+      });
+
+      res.status(201).json(request);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to create extension request" });
+    }
+  });
+
+  // Get my extension requests
+  app.get("/api/onboarding/extension-requests/my", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const requests = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.userId, req.session.userId));
+
+      const enriched = await Promise.all(requests.map(async (r) => {
+        const [assignment] = await db.select().from(trackAssignments)
+          .where(eq(trackAssignments.id, r.assignmentId));
+        let trackTitle = "";
+        if (assignment) {
+          const [track] = await db.select({ title: learningTracks.title })
+            .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+          trackTitle = track?.title || "";
+        }
+        let resolverName = "";
+        if (r.resolvedById) {
+          const [resolver] = await db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(eq(adminUsers.id, r.resolvedById));
+          resolverName = resolver ? `${resolver.firstName} ${resolver.lastName}` : "";
+        }
+        let endorserName = "";
+        if (r.endorsedById) {
+          const [endorser] = await db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(eq(adminUsers.id, r.endorsedById));
+          endorserName = endorser ? `${endorser.firstName} ${endorser.lastName}` : "";
+        }
+        return { ...r, trackTitle, resolverName, endorserName };
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch extension requests" });
+    }
+  });
+
+  const ENDORSER_ALLOWED_ROLES = ["manager", "hr", "admin"];
+
+  function canEndorseRequest(endorserRole: string, endorserId: string, requesterRole: string, requesterManagerId: string | null): boolean {
+    const endorserRolesForRequester = ENDORSER_ROLES[requesterRole] || [];
+    if (!endorserRolesForRequester.includes(endorserRole)) return false;
+    if (requesterRole === "employee" && endorserRole === "manager") {
+      return requesterManagerId === endorserId;
+    }
+    return true;
+  }
+
+  // Get requests that need endorsement (for managers/hr/admin who are one level above)
+  app.get("/api/onboarding/extension-requests/to-endorse", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+    if (!ENDORSER_ALLOWED_ROLES.includes(myRole)) return res.status(403).json({ error: "Not an endorser role" });
+
+    try {
+      const pendingRequests = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.status, "pending"));
+
+      const enrichedPromises = pendingRequests.map(async (r) => {
+        const [requester] = await db.select({
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+          role: adminUsers.role,
+          email: adminUsers.email,
+          managerId: adminUsers.managerId,
+        }).from(adminUsers).where(eq(adminUsers.id, r.userId));
+
+        if (!requester) return null;
+
+        if (!canEndorseRequest(myRole, req.session.userId!, requester.role, requester.managerId)) return null;
+
+        const [assignment] = await db.select().from(trackAssignments)
+          .where(eq(trackAssignments.id, r.assignmentId));
+        let trackTitle = "";
+        let currentDueDate = null;
+        if (assignment) {
+          const [track] = await db.select({ title: learningTracks.title })
+            .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+          trackTitle = track?.title || "";
+          currentDueDate = assignment.dueDate;
+        }
+
+        return {
+          ...r,
+          trackTitle,
+          currentDueDate,
+          requesterName: `${requester.firstName} ${requester.lastName}`,
+          requesterRole: requester.role,
+          requesterEmail: requester.email,
+        };
+      });
+
+      const enriched = (await Promise.all(enrichedPromises)).filter(Boolean);
+      res.json(enriched);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch requests to endorse" });
+    }
+  });
+
+  // Endorse an extension request (manager/hr/admin forwarding to super_admin)
+  app.patch("/api/onboarding/extension-requests/:id/endorse", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+    if (!ENDORSER_ALLOWED_ROLES.includes(myRole)) return res.status(403).json({ error: "Not an endorser role" });
+
+    try {
+      const { id } = req.params;
+      const { comment } = req.body;
+
+      const [request] = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.id, id));
+      if (!request) return res.status(404).json({ error: "Extension request not found" });
+      if (request.status !== "pending") return res.status(400).json({ error: "Request is no longer pending" });
+
+      const [requester] = await db.select({ role: adminUsers.role, managerId: adminUsers.managerId })
+        .from(adminUsers).where(eq(adminUsers.id, request.userId));
+      if (!requester) return res.status(404).json({ error: "Requester not found" });
+
+      if (!canEndorseRequest(myRole, req.session.userId!, requester.role, requester.managerId)) {
+        return res.status(403).json({ error: "You are not authorized to endorse this request" });
+      }
+
+      const [updated] = await db.update(trainingExtensionRequests).set({
+        status: "endorsed",
+        endorsedById: req.session.userId,
+        endorsedAt: new Date(),
+        endorserComment: comment || null,
+      }).where(eq(trainingExtensionRequests.id, id)).returning();
+
+      await appendAuditEvent(req.session.userId, "extension_endorsed", {
+        extensionRequestId: id,
+        assignmentId: request.assignmentId,
+        userId: request.userId,
+        comment: comment || null,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to endorse extension request" });
+    }
+  });
+
+  // Get all endorsed extension requests for super_admin final approval
+  app.get("/api/onboarding/extension-requests/pending", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
+
+    try {
+      const requests = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.status, "endorsed"));
+
+      const enriched = await Promise.all(requests.map(async (r) => {
+        const [assignment] = await db.select().from(trackAssignments)
+          .where(eq(trackAssignments.id, r.assignmentId));
+        let trackTitle = "";
+        let currentDueDate = null;
+        if (assignment) {
+          const [track] = await db.select({ title: learningTracks.title })
+            .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+          trackTitle = track?.title || "";
+          currentDueDate = assignment.dueDate;
+        }
+        const [requester] = await db.select({
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+          role: adminUsers.role,
+          email: adminUsers.email,
+        }).from(adminUsers).where(eq(adminUsers.id, r.userId));
+        let endorserName = "";
+        if (r.endorsedById) {
+          const [endorser] = await db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(eq(adminUsers.id, r.endorsedById));
+          endorserName = endorser ? `${endorser.firstName} ${endorser.lastName}` : "";
+        }
+        return {
+          ...r,
+          trackTitle,
+          currentDueDate,
+          requesterName: requester ? `${requester.firstName} ${requester.lastName}` : "",
+          requesterRole: requester?.role || "",
+          requesterEmail: requester?.email || "",
+          endorserName,
+        };
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch pending extension requests" });
+    }
+  });
+
+  // Approve or reject extension request (super_admin — requires endorsement first)
+  app.patch("/api/onboarding/extension-requests/:id", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
+
+    try {
+      const { id } = req.params;
+      const { status, comment } = req.body;
+
+      if (!status || !["approved", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "status must be 'approved' or 'rejected'" });
+      }
+
+      const [request] = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.id, id));
+      if (!request) return res.status(404).json({ error: "Extension request not found" });
+      if (request.status !== "endorsed") return res.status(400).json({ error: "Request must be endorsed by a manager/admin before final approval" });
+
+      const [updated] = await db.update(trainingExtensionRequests).set({
+        status,
+        resolvedById: req.session.userId,
+        resolvedAt: new Date(),
+        resolverComment: comment || null,
+      }).where(eq(trainingExtensionRequests.id, id)).returning();
+
+      if (status === "approved") {
+        await db.update(trackAssignments).set({
+          dueDate: new Date(request.newDueDate),
+        }).where(eq(trackAssignments.id, request.assignmentId));
+      }
+
+      await appendAuditEvent(req.session.userId, `extension_${status}`, {
+        extensionRequestId: id,
+        assignmentId: request.assignmentId,
+        userId: request.userId,
+        comment: comment || null,
+        newDueDate: request.newDueDate,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to update extension request" });
     }
   });
 

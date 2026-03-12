@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
   Loader2, AlertCircle, Trophy, Download, ArrowLeft, X, AlertTriangle,
+  ShieldAlert, CalendarPlus, Send,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -399,6 +401,7 @@ function TrackPlayer({
       setReceiptData(result.receiptData);
       setCompleted(true);
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
       toast({ title: "Track completed! Well done!" });
     } catch {
       toast({ title: "Failed to complete track", variant: "destructive" });
@@ -554,10 +557,89 @@ function TrackPlayer({
   );
 }
 
+function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted }: {
+  assignmentId: string;
+  trackTitle: string;
+  onSubmitted: () => void;
+}) {
+  const { toast } = useToast();
+  const [nonCompletionReason, setNonCompletionReason] = useState("");
+  const [extensionReason, setExtensionReason] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+
+  const combinedReason = `[Why not completed] ${nonCompletionReason.trim()}\n[Why extension needed] ${extensionReason.trim()}`;
+
+  const submitMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/onboarding/extension-requests", {
+      assignmentId, reason: combinedReason, newDueDate,
+    }),
+    onSuccess: () => {
+      toast({ title: "Extension request submitted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
+      onSubmitted();
+    },
+    onError: () => toast({ title: "Failed to submit request", variant: "destructive" }),
+  });
+
+  const minDate = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const isValid = nonCompletionReason.trim().length > 0 && extensionReason.trim().length > 0 && !!newDueDate;
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3 bg-white dark:bg-card" data-testid={`form-extension-${assignmentId}`}>
+      <p className="text-sm font-semibold flex items-center gap-2">
+        <CalendarPlus className="h-4 w-4 text-blue-600" />
+        Request Due Date Extension — {trackTitle}
+      </p>
+      <div className="space-y-2">
+        <Label>Why were you unable to complete the training on time?</Label>
+        <Textarea
+          value={nonCompletionReason}
+          onChange={e => setNonCompletionReason(e.target.value)}
+          placeholder="e.g. Was on approved leave, heavy workload, technical issues..."
+          rows={2}
+          data-testid="input-non-completion-reason"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Why do you need an extension?</Label>
+        <Textarea
+          value={extensionReason}
+          onChange={e => setExtensionReason(e.target.value)}
+          placeholder="e.g. Need additional time to review materials thoroughly..."
+          rows={2}
+          data-testid="input-extension-reason"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Requested new due date</Label>
+        <Input
+          type="date"
+          value={newDueDate}
+          min={minDate}
+          onChange={e => setNewDueDate(e.target.value)}
+          data-testid="input-extension-due-date"
+        />
+      </div>
+      <Button
+        size="sm"
+        onClick={() => submitMutation.mutate()}
+        disabled={!isValid || submitMutation.isPending}
+        data-testid="button-submit-extension"
+      >
+        {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+        Submit Extension Request
+      </Button>
+    </div>
+  );
+}
+
 export default function MyTraining() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showExtensionFor, setShowExtensionFor] = useState<string | null>(null);
 
   const { data: assignments = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/onboarding/my-assignments"],
@@ -571,6 +653,44 @@ export default function MyTraining() {
     },
   });
 
+  const EXEMPT_ROLES = ["super_admin", "admin"];
+  const isLockExempt = user?.role ? EXEMPT_ROLES.includes(user.role) : true;
+
+  const { data: complianceStatus } = useQuery<{
+    locked: boolean;
+    overdueCount: number;
+    trackTitles: string[];
+    pendingExtensions: any[];
+  }>({
+    queryKey: ["/api/onboarding/compliance-status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/compliance-status", { credentials: "include" });
+        if (!res.ok) return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
+        return res.json();
+      } catch {
+        return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
+      }
+    },
+    enabled: !!user && !isLockExempt,
+  });
+
+  const { data: myExtensionRequests = [] } = useQuery<any[]>({
+    queryKey: ["/api/onboarding/extension-requests/my"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/extension-requests/my", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!user,
+  });
+
+  const isLocked = !isLockExempt && complianceStatus?.locked === true;
+
   const now = new Date();
   const in3days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
   const activeAssignments = assignments.filter((a: any) => a.status !== "completed");
@@ -581,6 +701,10 @@ export default function MyTraining() {
     return d >= now && d <= in3days;
   }).length;
   const showBanner = !bannerDismissed && !isLoading && (overdueCount > 0 || dueSoonCount > 0);
+
+  const getExtensionForAssignment = (assignmentId: string) => {
+    return myExtensionRequests.filter((r: any) => r.assignmentId === assignmentId);
+  };
 
   if (activeAssignmentId) {
     return (
@@ -601,7 +725,28 @@ export default function MyTraining() {
           <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
         </div>
 
-        {showBanner && (
+        {isLocked && (
+          <div
+            className="flex items-start gap-3 p-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30"
+            data-testid="banner-compliance-lock"
+          >
+            <ShieldAlert className="h-6 w-6 mt-0.5 shrink-0 text-red-600" />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-red-800 dark:text-red-300">Portal Locked — Overdue Training</p>
+              <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                Your portal access is restricted because you have {complianceStatus?.overdueCount} overdue training
+                {(complianceStatus?.overdueCount ?? 0) === 1 ? " track" : " tracks"}:
+                <strong> {complianceStatus?.trackTitles?.join(", ")}</strong>.
+                Complete your training or request a due date extension below to restore full access.
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                Punch-in and punch-out are also blocked while your portal is locked.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {showBanner && !isLocked && (
           <div
             className={`flex items-start gap-3 p-4 rounded-lg border-l-4 ${overdueCount > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
             data-testid="banner-training-due"
@@ -653,43 +798,118 @@ export default function MyTraining() {
             let status = a.status;
             if (status !== "completed" && a.dueDate && new Date(a.dueDate) < now) status = "overdue";
 
+            const extensionsForThis = getExtensionForAssignment(a.id);
+            const hasPending = extensionsForThis.some((r: any) => r.status === "pending" || r.status === "endorsed");
+            const latestExt = extensionsForThis.length > 0
+              ? extensionsForThis.sort((x: any, y: any) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0]
+              : null;
+
             return (
-              <Card
-                key={a.id}
-                className="hover:shadow-md transition-all cursor-pointer"
-                onClick={() => setActiveAssignmentId(a.id)}
-                data-testid={`card-assignment-${a.id}`}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}>
-                      {status.replace("_", " ")}
-                    </span>
-                  </div>
-                  {a.track?.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{a.track.description}</p>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{a.completedSections} / {a.totalSections} sections</span>
-                      <span className="font-medium">{a.progressPct}%</span>
+              <div key={a.id} className="space-y-2">
+                <Card
+                  className="hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => setActiveAssignmentId(a.id)}
+                  data-testid={`card-assignment-${a.id}`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}>
+                        {status.replace("_", " ")}
+                      </span>
                     </div>
-                    <Progress value={a.progressPct} className="h-2" />
-                    {a.dueDate && (
-                      <p className="text-xs text-muted-foreground">Due: {formatDate(a.dueDate)}</p>
+                    {a.track?.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">{a.track.description}</p>
                     )}
-                    {status === "completed" && (
-                      <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
-                    )}
-                  </div>
-                  <Button size="sm" className="mt-3 w-full" variant={status === "completed" ? "outline" : "default"}>
-                    {status === "completed" ? "Review" : status === "not_started" ? "Start" : "Continue"} →
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{a.completedSections} / {a.totalSections} sections</span>
+                        <span className="font-medium">{a.progressPct}%</span>
+                      </div>
+                      <Progress value={a.progressPct} className="h-2" />
+                      {a.dueDate && (
+                        <p className="text-xs text-muted-foreground">Due: {formatDate(a.dueDate)}</p>
+                      )}
+                      {status === "completed" && (
+                        <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
+                      )}
+                    </div>
+                    <Button size="sm" className="mt-3 w-full" variant={status === "completed" ? "outline" : "default"}>
+                      {status === "completed" ? "Review" : status === "not_started" ? "Start" : "Continue"} →
                   </Button>
                 </CardContent>
               </Card>
+
+              {status === "overdue" && isLocked && (
+                <div className="space-y-2">
+                  {latestExt && latestExt.status === "pending" && (
+                    <div className="text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3 flex items-start gap-2" data-testid={`status-extension-pending-${a.id}`}>
+                      <Clock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-amber-800 dark:text-amber-300">Extension request pending endorsement</p>
+                        <p className="text-amber-700 dark:text-amber-400">New date requested: {formatDate(latestExt.newDueDate)}</p>
+                        <p className="text-amber-600 dark:text-amber-500 mt-1">Awaiting endorsement from your manager/supervisor before final review.</p>
+                      </div>
+                    </div>
+                  )}
+                  {latestExt && latestExt.status === "endorsed" && (
+                    <div className="text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200 rounded-lg p-3 flex items-start gap-2" data-testid={`status-extension-endorsed-${a.id}`}>
+                      <Clock className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-blue-800 dark:text-blue-300">Extension endorsed — awaiting final approval</p>
+                        <p className="text-blue-700 dark:text-blue-400">New date requested: {formatDate(latestExt.newDueDate)}</p>
+                        {latestExt.endorserName && <p className="text-blue-600 dark:text-blue-400 mt-1">Endorsed by: {latestExt.endorserName}</p>}
+                        {latestExt.endorserComment && <p className="text-blue-600 dark:text-blue-400">"{latestExt.endorserComment}"</p>}
+                      </div>
+                    </div>
+                  )}
+                  {latestExt && latestExt.status === "approved" && (
+                    <div className="text-xs bg-green-50 dark:bg-green-950/30 border border-green-200 rounded-lg p-3 flex items-start gap-2" data-testid={`status-extension-approved-${a.id}`}>
+                      <CheckCircle className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-green-800 dark:text-green-300">Extension approved</p>
+                        <p className="text-green-700 dark:text-green-400">New due date: {formatDate(latestExt.newDueDate)}</p>
+                        {latestExt.resolverComment && <p className="text-green-600 dark:text-green-400 mt-1">"{latestExt.resolverComment}"</p>}
+                      </div>
+                    </div>
+                  )}
+                  {latestExt && latestExt.status === "rejected" && (
+                    <div className="text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 rounded-lg p-3 flex items-start gap-2" data-testid={`status-extension-rejected-${a.id}`}>
+                      <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-red-800 dark:text-red-300">Extension request rejected</p>
+                        {latestExt.resolverComment && <p className="text-red-700 dark:text-red-400">Reason: "{latestExt.resolverComment}"</p>}
+                        <p className="text-red-600 dark:text-red-400 mt-1">Please complete the training as soon as possible.</p>
+                      </div>
+                    </div>
+                  )}
+                  {!hasPending && (
+                    <>
+                      {showExtensionFor === a.id ? (
+                        <ExtensionRequestForm
+                          assignmentId={a.id}
+                          trackTitle={a.track?.title || ""}
+                          onSubmitted={() => setShowExtensionFor(null)}
+                        />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full text-blue-700 border-blue-300 hover:bg-blue-50"
+                          onClick={(e) => { e.stopPropagation(); setShowExtensionFor(a.id); }}
+                          data-testid={`button-apply-extension-${a.id}`}
+                        >
+                          <CalendarPlus className="h-4 w-4 mr-2" />
+                          Apply for Due Date Extension
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              </div>
             );
           })}
         </div>

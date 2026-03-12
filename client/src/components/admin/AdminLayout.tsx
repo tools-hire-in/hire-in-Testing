@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -235,6 +235,38 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const needs2FA = user && !user.totpEnabled && !location.startsWith("/admin/hr/profile");
 
+  const EXEMPT_LOCK_ROLES = ["super_admin", "admin"];
+  const isLockExempt = user?.role ? EXEMPT_LOCK_ROLES.includes(user.role) : true;
+
+  const { data: complianceStatus } = useQuery<{
+    locked: boolean;
+    overdueCount: number;
+    trackTitles: string[];
+    pendingExtensions: any[];
+  }>({
+    queryKey: ["/api/onboarding/compliance-status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/compliance-status", { credentials: "include" });
+        if (!res.ok) return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
+        return res.json();
+      } catch {
+        return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
+      }
+    },
+    refetchInterval: 120000,
+    enabled: !!user && !isLockExempt,
+  });
+
+  const isComplianceLocked = !isLockExempt && complianceStatus?.locked === true;
+  const isOnTrainingPage = location === "/admin/hr/my-training" || location.startsWith("/admin/hr/my-training");
+
+  useEffect(() => {
+    if (isComplianceLocked && !isOnTrainingPage) {
+      setLocation("/admin/hr/my-training");
+    }
+  }, [isComplianceLocked, isOnTrainingPage, setLocation]);
+
   const ADMIN_TRAINING_ROLES = ["super_admin", "admin", "hr", "manager"];
 
   const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
@@ -249,7 +281,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       }
     },
     refetchInterval: 60000,
-    enabled: isAuthenticated,
+    enabled: !!user,
   });
 
   const { data: trainingFlagData } = useQuery<{ value: any }>({
@@ -348,14 +380,22 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     {filteredRecruitment.map((item) => (
                       <SidebarMenuItem key={item.href}>
                         <SidebarMenuButton
-                          asChild
+                          asChild={!isComplianceLocked}
                           isActive={isActive(item.href)}
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
                           data-testid={`nav-recruit-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                         >
-                          <Link href={item.href}>
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </Link>
+                          {isComplianceLocked ? (
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          ) : (
+                            <Link href={item.href}>
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </Link>
+                          )}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
@@ -373,22 +413,31 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       const isTraining = item.href === "/admin/hr/my-training";
                       const alertCount = trainingAlerts?.total ?? 0;
                       const isOverdue = (trainingAlerts?.overdue ?? 0) > 0;
+                      const isLockedItem = isComplianceLocked && !isTraining;
                       return (
                         <SidebarMenuItem key={item.href}>
                           <SidebarMenuButton
-                            asChild
+                            asChild={!isLockedItem}
                             isActive={isActive(item.href)}
+                            className={isLockedItem ? "opacity-40 pointer-events-none" : ""}
                             data-testid={`nav-emp-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                           >
-                            <Link href={item.href}>
-                              <item.icon className="h-4 w-4" />
-                              <span className="flex-1">{item.label}</span>
-                              {isTraining && alertCount > 0 && (
-                                <span className={`ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center ${isOverdue ? "bg-red-500 text-white" : "bg-amber-500 text-white"}`} data-testid="badge-training-alerts">
-                                  {alertCount > 9 ? "9+" : alertCount}
-                                </span>
-                              )}
-                            </Link>
+                            {isLockedItem ? (
+                              <span className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span className="flex-1">{item.label}</span>
+                              </span>
+                            ) : (
+                              <Link href={item.href}>
+                                <item.icon className="h-4 w-4" />
+                                <span className="flex-1">{item.label}</span>
+                                {isTraining && alertCount > 0 && (
+                                  <span className={`ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center ${isOverdue ? "bg-red-500 text-white" : "bg-amber-500 text-white"}`} data-testid="badge-training-alerts">
+                                    {alertCount > 9 ? "9+" : alertCount}
+                                  </span>
+                                )}
+                              </Link>
+                            )}
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );
@@ -406,14 +455,22 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     {filteredHrOps.map((item) => (
                       <SidebarMenuItem key={item.href}>
                         <SidebarMenuButton
-                          asChild
+                          asChild={!isComplianceLocked}
                           isActive={isActive(item.href)}
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
                           data-testid={`nav-hrops-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                         >
-                          <Link href={item.href}>
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </Link>
+                          {isComplianceLocked ? (
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          ) : (
+                            <Link href={item.href}>
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </Link>
+                          )}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}

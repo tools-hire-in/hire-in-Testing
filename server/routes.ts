@@ -4,7 +4,9 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, inArray } from "drizzle-orm";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
@@ -1450,12 +1452,90 @@ export async function registerRoutes(
     }
   });
 
+  async function checkTrainingCompliance(userId: string, userRole: string): Promise<{ locked: boolean; trackTitles: string[] }> {
+    const EXEMPT_ROLES = ["super_admin", "admin"];
+    const LOCKABLE_ROLES = ["hr", "manager", "operations", "employee"];
+    if (EXEMPT_ROLES.includes(userRole) || !LOCKABLE_ROLES.includes(userRole)) return { locked: false, trackTitles: [] };
+
+    const now = new Date();
+    const assignments = await db.select({
+      id: trackAssignments.id,
+      trackId: trackAssignments.trackId,
+      status: trackAssignments.status,
+      dueDate: trackAssignments.dueDate,
+    }).from(trackAssignments).where(eq(trackAssignments.userId, userId));
+
+    const overdueAssignments = assignments.filter(a =>
+      a.status !== "completed" && a.dueDate && new Date(a.dueDate) < now
+    );
+
+    if (overdueAssignments.length === 0) return { locked: false, trackTitles: [] };
+
+    const approvedExtensions = await db.select()
+      .from(trainingExtensionRequests)
+      .where(and(
+        eq(trainingExtensionRequests.userId, userId),
+        eq(trainingExtensionRequests.status, "approved"),
+      ));
+
+    const approvedByAssignment = new Map<string, Date>();
+    for (const ext of approvedExtensions) {
+      const existing = approvedByAssignment.get(ext.assignmentId);
+      if (!existing || new Date(ext.newDueDate) > existing) {
+        approvedByAssignment.set(ext.assignmentId, new Date(ext.newDueDate));
+      }
+    }
+
+    const stillOverdue = overdueAssignments.filter(a => {
+      const approvedNewDate = approvedByAssignment.get(a.id);
+      if (approvedNewDate && approvedNewDate > now) return false;
+      return true;
+    });
+
+    if (stillOverdue.length === 0) return { locked: false, trackTitles: [] };
+
+    const overdueTrackIds = stillOverdue.map(a => a.trackId);
+    const tracks = await db.select({ title: learningTracks.title })
+      .from(learningTracks).where(inArray(learningTracks.id, overdueTrackIds));
+    return { locked: true, trackTitles: tracks.map(t => t.title) };
+  }
+
   app.post("/api/hr/attendance/punch-in", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
+      const userRole = req.session.role!;
       const today = new Date().toISOString().split("T")[0];
+
+      const compliance = await checkTrainingCompliance(userId, userRole);
+      if (compliance.locked) {
+        const existingToday = await storage.getTodayAttendance(userId);
+        if (!existingToday || existingToday.punchIn) {
+          if (!existingToday) {
+            await storage.createAttendance({
+              userId,
+              date: today,
+              status: "absent",
+              notes: `[Training non-compliance] Overdue: ${compliance.trackTitles.join(", ")}`,
+            });
+          }
+        }
+        return res.status(403).json({
+          error: "Portal locked due to overdue training",
+          locked: true,
+          trackTitles: compliance.trackTitles,
+        });
+      }
+
       const existing = await storage.getTodayAttendance(userId);
       if (existing) {
+        if (!existing.punchIn && existing.status === "absent" && existing.notes?.includes("[Training non-compliance]")) {
+          const record = await storage.updateAttendance(existing.id, {
+            punchIn: new Date(),
+            status: "present",
+            notes: null,
+          });
+          return res.status(200).json(record);
+        }
         return res.status(400).json({ error: "Already punched in today" });
       }
       const record = await storage.createAttendance({
@@ -1473,6 +1553,27 @@ export async function registerRoutes(
   app.post("/api/hr/attendance/punch-out", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      const today = new Date().toISOString().split("T")[0];
+
+      const compliance = await checkTrainingCompliance(userId, userRole);
+      if (compliance.locked) {
+        const existingToday = await storage.getTodayAttendance(userId);
+        if (!existingToday) {
+          await storage.createAttendance({
+            userId,
+            date: today,
+            status: "absent",
+            notes: `[Training non-compliance] Overdue: ${compliance.trackTitles.join(", ")}`,
+          });
+        }
+        return res.status(403).json({
+          error: "Portal locked due to overdue training",
+          locked: true,
+          trackTitles: compliance.trackTitles,
+        });
+      }
+
       const existing = await storage.getTodayAttendance(userId);
       if (!existing) {
         return res.status(400).json({ error: "No punch-in record found for today" });

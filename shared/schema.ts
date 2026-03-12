@@ -751,7 +751,26 @@ export const onboardingAuditEvents = pgTable("onboarding_audit_events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Training extension requests (due date extension for overdue assignments)
+export const trainingExtensionRequests = pgTable("training_extension_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull().references(() => trackAssignments.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  requestedById: varchar("requested_by_id").notNull().references(() => adminUsers.id),
+  reason: text("reason").notNull(),
+  newDueDate: timestamp("new_due_date").notNull(),
+  status: varchar("status").notNull().default("pending"), // pending | endorsed | approved | rejected
+  endorsedById: varchar("endorsed_by_id").references(() => adminUsers.id),
+  endorsedAt: timestamp("endorsed_at"),
+  endorserComment: text("endorser_comment"),
+  resolvedById: varchar("resolved_by_id").references(() => adminUsers.id),
+  resolvedAt: timestamp("resolved_at"),
+  resolverComment: text("resolver_comment"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
+export const insertTrainingExtensionRequestSchema = createInsertSchema(trainingExtensionRequests).omit({ id: true, endorsedById: true, endorsedAt: true, endorserComment: true, resolvedById: true, resolvedAt: true, resolverComment: true, createdAt: true });
 export const insertLearningTrackSchema = createInsertSchema(learningTracks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTrackSectionSchema = createInsertSchema(trackSections).omit({ id: true, createdAt: true });
 export const insertSectionQuizQuestionSchema = createInsertSchema(sectionQuizQuestions).omit({ id: true, createdAt: true });
@@ -836,3 +855,5 @@ export type TrackCompletion = typeof trackCompletions.$inferSelect;
 export type InsertTrackCompletion = z.infer<typeof insertTrackCompletionSchema>;
 export type OnboardingAuditEvent = typeof onboardingAuditEvents.$inferSelect;
 export type InsertOnboardingAuditEvent = z.infer<typeof insertOnboardingAuditEventSchema>;
+export type TrainingExtensionRequest = typeof trainingExtensionRequests.$inferSelect;
+export type InsertTrainingExtensionRequest = z.infer<typeof insertTrainingExtensionRequestSchema>;
