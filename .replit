@@ -49,3 +49,7 @@ COOKIE_DOMAIN = ".hire-in.com"
 
 [userenv.shared]
 OFFER_SIGNING_KEY = "28519524dc22b569bcaf5abca3bd10aa95921c3359b36dc96ba6584302e6eac2"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000

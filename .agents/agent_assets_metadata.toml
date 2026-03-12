@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "F4FPGbTg5sObjFhFtY2n1"
+uri = "file://Rayo_Academy_Product_Specification.md"
+type = "text"
+title = "Rayo Academy — Product & Architecture Specification"
+
+[[outputs]]
+id = "F2rkBEu4SYOBNL6TIdCfZ"
+uri = "file://Rayo_Academy_Curriculum_Framework.md"
+type = "text"
+title = "Rayo Academy — Certification Curriculum Framework"
