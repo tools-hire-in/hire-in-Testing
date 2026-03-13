@@ -596,7 +596,7 @@ export async function registerRoutes(
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
-      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary } = req.body;
+      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary, managerId } = req.body;
 
       const assignedRole = role || "employee";
       const assignedRank = ROLE_RANK[assignedRole] ?? 0;
@@ -637,6 +637,7 @@ export async function registerRoutes(
         hierarchyLevel: hierarchyLevel || "team_member",
         salary: salary || null,
         employeeId: employeeIdVal,
+        managerId: managerId || null,
       });
 
       storage.initializeEmployeeDocuments(user.id).catch(err =>

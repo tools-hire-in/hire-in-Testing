@@ -102,6 +102,7 @@ export default function AdminUsers() {
   const [newDepartmentId, setNewDepartmentId] = useState("");
   const [newHierarchyLevel, setNewHierarchyLevel] = useState("team_member");
   const [newSalary, setNewSalary] = useState("");
+  const [newManagerId, setNewManagerId] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
@@ -146,7 +147,7 @@ export default function AdminUsers() {
       toast({ title: "User invited successfully", description: "An invitation email with login credentials has been sent." });
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
-      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary("");
+      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId("");
     },
     onError: () => {
       toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
@@ -684,7 +685,18 @@ export default function AdminUsers() {
                   <Label htmlFor="salary">Salary</Label>
                   <Input id="salary" type="number" placeholder="e.g. 85000" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} data-testid="input-invite-salary" />
                 </div>
-                <div />
+                <div className="space-y-2">
+                  <Label htmlFor="reportingTo">Reporting To</Label>
+                  <Select value={newManagerId} onValueChange={setNewManagerId}>
+                    <SelectTrigger data-testid="select-invite-manager"><SelectValue placeholder="Select manager" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No manager</SelectItem>
+                      {users?.filter(u => u.isActive).map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="department">Department</Label>
@@ -706,6 +718,7 @@ export default function AdminUsers() {
                   departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
                   hierarchyLevel: newHierarchyLevel || undefined,
                   salary: newSalary || undefined,
+                  managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
                 } as any)}
                 disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
                 data-testid="button-send-invite"
