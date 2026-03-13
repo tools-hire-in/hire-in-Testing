@@ -794,7 +794,6 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.get("/api/system-settings/:key", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { key } = req.params as { key: string };
