@@ -62,20 +62,23 @@ export function Cover() {
           }} />
 
           {/* Logo + company name */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, position: "relative", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, position: "relative", zIndex: 1 }}>
             <div style={{
-              background: "#fff", borderRadius: 4, padding: "1px 2px",
+              background: "#fff", borderRadius: 4, padding: "2px 3px",
               display: "flex", alignItems: "center", flexShrink: 0
             }}>
               <img
                 src="/__mockup/images/his-logo.jpg"
                 alt="Hire'in Solutions"
-                style={{ height: 28, objectFit: "contain" }}
+                style={{ height: 40, objectFit: "contain" }}
               />
             </div>
-            <div>
-              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 }}>
-                A Rayomind Company &nbsp;·&nbsp; EST 2014
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>
+                A Rayomind Company
+              </div>
+              <div style={{ fontSize: 11, color: ORANGE, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 700 }}>
+                EST 2014
               </div>
             </div>
           </div>
