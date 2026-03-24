@@ -184,8 +184,13 @@ function generatePayslipHTML(data: SlipFormData): string {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; background: #EEF2F7; padding: 32px; }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
   @media print {
-    body { background: #fff; padding: 0; }
+    body { background: #fff !important; padding: 0; }
     .slip-wrapper { box-shadow: none; }
   }
 </style>
