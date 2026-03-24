@@ -110,25 +110,6 @@ export function Cover() {
           {/* Divider */}
           <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.12)", marginBottom: 18, position: "relative", zIndex: 1 }} />
 
-          {/* Hiring callout */}
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontWeight: 600 }}>
-              We're Hiring
-            </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {["Content Creator", "Business Analyst"].map(role => (
-                <div key={role} style={{
-                  background: "rgba(244,124,32,0.15)",
-                  border: `1px solid rgba(244,124,32,0.4)`,
-                  color: "#FFA95C",
-                  fontSize: 11, fontWeight: 600,
-                  padding: "4px 12px", borderRadius: 20, letterSpacing: 0.3
-                }}>
-                  {role}
-                </div>
-              ))}
-            </div>
-          </div>
 
           {/* Bottom — domain */}
           <div style={{
