@@ -106,29 +106,16 @@ export function Enterprise() {
               />
             </div>
 
-            {/* CENTER — Legal entity name + address + payslip meta */}
+            {/* CENTER — Legal entity name + address only */}
             <div style={{ textAlign: "center", flex: 1, padding: "0 20px" }}>
               <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1.2 }}>
                 Rayomind Solutions LLP
               </div>
-              <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, marginTop: 4, letterSpacing: 0.2 }}>
+              <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, marginTop: 5, letterSpacing: 0.2 }}>
                 Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
               </div>
-              <div style={{
-                marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8,
-                background: "rgba(255,255,255,0.1)", borderRadius: 4,
-                padding: "4px 12px", border: "1px solid rgba(255,255,255,0.18)"
-              }}>
-                <span style={{ background: ORANGE, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase" }}>
-                  Payslip
-                </span>
-                <span style={{ color: "rgba(255,255,255,0.9)", fontSize: 10.5, fontWeight: 600 }}>
-                  {sampleData.month} {sampleData.year}
-                </span>
-                <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 9 }}>|</span>
-                <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 10 }}>
-                  {sampleData.employeeId}
-                </span>
+              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9.5, marginTop: 3, letterSpacing: 0.5 }}>
+                CIN: AAB-1234 · GSTIN: 07AAACR1234A1ZX
               </div>
             </div>
 
@@ -181,6 +168,27 @@ export function Enterprise() {
             </div>
           </div>
 
+          {/* PAY PERIOD ROW */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "8px 16px", background: "#F0F4FA",
+            borderTop: `1px solid #C9D5E8`, borderBottom: `1px solid #C9D5E8`,
+            margin: "0"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                Pay Period
+              </span>
+              <span style={{ width: 1, height: 12, background: "#C9D5E8", display: "inline-block" }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>
+                {sampleData.month} {sampleData.year}
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: "#6B7280" }}>
+              Salary Statement · Confidential
+            </div>
+          </div>
+
           {/* EARNINGS & DEDUCTIONS TABLE */}
           <div style={{ margin: "16px 0 0" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
@@ -188,9 +196,6 @@ export function Enterprise() {
                 <tr>
                   <th colSpan={2} style={{ background: ORANGE, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
                     EARNINGS
-                    <span style={{ fontSize: 9.5, fontWeight: 500, marginLeft: 10, opacity: 0.85, letterSpacing: 0.3, textTransform: "none" }}>
-                      Pay Period: {sampleData.month} {sampleData.year}
-                    </span>
                   </th>
                   <th colSpan={2} style={{ background: NAVY, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
                     DEDUCTIONS

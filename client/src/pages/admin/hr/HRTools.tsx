@@ -36,19 +36,13 @@ function formatCurrency(value: string | number) {
 interface SlipFormData {
   employeeName: string;
   employeeId: string;
-  bankName: string;
-  joiningDate: string;
-  bankAccountNo: string;
   designation: string;
-  pfNo: string;
   department: string;
-  pfUan: string;
-  esi: string;
   location: string;
-  grade: string;
-  lop: number;
-  empEffectiveWorkdays: number;
-  daysInMonth: number;
+  bankName: string;
+  bankAccountNo: string;
+  pfNo: string;
+  pfUan: string;
   basic: number;
   hra: number;
   conveyance: number;
@@ -67,19 +61,13 @@ function getDefaultSlipData(): SlipFormData {
   return {
     employeeName: "",
     employeeId: "",
-    bankName: "",
-    joiningDate: "",
-    bankAccountNo: "",
     designation: "",
-    pfNo: "",
     department: "",
+    location: "Remote",
+    bankName: "",
+    bankAccountNo: "",
+    pfNo: "",
     pfUan: "",
-    esi: "",
-    location: "Noida, U.P.",
-    grade: "",
-    lop: 0,
-    empEffectiveWorkdays: 31,
-    daysInMonth: 31,
     basic: 0,
     hra: 0,
     conveyance: 0,
@@ -136,7 +124,7 @@ function generatePayslipHTML(data: SlipFormData): string {
     { label: "ESI", amount: data.esiDeduction },
     { label: "Professional Tax", amount: data.professionalTax },
     { label: "TDS", amount: data.tds },
-    ...(data.otherDeductions > 0 ? [{ label: data.lop > 0 ? `LOP Deduction (${data.lop} days)` : "Other Deductions", amount: data.otherDeductions }] : []),
+    ...(data.otherDeductions > 0 ? [{ label: "Other Deductions", amount: data.otherDeductions }] : []),
   ].filter(r => r.amount > 0);
 
   const maxRows = Math.max(earningsRows.length, deductionRows.length);
@@ -160,21 +148,15 @@ function generatePayslipHTML(data: SlipFormData): string {
   const employeeInfoRows =
     infoRow("Full Name", data.employeeName, true) +
     infoRow("Employee ID", data.employeeId, false) +
-    infoRow("Joining Date", data.joiningDate, true) +
-    infoRow("Designation", data.designation, false) +
-    infoRow("Department", data.department, true) +
-    infoRow("Location", data.location, false) +
-    infoRow("Grade", data.grade, true) +
-    infoRow("Working Days (Month)", data.daysInMonth > 0 ? `${data.daysInMonth} days` : "", false) +
-    infoRow("Effective Workdays", data.empEffectiveWorkdays > 0 ? `${data.empEffectiveWorkdays} days` : "", true) +
-    infoRow("Loss of Pay (LOP)", data.lop > 0 ? `${data.lop} days` : "", false);
+    infoRow("Designation", data.designation, true) +
+    infoRow("Department", data.department, false) +
+    infoRow("Location", data.location, true);
 
   const bankInfoRows =
     infoRow("Bank Name", data.bankName, true) +
     infoRow("Account Number", data.bankAccountNo, false) +
     infoRow("PF Number", data.pfNo, true) +
-    infoRow("PF UAN", data.pfUan, false) +
-    infoRow("ESI", data.esi, true);
+    infoRow("PF UAN", data.pfUan, false);
 
   return `<!DOCTYPE html>
 <html>
@@ -208,33 +190,30 @@ function generatePayslipHTML(data: SlipFormData): string {
   <!-- CONTENT -->
   <div style="position:relative;z-index:1;">
 
-    <!-- HEADER -->
-    <div style="background:linear-gradient(135deg,${NAVY} 0%,${LIGHT_NAVY} 100%);padding:20px 28px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <div style="background:#fff;border-radius:6px;padding:6px 10px;display:flex;align-items:center;">
-          <img src="/rayomind-logo.png" alt="Rayomind Solutions" style="height:38px;object-fit:contain;" />
-        </div>
-        <div>
-          <div style="color:#fff;font-size:18px;font-weight:700;letter-spacing:0.5px;">Rayomind Solutions</div>
-          <div style="color:rgba(255,255,255,0.72);font-size:10.5px;margin-top:2px;">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India</div>
-        </div>
+    <!-- HEADER: 3-column — Rayomind logo | Company name + address | HIS logo -->
+    <div style="background:linear-gradient(135deg,${NAVY} 0%,${LIGHT_NAVY} 100%);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
+      <!-- Left: Rayomind logo only -->
+      <div style="background:#fff;border-radius:6px;padding:6px 10px;display:flex;align-items:center;flex-shrink:0;">
+        <img src="/rayomind-logo.png" alt="Rayomind Solutions LLP" style="height:40px;object-fit:contain;" />
       </div>
-      <div style="text-align:right;">
-        <div style="background:${ORANGE};color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:3px;letter-spacing:1px;text-transform:uppercase;">Payslip</div>
-        <div style="color:rgba(255,255,255,0.85);font-size:11px;margin-top:6px;font-weight:600;">${monthName} ${data.year}</div>
-        ${data.employeeId ? `<div style="margin-top:4px;display:inline-block;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.9);font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:3px;letter-spacing:0.5px;border:1px solid rgba(255,255,255,0.25);">${data.employeeId}</div>` : ""}
+      <!-- Centre: Legal entity name + address -->
+      <div style="text-align:center;flex:1;padding:0 20px;">
+        <div style="color:#fff;font-size:19px;font-weight:800;letter-spacing:0.3px;line-height:1.2;">Rayomind Solutions LLP</div>
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-top:5px;letter-spacing:0.2px;">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India</div>
+        <div style="color:rgba(255,255,255,0.38);font-size:9px;margin-top:3px;letter-spacing:0.5px;">CIN: AAB-1234 · GSTIN: 07AAACR1234A1ZX</div>
+      </div>
+      <!-- Right: HIS logo + subscript (centred) -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;">
+        <img src="/his-logo.jpg" alt="Hire'in Solutions" style="height:36px;object-fit:contain;border-radius:4px;" />
+        <div style="text-align:center;">
+          <div style="color:#fff;font-size:11.5px;font-weight:700;letter-spacing:0.2px;">Hire'in Solutions</div>
+          <div style="color:${ORANGE};font-size:8.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">A Rayomind Company</div>
+        </div>
       </div>
     </div>
 
     <!-- ORANGE ACCENT LINE -->
     <div style="height:3px;background:linear-gradient(to right,${ORANGE},#FBBB6D,${ORANGE});"></div>
-
-    <!-- TITLE -->
-    <div style="text-align:center;padding:14px 0 10px;border-bottom:2px solid ${NAVY};">
-      <span style="font-size:13px;font-weight:700;color:${NAVY};letter-spacing:0.8px;text-transform:uppercase;">
-        PAYSLIP FOR THE MONTH OF ${monthName.toUpperCase()} ${data.year}
-      </span>
-    </div>
 
     <!-- EMPLOYEE INFO GRID -->
     <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid ${NAVY};">
@@ -250,6 +229,16 @@ function generatePayslipHTML(data: SlipFormData): string {
         </div>
         ${bankInfoRows}
       </div>
+    </div>
+
+    <!-- PAY PERIOD ROW -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#F0F4FA;border-top:1px solid #C9D5E8;border-bottom:1px solid #C9D5E8;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.8px;">Pay Period</span>
+        <span style="width:1px;height:12px;background:#C9D5E8;display:inline-block;"></span>
+        <span style="font-size:11px;font-weight:600;color:#374151;">${monthName} ${data.year}</span>
+      </div>
+      <div style="font-size:10px;color:#6B7280;">Salary Statement · Confidential</div>
     </div>
 
     <!-- EARNINGS & DEDUCTIONS TABLE -->
@@ -303,7 +292,7 @@ function generatePayslipHTML(data: SlipFormData): string {
           <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">hr@rayomind.com</span></div>
         </div>
         <div style="text-align:right;">
-          <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.5px;">© ${data.year} Rayomind Solutions Pvt. Ltd.</div>
+          <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.5px;">© ${data.year} Rayomind Solutions LLP</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px;justify-content:flex-end;">
             <img src="/rayomind-logo.png" alt="" style="height:16px;opacity:0.45;" />
           </div>
@@ -354,7 +343,6 @@ function SalarySlipGenerator() {
       employeeId: user.employeeId || user.username || "",
       designation: user.designation || "",
       department: dept?.name || "",
-      joiningDate: user.joiningDate ? new Date(user.joiningDate).toLocaleDateString("en-IN") : "",
     }));
 
     try {
@@ -408,9 +396,6 @@ function SalarySlipGenerator() {
         professionalTax: 0,
         tds: 0,
         otherDeductions: deductions,
-        empEffectiveWorkdays: detail.totalWorkingDays || prev.empEffectiveWorkdays,
-        daysInMonth: detail.totalWorkingDays || prev.daysInMonth,
-        lop: detail.daysAbsent || 0,
         bankName: detail.bankDetails?.bankName || prev.bankName,
         bankAccountNo: detail.bankDetails?.accountNumber || prev.bankAccountNo,
       }));
@@ -423,16 +408,8 @@ function SalarySlipGenerator() {
   };
 
   const totalEarnings = formData.basic + formData.hra + formData.conveyance + formData.specialAllowance;
-  const perDayRate = Math.round((totalEarnings * 12) / 365);
-  const lopDeduction = Math.round(perDayRate * formData.lop);
   const totalDeductions = formData.pfDeduction + formData.esiDeduction + formData.professionalTax + formData.tds + formData.otherDeductions;
   const netPay = totalEarnings - totalDeductions;
-
-  useEffect(() => {
-    if (formData.lop > 0) {
-      updateField("otherDeductions", lopDeduction);
-    }
-  }, [formData.lop, lopDeduction]);
 
   const handlePreview = () => {
     if (!formData.employeeName) {
@@ -536,62 +513,32 @@ function SalarySlipGenerator() {
                 <Input data-testid="input-slip-empid" value={formData.employeeId} onChange={e => updateField("employeeId", e.target.value)} />
               </div>
               <div>
-                <Label>Bank Name</Label>
-                <Input data-testid="input-slip-bank" value={formData.bankName} onChange={e => updateField("bankName", e.target.value)} />
-              </div>
-              <div>
-                <Label>Joining Date</Label>
-                <Input data-testid="input-slip-joining" value={formData.joiningDate} onChange={e => updateField("joiningDate", e.target.value)} />
-              </div>
-              <div>
-                <Label>Bank Account No</Label>
-                <Input data-testid="input-slip-account" value={formData.bankAccountNo} onChange={e => updateField("bankAccountNo", e.target.value)} />
-              </div>
-              <div>
                 <Label>Designation</Label>
                 <Input data-testid="input-slip-designation" value={formData.designation} onChange={e => updateField("designation", e.target.value)} />
-              </div>
-              <div>
-                <Label>PF No</Label>
-                <Input data-testid="input-slip-pf" value={formData.pfNo} onChange={e => updateField("pfNo", e.target.value)} />
               </div>
               <div>
                 <Label>Department</Label>
                 <Input data-testid="input-slip-dept" value={formData.department} onChange={e => updateField("department", e.target.value)} />
               </div>
               <div>
-                <Label>PF UAN</Label>
-                <Input data-testid="input-slip-uan" value={formData.pfUan} onChange={e => updateField("pfUan", e.target.value)} />
-              </div>
-              <div>
-                <Label>ESI</Label>
-                <Input data-testid="input-slip-esi" value={formData.esi} onChange={e => updateField("esi", e.target.value)} />
-              </div>
-              <div>
                 <Label>Location</Label>
                 <Input data-testid="input-slip-location" value={formData.location} onChange={e => updateField("location", e.target.value)} />
               </div>
               <div>
-                <Label>Grade</Label>
-                <Input data-testid="input-slip-grade" value={formData.grade} onChange={e => updateField("grade", e.target.value)} />
+                <Label>Bank Name</Label>
+                <Input data-testid="input-slip-bank" value={formData.bankName} onChange={e => updateField("bankName", e.target.value)} />
               </div>
               <div>
-                <Label>LOP (Days)</Label>
-                <Input data-testid="input-slip-lop" type="number" value={formData.lop} onChange={e => updateField("lop", parseInt(e.target.value) || 0)} />
-                {formData.lop > 0 && (
-                  <div className="text-[10px] mt-1 text-muted-foreground flex flex-col gap-0.5">
-                    <span>Per Day Rate: ₹{formatCurrency(perDayRate)}</span>
-                    <span className="font-medium text-red-600">LOP Deduction: ₹{formatCurrency(lopDeduction)}</span>
-                  </div>
-                )}
+                <Label>Bank Account No</Label>
+                <Input data-testid="input-slip-account" value={formData.bankAccountNo} onChange={e => updateField("bankAccountNo", e.target.value)} />
               </div>
               <div>
-                <Label>Effective Workdays</Label>
-                <Input data-testid="input-slip-workdays" type="number" value={formData.empEffectiveWorkdays} onChange={e => updateField("empEffectiveWorkdays", parseInt(e.target.value) || 0)} />
+                <Label>PF No</Label>
+                <Input data-testid="input-slip-pf" value={formData.pfNo} onChange={e => updateField("pfNo", e.target.value)} />
               </div>
               <div>
-                <Label>Days in Month</Label>
-                <Input data-testid="input-slip-daysinmonth" type="number" value={formData.daysInMonth} onChange={e => updateField("daysInMonth", parseInt(e.target.value) || 0)} />
+                <Label>PF UAN</Label>
+                <Input data-testid="input-slip-uan" value={formData.pfUan} onChange={e => updateField("pfUan", e.target.value)} />
               </div>
             </div>
           </CardContent>
