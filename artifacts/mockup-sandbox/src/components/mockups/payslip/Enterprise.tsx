@@ -98,37 +98,69 @@ export function Enterprise() {
           {/* HEADER */}
           <div style={{
             background: `linear-gradient(135deg, ${NAVY} 0%, ${LIGHT_NAVY} 100%)`,
-            padding: "20px 28px", display: "flex", alignItems: "center",
-            justifyContent: "space-between"
+            padding: "18px 28px", display: "flex", alignItems: "center",
+            justifyContent: "space-between", gap: 16
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {/* LEFT — Rayomind (issuing entity) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1 }}>
               <div style={{
-                background: "#fff", borderRadius: 6, padding: "6px 10px",
-                display: "flex", alignItems: "center"
+                background: "#fff", borderRadius: 6, padding: "5px 8px",
+                display: "flex", alignItems: "center", flexShrink: 0
               }}>
                 <img
                   src="/__mockup/images/rayomind-logo.png"
-                  alt="Rayomind Solutions"
-                  style={{ height: 38, objectFit: "contain" }}
+                  alt="Rayomind Solutions LLP"
+                  style={{ height: 36, objectFit: "contain" }}
                 />
               </div>
               <div>
-                <div style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: 0.5 }}>
-                  Rayomind Solutions
+                <div style={{ color: "#fff", fontSize: 16, fontWeight: 700, letterSpacing: 0.5 }}>
+                  Rayomind Solutions LLP
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 10.5, marginTop: 2 }}>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 10, marginTop: 2 }}>
                   Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
                 </div>
               </div>
             </div>
-            <div style={{ textAlign: "right" }}>
+
+            {/* DIVIDER */}
+            <div style={{ width: 1, height: 48, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+
+            {/* CENTER — Hire'in Solutions (operating brand) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               <div style={{
-                background: ORANGE, color: "#fff", fontSize: 10, fontWeight: 700,
-                padding: "3px 10px", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase"
+                background: "#fff", borderRadius: 5, padding: "3px 5px",
+                display: "flex", alignItems: "center"
+              }}>
+                <img
+                  src="/__mockup/images/his-logo.jpg"
+                  alt="Hire'in Solutions"
+                  style={{ height: 32, objectFit: "contain" }}
+                />
+              </div>
+              <div>
+                <div style={{ color: "#fff", fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
+                  Hire'in Solutions
+                </div>
+                <div style={{ color: ORANGE, fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 2 }}>
+                  A Rayomind Company
+                </div>
+              </div>
+            </div>
+
+            {/* DIVIDER */}
+            <div style={{ width: 1, height: 48, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+
+            {/* RIGHT — Payslip meta */}
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{
+                background: ORANGE, color: "#fff", fontSize: 9.5, fontWeight: 700,
+                padding: "3px 10px", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase",
+                display: "inline-block"
               }}>
                 Payslip
               </div>
-              <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: 6, fontWeight: 600 }}>
+              <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: 5, fontWeight: 600 }}>
                 {sampleData.month} {sampleData.year}
               </div>
               <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, marginTop: 2 }}>
@@ -272,7 +304,7 @@ export function Enterprise() {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 9, color: "#9CA3AF", letterSpacing: 0.5 }}>
-                  © {sampleData.year} Rayomind Solutions Pvt. Ltd.
+                  © {sampleData.year} Rayomind Solutions LLP
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
                   <img src="/__mockup/images/rayomind-logo.png" alt="" style={{ height: 16, opacity: 0.45 }} />
