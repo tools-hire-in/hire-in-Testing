@@ -64,7 +64,7 @@ export function Cover() {
           {/* Logo + company name */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, position: "relative", zIndex: 1 }}>
             <div style={{
-              background: "#fff", borderRadius: 4, padding: "2px 3px",
+              background: "#fff", borderRadius: 3, padding: "0px",
               display: "flex", alignItems: "center", flexShrink: 0
             }}>
               <img
