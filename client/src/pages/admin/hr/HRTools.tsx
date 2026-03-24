@@ -35,6 +35,7 @@ function formatCurrency(value: string | number) {
 
 interface SlipFormData {
   employeeName: string;
+  employeeId: string;
   bankName: string;
   joiningDate: string;
   bankAccountNo: string;
@@ -65,6 +66,7 @@ function getDefaultSlipData(): SlipFormData {
   const now = new Date();
   return {
     employeeName: "",
+    employeeId: "",
     bankName: "",
     joiningDate: "",
     bankAccountNo: "",
@@ -99,147 +101,212 @@ function generatePayslipHTML(data: SlipFormData): string {
   const netPay = totalEarnings - totalDeductions;
   const netPayWords = numberToWords(netPay);
 
+  const NAVY = "#1F3A6E";
+  const ORANGE = "#F47C20";
+  const LIGHT_NAVY = "#2A4D8F";
+
+  const fmt = (n: number) =>
+    n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const isBlank = (v: string | number | undefined | null): boolean => {
+    if (v === undefined || v === null) return true;
+    if (typeof v === "number") return v === 0;
+    const s = String(v).trim();
+    return s === "" || s === "0" || s.toLowerCase() === "n/a";
+  };
+
+  const infoRow = (label: string, value: string, shade: boolean) => {
+    if (isBlank(value)) return "";
+    const bg = shade ? "#F7F9FC" : "#FFFFFF";
+    return `<div style="display:flex;padding:5px 12px;font-size:11px;background-color:${bg};border-bottom:1px solid #E8EDF4;">
+      <span style="min-width:145px;font-weight:600;color:#374151;">${label}</span>
+      <span style="color:#1a1a1a;">${value}</span>
+    </div>`;
+  };
+
+  const earningsRows = [
+    { label: "Basic", amount: data.basic },
+    { label: "House Rent Allowance (HRA)", amount: data.hra },
+    { label: "Conveyance Allowance", amount: data.conveyance },
+    { label: "Special Allowance", amount: data.specialAllowance },
+  ].filter(r => r.amount > 0);
+
+  const deductionRows = [
+    { label: "Provident Fund (PF)", amount: data.pfDeduction },
+    { label: "ESI", amount: data.esiDeduction },
+    { label: "Professional Tax", amount: data.professionalTax },
+    { label: "TDS", amount: data.tds },
+    ...(data.otherDeductions > 0 ? [{ label: data.lop > 0 ? `LOP Deduction (${data.lop} days)` : "Other Deductions", amount: data.otherDeductions }] : []),
+  ].filter(r => r.amount > 0);
+
+  const maxRows = Math.max(earningsRows.length, deductionRows.length);
+
+  let salaryRows = "";
+  for (let i = 0; i < maxRows; i++) {
+    const e = earningsRows[i];
+    const d = deductionRows[i];
+    const shade = i % 2 === 1;
+    const bg = shade ? "#F7F9FC" : "#FFFFFF";
+    const dAmtColor = d && d.amount > 0 ? "#CC2E2E" : "#9CA3AF";
+    const dAmtDisplay = d ? (d.amount > 0 ? fmt(d.amount) : "—") : "";
+    salaryRows += `<tr style="background:${bg};">
+      <td style="padding:6px 12px;color:#1a1a1a;border-bottom:1px solid #E8EDF4;">${e ? e.label : ""}</td>
+      <td style="padding:6px 12px;text-align:right;color:#1a1a1a;border-bottom:1px solid #E8EDF4;">${e ? fmt(e.amount) : ""}</td>
+      <td style="padding:6px 12px;color:#1a1a1a;border-bottom:1px solid #E8EDF4;border-left:2px solid #C9D5E8;">${d ? d.label : ""}</td>
+      <td style="padding:6px 12px;text-align:right;color:${dAmtColor};border-bottom:1px solid #E8EDF4;">${dAmtDisplay}</td>
+    </tr>`;
+  }
+
+  const employeeInfoRows =
+    infoRow("Full Name", data.employeeName, true) +
+    infoRow("Employee ID", data.employeeId, false) +
+    infoRow("Joining Date", data.joiningDate, true) +
+    infoRow("Designation", data.designation, false) +
+    infoRow("Department", data.department, true) +
+    infoRow("Location", data.location, false) +
+    infoRow("Grade", data.grade, true) +
+    infoRow("Working Days (Month)", data.daysInMonth > 0 ? `${data.daysInMonth} days` : "", false) +
+    infoRow("Effective Workdays", data.empEffectiveWorkdays > 0 ? `${data.empEffectiveWorkdays} days` : "", true) +
+    infoRow("Loss of Pay (LOP)", data.lop > 0 ? `${data.lop} days` : "", false);
+
+  const bankInfoRows =
+    infoRow("Bank Name", data.bankName, true) +
+    infoRow("Account Number", data.bankAccountNo, false) +
+    infoRow("PF Number", data.pfNo, true) +
+    infoRow("PF UAN", data.pfUan, false) +
+    infoRow("ESI", data.esi, true);
+
   return `<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <title>Payslip - ${monthName} ${data.year}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; background: #fff; padding: 30px; }
-  .slip { max-width: 850px; margin: 0 auto; }
-  .header { text-align: center; margin-bottom: 5px; }
-  .header .logo-line { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 2px; }
-  .header h1 { font-size: 20px; font-weight: 700; color: #1a1a1a; }
-  .header .address { font-size: 11px; color: #555; }
-  .blue-line { height: 4px; background: linear-gradient(to right, #1a365d, #3182ce, #1a365d); margin: 10px 0 20px; }
-  .payslip-title { text-align: center; margin-bottom: 20px; }
-  .payslip-title h2 { font-size: 16px; text-decoration: underline; font-weight: 600; }
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #333; margin-bottom: 20px; }
-  .info-left, .info-right { padding: 0; }
-  .info-left { border-right: 1px solid #333; }
-  .info-row { display: flex; padding: 4px 10px; font-size: 12px; min-height: 24px; }
-  .info-row .lbl { min-width: 140px; font-weight: 600; color: #1a1a1a; }
-  .info-row .val { color: #333; }
-  .earnings-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-  .earnings-table th, .earnings-table td { border: 1px solid #333; padding: 5px 10px; font-size: 12px; text-align: left; }
-  .earnings-table th { background: #f0f0f0; font-weight: 700; }
-  .earnings-table .amount { text-align: right; }
-  .earnings-table .total-row { font-weight: 700; background: #f0f0f0; }
-  .net-pay-row { font-weight: 700; font-size: 13px; }
-  .net-pay-words { font-style: italic; font-weight: 700; font-size: 12px; padding: 5px 10px; }
-  .remarks { margin-top: 30px; font-size: 11px; }
-  .remarks .title { font-weight: 700; margin-bottom: 5px; }
-  .disclaimer { margin-top: 15px; font-size: 11px; color: #777; text-align: center; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; background: #EEF2F7; padding: 32px; }
   @media print {
-    body { padding: 10px; }
+    body { background: #fff; padding: 0; }
+    .slip-wrapper { box-shadow: none; }
   }
 </style>
 </head>
 <body>
-<div class="slip">
-  <div class="header">
-    <h1>Rayomind Solutions</h1>
-    <div class="address">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi, 110085, India</div>
-  </div>
-  <div class="blue-line"></div>
-  <div class="payslip-title">
-    <h2>Payslip for the month of ${monthName}- ${data.year}</h2>
-  </div>
+<div style="max-width:820px;margin:0 auto;background:#fff;box-shadow:0 4px 24px rgba(31,58,110,0.13);border-radius:4px;overflow:hidden;position:relative;">
 
-  <div class="info-grid">
-    <div class="info-left">
-      <div class="info-row"><span class="lbl">Name:</span><span class="val">${data.employeeName}</span></div>
-      <div class="info-row"><span class="lbl">Joining Date:</span><span class="val">${data.joiningDate}</span></div>
-      <div class="info-row"><span class="lbl">Designation:</span><span class="val">${data.designation}</span></div>
-      <div class="info-row"><span class="lbl">Department:</span><span class="val">${data.department}</span></div>
-      <div class="info-row" style="height:24px"></div>
-      <div class="info-row"><span class="lbl">Location:</span><span class="val">${data.location}</span></div>
-      <div class="info-row"><span class="lbl">Grade:</span><span class="val">${data.grade}</span></div>
-      <div class="info-row"><span class="lbl">EMP EFFECTIVE WORKDAYS:</span><span class="val">${data.empEffectiveWorkdays}</span></div>
-      <div class="info-row"><span class="lbl">DAYS IN MONTH:</span><span class="val">${data.daysInMonth}</span></div>
-    </div>
-    <div class="info-right">
-      <div class="info-row"><span class="lbl">Bank Name:</span><span class="val">${data.bankName}</span></div>
-      <div class="info-row"><span class="lbl">Bank Account No:</span><span class="val">${data.bankAccountNo}</span></div>
-      <div class="info-row"><span class="lbl">PF No:</span><span class="val">${data.pfNo}</span></div>
-      <div class="info-row"><span class="lbl">PF UAN:</span><span class="val">${data.pfUan}</span></div>
-      <div class="info-row"><span class="lbl">ESI:</span><span class="val">${data.esi}</span></div>
-      <div class="info-row" style="height:24px"></div>
-      <div class="info-row" style="height:24px"></div>
-      <div class="info-row"><span class="lbl">LOP:</span><span class="val">${data.lop}</span></div>
-      <div class="info-row" style="height:24px"></div>
+  <!-- DIAGONAL WATERMARK -->
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;overflow:hidden;">
+    <div style="transform:rotate(-38deg);font-size:68px;font-weight:900;letter-spacing:8px;color:rgba(31,58,110,0.035);white-space:nowrap;user-select:none;line-height:1.6;text-align:center;">
+      RAYOMIND SOLUTIONS<br/>RAYOMIND SOLUTIONS<br/>RAYOMIND SOLUTIONS
     </div>
   </div>
 
-  <table class="earnings-table">
-    <thead>
-      <tr>
-        <th>Earnings</th>
-        <th class="amount">Amount</th>
-        <th>Deductions</th>
-        <th class="amount">Amount</th>
-        <th class="amount">YTD</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>BASIC</td>
-        <td class="amount">${formatCurrency(data.basic)}</td>
-        <td>${data.pfDeduction > 0 ? 'PF' : ''}</td>
-        <td class="amount">${data.pfDeduction > 0 ? formatCurrency(data.pfDeduction) : ''}</td>
-        <td class="amount"></td>
-      </tr>
-      <tr>
-        <td>HRA</td>
-        <td class="amount">${formatCurrency(data.hra)}</td>
-        <td>${data.esiDeduction > 0 ? 'ESI' : ''}</td>
-        <td class="amount">${data.esiDeduction > 0 ? formatCurrency(data.esiDeduction) : ''}</td>
-        <td class="amount"></td>
-      </tr>
-      <tr>
-        <td>CONVEYANCE</td>
-        <td class="amount">${formatCurrency(data.conveyance)}</td>
-        <td>${data.professionalTax > 0 ? 'Professional Tax' : ''}</td>
-        <td class="amount">${data.professionalTax > 0 ? formatCurrency(data.professionalTax) : ''}</td>
-        <td class="amount"></td>
-      </tr>
-      <tr>
-        <td>SPECIAL ALLOWANCE</td>
-        <td class="amount">${formatCurrency(data.specialAllowance)}</td>
-        <td>${data.tds > 0 ? 'TDS' : ''}</td>
-        <td class="amount">${data.tds > 0 ? formatCurrency(data.tds) : ''}</td>
-        <td class="amount"></td>
-      </tr>
-      ${data.otherDeductions > 0 ? `<tr>
-        <td></td>
-        <td class="amount"></td>
-        <td>${data.lop > 0 ? `LOP Deduction (${data.lop} days)` : 'Other Deductions'}</td>
-        <td class="amount">${formatCurrency(data.otherDeductions)}</td>
-        <td class="amount"></td>
-      </tr>` : ''}
-      <tr class="total-row">
-        <td>Total Earnings</td>
-        <td class="amount">${formatCurrency(totalEarnings)}</td>
-        <td>Total Deduction</td>
-        <td class="amount">${formatCurrency(totalDeductions)}</td>
-        <td class="amount"></td>
-      </tr>
-    </tbody>
-  </table>
+  <!-- CONTENT -->
+  <div style="position:relative;z-index:1;">
 
-  <table class="earnings-table">
-    <tr class="net-pay-row">
-      <td colspan="5">Net Pay for the month : <span style="float:right">${formatCurrency(netPay)}</span></td>
-    </tr>
-    <tr>
-      <td colspan="5" class="net-pay-words">(Rupees ${netPayWords})</td>
-    </tr>
-  </table>
+    <!-- HEADER -->
+    <div style="background:linear-gradient(135deg,${NAVY} 0%,${LIGHT_NAVY} 100%);padding:20px 28px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="background:#fff;border-radius:6px;padding:6px 10px;display:flex;align-items:center;">
+          <img src="/rayomind-logo.png" alt="Rayomind Solutions" style="height:38px;object-fit:contain;" />
+        </div>
+        <div>
+          <div style="color:#fff;font-size:18px;font-weight:700;letter-spacing:0.5px;">Rayomind Solutions</div>
+          <div style="color:rgba(255,255,255,0.72);font-size:10.5px;margin-top:2px;">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="background:${ORANGE};color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:3px;letter-spacing:1px;text-transform:uppercase;">Payslip</div>
+        <div style="color:rgba(255,255,255,0.85);font-size:11px;margin-top:6px;font-weight:600;">${monthName} ${data.year}</div>
+        ${data.employeeId ? `<div style="margin-top:4px;display:inline-block;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.9);font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:3px;letter-spacing:0.5px;border:1px solid rgba(255,255,255,0.25);">${data.employeeId}</div>` : ""}
+      </div>
+    </div>
 
-  <div class="remarks">
-    <div class="title">Remarks:</div>
+    <!-- ORANGE ACCENT LINE -->
+    <div style="height:3px;background:linear-gradient(to right,${ORANGE},#FBBB6D,${ORANGE});"></div>
+
+    <!-- TITLE -->
+    <div style="text-align:center;padding:14px 0 10px;border-bottom:2px solid ${NAVY};">
+      <span style="font-size:13px;font-weight:700;color:${NAVY};letter-spacing:0.8px;text-transform:uppercase;">
+        PAYSLIP FOR THE MONTH OF ${monthName.toUpperCase()} ${data.year}
+      </span>
+    </div>
+
+    <!-- EMPLOYEE INFO GRID -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid ${NAVY};">
+      <div style="border-right:1px solid #C9D5E8;">
+        <div style="background:${NAVY};padding:6px 12px;">
+          <span style="color:#fff;font-size:10.5px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Employee Information</span>
+        </div>
+        ${employeeInfoRows}
+      </div>
+      <div>
+        <div style="background:${NAVY};padding:6px 12px;">
+          <span style="color:#fff;font-size:10.5px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Bank &amp; Statutory Details</span>
+        </div>
+        ${bankInfoRows}
+      </div>
+    </div>
+
+    <!-- EARNINGS & DEDUCTIONS TABLE -->
+    <div style="margin:16px 0 0;">
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background:${ORANGE};color:#fff;padding:7px 12px;text-align:left;font-weight:700;letter-spacing:0.5px;width:50%;font-size:11px;">EARNINGS</th>
+            <th colspan="2" style="background:${NAVY};color:#fff;padding:7px 12px;text-align:left;font-weight:700;letter-spacing:0.5px;width:50%;font-size:11px;">DEDUCTIONS</th>
+          </tr>
+          <tr style="background:#F0F4FA;">
+            <th style="padding:5px 12px;text-align:left;color:#374151;font-weight:600;width:32%;border-bottom:1px solid #C9D5E8;">Component</th>
+            <th style="padding:5px 12px;text-align:right;color:#374151;font-weight:600;width:18%;border-bottom:1px solid #C9D5E8;">Amount (₹)</th>
+            <th style="padding:5px 12px;text-align:left;color:#374151;font-weight:600;width:32%;border-bottom:1px solid #C9D5E8;border-left:2px solid #C9D5E8;">Component</th>
+            <th style="padding:5px 12px;text-align:right;color:#374151;font-weight:600;width:18%;border-bottom:1px solid #C9D5E8;">Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${salaryRows}
+          <tr style="background:#EEF2F7;font-weight:700;">
+            <td style="padding:8px 12px;color:${NAVY};font-size:12px;border-top:2px solid ${NAVY};">Total Earnings</td>
+            <td style="padding:8px 12px;text-align:right;color:#1A7A3C;font-size:12px;border-top:2px solid ${NAVY};">${fmt(totalEarnings)}</td>
+            <td style="padding:8px 12px;color:${NAVY};font-size:12px;border-top:2px solid ${NAVY};border-left:2px solid #C9D5E8;">Total Deductions</td>
+            <td style="padding:8px 12px;text-align:right;color:#CC2E2E;font-size:12px;border-top:2px solid ${NAVY};">${fmt(totalDeductions)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- NET PAY -->
+    <div style="background:${NAVY};margin:14px 0 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="color:rgba(255,255,255,0.7);font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Net Pay for the Month</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="color:${ORANGE};font-size:11px;font-weight:700;letter-spacing:0.5px;">AMOUNT CREDITED</div>
+        <div style="color:#fff;font-size:26px;font-weight:800;letter-spacing:0.5px;">₹${fmt(netPay)}</div>
+      </div>
+    </div>
+
+    <!-- AMOUNT IN WORDS -->
+    <div style="padding:8px 20px;background:#F7F9FC;border-bottom:1px solid #E8EDF4;font-size:10.5px;color:#374151;font-style:italic;">
+      Rupees ${netPayWords} Only
+    </div>
+
+    <!-- FOOTER -->
+    <div style="padding:12px 20px 16px;border-top:3px solid ${ORANGE};margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+        <div>
+          <div style="font-size:9.5px;color:#6B7280;line-height:1.6;">This is a system-generated payslip and does not require a physical signature.</div>
+          <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">hr@rayomind.com</span></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.5px;">© ${data.year} Rayomind Solutions Pvt. Ltd.</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;justify-content:flex-end;">
+            <img src="/rayomind-logo.png" alt="" style="height:16px;opacity:0.45;" />
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
-  <div class="disclaimer">This is a computer generated payslip and does not require a signature</div>
 </div>
 </body>
 </html>`;
@@ -279,6 +346,7 @@ function SalarySlipGenerator() {
     setFormData(prev => ({
       ...prev,
       employeeName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+      employeeId: user.employeeId || user.username || "",
       designation: user.designation || "",
       department: dept?.name || "",
       joiningDate: user.joiningDate ? new Date(user.joiningDate).toLocaleDateString("en-IN") : "",
@@ -457,6 +525,10 @@ function SalarySlipGenerator() {
               <div>
                 <Label>Name</Label>
                 <Input data-testid="input-slip-name" value={formData.employeeName} onChange={e => updateField("employeeName", e.target.value)} />
+              </div>
+              <div>
+                <Label>Employee ID</Label>
+                <Input data-testid="input-slip-empid" value={formData.employeeId} onChange={e => updateField("employeeId", e.target.value)} />
               </div>
               <div>
                 <Label>Bank Name</Label>
