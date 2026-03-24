@@ -132,19 +132,14 @@ export function Enterprise() {
               </div>
             </div>
 
-            {/* RIGHT — HIS logo + Hire'in Solutions + subscript */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-              <div style={{
-                background: "#fff", borderRadius: 5, padding: "4px 6px",
-                display: "flex", alignItems: "center"
-              }}>
-                <img
-                  src="/__mockup/images/his-logo.jpg"
-                  alt="Hire'in Solutions"
-                  style={{ height: 36, objectFit: "contain" }}
-                />
-              </div>
-              <div style={{ textAlign: "right" }}>
+            {/* RIGHT — HIS logo + Hire'in Solutions + subscript (centred) */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <img
+                src="/__mockup/images/his-logo.jpg"
+                alt="Hire'in Solutions"
+                style={{ height: 36, objectFit: "contain", borderRadius: 4 }}
+              />
+              <div style={{ textAlign: "center" }}>
                 <div style={{ color: "#fff", fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>
                   Hire'in Solutions
                 </div>
@@ -158,12 +153,6 @@ export function Enterprise() {
           {/* ORANGE ACCENT LINE */}
           <div style={{ height: 3, background: `linear-gradient(to right, ${ORANGE}, #FBBB6D, ${ORANGE})` }} />
 
-          {/* TITLE */}
-          <div style={{ textAlign: "center", padding: "13px 0 10px", borderBottom: `2px solid ${NAVY}` }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.8, textTransform: "uppercase" }}>
-              Payslip for the Month of {sampleData.month} {sampleData.year}
-            </span>
-          </div>
 
           {/* EMPLOYEE INFO — slimmed to 5 fields only */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: `1px solid ${NAVY}` }}>
@@ -199,6 +188,9 @@ export function Enterprise() {
                 <tr>
                   <th colSpan={2} style={{ background: ORANGE, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
                     EARNINGS
+                    <span style={{ fontSize: 9.5, fontWeight: 500, marginLeft: 10, opacity: 0.85, letterSpacing: 0.3, textTransform: "none" }}>
+                      Pay Period: {sampleData.month} {sampleData.year}
+                    </span>
                   </th>
                   <th colSpan={2} style={{ background: NAVY, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
                     DEDUCTIONS
