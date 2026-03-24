@@ -68,14 +68,14 @@ export function Cover() {
               display: "flex", alignItems: "center", flexShrink: 0
             }}>
               <img
-                src="/__mockup/images/rayomind-logo.png"
-                alt="Rayomind"
+                src="/__mockup/images/his-logo.jpg"
+                alt="Hire'in Solutions"
                 style={{ height: 28, objectFit: "contain" }}
               />
             </div>
             <div>
               <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 }}>
-                A Rayomind Company
+                A Rayomind Company &nbsp;·&nbsp; EST 2014
               </div>
             </div>
           </div>
@@ -87,15 +87,9 @@ export function Cover() {
           <div style={{ position: "relative", zIndex: 1 }}>
             <div style={{
               fontSize: 30, fontWeight: 800, color: "#FFFFFF",
-              letterSpacing: -0.5, lineHeight: 1.1, marginBottom: 4
+              letterSpacing: -0.5, lineHeight: 1.1, marginBottom: 14
             }}>
               Hire'in Solutions
-            </div>
-            <div style={{
-              fontSize: 11, fontWeight: 600, color: ORANGE,
-              letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 14
-            }}>
-              Since 2014
             </div>
           </div>
 
@@ -107,8 +101,6 @@ export function Cover() {
             Revolutionizing the hiring process and a pioneer in staffing needs — connecting the right talent with the right opportunity.
           </div>
 
-          {/* Divider */}
-          <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.12)", marginBottom: 18, position: "relative", zIndex: 1 }} />
 
 
           {/* Bottom — domain */}
