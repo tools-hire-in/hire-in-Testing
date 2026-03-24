@@ -6,19 +6,13 @@ export function Enterprise() {
   const sampleData = {
     employeeName: "Ayushi Tiwari",
     employeeId: "HIS-HC-NOVA",
-    joiningDate: "December 8, 2025",
     designation: "Healthcare Recruiter",
     department: "Healthcare",
-    location: "Noida, U.P.",
-    grade: "L2",
+    location: "Remote",
     bankName: "State Bank of India",
     bankAccountNo: "34942471488",
     pfNo: "DL/CPM/1234567",
     pfUan: "100987654321",
-    esi: "N/A",
-    empEffectiveWorkdays: 31,
-    daysInMonth: 31,
-    lop: 0,
     month: "January",
     year: 2026,
     basic: 21000,
@@ -40,7 +34,7 @@ export function Enterprise() {
 
   const InfoRow = ({ label, value, shade }: { label: string; value: string; shade?: boolean }) => (
     <div style={{
-      display: "flex", padding: "5px 12px", fontSize: 11,
+      display: "flex", padding: "6px 14px", fontSize: 11,
       backgroundColor: shade ? "#F7F9FC" : "#FFFFFF",
       borderBottom: "1px solid #E8EDF4"
     }}>
@@ -58,10 +52,8 @@ export function Enterprise() {
 
   const deductionRows = [
     { label: "Provident Fund (PF)", amount: sampleData.pfDeduction },
-    { label: "ESI", amount: sampleData.esiDeduction },
     { label: "Professional Tax", amount: sampleData.professionalTax },
-    { label: "TDS", amount: sampleData.tds },
-  ];
+  ].filter(r => r.amount > 0);
 
   const maxRows = Math.max(earningsRows.length, deductionRows.length);
   const paddedEarnings = [...earningsRows, ...Array(maxRows - earningsRows.length).fill(null)];
@@ -92,79 +84,73 @@ export function Enterprise() {
           </div>
         </div>
 
-        {/* CONTENT — above watermark */}
+        {/* CONTENT */}
         <div style={{ position: "relative", zIndex: 1 }}>
 
-          {/* HEADER */}
+          {/* ── HEADER: Logo | Company Name (centre) | HIS Logo ── */}
           <div style={{
             background: `linear-gradient(135deg, ${NAVY} 0%, ${LIGHT_NAVY} 100%)`,
-            padding: "18px 28px", display: "flex", alignItems: "center",
-            justifyContent: "space-between", gap: 16
+            padding: "20px 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between"
           }}>
-            {/* LEFT — Rayomind (issuing entity) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1 }}>
-              <div style={{
-                background: "#fff", borderRadius: 6, padding: "5px 8px",
-                display: "flex", alignItems: "center", flexShrink: 0
-              }}>
-                <img
-                  src="/__mockup/images/rayomind-logo.png"
-                  alt="Rayomind Solutions LLP"
-                  style={{ height: 36, objectFit: "contain" }}
-                />
+
+            {/* LEFT — Rayomind logo only */}
+            <div style={{
+              background: "#fff", borderRadius: 6, padding: "6px 10px",
+              display: "flex", alignItems: "center", flexShrink: 0
+            }}>
+              <img
+                src="/__mockup/images/rayomind-logo.png"
+                alt="Rayomind Solutions LLP"
+                style={{ height: 40, objectFit: "contain" }}
+              />
+            </div>
+
+            {/* CENTER — Legal entity name + address + payslip meta */}
+            <div style={{ textAlign: "center", flex: 1, padding: "0 20px" }}>
+              <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1.2 }}>
+                Rayomind Solutions LLP
               </div>
-              <div>
-                <div style={{ color: "#fff", fontSize: 16, fontWeight: 700, letterSpacing: 0.5 }}>
-                  Rayomind Solutions LLP
-                </div>
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 10, marginTop: 2 }}>
-                  Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
-                </div>
+              <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, marginTop: 4, letterSpacing: 0.2 }}>
+                Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
+              </div>
+              <div style={{
+                marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8,
+                background: "rgba(255,255,255,0.1)", borderRadius: 4,
+                padding: "4px 12px", border: "1px solid rgba(255,255,255,0.18)"
+              }}>
+                <span style={{ background: ORANGE, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase" }}>
+                  Payslip
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.9)", fontSize: 10.5, fontWeight: 600 }}>
+                  {sampleData.month} {sampleData.year}
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 9 }}>|</span>
+                <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                  {sampleData.employeeId}
+                </span>
               </div>
             </div>
 
-            {/* DIVIDER */}
-            <div style={{ width: 1, height: 48, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
-
-            {/* CENTER — Hire'in Solutions (operating brand) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {/* RIGHT — HIS logo + Hire'in Solutions + subscript */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
               <div style={{
-                background: "#fff", borderRadius: 5, padding: "3px 5px",
+                background: "#fff", borderRadius: 5, padding: "4px 6px",
                 display: "flex", alignItems: "center"
               }}>
                 <img
                   src="/__mockup/images/his-logo.jpg"
                   alt="Hire'in Solutions"
-                  style={{ height: 32, objectFit: "contain" }}
+                  style={{ height: 36, objectFit: "contain" }}
                 />
               </div>
-              <div>
-                <div style={{ color: "#fff", fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: "#fff", fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>
                   Hire'in Solutions
                 </div>
-                <div style={{ color: ORANGE, fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 2 }}>
+                <div style={{ color: ORANGE, fontSize: 8.5, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>
                   A Rayomind Company
                 </div>
-              </div>
-            </div>
-
-            {/* DIVIDER */}
-            <div style={{ width: 1, height: 48, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
-
-            {/* RIGHT — Payslip meta */}
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{
-                background: ORANGE, color: "#fff", fontSize: 9.5, fontWeight: 700,
-                padding: "3px 10px", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase",
-                display: "inline-block"
-              }}>
-                Payslip
-              </div>
-              <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: 5, fontWeight: 600 }}>
-                {sampleData.month} {sampleData.year}
-              </div>
-              <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, marginTop: 2 }}>
-                {sampleData.employeeId}
               </div>
             </div>
           </div>
@@ -173,39 +159,28 @@ export function Enterprise() {
           <div style={{ height: 3, background: `linear-gradient(to right, ${ORANGE}, #FBBB6D, ${ORANGE})` }} />
 
           {/* TITLE */}
-          <div style={{
-            textAlign: "center", padding: "14px 0 10px",
-            borderBottom: `2px solid ${NAVY}`
-          }}>
-            <span style={{
-              fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.8,
-              textTransform: "uppercase"
-            }}>
+          <div style={{ textAlign: "center", padding: "13px 0 10px", borderBottom: `2px solid ${NAVY}` }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.8, textTransform: "uppercase" }}>
               Payslip for the Month of {sampleData.month} {sampleData.year}
             </span>
           </div>
 
-          {/* EMPLOYEE INFO GRID */}
+          {/* EMPLOYEE INFO — slimmed to 5 fields only */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: `1px solid ${NAVY}` }}>
             <div style={{ borderRight: `1px solid #C9D5E8` }}>
-              <div style={{ background: NAVY, padding: "6px 12px" }}>
+              <div style={{ background: NAVY, padding: "6px 14px" }}>
                 <span style={{ color: "#fff", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                   Employee Information
                 </span>
               </div>
               <InfoRow label="Full Name" value={sampleData.employeeName} shade />
               <InfoRow label="Employee ID" value={sampleData.employeeId} />
-              <InfoRow label="Joining Date" value={sampleData.joiningDate} shade />
-              <InfoRow label="Designation" value={sampleData.designation} />
-              <InfoRow label="Department" value={sampleData.department} shade />
-              <InfoRow label="Location" value={sampleData.location} />
-              <InfoRow label="Grade" value={sampleData.grade} shade />
-              <InfoRow label="Working Days (Month)" value={`${sampleData.daysInMonth} days`} />
-              <InfoRow label="Effective Workdays" value={`${sampleData.empEffectiveWorkdays} days`} shade />
-              <InfoRow label="Loss of Pay (LOP)" value={`${sampleData.lop} days`} />
+              <InfoRow label="Designation" value={sampleData.designation} shade />
+              <InfoRow label="Department" value={sampleData.department} />
+              <InfoRow label="Location" value={sampleData.location} shade />
             </div>
             <div>
-              <div style={{ background: NAVY, padding: "6px 12px" }}>
+              <div style={{ background: NAVY, padding: "6px 14px" }}>
                 <span style={{ color: "#fff", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                   Bank & Statutory Details
                 </span>
@@ -214,7 +189,6 @@ export function Enterprise() {
               <InfoRow label="Account Number" value={sampleData.bankAccountNo} />
               <InfoRow label="PF Number" value={sampleData.pfNo} shade />
               <InfoRow label="PF UAN" value={sampleData.pfUan} />
-              <InfoRow label="ESI" value={sampleData.esi} shade />
             </div>
           </div>
 
@@ -253,13 +227,12 @@ export function Enterprise() {
                       <td style={{ padding: "6px 12px", color: "#1a1a1a", borderBottom: "1px solid #E8EDF4", borderLeft: "2px solid #C9D5E8" }}>
                         {d ? d.label : ""}
                       </td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", color: d && d.amount > 0 ? "#CC2E2E" : "#1a1a1a", borderBottom: "1px solid #E8EDF4" }}>
-                        {d && d.amount > 0 ? fmt(d.amount) : d ? "—" : ""}
+                      <td style={{ padding: "6px 12px", textAlign: "right", color: d && d.amount > 0 ? "#CC2E2E" : "#9CA3AF", borderBottom: "1px solid #E8EDF4" }}>
+                        {d ? (d.amount > 0 ? fmt(d.amount) : "—") : ""}
                       </td>
                     </tr>
                   );
                 })}
-
                 {/* TOTALS ROW */}
                 <tr style={{ background: "#EEF2F7", fontWeight: 700 }}>
                   <td style={{ padding: "8px 12px", color: NAVY, fontSize: 12, borderTop: `2px solid ${NAVY}` }}>Total Earnings</td>
