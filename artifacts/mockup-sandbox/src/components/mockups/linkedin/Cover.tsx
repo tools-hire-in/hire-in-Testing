@@ -141,16 +141,6 @@ export function Cover() {
         </div>
 
       </div>
-
-      {/* Download note */}
-      <div style={{
-        position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)",
-        background: "rgba(31,58,110,0.9)", color: "#fff",
-        fontSize: 11, padding: "8px 20px", borderRadius: 20,
-        letterSpacing: 0.3, boxShadow: "0 4px 16px rgba(0,0,0,0.2)"
-      }}>
-        LinkedIn Company Cover · 1584 × 396 px ratio
-      </div>
     </div>
   );
 }
