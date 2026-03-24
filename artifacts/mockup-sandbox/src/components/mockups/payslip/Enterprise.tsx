@@ -115,7 +115,7 @@ export function Enterprise() {
                 Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
               </div>
               <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9.5, marginTop: 3, letterSpacing: 0.5 }}>
-                CIN: AAB-1234 · GSTIN: 07AAACR1234A1ZX
+                GSTIN/UIN: 07ABMFR1303G1ZF
               </div>
             </div>
 
@@ -140,6 +140,19 @@ export function Enterprise() {
           {/* ORANGE ACCENT LINE */}
           <div style={{ height: 3, background: `linear-gradient(to right, ${ORANGE}, #FBBB6D, ${ORANGE})` }} />
 
+          {/* PAYSLIP RIBBON */}
+          <div style={{
+            textAlign: "center", padding: "11px 0 10px",
+            borderBottom: `1px solid #D1DAEA`,
+            background: "#FFFFFF"
+          }}>
+            <span style={{
+              fontSize: 12.5, fontWeight: 700, color: NAVY,
+              letterSpacing: 1.2, textTransform: "uppercase"
+            }}>
+              Pay Slip &nbsp;—&nbsp; {sampleData.month} {sampleData.year}
+            </span>
+          </div>
 
           {/* EMPLOYEE INFO — slimmed to 5 fields only */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: `1px solid ${NAVY}` }}>
@@ -269,7 +282,7 @@ export function Enterprise() {
                   This is a system-generated payslip and does not require a physical signature.
                 </div>
                 <div style={{ fontSize: 9.5, color: "#6B7280" }}>
-                  For queries contact: <span style={{ color: NAVY, fontWeight: 600 }}>hr@rayomind.com</span>
+                  For queries contact: <span style={{ color: NAVY, fontWeight: 600 }}>alina.carter@hire-in.com</span>
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>

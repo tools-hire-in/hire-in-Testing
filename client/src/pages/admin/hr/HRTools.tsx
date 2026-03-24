@@ -200,7 +200,7 @@ function generatePayslipHTML(data: SlipFormData): string {
       <div style="text-align:center;flex:1;padding:0 20px;">
         <div style="color:#fff;font-size:19px;font-weight:800;letter-spacing:0.3px;line-height:1.2;">Rayomind Solutions LLP</div>
         <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-top:5px;letter-spacing:0.2px;">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India</div>
-        <div style="color:rgba(255,255,255,0.38);font-size:9px;margin-top:3px;letter-spacing:0.5px;">CIN: AAB-1234 · GSTIN: 07AAACR1234A1ZX</div>
+        <div style="color:rgba(255,255,255,0.38);font-size:9px;margin-top:3px;letter-spacing:0.5px;">GSTIN/UIN: 07ABMFR1303G1ZF</div>
       </div>
       <!-- Right: HIS logo + subscript (centred) -->
       <div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;">
@@ -214,6 +214,13 @@ function generatePayslipHTML(data: SlipFormData): string {
 
     <!-- ORANGE ACCENT LINE -->
     <div style="height:3px;background:linear-gradient(to right,${ORANGE},#FBBB6D,${ORANGE});"></div>
+
+    <!-- PAYSLIP RIBBON -->
+    <div style="text-align:center;padding:11px 0 10px;border-bottom:1px solid #D1DAEA;background:#FFFFFF;">
+      <span style="font-size:12.5px;font-weight:700;color:${NAVY};letter-spacing:1.2px;text-transform:uppercase;">
+        Pay Slip &nbsp;&mdash;&nbsp; ${monthName} ${data.year}
+      </span>
+    </div>
 
     <!-- EMPLOYEE INFO GRID -->
     <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid ${NAVY};">
@@ -289,7 +296,7 @@ function generatePayslipHTML(data: SlipFormData): string {
       <div style="display:flex;justify-content:space-between;align-items:flex-end;">
         <div>
           <div style="font-size:9.5px;color:#6B7280;line-height:1.6;">This is a system-generated payslip and does not require a physical signature.</div>
-          <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">hr@rayomind.com</span></div>
+          <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">alina.carter@hire-in.com</span></div>
         </div>
         <div style="text-align:right;">
           <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.5px;">© ${data.year} Rayomind Solutions LLP</div>
