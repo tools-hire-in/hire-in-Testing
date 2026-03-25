@@ -95,7 +95,6 @@ function generatePayslipHTML(data: SlipFormData): string {
 
   const NAVY = "#1F3A6E";
   const ORANGE = "#F47C20";
-  const LIGHT_NAVY = "#2A4D8F";
 
   const fmt = (n: number) =>
     n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -149,18 +148,28 @@ function generatePayslipHTML(data: SlipFormData): string {
     </tr>`;
   }
 
+  const summaryRow = (label: string, value: string) => {
+    if (isBlank(value)) return "";
+    return `<div style="display:flex;padding:5px 0;font-size:11px;gap:0;">
+      <span style="min-width:148px;color:#6B7280;font-weight:400;">${label}</span>
+      <span style="margin-right:10px;color:#374151;">:</span>
+      <span style="color:#111827;font-weight:500;">${value}</span>
+    </div>`;
+  };
+
   const employeeInfoRows =
-    infoRow("Full Name", data.employeeName, true) +
-    infoRow("Employee ID", data.employeeId, false) +
-    infoRow("Designation", data.designation, true) +
-    infoRow("Department", data.department, false) +
-    infoRow("Location", data.location, true);
+    summaryRow("Full Name", data.employeeName) +
+    summaryRow("Employee ID", data.employeeId) +
+    summaryRow("Designation", data.designation) +
+    summaryRow("Department", data.department) +
+    summaryRow("Location", data.location) +
+    summaryRow("Pay Period", `${monthName} ${data.year}`);
 
   const bankInfoRows =
-    infoRow("Bank Name", data.bankName, true) +
-    infoRow("Account Number", data.bankAccountNo, false) +
-    infoRow("PF Number", data.pfNo, true) +
-    infoRow("PF UAN", data.pfUan, false);
+    summaryRow("Bank Name", data.bankName) +
+    summaryRow("Account Number", data.bankAccountNo) +
+    summaryRow("PF Number", data.pfNo) +
+    summaryRow("PF UAN", data.pfUan);
 
   return `<!DOCTYPE html>
 <html>
@@ -194,24 +203,26 @@ function generatePayslipHTML(data: SlipFormData): string {
   <!-- CONTENT -->
   <div style="position:relative;z-index:1;">
 
-    <!-- HEADER: 3-column — Rayomind logo | Company name + address | HIS logo -->
-    <div style="background:linear-gradient(135deg,${NAVY} 0%,${LIGHT_NAVY} 100%);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <!-- Left: Rayomind logo only -->
-      <div style="background:#fff;border-radius:6px;padding:6px 10px;display:flex;align-items:center;flex-shrink:0;">
+    <!-- HEADER: White — Rayomind logo + address left | HIS logo + payslip title right -->
+    <div style="background:#fff;padding:22px 28px 18px;display:flex;align-items:flex-start;justify-content:space-between;">
+      <!-- Left: Rayomind logo + address + GSTIN -->
+      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:5px;">
         <img src="/rayomind-logo.png" alt="Rayomind Solutions LLP" style="height:40px;object-fit:contain;" />
+        <div style="font-size:9.5px;color:#6B7280;margin-top:3px;line-height:1.5;">Suite No-101, Pocket-6, Sector-2<br/>Rohini, New Delhi – 110085, India</div>
+        <div style="font-size:8.5px;color:#9CA3AF;letter-spacing:0.3px;">GSTIN/UIN: 07ABMFR1303G1ZF</div>
       </div>
-      <!-- Centre: Legal entity name + address -->
-      <div style="text-align:center;flex:1;padding:0 20px;">
-        <div style="color:#fff;font-size:19px;font-weight:800;letter-spacing:0.3px;line-height:1.2;">Rayomind Solutions LLP</div>
-        <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-top:5px;letter-spacing:0.2px;">Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India</div>
-        <div style="color:rgba(255,255,255,0.38);font-size:9px;margin-top:3px;letter-spacing:0.5px;">GSTIN/UIN: 07ABMFR1303G1ZF</div>
-      </div>
-      <!-- Right: HIS logo + subscript (centred) -->
-      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;">
-        <img src="/his-logo.jpg" alt="Hire'in Solutions" style="height:36px;object-fit:contain;border-radius:4px;" />
-        <div style="text-align:center;">
-          <div style="color:#fff;font-size:11.5px;font-weight:700;letter-spacing:0.2px;">Hire'in Solutions</div>
-          <div style="color:${ORANGE};font-size:8.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">A Rayomind Company</div>
+      <!-- Right: HIS logo + "Hire'in Solutions" + payslip month -->
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="text-align:right;">
+            <div style="font-size:12px;font-weight:700;color:#111827;">Hire'in Solutions</div>
+            <div style="font-size:8.5px;color:${ORANGE};font-weight:600;letter-spacing:0.8px;text-transform:uppercase;margin-top:1px;">A Rayomind Company</div>
+          </div>
+          <img src="/his-logo.jpg" alt="Hire'in Solutions" style="height:34px;object-fit:contain;border-radius:4px;" />
+        </div>
+        <div style="text-align:right;margin-top:4px;">
+          <div style="font-size:10px;color:#9CA3AF;font-weight:400;">Payslip For the Month</div>
+          <div style="font-size:20px;font-weight:800;color:${NAVY};line-height:1.1;margin-top:2px;">${monthName} ${data.year}</div>
         </div>
       </div>
     </div>
@@ -219,37 +230,18 @@ function generatePayslipHTML(data: SlipFormData): string {
     <!-- ORANGE ACCENT LINE -->
     <div style="height:3px;background:linear-gradient(to right,${ORANGE},#FBBB6D,${ORANGE});"></div>
 
-    <!-- PAYSLIP RIBBON -->
-    <div style="text-align:center;padding:11px 0 10px;border-bottom:1px solid #D1DAEA;background:#FFFFFF;">
-      <span style="font-size:12.5px;font-weight:700;color:${NAVY};letter-spacing:1.2px;text-transform:uppercase;">
-        Pay Slip &nbsp;&mdash;&nbsp; ${monthName} ${data.year}
-      </span>
-    </div>
-
-    <!-- EMPLOYEE INFO GRID -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid ${NAVY};">
-      <div style="border-right:1px solid #C9D5E8;">
-        <div style="background:${NAVY};padding:6px 12px;">
-          <span style="color:#fff;font-size:10.5px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Employee Information</span>
-        </div>
+    <!-- EMPLOYEE SUMMARY + BANK DETAILS (two-column label:value) -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:18px 28px 14px;border-bottom:1px solid #E8EDF4;background:#fff;">
+      <!-- Left: Employee info -->
+      <div style="border-right:1px solid #E8EDF4;padding-right:24px;">
+        <div style="font-size:9.5px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Employee Information</div>
         ${employeeInfoRows}
       </div>
-      <div>
-        <div style="background:${NAVY};padding:6px 12px;">
-          <span style="color:#fff;font-size:10.5px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Bank &amp; Statutory Details</span>
-        </div>
+      <!-- Right: Bank & Statutory -->
+      <div style="padding-left:24px;">
+        <div style="font-size:9.5px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bank &amp; Statutory Details</div>
         ${bankInfoRows}
       </div>
-    </div>
-
-    <!-- PAY PERIOD ROW -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#F0F4FA;border-top:1px solid #C9D5E8;border-bottom:1px solid #C9D5E8;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.8px;">Pay Period</span>
-        <span style="width:1px;height:12px;background:#C9D5E8;display:inline-block;"></span>
-        <span style="font-size:11px;font-weight:600;color:#374151;">${monthName} ${data.year}</span>
-      </div>
-      <div style="font-size:10px;color:#6B7280;">Salary Statement · Confidential</div>
     </div>
 
     <!-- EARNINGS & DEDUCTIONS TABLE -->
