@@ -158,24 +158,14 @@ export function Enterprise() {
                   Total Net Pay
                 </div>
               </div>
-              <div style={{ borderTop: `1px dashed #FDBA8C`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ borderTop: `1px dashed #FDBA8C`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
-                  <span style={{ color: "#6B7280" }}>Gross Earnings</span>
-                  <span style={{ fontWeight: 600, color: NAVY }}>₹{fmt(totalEarnings)}</span>
+                  <span style={{ color: "#6B7280" }}>Pay Days</span>
+                  <span style={{ fontWeight: 600, color: NAVY }}>{sampleData.paidDays}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
-                  <span style={{ color: "#6B7280" }}>Total Deductions</span>
-                  <span style={{ fontWeight: 600, color: "#DC2626" }}>−₹{fmt(totalDeductions)}</span>
-                </div>
-                <div style={{ borderTop: `1px dashed #FDBA8C`, marginTop: 2, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
-                    <span style={{ color: "#6B7280" }}>Pay Days</span>
-                    <span style={{ fontWeight: 600, color: NAVY }}>{sampleData.paidDays}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
-                    <span style={{ color: "#6B7280" }}>LOP Days</span>
-                    <span style={{ fontWeight: 600, color: sampleData.lopDays > 0 ? "#DC2626" : NAVY }}>{sampleData.lopDays}</span>
-                  </div>
+                  <span style={{ color: "#6B7280" }}>LOP Days</span>
+                  <span style={{ fontWeight: 600, color: sampleData.lopDays > 0 ? "#DC2626" : NAVY }}>{sampleData.lopDays}</span>
                 </div>
               </div>
             </div>

@@ -283,7 +283,6 @@ function generatePayslipHTML(data: SlipFormData): string {
     <div style="margin:16px 28px 0;background:#EEF2FA;border:1px solid #C7D3EC;border-radius:6px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
       <div>
         <div style="color:${NAVY};font-weight:700;font-size:13px;letter-spacing:0.3px;">Total Net Payable</div>
-        <div style="color:#6B7280;font-size:10px;margin-top:3px;">Gross Earnings − Total Deductions</div>
         <div style="margin-top:10px;display:flex;gap:24px;">
           <div style="font-size:10.5px;">
             <span style="color:#6B7280;">Pay Days: </span>
