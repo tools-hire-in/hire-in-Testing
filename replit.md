@@ -57,6 +57,34 @@ An integrated internal employee management system within the admin panel featuri
   - **Backend**: `server/onboardingRoutes.ts` (registered in routes.ts). `server/onboardingSeed.ts` with 3 full tracks: Common Onboarding (6 sections), Healthcare Recruitment SOP (5 steps), IT Recruitment SOP (5 steps).
   - **System Settings API**: `GET/PUT /api/system-settings/:key` (HR_ROLES only) for generic key-value settings.
 
+## Canvas Design Artifacts (Mockup Sandbox)
+
+The mockup sandbox serves design-only components at `/__mockup/preview/<path>`.
+
+### Registered Canvas Iframes
+
+| Shape | Preview URL | File |
+|-------|-------------|------|
+| Hire'in Solutions — LinkedIn Cover Page | `/__mockup/preview/linkedin/Cover` | `artifacts/mockup-sandbox/src/components/mockups/linkedin/Cover.tsx` |
+| Enterprise Payslip Design | `/__mockup/preview/payslip/Enterprise` | `artifacts/mockup-sandbox/src/components/mockups/payslip/Enterprise.tsx` |
+| Hire'in Solutions — IT Staffing Marketing Deck | `/__mockup/preview/hiring-deck/HiringDeck` | `artifacts/mockup-sandbox/src/components/mockups/hiring-deck/HiringDeck.tsx` |
+
+### HiringDeck — IT Staffing Marketing Deck
+
+10-slide marketing deck for Hire'in Solutions focused exclusively on IT Staffing:
+1. **Cover** — Logo, Kleriq AI badge, tagline "The Right Tech Talent, Right Now"
+2. **About Us** — Mission, Rayomind family, 4 value pillars
+3. **IT Services** — Permanent, Contract, Project-Based, RPO
+4. **Staffing Models** — Matrix: 4 models × 4 features
+5. **Kleriq AI** — Dedicated slide: resume parsing, JD matching, screening, bias-free, real-time scoring
+6. **The Hire'in Advantage** — 4 boxes: Kleriq AI, IT Experts, Compliance-First, Fastest Fill
+7. **Sourcing Process** — 5-step pipeline: Intake → AI Sourcing → Screening → Submit → Onboard
+8. **Demand Fulfillment** — 7-stage SLA flow with 4 SLA metrics
+9. **IT Domains** — Domain grid × staffing model matrix
+10. **Let's Connect** — hire-in.com, hello@hire-in.com, LinkedIn
+
+Brand: Navy #1F3A6E, Orange #F47C20/#F96D3E. IT-only — no Healthcare/Engineering/Professional Services.
+
 ## External Dependencies
 
 ### Database
