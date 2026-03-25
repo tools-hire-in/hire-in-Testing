@@ -10,6 +10,8 @@ export function Enterprise() {
     location: "Remote",
     month: "January",
     year: 2026,
+    paidDays: 31,
+    lopDays: 0,
     basic: 21000,
     hra: 8400,
     conveyance: 1600,
@@ -142,28 +144,38 @@ export function Enterprise() {
               <SummaryRow label="Pay Period" value={`${sampleData.month} ${sampleData.year}`} />
             </div>
 
-            {/* Right: Net Pay card */}
+            {/* Right: Net Pay card — brand colors */}
             <div style={{
-              width: 230, background: "#F0FDF4",
-              border: "1px solid #BBF7D0", borderRadius: 10,
+              width: 230, background: "#FFF7F0",
+              border: `1px solid #FDBA8C`, borderRadius: 10,
               padding: "18px 20px", flexShrink: 0, alignSelf: "flex-start"
             }}>
-              <div style={{ borderLeft: `4px solid #16A34A`, paddingLeft: 12, marginBottom: 14 }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#15803D", letterSpacing: -0.5 }}>
+              <div style={{ borderLeft: `4px solid ${ORANGE}`, paddingLeft: 12, marginBottom: 14 }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: NAVY, letterSpacing: -0.5 }}>
                   ₹{fmt(netPay)}
                 </div>
-                <div style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 600, marginTop: 2 }}>
+                <div style={{ fontSize: 10.5, color: ORANGE, fontWeight: 600, marginTop: 2 }}>
                   Total Net Pay
                 </div>
               </div>
-              <div style={{ borderTop: "1px dashed #BBF7D0", paddingTop: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#374151", marginBottom: 6 }}>
+              <div style={{ borderTop: `1px dashed #FDBA8C`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
                   <span style={{ color: "#6B7280" }}>Gross Earnings</span>
-                  <span style={{ fontWeight: 600 }}>₹{fmt(totalEarnings)}</span>
+                  <span style={{ fontWeight: 600, color: NAVY }}>₹{fmt(totalEarnings)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#374151" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
                   <span style={{ color: "#6B7280" }}>Total Deductions</span>
                   <span style={{ fontWeight: 600, color: "#DC2626" }}>−₹{fmt(totalDeductions)}</span>
+                </div>
+                <div style={{ borderTop: `1px dashed #FDBA8C`, marginTop: 2, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
+                    <span style={{ color: "#6B7280" }}>Pay Days</span>
+                    <span style={{ fontWeight: 600, color: NAVY }}>{sampleData.paidDays}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
+                    <span style={{ color: "#6B7280" }}>LOP Days</span>
+                    <span style={{ fontWeight: 600, color: sampleData.lopDays > 0 ? "#DC2626" : NAVY }}>{sampleData.lopDays}</span>
+                  </div>
                 </div>
               </div>
             </div>

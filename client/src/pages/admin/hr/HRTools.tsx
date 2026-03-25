@@ -52,6 +52,8 @@ interface SlipFormData {
   professionalTax: number;
   tds: number;
   otherDeductions: number;
+  paidDays: number;
+  lopDays: number;
   month: number;
   year: number;
 }
@@ -77,6 +79,8 @@ function getDefaultSlipData(): SlipFormData {
     professionalTax: 0,
     tds: 0,
     otherDeductions: 0,
+    paidDays: 30,
+    lopDays: 0,
     month: now.getMonth() + 1,
     year: now.getFullYear(),
   };
@@ -276,19 +280,26 @@ function generatePayslipHTML(data: SlipFormData): string {
     </div>
 
     <!-- NET PAY -->
-    <div style="background:${NAVY};margin:14px 0 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="margin:16px 28px 0;background:#EEF2FA;border:1px solid #C7D3EC;border-radius:6px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <div style="color:rgba(255,255,255,0.7);font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Net Pay for the Month</div>
+        <div style="color:${NAVY};font-weight:700;font-size:13px;letter-spacing:0.3px;">Total Net Payable</div>
+        <div style="color:#6B7280;font-size:10px;margin-top:3px;">Gross Earnings − Total Deductions</div>
+        <div style="margin-top:10px;display:flex;gap:24px;">
+          <div style="font-size:10.5px;">
+            <span style="color:#6B7280;">Pay Days: </span>
+            <span style="font-weight:700;color:${NAVY};">${data.paidDays}</span>
+          </div>
+          <div style="font-size:10.5px;">
+            <span style="color:#6B7280;">LOP Days: </span>
+            <span style="font-weight:700;color:${data.lopDays > 0 ? "#DC2626" : NAVY};">${data.lopDays}</span>
+          </div>
+        </div>
       </div>
       <div style="text-align:right;">
-        <div style="color:${ORANGE};font-size:11px;font-weight:700;letter-spacing:0.5px;">AMOUNT CREDITED</div>
-        <div style="color:#fff;font-size:26px;font-weight:800;letter-spacing:0.5px;">₹${fmt(netPay)}</div>
+        <div style="color:${ORANGE};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;">AMOUNT CREDITED</div>
+        <div style="color:${NAVY};font-size:24px;font-weight:800;letter-spacing:-0.5px;">₹${fmt(netPay)}</div>
+        <div style="color:#6B7280;font-size:9.5px;margin-top:4px;font-style:italic;">Rupees ${netPayWords} Only</div>
       </div>
-    </div>
-
-    <!-- AMOUNT IN WORDS -->
-    <div style="padding:8px 20px;background:#F7F9FC;border-bottom:1px solid #E8EDF4;font-size:10.5px;color:#374151;font-style:italic;">
-      Rupees ${netPayWords} Only
     </div>
 
     <!-- FOOTER -->
@@ -546,6 +557,14 @@ function SalarySlipGenerator() {
               <div>
                 <Label>PF UAN</Label>
                 <Input data-testid="input-slip-uan" value={formData.pfUan} onChange={e => updateField("pfUan", e.target.value)} />
+              </div>
+              <div>
+                <Label>Pay Days</Label>
+                <Input data-testid="input-slip-paiddays" type="number" value={formData.paidDays} onChange={e => updateField("paidDays", parseInt(e.target.value) || 0)} />
+              </div>
+              <div>
+                <Label>LOP Days</Label>
+                <Input data-testid="input-slip-lopdays" type="number" value={formData.lopDays} onChange={e => updateField("lopDays", parseInt(e.target.value) || 0)} />
               </div>
             </div>
           </CardContent>
