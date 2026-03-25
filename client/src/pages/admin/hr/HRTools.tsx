@@ -39,10 +39,7 @@ interface SlipFormData {
   designation: string;
   department: string;
   location: string;
-  bankName: string;
-  bankAccountNo: string;
-  pfNo: string;
-  pfUan: string;
+
   basic: number;
   hra: number;
   conveyance: number;
@@ -66,10 +63,7 @@ function getDefaultSlipData(): SlipFormData {
     designation: "",
     department: "",
     location: "Remote",
-    bankName: "",
-    bankAccountNo: "",
-    pfNo: "",
-    pfUan: "",
+
     basic: 0,
     hra: 0,
     conveyance: 0,
@@ -165,11 +159,6 @@ function generatePayslipHTML(data: SlipFormData): string {
     summaryRow("Location", data.location) +
     summaryRow("Pay Period", `${monthName} ${data.year}`);
 
-  const bankInfoRows =
-    summaryRow("Bank Name", data.bankName) +
-    summaryRow("Account Number", data.bankAccountNo) +
-    summaryRow("PF Number", data.pfNo) +
-    summaryRow("PF UAN", data.pfUan);
 
   return `<!DOCTYPE html>
 <html>
@@ -230,17 +219,11 @@ function generatePayslipHTML(data: SlipFormData): string {
     <!-- ORANGE ACCENT LINE -->
     <div style="height:3px;background:linear-gradient(to right,${ORANGE},#FBBB6D,${ORANGE});"></div>
 
-    <!-- EMPLOYEE SUMMARY + BANK DETAILS (two-column label:value) -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:18px 28px 14px;border-bottom:1px solid #E8EDF4;background:#fff;">
-      <!-- Left: Employee info -->
-      <div style="border-right:1px solid #E8EDF4;padding-right:24px;">
-        <div style="font-size:9.5px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Employee Information</div>
+    <!-- EMPLOYEE SUMMARY -->
+    <div style="padding:18px 28px 14px;border-bottom:1px solid #E8EDF4;background:#fff;">
+      <div style="font-size:9.5px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Employee Information</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 0;">
         ${employeeInfoRows}
-      </div>
-      <!-- Right: Bank & Statutory -->
-      <div style="padding-left:24px;">
-        <div style="font-size:9.5px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bank &amp; Statutory Details</div>
-        ${bankInfoRows}
       </div>
     </div>
 
@@ -354,19 +337,6 @@ function SalarySlipGenerator() {
       department: dept?.name || "",
     }));
 
-    try {
-      const bankRes = await fetch(`/api/hr/employee-bank-details/${userId}`);
-      if (bankRes.ok) {
-        const bank = await bankRes.json();
-        if (bank) {
-          setFormData(prev => ({
-            ...prev,
-            bankName: bank.bankName || "",
-            bankAccountNo: bank.accountNumber || "",
-          }));
-        }
-      }
-    } catch {}
   };
 
   const handleLoadExisting = async () => {
@@ -405,8 +375,6 @@ function SalarySlipGenerator() {
         professionalTax: 0,
         tds: 0,
         otherDeductions: deductions,
-        bankName: detail.bankDetails?.bankName || prev.bankName,
-        bankAccountNo: detail.bankDetails?.accountNumber || prev.bankAccountNo,
       }));
       toast({ title: "Loaded existing salary data" });
     } catch {
@@ -532,22 +500,6 @@ function SalarySlipGenerator() {
               <div>
                 <Label>Location</Label>
                 <Input data-testid="input-slip-location" value={formData.location} onChange={e => updateField("location", e.target.value)} />
-              </div>
-              <div>
-                <Label>Bank Name</Label>
-                <Input data-testid="input-slip-bank" value={formData.bankName} onChange={e => updateField("bankName", e.target.value)} />
-              </div>
-              <div>
-                <Label>Bank Account No</Label>
-                <Input data-testid="input-slip-account" value={formData.bankAccountNo} onChange={e => updateField("bankAccountNo", e.target.value)} />
-              </div>
-              <div>
-                <Label>PF No</Label>
-                <Input data-testid="input-slip-pf" value={formData.pfNo} onChange={e => updateField("pfNo", e.target.value)} />
-              </div>
-              <div>
-                <Label>PF UAN</Label>
-                <Input data-testid="input-slip-uan" value={formData.pfUan} onChange={e => updateField("pfUan", e.target.value)} />
               </div>
               <div>
                 <Label>Pay Days</Label>
