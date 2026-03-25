@@ -272,7 +272,7 @@ function generatePayslipHTML(data: SlipFormData): string {
     </div>
 
     <!-- NET PAY -->
-    <div style="margin:16px 28px 0;background:#EEF2FA;border:1px solid #C7D3EC;border-radius:6px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="margin:16px 28px 0;background:#FFF7F0;border:1px solid #FDBA8C;border-radius:6px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
       <div>
         <div style="color:${NAVY};font-weight:700;font-size:13px;letter-spacing:0.3px;">Total Net Payable</div>
         <div style="margin-top:10px;display:flex;gap:24px;">
