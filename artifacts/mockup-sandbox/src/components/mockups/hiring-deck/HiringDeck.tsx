@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Brain,
   Building2,
@@ -7,6 +8,7 @@ import {
   Code2,
   Cloud,
   Database,
+  Download,
   FileSearch,
   Globe,
   Mail,
@@ -25,6 +27,8 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import html2canvas from "html2canvas";
+import pptxgen from "pptxgenjs";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
@@ -164,7 +168,7 @@ function SlideFooter() {
           fontFamily: "'Segoe UI', Arial, sans-serif",
         }}
       >
-        AI-Powered IT Staffing · hire-in.com
+        US IT Staffing · hire-in.com
       </span>
     </div>
   );
@@ -344,7 +348,7 @@ function Slide1Cover() {
               marginBottom: 20,
             }}
           >
-            AI-Powered IT Staffing
+            US IT Staffing · Powered by AI
           </h2>
           <p
             style={{
@@ -460,7 +464,7 @@ function Slide1Cover() {
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Confidential · 2025
+            Confidential · 2026
           </span>
         </div>
       </div>
@@ -560,7 +564,7 @@ function Slide2About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              To connect innovative companies with elite IT talent — faster, smarter, and more precisely than ever before, using the power of AI.
+              To connect US businesses with elite IT talent — faster, smarter, and more precisely than ever before. Headquartered in San Jose, CA, serving clients coast to coast.
             </p>
           </div>
 
@@ -593,7 +597,7 @@ function Slide2About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Hire&apos;in Solutions is a proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce and staffing solutions. Through Rayomind&apos;s infrastructure, we leverage cutting-edge AI capabilities including our proprietary <strong style={{ color: ORANGE }}>Kleriq AI</strong> talent intelligence engine.
+              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. Through Rayomind&apos;s infrastructure, we deploy our proprietary <strong style={{ color: ORANGE }}>Kleriq AI</strong> talent intelligence engine to serve US employers with speed and precision.
             </p>
           </div>
         </div>
@@ -611,7 +615,7 @@ function Slide2About() {
             { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology roles" },
             { icon: Brain, label: "Kleriq AI Matching", desc: "Proprietary AI for precision talent sourcing" },
             { icon: Users, label: "Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
-            { icon: Globe, label: "Pan-India Reach", desc: "Serving companies across India & globally" },
+            { icon: Globe, label: "Nationwide US Coverage", desc: "Placing IT professionals across all 50 US states" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div
               key={i}
@@ -1267,8 +1271,8 @@ function Slide6Advantage() {
     {
       icon: ShieldCheck,
       title: "Compliance-First",
-      desc: "Built-in compliance workflows covering background checks, documentation, and statutory requirements — so you can hire without legal risk.",
-      highlight: "Zero compliance gaps",
+      desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.",
+      highlight: "I-9 · E-Verify ready",
     },
     {
       icon: Zap,
@@ -2141,6 +2145,7 @@ function Slide10Connect() {
             {[
               { icon: Globe, label: "hire-in.com", sub: "Website" },
               { icon: Mail, label: "hello@hire-in.com", sub: "Email" },
+              { icon: MapPin, label: "San Jose, CA · USA", sub: "Headquarters" },
               { icon: Phone, label: "LinkedIn", sub: "Connect with us" },
             ].map(({ icon: Icon, label, sub }, i) => (
               <div
@@ -2249,7 +2254,7 @@ function Slide10Connect() {
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            © 2025 Hire&apos;in Solutions · A Rayomind Company · Confidential
+            © 2026 Hire&apos;in Solutions · A Rayomind Company · US IT Staffing · Confidential
           </span>
         </div>
       </div>
@@ -2259,6 +2264,9 @@ function Slide10Connect() {
 
 /* ── MAIN DECK ── */
 export function HiringDeck() {
+  const [downloading, setDownloading] = React.useState(false);
+  const slideRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+
   const slides = [
     { id: 1, title: "Cover", component: <Slide1Cover /> },
     { id: 2, title: "About Us", component: <Slide2About /> },
@@ -2271,6 +2279,34 @@ export function HiringDeck() {
     { id: 9, title: "IT Domains", component: <Slide9Domains /> },
     { id: 10, title: "Let's Connect", component: <Slide10Connect /> },
   ];
+
+  async function downloadPPT() {
+    setDownloading(true);
+    try {
+      const pptx = new pptxgen();
+      pptx.layout = "LAYOUT_WIDE";
+
+      for (let i = 0; i < slideRefs.current.length; i++) {
+        const el = slideRefs.current[i];
+        if (!el) continue;
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: null,
+          logging: false,
+        });
+        const imgData = canvas.toDataURL("image/png");
+        const slide = pptx.addSlide();
+        slide.addImage({ data: imgData, x: 0, y: 0, w: "100%", h: "100%" });
+      }
+
+      await pptx.writeFile({ fileName: "HireIn_Solutions_IT_Staffing_Deck.pptx" });
+    } catch (err) {
+      console.error("PPT generation failed:", err);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div
@@ -2315,11 +2351,35 @@ export function HiringDeck() {
             marginTop: 8,
           }}
         >
-          AI-Powered IT Staffing · Marketing Deck
+          US IT Staffing · Marketing Deck
         </h1>
         <p style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>
-          10 Slides · Confidential · 2025
+          10 Slides · Confidential · 2026
         </p>
+        <button
+          onClick={downloadPPT}
+          disabled={downloading}
+          style={{
+            marginTop: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            background: downloading ? "#9CA3AF" : NAVY,
+            color: WHITE,
+            border: "none",
+            borderRadius: 8,
+            padding: "9px 20px",
+            fontSize: 12.5,
+            fontWeight: 700,
+            fontFamily: "'Segoe UI', Arial, sans-serif",
+            cursor: downloading ? "not-allowed" : "pointer",
+            boxShadow: "0 2px 10px rgba(31,58,110,0.25)",
+            transition: "background 0.2s",
+          }}
+        >
+          <Download size={14} />
+          {downloading ? "Generating PPT…" : "Download PPT"}
+        </button>
       </div>
 
       {/* Slides */}
@@ -2332,7 +2392,7 @@ export function HiringDeck() {
           margin: "0 auto",
         }}
       >
-        {slides.map(({ id, title, component }) => (
+        {slides.map(({ id, title, component }, idx) => (
           <div key={id}>
             {/* Slide label */}
             <div
@@ -2383,7 +2443,9 @@ export function HiringDeck() {
                 }}
               />
             </div>
-            {component}
+            <div ref={(el) => { slideRefs.current[idx] = el; }}>
+              {component}
+            </div>
           </div>
         ))}
       </div>
