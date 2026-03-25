@@ -232,15 +232,16 @@ export function Enterprise() {
           {/* ── TOTAL NET PAYABLE FOOTER ── */}
           <div style={{
             margin: "20px 28px 28px",
-            background: NAVY, borderRadius: 6,
+            background: "#EEF2FA", borderRadius: 6,
+            border: `1px solid #C7D3EC`,
             padding: "14px 20px",
             display: "flex", justifyContent: "space-between", alignItems: "center"
           }}>
             <div>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: 13, letterSpacing: 0.3 }}>
+              <div style={{ color: NAVY, fontWeight: 700, fontSize: 13, letterSpacing: 0.3 }}>
                 Total Net Payable
               </div>
-              <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, marginTop: 3 }}>
+              <div style={{ color: "#6B7280", fontSize: 10, marginTop: 3 }}>
                 Gross Earnings − Total Deductions
               </div>
             </div>
@@ -248,7 +249,7 @@ export function Enterprise() {
               <div style={{ color: ORANGE, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, marginBottom: 2 }}>
                 AMOUNT CREDITED
               </div>
-              <div style={{ color: "#fff", fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>
+              <div style={{ color: NAVY, fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>
                 ₹{fmt(netPay)}
               </div>
             </div>
