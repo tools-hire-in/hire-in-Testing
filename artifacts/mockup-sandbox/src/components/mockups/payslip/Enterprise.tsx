@@ -86,19 +86,14 @@ export function Enterprise() {
               <img
                 src="/__mockup/images/rayomind-logo.png"
                 alt="Rayomind Solutions LLP"
-                style={{ height: 38, objectFit: "contain" }}
+                style={{ height: 40, objectFit: "contain" }}
               />
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.2, marginTop: 2 }}>
-                  Rayomind Solutions LLP
-                </div>
-                <div style={{ fontSize: 9.5, color: "#6B7280", marginTop: 2, lineHeight: 1.5 }}>
-                  Suite No-101, Pocket-6, Sector-2<br />
-                  Rohini, New Delhi – 110085, India
-                </div>
-                <div style={{ fontSize: 8.5, color: "#9CA3AF", marginTop: 3, letterSpacing: 0.3 }}>
-                  GSTIN/UIN: 07ABMFR1303G1ZF
-                </div>
+              <div style={{ fontSize: 9.5, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>
+                Suite No-101, Pocket-6, Sector-2<br />
+                Rohini, New Delhi – 110085, India
+              </div>
+              <div style={{ fontSize: 8.5, color: "#9CA3AF", marginTop: 2, letterSpacing: 0.3 }}>
+                GSTIN/UIN: 07ABMFR1303G1ZF
               </div>
             </div>
 
