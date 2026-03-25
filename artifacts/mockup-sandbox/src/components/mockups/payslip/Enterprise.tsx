@@ -1,7 +1,6 @@
 export function Enterprise() {
   const NAVY = "#1F3A6E";
   const ORANGE = "#F47C20";
-  const LIGHT_NAVY = "#2A4D8F";
 
   const sampleData = {
     employeeName: "Ayushi Tiwari",
@@ -9,10 +8,6 @@ export function Enterprise() {
     designation: "Healthcare Recruiter",
     department: "Healthcare",
     location: "Remote",
-    bankName: "State Bank of India",
-    bankAccountNo: "34942471488",
-    pfNo: "DL/CPM/1234567",
-    pfUan: "100987654321",
     month: "January",
     year: 2026,
     basic: 21000,
@@ -32,17 +27,6 @@ export function Enterprise() {
   const fmt = (n: number) =>
     n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const InfoRow = ({ label, value, shade }: { label: string; value: string; shade?: boolean }) => (
-    <div style={{
-      display: "flex", padding: "6px 14px", fontSize: 11,
-      backgroundColor: shade ? "#F7F9FC" : "#FFFFFF",
-      borderBottom: "1px solid #E8EDF4"
-    }}>
-      <span style={{ minWidth: 145, fontWeight: 600, color: "#374151" }}>{label}</span>
-      <span style={{ color: "#1a1a1a" }}>{value}</span>
-    </div>
-  );
-
   const earningsRows = [
     { label: "Basic", amount: sampleData.basic },
     { label: "House Rent Allowance (HRA)", amount: sampleData.hra },
@@ -56,15 +40,21 @@ export function Enterprise() {
   ].filter(r => r.amount > 0);
 
   const maxRows = Math.max(earningsRows.length, deductionRows.length);
-  const paddedEarnings = [...earningsRows, ...Array(maxRows - earningsRows.length).fill(null)];
-  const paddedDeductions = [...deductionRows, ...Array(maxRows - deductionRows.length).fill(null)];
+
+  const SummaryRow = ({ label, value }: { label: string; value: string }) => (
+    <div style={{ display: "flex", padding: "5px 0", fontSize: 11.5, gap: 0 }}>
+      <span style={{ minWidth: 148, color: "#6B7280", fontWeight: 400 }}>{label}</span>
+      <span style={{ marginRight: 10, color: "#374151" }}>:</span>
+      <span style={{ color: "#111827", fontWeight: 500 }}>{value}</span>
+    </div>
+  );
 
   return (
-    <div style={{ background: "#EEF2F7", minHeight: "100vh", padding: 32, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+    <div style={{ background: "#F3F4F6", minHeight: "100vh", padding: 32, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
       <div style={{
         maxWidth: 820, margin: "0 auto", background: "#fff",
-        boxShadow: "0 4px 24px rgba(31,58,110,0.13)",
-        borderRadius: 4, overflow: "hidden", position: "relative"
+        boxShadow: "0 2px 16px rgba(0,0,0,0.09)",
+        borderRadius: 6, overflow: "hidden", position: "relative"
       }}>
 
         {/* DIAGONAL WATERMARK */}
@@ -74,64 +64,63 @@ export function Enterprise() {
           pointerEvents: "none", zIndex: 0, overflow: "hidden"
         }}>
           <div style={{
-            transform: "rotate(-38deg)",
-            fontSize: 68, fontWeight: 900, letterSpacing: 8,
-            color: `${NAVY}09`,
-            whiteSpace: "nowrap", userSelect: "none",
-            lineHeight: 1.6, textAlign: "center"
+            transform: "rotate(-38deg)", fontSize: 64, fontWeight: 900,
+            letterSpacing: 8, color: `${NAVY}07`, whiteSpace: "nowrap",
+            userSelect: "none", lineHeight: 1.7, textAlign: "center"
           }}>
             RAYOMIND SOLUTIONS<br />RAYOMIND SOLUTIONS<br />RAYOMIND SOLUTIONS
           </div>
         </div>
 
-        {/* CONTENT */}
         <div style={{ position: "relative", zIndex: 1 }}>
 
-          {/* ── HEADER: Logo | Company Name (centre) | HIS Logo ── */}
+          {/* ── HEADER ── */}
           <div style={{
-            background: `linear-gradient(135deg, ${NAVY} 0%, ${LIGHT_NAVY} 100%)`,
-            padding: "20px 24px",
-            display: "flex", alignItems: "center", justifyContent: "space-between"
+            padding: "22px 28px 18px",
+            display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+            background: "#fff"
           }}>
 
-            {/* LEFT — Rayomind logo only */}
-            <div style={{
-              background: "#fff", borderRadius: 6, padding: "6px 10px",
-              display: "flex", alignItems: "center", flexShrink: 0
-            }}>
+            {/* LEFT — Rayomind logo + company + address (top-aligned) */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
               <img
                 src="/__mockup/images/rayomind-logo.png"
                 alt="Rayomind Solutions LLP"
-                style={{ height: 40, objectFit: "contain" }}
+                style={{ height: 38, objectFit: "contain" }}
               />
-            </div>
-
-            {/* CENTER — Legal entity name + address only */}
-            <div style={{ textAlign: "center", flex: 1, padding: "0 20px" }}>
-              <div style={{ color: "#fff", fontSize: 19, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1.2 }}>
-                Rayomind Solutions LLP
-              </div>
-              <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, marginTop: 5, letterSpacing: 0.2 }}>
-                Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi – 110085, India
-              </div>
-              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9.5, marginTop: 3, letterSpacing: 0.5 }}>
-                GSTIN/UIN: 07ABMFR1303G1ZF
-              </div>
-            </div>
-
-            {/* RIGHT — HIS logo + Hire'in Solutions + subscript (centred) */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <img
-                src="/__mockup/images/his-logo.jpg"
-                alt="Hire'in Solutions"
-                style={{ height: 36, objectFit: "contain", borderRadius: 4 }}
-              />
-              <div style={{ textAlign: "center" }}>
-                <div style={{ color: "#fff", fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>
-                  Hire'in Solutions
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.2, marginTop: 2 }}>
+                  Rayomind Solutions LLP
                 </div>
-                <div style={{ color: ORANGE, fontSize: 8.5, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>
-                  A Rayomind Company
+                <div style={{ fontSize: 9.5, color: "#6B7280", marginTop: 2, lineHeight: 1.5 }}>
+                  Suite No-101, Pocket-6, Sector-2<br />
+                  Rohini, New Delhi – 110085, India
+                </div>
+                <div style={{ fontSize: 8.5, color: "#9CA3AF", marginTop: 3, letterSpacing: 0.3 }}>
+                  GSTIN/UIN: 07ABMFR1303G1ZF
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT — HIS logo + Hire'in Solutions + payslip month (top-aligned) */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Hire'in Solutions</div>
+                  <div style={{ fontSize: 8.5, color: ORANGE, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", marginTop: 1 }}>
+                    A Rayomind Company
+                  </div>
+                </div>
+                <img
+                  src="/__mockup/images/his-logo.jpg"
+                  alt="Hire'in Solutions"
+                  style={{ height: 34, objectFit: "contain", borderRadius: 4 }}
+                />
+              </div>
+              <div style={{ textAlign: "right", marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 400 }}>Payslip For the Month</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: NAVY, lineHeight: 1.1, marginTop: 2 }}>
+                  {sampleData.month} {sampleData.year}
                 </div>
               </div>
             </div>
@@ -140,158 +129,132 @@ export function Enterprise() {
           {/* ORANGE ACCENT LINE */}
           <div style={{ height: 3, background: `linear-gradient(to right, ${ORANGE}, #FBBB6D, ${ORANGE})` }} />
 
-          {/* PAYSLIP RIBBON */}
+          {/* ── EMPLOYEE SUMMARY + NET PAY CARD ── */}
           <div style={{
-            textAlign: "center", padding: "11px 0 10px",
-            borderBottom: `1px solid #D1DAEA`,
-            background: "#FFFFFF"
+            display: "flex", gap: 20, padding: "20px 28px",
+            borderBottom: `1px solid #E5E7EB`
           }}>
-            <span style={{
-              fontSize: 12.5, fontWeight: 700, color: NAVY,
-              letterSpacing: 1.2, textTransform: "uppercase"
+            {/* Left: label-value summary */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: NAVY, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
+                Employee Summary
+              </div>
+              <SummaryRow label="Employee Name" value={sampleData.employeeName} />
+              <SummaryRow label="Employee ID" value={sampleData.employeeId} />
+              <SummaryRow label="Designation" value={sampleData.designation} />
+              <SummaryRow label="Department" value={sampleData.department} />
+              <SummaryRow label="Location" value={sampleData.location} />
+              <SummaryRow label="Pay Period" value={`${sampleData.month} ${sampleData.year}`} />
+            </div>
+
+            {/* Right: Net Pay card */}
+            <div style={{
+              width: 230, background: "#F0FDF4",
+              border: "1px solid #BBF7D0", borderRadius: 10,
+              padding: "18px 20px", flexShrink: 0, alignSelf: "flex-start"
             }}>
-              Pay Slip &nbsp;—&nbsp; {sampleData.month} {sampleData.year}
-            </span>
-          </div>
-
-          {/* EMPLOYEE INFO — slimmed to 5 fields only */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: `1px solid ${NAVY}` }}>
-            <div style={{ borderRight: `1px solid #C9D5E8` }}>
-              <div style={{ background: NAVY, padding: "6px 14px" }}>
-                <span style={{ color: "#fff", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                  Employee Information
-                </span>
+              <div style={{ borderLeft: `4px solid #16A34A`, paddingLeft: 12, marginBottom: 14 }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#15803D", letterSpacing: -0.5 }}>
+                  ₹{fmt(netPay)}
+                </div>
+                <div style={{ fontSize: 10.5, color: "#16A34A", fontWeight: 600, marginTop: 2 }}>
+                  Total Net Pay
+                </div>
               </div>
-              <InfoRow label="Full Name" value={sampleData.employeeName} shade />
-              <InfoRow label="Employee ID" value={sampleData.employeeId} />
-              <InfoRow label="Designation" value={sampleData.designation} shade />
-              <InfoRow label="Department" value={sampleData.department} />
-              <InfoRow label="Location" value={sampleData.location} shade />
-            </div>
-            <div>
-              <div style={{ background: NAVY, padding: "6px 14px" }}>
-                <span style={{ color: "#fff", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                  Bank & Statutory Details
-                </span>
+              <div style={{ borderTop: "1px dashed #BBF7D0", paddingTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#374151", marginBottom: 6 }}>
+                  <span style={{ color: "#6B7280" }}>Gross Earnings</span>
+                  <span style={{ fontWeight: 600 }}>₹{fmt(totalEarnings)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#374151" }}>
+                  <span style={{ color: "#6B7280" }}>Total Deductions</span>
+                  <span style={{ fontWeight: 600, color: "#DC2626" }}>−₹{fmt(totalDeductions)}</span>
+                </div>
               </div>
-              <InfoRow label="Bank Name" value={sampleData.bankName} shade />
-              <InfoRow label="Account Number" value={sampleData.bankAccountNo} />
-              <InfoRow label="PF Number" value={sampleData.pfNo} shade />
-              <InfoRow label="PF UAN" value={sampleData.pfUan} />
             </div>
           </div>
 
-          {/* PAY PERIOD ROW */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "8px 16px", background: "#F0F4FA",
-            borderTop: `1px solid #C9D5E8`, borderBottom: `1px solid #C9D5E8`,
-            margin: "0"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                Pay Period
-              </span>
-              <span style={{ width: 1, height: 12, background: "#C9D5E8", display: "inline-block" }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>
-                {sampleData.month} {sampleData.year}
-              </span>
-            </div>
-            <div style={{ fontSize: 10, color: "#6B7280" }}>
-              Salary Statement · Confidential
-            </div>
-          </div>
-
-          {/* EARNINGS & DEDUCTIONS TABLE */}
-          <div style={{ margin: "16px 0 0" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          {/* ── EARNINGS & DEDUCTIONS TABLE ── */}
+          <div style={{ padding: "0 28px", marginTop: 20 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, border: `1px solid #E5E7EB`, borderRadius: 6, overflow: "hidden" }}>
               <thead>
                 <tr>
-                  <th colSpan={2} style={{ background: ORANGE, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
-                    EARNINGS
+                  <th style={{ background: "#F9FAFB", padding: "9px 14px", textAlign: "left", color: NAVY, fontWeight: 700, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", borderBottom: `2px solid #E5E7EB`, width: "40%" }}>
+                    Earnings
                   </th>
-                  <th colSpan={2} style={{ background: NAVY, color: "#fff", padding: "7px 12px", textAlign: "left", fontWeight: 700, letterSpacing: 0.5, width: "50%", fontSize: 11 }}>
-                    DEDUCTIONS
+                  <th style={{ background: "#F9FAFB", padding: "9px 14px", textAlign: "right", color: "#6B7280", fontWeight: 600, fontSize: 10, borderBottom: `2px solid #E5E7EB`, width: "10%" }}>
+                    Amount
                   </th>
-                </tr>
-                <tr style={{ background: "#F0F4FA" }}>
-                  <th style={{ padding: "5px 12px", textAlign: "left", color: "#374151", fontWeight: 600, width: "32%", borderBottom: "1px solid #C9D5E8" }}>Component</th>
-                  <th style={{ padding: "5px 12px", textAlign: "right", color: "#374151", fontWeight: 600, width: "18%", borderBottom: "1px solid #C9D5E8" }}>Amount (₹)</th>
-                  <th style={{ padding: "5px 12px", textAlign: "left", color: "#374151", fontWeight: 600, width: "32%", borderBottom: "1px solid #C9D5E8", borderLeft: "2px solid #C9D5E8" }}>Component</th>
-                  <th style={{ padding: "5px 12px", textAlign: "right", color: "#374151", fontWeight: 600, width: "18%", borderBottom: "1px solid #C9D5E8" }}>Amount (₹)</th>
+                  <th style={{ background: "#F9FAFB", padding: "9px 14px", textAlign: "left", color: NAVY, fontWeight: 700, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", borderBottom: `2px solid #E5E7EB`, borderLeft: `2px solid #E5E7EB`, width: "40%" }}>
+                    Deductions
+                  </th>
+                  <th style={{ background: "#F9FAFB", padding: "9px 14px", textAlign: "right", color: "#6B7280", fontWeight: 600, fontSize: 10, borderBottom: `2px solid #E5E7EB`, width: "10%" }}>
+                    Amount
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: maxRows }).map((_, i) => {
-                  const e = paddedEarnings[i];
-                  const d = paddedDeductions[i];
+                  const e = earningsRows[i];
+                  const d = deductionRows[i];
                   const shade = i % 2 === 1;
                   return (
-                    <tr key={i} style={{ background: shade ? "#F7F9FC" : "#fff" }}>
-                      <td style={{ padding: "6px 12px", color: "#1a1a1a", borderBottom: "1px solid #E8EDF4" }}>
-                        {e ? e.label : ""}
+                    <tr key={i} style={{ background: shade ? "#FAFAFA" : "#fff" }}>
+                      <td style={{ padding: "8px 14px", color: "#374151", borderBottom: `1px solid #F3F4F6`, fontWeight: e ? 400 : undefined }}>
+                        {e?.label ?? ""}
                       </td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", color: "#1a1a1a", borderBottom: "1px solid #E8EDF4" }}>
-                        {e ? fmt(e.amount) : ""}
+                      <td style={{ padding: "8px 14px", textAlign: "right", color: "#111827", fontWeight: 600, borderBottom: `1px solid #F3F4F6` }}>
+                        {e ? `₹${fmt(e.amount)}` : ""}
                       </td>
-                      <td style={{ padding: "6px 12px", color: "#1a1a1a", borderBottom: "1px solid #E8EDF4", borderLeft: "2px solid #C9D5E8" }}>
-                        {d ? d.label : ""}
+                      <td style={{ padding: "8px 14px", color: "#374151", borderBottom: `1px solid #F3F4F6`, borderLeft: `2px solid #E5E7EB` }}>
+                        {d?.label ?? ""}
                       </td>
-                      <td style={{ padding: "6px 12px", textAlign: "right", color: d && d.amount > 0 ? "#CC2E2E" : "#9CA3AF", borderBottom: "1px solid #E8EDF4" }}>
-                        {d ? (d.amount > 0 ? fmt(d.amount) : "—") : ""}
+                      <td style={{ padding: "8px 14px", textAlign: "right", color: d ? "#DC2626" : "#9CA3AF", fontWeight: d ? 600 : 400, borderBottom: `1px solid #F3F4F6` }}>
+                        {d ? `₹${fmt(d.amount)}` : ""}
                       </td>
                     </tr>
                   );
                 })}
-                {/* TOTALS ROW */}
-                <tr style={{ background: "#EEF2F7", fontWeight: 700 }}>
-                  <td style={{ padding: "8px 12px", color: NAVY, fontSize: 12, borderTop: `2px solid ${NAVY}` }}>Total Earnings</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", color: "#1A7A3C", fontSize: 12, borderTop: `2px solid ${NAVY}` }}>
-                    {fmt(totalEarnings)}
+                {/* Totals row */}
+                <tr style={{ background: "#F3F4F6" }}>
+                  <td style={{ padding: "9px 14px", fontWeight: 700, color: NAVY, fontSize: 12, borderTop: `2px solid #D1D5DB` }}>
+                    Gross Earnings
                   </td>
-                  <td style={{ padding: "8px 12px", color: NAVY, fontSize: 12, borderTop: `2px solid ${NAVY}`, borderLeft: "2px solid #C9D5E8" }}>Total Deductions</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", color: "#CC2E2E", fontSize: 12, borderTop: `2px solid ${NAVY}` }}>
-                    {fmt(totalDeductions)}
+                  <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700, color: "#15803D", fontSize: 12, borderTop: `2px solid #D1D5DB` }}>
+                    ₹{fmt(totalEarnings)}
+                  </td>
+                  <td style={{ padding: "9px 14px", fontWeight: 700, color: NAVY, fontSize: 12, borderTop: `2px solid #D1D5DB`, borderLeft: `2px solid #E5E7EB` }}>
+                    Total Deductions
+                  </td>
+                  <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700, color: "#DC2626", fontSize: 12, borderTop: `2px solid #D1D5DB` }}>
+                    ₹{fmt(totalDeductions)}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          {/* NET PAY */}
-          <div style={{ background: NAVY, margin: "14px 0 0", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          {/* ── TOTAL NET PAYABLE FOOTER ── */}
+          <div style={{
+            margin: "20px 28px 28px",
+            background: NAVY, borderRadius: 6,
+            padding: "14px 20px",
+            display: "flex", justifyContent: "space-between", alignItems: "center"
+          }}>
             <div>
-              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 10, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>Net Pay for the Month</div>
-              <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 10.5, marginTop: 4, fontStyle: "italic" }}>
-                Rupees Thirty Five Thousand Only
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 13, letterSpacing: 0.3 }}>
+                Total Net Payable
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, marginTop: 3 }}>
+                Gross Earnings − Total Deductions
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: ORANGE, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>AMOUNT CREDITED</div>
-              <div style={{ color: "#fff", fontSize: 26, fontWeight: 800, letterSpacing: 0.5 }}>
+              <div style={{ color: ORANGE, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, marginBottom: 2 }}>
+                AMOUNT CREDITED
+              </div>
+              <div style={{ color: "#fff", fontSize: 24, fontWeight: 800, letterSpacing: -0.5 }}>
                 ₹{fmt(netPay)}
-              </div>
-            </div>
-          </div>
-
-          {/* FOOTER */}
-          <div style={{ padding: "12px 20px 16px", borderTop: `3px solid ${ORANGE}`, marginTop: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-              <div>
-                <div style={{ fontSize: 9.5, color: "#6B7280", lineHeight: 1.6 }}>
-                  This is a system-generated payslip and does not require a physical signature.
-                </div>
-                <div style={{ fontSize: 9.5, color: "#6B7280" }}>
-                  For queries contact: <span style={{ color: NAVY, fontWeight: 600 }}>alina.carter@hire-in.com</span>
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 9, color: "#9CA3AF", letterSpacing: 0.5 }}>
-                  © {sampleData.year} Rayomind Solutions LLP
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
-                  <img src="/__mockup/images/rayomind-logo.png" alt="" style={{ height: 16, opacity: 0.45 }} />
-                </div>
               </div>
             </div>
           </div>
