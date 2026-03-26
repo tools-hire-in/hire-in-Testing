@@ -37,6 +37,7 @@ const ORANGE2 = "#F96D3E";
 const WHITE = "#FFFFFF";
 const LIGHT_BG = "#F5F7FA";
 const LIGHT2 = "#EEF2F8";
+const SlideNumberContext = React.createContext({ slideNumber: 0, totalSlides: 11 });
 
 function HISLogo({ size = 40, light = false }: { size?: number; light?: boolean }) {
   return (
@@ -99,6 +100,7 @@ function RayomindBadge({ size = 28, light = false }: { size?: number; light?: bo
 }
 
 function SlideFooter() {
+  const { slideNumber, totalSlides } = React.useContext(SlideNumberContext);
   return (
     <div
       style={{
@@ -138,15 +140,30 @@ function SlideFooter() {
           </span>
         </div>
       </div>
-      <span
-        style={{
-          color: "rgba(255,255,255,0.45)",
-          fontSize: 10,
-          fontFamily: "'Segoe UI', Arial, sans-serif",
-        }}
-      >
-        US IT Staffing · hire-in.com
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <span
+          style={{
+            color: "rgba(255,255,255,0.45)",
+            fontSize: 10,
+            fontFamily: "'Segoe UI', Arial, sans-serif",
+          }}
+        >
+          US IT Staffing · hire-in.com
+        </span>
+        {slideNumber > 0 && (
+          <span
+            style={{
+              color: "rgba(255,255,255,0.35)",
+              fontSize: 9.5,
+              fontWeight: 600,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              letterSpacing: 0.5,
+            }}
+          >
+            {slideNumber} / {totalSlides}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -182,6 +199,7 @@ function SlideWrapper({
 
 /* ── SLIDE 1: COVER ── */
 function Slide1Cover() {
+  const { slideNumber, totalSlides } = React.useContext(SlideNumberContext);
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div
@@ -329,6 +347,52 @@ function Slide1Cover() {
           >
             &ldquo;The Right Tech Talent, Right Now&rdquo;
           </p>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0,
+              marginTop: 22,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8,
+              padding: "8px 0",
+              width: "fit-content",
+            }}
+          >
+            {[
+              "500+ IT Placements",
+              "48-Hour First Submissions",
+              "95% Client Retention",
+            ].map((stat, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && (
+                  <div
+                    style={{
+                      width: 1,
+                      height: 20,
+                      background: "rgba(244,124,32,0.4)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <span
+                  style={{
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    fontFamily: "'Segoe UI', Arial, sans-serif",
+                    letterSpacing: 0.3,
+                    padding: "0 16px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {stat}
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
         </div>
 
         {/* Right panel */}
@@ -437,14 +501,149 @@ function Slide1Cover() {
           >
             Confidential · 2026
           </span>
+          <div
+            style={{
+              width: 4,
+              height: 4,
+              borderRadius: "50%",
+              background: ORANGE,
+              opacity: 0.6,
+            }}
+          />
+          <span
+            style={{
+              color: "rgba(255,255,255,0.35)",
+              fontSize: 9.5,
+              fontWeight: 600,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              letterSpacing: 0.5,
+            }}
+          >
+            {slideNumber} / {totalSlides}
+          </span>
         </div>
       </div>
     </SlideWrapper>
   );
 }
 
-/* ── SLIDE 2: ABOUT US ── */
-function Slide2About() {
+/* ── SLIDE 2: BY THE NUMBERS ── */
+function Slide2ByTheNumbers() {
+  const metrics = [
+    { value: "500+", label: "IT Placements", sub: "Across all technology verticals" },
+    { value: "< 5 Days", label: "Avg Fill Time", sub: "From intake to qualified submission" },
+    { value: "95%+", label: "Client Retention", sub: "Year-over-year partnership renewals" },
+    { value: "50", label: "US States Covered", sub: "True coast-to-coast reach" },
+    { value: "25K+", label: "Candidate Database", sub: "Pre-vetted IT professionals" },
+    { value: "92%", label: "AI Match Accuracy", sub: "Powered by Kleriq AI scoring" },
+  ];
+
+  return (
+    <SlideWrapper bg={LIGHT_BG}>
+      <div
+        style={{
+          background: NAVY,
+          padding: "16px 36px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+        }}
+      >
+        <div>
+          <p
+            style={{
+              color: ORANGE,
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: 2,
+              textTransform: "uppercase",
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+            }}
+          >
+            Proven Track Record
+          </p>
+          <h2
+            style={{
+              color: WHITE,
+              fontSize: 22,
+              fontWeight: 800,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+            }}
+          >
+            By the Numbers
+          </h2>
+        </div>
+        <HISLogo size={32} light />
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 14,
+          padding: "20px 36px 14px",
+          alignContent: "center",
+        }}
+      >
+        {metrics.map(({ value, label, sub }, i) => (
+          <div
+            key={i}
+            style={{
+              background: WHITE,
+              borderRadius: 12,
+              padding: "20px 18px",
+              boxShadow: "0 2px 12px rgba(31,58,110,0.09)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              gap: 4,
+              borderTop: `3px solid ${i % 2 === 0 ? ORANGE : NAVY}`,
+            }}
+          >
+            <p
+              style={{
+                color: i % 2 === 0 ? ORANGE : NAVY,
+                fontSize: 28,
+                fontWeight: 900,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+                lineHeight: 1,
+              }}
+            >
+              {value}
+            </p>
+            <p
+              style={{
+                color: NAVY,
+                fontSize: 12.5,
+                fontWeight: 800,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+                marginTop: 2,
+              }}
+            >
+              {label}
+            </p>
+            <p
+              style={{
+                color: "#6B7280",
+                fontSize: 9.5,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+                lineHeight: 1.4,
+              }}
+            >
+              {sub}
+            </p>
+          </div>
+        ))}
+      </div>
+    </SlideWrapper>
+  );
+}
+
+/* ── SLIDE 3: ABOUT US ── */
+function Slide3About() {
   return (
     <SlideWrapper bg={LIGHT_BG}>
       {/* Header */}
@@ -535,7 +734,7 @@ function Slide2About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              To connect US businesses with elite IT talent — faster, smarter, and more precisely than ever before. Headquartered in San Jose, CA, serving clients coast to coast.
+              Est. 2014 · 60+ recruiters nationwide. We connect US enterprises with elite IT talent — faster, smarter, and more precisely than any traditional staffing firm. Headquartered in San Jose, CA, serving clients coast to coast.
             </p>
           </div>
 
@@ -569,6 +768,7 @@ function Slide2About() {
               }}
             >
               Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. We leverage best-in-class AI tools including <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening — ensuring every submission is a strong fit.
+              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>A subsidiary of Rayomind Inc.</span>
             </p>
           </div>
         </div>
@@ -583,10 +783,10 @@ function Slide2About() {
           }}
         >
           {[
-            { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology roles" },
-            { icon: Brain, label: "AI-Powered Matching", desc: "Leveraging AI tools for precision talent sourcing" },
-            { icon: Users, label: "Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
-            { icon: Globe, label: "Nationwide US Coverage", desc: "Placing IT professionals across all 50 US states" },
+            { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology staffing" },
+            { icon: Brain, label: "AI-Powered Matching", desc: "92% match accuracy via Kleriq AI" },
+            { icon: Users, label: "60+ Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
+            { icon: Globe, label: "All 50 US States", desc: "True coast-to-coast talent coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div
               key={i}
@@ -646,8 +846,8 @@ function Slide2About() {
   );
 }
 
-/* ── SLIDE 3: IT SERVICES ── */
-function Slide3Services() {
+/* ── SLIDE 4: IT SERVICES ── */
+function Slide4Services() {
   const services = [
     {
       icon: UserCheck,
@@ -799,8 +999,8 @@ function Slide3Services() {
   );
 }
 
-/* ── SLIDE 4: STAFFING MODELS ── */
-function Slide4Models() {
+/* ── SLIDE 5: STAFFING MODELS ── */
+function Slide5Models() {
   const models = [
     {
       name: "Permanent",
@@ -952,7 +1152,7 @@ function Slide4Models() {
                   fontFamily: "'Segoe UI', Arial, sans-serif",
                 }}
               >
-                Feature {rowIdx + 1}
+                {["Engagement Type", "Billing Model", "Guarantee", "Deployment Speed"][rowIdx]}
               </span>
             </div>
             {models.map((m, colIdx) => (
@@ -1015,8 +1215,8 @@ function Slide4Models() {
   );
 }
 
-/* ── SLIDE 5: AI TOOLS ── */
-function Slide5KleriqAI() {
+/* ── SLIDE 6: AI TOOLS ── */
+function Slide6KleriqAI() {
   const features = [
     {
       icon: FileSearch,
@@ -1221,32 +1421,32 @@ function Slide5KleriqAI() {
   );
 }
 
-/* ── SLIDE 6: HIRE'IN ADVANTAGE ── */
-function Slide6Advantage() {
+/* ── SLIDE 7: HIRE'IN ADVANTAGE ── */
+function Slide7Advantage() {
   const advantages = [
     {
       icon: Brain,
       title: "AI-Assisted Matching",
       desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.",
-      highlight: "70% faster shortlisting",
+      highlight: "70% Faster Shortlisting",
     },
     {
       icon: Code2,
       title: "IT Domain Experts",
       desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.",
-      highlight: "IT-only recruiters",
+      highlight: "60+ IT-Only Recruiters",
     },
     {
       icon: ShieldCheck,
       title: "Compliance-First",
       desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.",
-      highlight: "I-9 · E-Verify ready",
+      highlight: "Zero-Risk: I-9 + E-Verify",
     },
     {
       icon: Zap,
       title: "Fastest Time-to-Fill",
       desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 48 hours for most IT roles.",
-      highlight: "Submissions in 48 hrs",
+      highlight: "First Profiles in 48 Hours",
     },
   ];
 
@@ -1392,8 +1592,8 @@ function Slide6Advantage() {
   );
 }
 
-/* ── SLIDE 7: SOURCING PROCESS ── */
-function Slide7Process() {
+/* ── SLIDE 8: SOURCING PROCESS ── */
+function Slide8Process() {
   const steps = [
     { icon: Building2, label: "Intake", desc: "Understand role, team, culture & tech stack", color: NAVY },
     { icon: Brain, label: "AI Sourcing", sub: "AI-powered", desc: "AI-driven sourcing & intelligent matching", color: ORANGE },
@@ -1580,8 +1780,8 @@ function Slide7Process() {
   );
 }
 
-/* ── SLIDE 8: DEMAND FULFILLMENT ── */
-function Slide8Fulfillment() {
+/* ── SLIDE 9: DEMAND FULFILLMENT ── */
+function Slide9Fulfillment() {
   const stages = [
     { label: "Demand", icon: Building2, desc: "Client raises requisition" },
     { label: "Review", icon: FileSearch, desc: "JD analysis by talent team" },
@@ -1777,8 +1977,8 @@ function Slide8Fulfillment() {
   );
 }
 
-/* ── SLIDE 9: IT DOMAINS ── */
-function Slide9Domains() {
+/* ── SLIDE 10: IT DOMAINS ── */
+function Slide10Domains() {
   const domains = [
     { icon: Code2, label: "Java / Microsoft", color: "#1565C0" },
     { icon: Cloud, label: "Cloud & DevOps", color: "#0277BD" },
@@ -2001,8 +2201,9 @@ function Slide9Domains() {
   );
 }
 
-/* ── SLIDE 10: LET'S CONNECT ── */
-function Slide10Connect() {
+/* ── SLIDE 11: LET'S CONNECT ── */
+function Slide11Connect() {
+  const { slideNumber, totalSlides } = React.useContext(SlideNumberContext);
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div
@@ -2181,7 +2382,7 @@ function Slide10Connect() {
                 letterSpacing: 0.5,
               }}
             >
-              AI-Enhanced · A Rayomind Company
+              AI-Enhanced Recruiting
             </span>
           </div>
         </div>
@@ -2201,17 +2402,33 @@ function Slide10Connect() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <HISLogo size={22} light />
             <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>|</span>
-            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Hire&apos;in Solutions</span>
+              <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
+            </div>
           </div>
-          <span
-            style={{
-              color: "rgba(255,255,255,0.35)",
-              fontSize: 9.5,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            © 2026 Hire&apos;in Solutions · A Rayomind Company · US IT Staffing · Confidential
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.35)",
+                fontSize: 9.5,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+              }}
+            >
+              © 2026 Hire&apos;in Solutions · US IT Staffing · Confidential
+            </span>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.35)",
+                fontSize: 9.5,
+                fontWeight: 600,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
+                letterSpacing: 0.5,
+              }}
+            >
+              {slideNumber} / {totalSlides}
+            </span>
+          </div>
         </div>
       </div>
     </SlideWrapper>
@@ -2225,15 +2442,16 @@ export function HiringDeck() {
 
   const slides = [
     { id: 1, title: "Cover", component: <Slide1Cover /> },
-    { id: 2, title: "About Us", component: <Slide2About /> },
-    { id: 3, title: "IT Services", component: <Slide3Services /> },
-    { id: 4, title: "Staffing Models", component: <Slide4Models /> },
-    { id: 5, title: "AI Tools We Leverage", component: <Slide5KleriqAI /> },
-    { id: 6, title: "The Hire'in Advantage", component: <Slide6Advantage /> },
-    { id: 7, title: "Sourcing Process", component: <Slide7Process /> },
-    { id: 8, title: "Demand Fulfillment", component: <Slide8Fulfillment /> },
-    { id: 9, title: "IT Domains", component: <Slide9Domains /> },
-    { id: 10, title: "Let's Connect", component: <Slide10Connect /> },
+    { id: 2, title: "By the Numbers", component: <Slide2ByTheNumbers /> },
+    { id: 3, title: "About Us", component: <Slide3About /> },
+    { id: 4, title: "IT Services", component: <Slide4Services /> },
+    { id: 5, title: "Staffing Models", component: <Slide5Models /> },
+    { id: 6, title: "AI Tools We Leverage", component: <Slide6KleriqAI /> },
+    { id: 7, title: "The Hire'in Advantage", component: <Slide7Advantage /> },
+    { id: 8, title: "Sourcing Process", component: <Slide8Process /> },
+    { id: 9, title: "Demand Fulfillment", component: <Slide9Fulfillment /> },
+    { id: 10, title: "IT Domains", component: <Slide10Domains /> },
+    { id: 11, title: "Let's Connect", component: <Slide11Connect /> },
   ];
 
   async function downloadPPT() {
@@ -2305,7 +2523,7 @@ export function HiringDeck() {
           US IT Staffing · Marketing Deck
         </h1>
         <p style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>
-          10 Slides · Confidential · 2026
+          {slides.length} Slides · Confidential · 2026
         </p>
         <button
           onClick={downloadPPT}
@@ -2344,60 +2562,61 @@ export function HiringDeck() {
         }}
       >
         {slides.map(({ id, title, component }, idx) => (
-          <div key={id}>
-            {/* Slide label */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
+          <SlideNumberContext.Provider key={id} value={{ slideNumber: id, totalSlides: slides.length }}>
+            <div>
               <div
                 style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  background: NAVY,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
+                  gap: 8,
+                  marginBottom: 8,
                 }}
               >
-                <span
+                <div
                   style={{
-                    color: ORANGE,
-                    fontSize: 10,
-                    fontWeight: 800,
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    background: NAVY,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
                   }}
                 >
-                  {id}
+                  <span
+                    style={{
+                      color: ORANGE,
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {id}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    color: NAVY,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {title}
                 </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "rgba(31,58,110,0.12)",
+                  }}
+                />
               </div>
-              <span
-                style={{
-                  color: NAVY,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: 0.2,
-                }}
-              >
-                {title}
-              </span>
-              <div
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: "rgba(31,58,110,0.12)",
-                }}
-              />
+              <div ref={(el) => { slideRefs.current[idx] = el; }}>
+                {component}
+              </div>
             </div>
-            <div ref={(el) => { slideRefs.current[idx] = el; }}>
-              {component}
-            </div>
-          </div>
+          </SlideNumberContext.Provider>
         ))}
       </div>
 
