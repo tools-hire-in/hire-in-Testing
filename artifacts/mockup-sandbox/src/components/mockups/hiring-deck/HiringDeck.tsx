@@ -40,57 +40,19 @@ const LIGHT2 = "#EEF2F8";
 
 function HISLogo({ size = 40, light = false }: { size?: number; light?: boolean }) {
   return (
-    <div
+    <img
+      src="/__mockup/images/his-logo.jpg"
+      alt="Hire'in Solutions"
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
+        height: size * 1.1,
+        width: "auto",
+        display: "block",
         flexShrink: 0,
+        objectFit: "contain",
+        mixBlendMode: light ? "screen" : "normal",
+        borderRadius: 4,
       }}
-    >
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: 8,
-          background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 900,
-          fontSize: size * 0.38,
-          color: WHITE,
-          letterSpacing: -0.5,
-          fontFamily: "'Segoe UI', Arial, sans-serif",
-        }}
-      >
-        H
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-        <span
-          style={{
-            fontWeight: 800,
-            fontSize: size * 0.36,
-            color: light ? WHITE : NAVY,
-            fontFamily: "'Segoe UI', Arial, sans-serif",
-            letterSpacing: -0.3,
-          }}
-        >
-          Hire&apos;in
-        </span>
-        <span
-          style={{
-            fontWeight: 500,
-            fontSize: size * 0.26,
-            color: ORANGE,
-            fontFamily: "'Segoe UI', Arial, sans-serif",
-            letterSpacing: 0.5,
-          }}
-        >
-          SOLUTIONS
-        </span>
-      </div>
-    </div>
+    />
   );
 }
 
@@ -149,22 +111,24 @@ function SlideFooter() {
         flexShrink: 0,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <HISLogo size={26} light />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <HISLogo size={22} light />
+        <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
         <span
           style={{
-            color: "rgba(255,255,255,0.4)",
-            fontSize: 11,
+            color: "rgba(255,255,255,0.5)",
+            fontSize: 9.5,
+            fontFamily: "'Segoe UI', Arial, sans-serif",
+            letterSpacing: 0.3,
           }}
         >
-          |
+          A Rayomind Company
         </span>
-        <RayomindBadge size={22} light />
       </div>
       <span
         style={{
-          color: "rgba(255,255,255,0.55)",
-          fontSize: 10.5,
+          color: "rgba(255,255,255,0.45)",
+          fontSize: 10,
           fontFamily: "'Segoe UI', Arial, sans-serif",
         }}
       >
@@ -277,24 +241,15 @@ function Slide1Cover() {
             padding: "36px 56px",
           }}
         >
-          {/* Logos */}
+          {/* Logo */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 18,
               marginBottom: 32,
             }}
           >
-            <HISLogo size={44} light />
-            <div
-              style={{
-                width: 1,
-                height: 36,
-                background: "rgba(255,255,255,0.2)",
-              }}
-            />
-            <RayomindBadge size={32} light />
+            <HISLogo size={52} light />
           </div>
 
           <div
@@ -433,10 +388,10 @@ function Slide1Cover() {
           borderTop: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <HISLogo size={24} light />
-          <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
-          <RayomindBadge size={20} light />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <HISLogo size={22} light />
+          <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>|</span>
+          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span
@@ -2088,17 +2043,9 @@ function Slide10Connect() {
             zIndex: 1,
           }}
         >
-          {/* Logos */}
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <HISLogo size={42} light />
-            <div
-              style={{
-                width: 1,
-                height: 38,
-                background: "rgba(255,255,255,0.15)",
-              }}
-            />
-            <RayomindBadge size={30} light />
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <HISLogo size={50} light />
           </div>
 
           <div style={{ textAlign: "center" }}>
@@ -2242,10 +2189,10 @@ function Slide10Connect() {
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <HISLogo size={24} light />
-            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
-            <RayomindBadge size={20} light />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <HISLogo size={22} light />
+            <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>|</span>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
           </div>
           <span
             style={{
@@ -2332,15 +2279,10 @@ export function HiringDeck() {
             marginBottom: 8,
           }}
         >
-          <HISLogo size={36} />
-          <div
-            style={{
-              width: 1,
-              height: 30,
-              background: "rgba(31,58,110,0.2)",
-            }}
-          />
-          <RayomindBadge size={26} />
+          <HISLogo size={40} />
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+            <span style={{ fontSize: 10, color: "rgba(31,58,110,0.45)", fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
+          </div>
         </div>
         <h1
           style={{
