@@ -321,7 +321,7 @@ function Slide1Cover() {
                 textTransform: "uppercase",
               }}
             >
-              Powered by Kleriq AI
+              AI-Enhanced Recruiting
             </span>
           </div>
 
@@ -378,7 +378,7 @@ function Slide1Cover() {
           }}
         >
           {[
-            { icon: Brain, label: "Kleriq AI Engine" },
+            { icon: Brain, label: "AI-Powered Matching" },
             { icon: Code2, label: "IT Specialists" },
             { icon: Zap, label: "Fastest Fill Time" },
             { icon: ShieldCheck, label: "Compliance-First" },
@@ -597,7 +597,7 @@ function Slide2About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. Through Rayomind&apos;s infrastructure, we deploy our proprietary <strong style={{ color: ORANGE }}>Kleriq AI</strong> talent intelligence engine to serve US employers with speed and precision.
+              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. We leverage best-in-class AI tools including <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening — ensuring every submission is a strong fit.
             </p>
           </div>
         </div>
@@ -613,7 +613,7 @@ function Slide2About() {
         >
           {[
             { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology roles" },
-            { icon: Brain, label: "Kleriq AI Matching", desc: "Proprietary AI for precision talent sourcing" },
+            { icon: Brain, label: "AI-Powered Matching", desc: "Leveraging AI tools for precision talent sourcing" },
             { icon: Users, label: "Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
             { icon: Globe, label: "Nationwide US Coverage", desc: "Placing IT professionals across all 50 US states" },
           ].map(({ icon: Icon, label, desc }, i) => (
@@ -682,7 +682,7 @@ function Slide3Services() {
     {
       icon: UserCheck,
       title: "Permanent IT Hiring",
-      desc: "Full-time placement of vetted IT professionals matched via Kleriq AI to your exact role requirements.",
+      desc: "Full-time placement of vetted IT professionals matched via AI-powered tools to your exact role requirements.",
       bullets: ["Culture-fit scoring", "Technical assessment", "End-to-end onboarding"],
     },
     {
@@ -700,7 +700,7 @@ function Slide3Services() {
     {
       icon: TrendingUp,
       title: "RPO (Recruitment Process Outsourcing)",
-      desc: "End-to-end outsourcing of your IT hiring pipeline — powered by Kleriq AI from intake to offer.",
+      desc: "End-to-end outsourcing of your IT hiring pipeline — AI-assisted from intake to offer.",
       bullets: ["SLA-backed delivery", "Dedicated talent desk", "ATS integration"],
     },
   ];
@@ -870,7 +870,7 @@ function Slide4Models() {
         "Full pipeline outsourcing",
         "SLA-guaranteed delivery",
         "Dedicated talent desk",
-        "Kleriq AI automation",
+        "AI-driven automation",
       ],
     },
   ];
@@ -1034,8 +1034,8 @@ function Slide4Models() {
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            All models are powered by{" "}
-            <strong style={{ color: ORANGE }}>Kleriq AI</strong> — ensuring
+            All models are supported by{" "}
+            <strong style={{ color: ORANGE }}>AI-driven tools</strong> — ensuring
             precision matching, faster screening, and compliance-first
             workflows.
           </span>
@@ -1047,33 +1047,33 @@ function Slide4Models() {
   );
 }
 
-/* ── SLIDE 5: KLERIQ AI ── */
+/* ── SLIDE 5: AI TOOLS ── */
 function Slide5KleriqAI() {
   const features = [
     {
       icon: FileSearch,
-      title: "AI Resume Parsing",
-      desc: "Extracts structured skill profiles from thousands of resumes in seconds with high accuracy.",
+      title: "Resume Parsing & Analysis",
+      desc: "AI scans and structures candidate resumes to extract skills, experience, and role fit in seconds.",
     },
     {
       icon: Target,
-      title: "JD Matching Engine",
-      desc: "Semantically aligns job descriptions to candidate profiles beyond simple keyword matching.",
+      title: "Job Description Matching",
+      desc: "Semantically aligns job requirements to candidate profiles — far beyond simple keyword search.",
     },
     {
       icon: MessageSquare,
-      title: "Automated Screening",
-      desc: "AI-driven pre-screening conversations that qualify candidates at scale without human effort.",
+      title: "Candidate Pre-Screening",
+      desc: "AI-driven screening conversations that qualify candidates at scale before human review.",
     },
     {
       icon: Shield,
       title: "Bias-Free Shortlisting",
-      desc: "Removes demographic bias by evaluating only skills, experience, and role fit.",
+      desc: "Evaluates candidates purely on skills, experience, and role fit — removing demographic bias.",
     },
     {
       icon: Star,
-      title: "Real-Time Scoring",
-      desc: "Dynamic candidate ranking updated as new information is captured throughout the pipeline.",
+      title: "Fit Scoring & Ranking",
+      desc: "Dynamic candidate ranking updated in real time as new information is captured through the pipeline.",
     },
   ];
 
@@ -1121,7 +1121,7 @@ function Slide5KleriqAI() {
                   fontFamily: "'Segoe UI', Arial, sans-serif",
                 }}
               >
-                Proprietary Technology
+                Smarter Hiring
               </span>
             </div>
             <h2
@@ -1133,7 +1133,7 @@ function Slide5KleriqAI() {
                 lineHeight: 1.1,
               }}
             >
-              Kleriq AI
+              AI Tools We Leverage
             </h2>
             <p
               style={{
@@ -1144,7 +1144,7 @@ function Slide5KleriqAI() {
                 marginTop: 2,
               }}
             >
-              Our Talent Intelligence Engine
+              Including Kleriq AI for job analysis, matching & screening
             </p>
           </div>
           <HISLogo size={34} />
@@ -1232,7 +1232,7 @@ function Slide5KleriqAI() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              The Kleriq Advantage
+              Why AI-Assisted Hiring Wins
             </h4>
             <p
               style={{
@@ -1242,7 +1242,7 @@ function Slide5KleriqAI() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Hire&apos;in Solutions is the only IT staffing firm deploying a fully proprietary AI engine — built exclusively for technology talent.
+              By partnering with leading AI tools, we bring enterprise-grade intelligence to every search — delivering better candidates, faster.
             </p>
           </div>
         </div>
@@ -1258,8 +1258,8 @@ function Slide6Advantage() {
   const advantages = [
     {
       icon: Brain,
-      title: "Kleriq AI Matching",
-      desc: "Our proprietary AI engine parses, scores, and ranks candidates with unprecedented precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.",
+      title: "AI-Assisted Matching",
+      desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.",
       highlight: "70% faster shortlisting",
     },
     {
@@ -1277,7 +1277,7 @@ function Slide6Advantage() {
     {
       icon: Zap,
       title: "Fastest Time-to-Fill",
-      desc: "With Kleriq AI pre-screening active candidates 24/7, we deliver qualified submissions in as few as 48 hours for most IT roles.",
+      desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 48 hours for most IT roles.",
       highlight: "Submissions in 48 hrs",
     },
   ];
@@ -1429,7 +1429,7 @@ function Slide6Advantage() {
 function Slide7Process() {
   const steps = [
     { icon: Building2, label: "Intake", desc: "Understand role, team, culture & tech stack", color: NAVY },
-    { icon: Brain, label: "AI Sourcing", sub: "via Kleriq", desc: "AI-driven sourcing & intelligent matching", color: ORANGE },
+    { icon: Brain, label: "AI Sourcing", sub: "AI-powered", desc: "AI-driven sourcing & intelligent matching", color: ORANGE },
     { icon: UserCheck, label: "Screening", desc: "Technical + cultural fit validation", color: NAVY },
     { icon: FileSearch, label: "Submit", desc: "Curated shortlist with score cards", color: ORANGE },
     { icon: CheckCircle, label: "Onboard", desc: "Seamless joining & compliance closure", color: NAVY },
@@ -1604,7 +1604,7 @@ function Slide7Process() {
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            <strong style={{ color: ORANGE }}>Kleriq AI</strong> is active throughout the pipeline — continuously scoring, ranking, and surfacing the best-fit candidates automatically.
+            <strong style={{ color: ORANGE }}>AI-powered tools</strong> are active throughout the pipeline — continuously scoring, ranking, and surfacing the best-fit candidates automatically.
           </span>
         </div>
       </div>
@@ -1620,7 +1620,7 @@ function Slide8Fulfillment() {
     { label: "Demand", icon: Building2, desc: "Client raises requisition" },
     { label: "Review", icon: FileSearch, desc: "JD analysis by talent team" },
     { label: "Priorities", icon: Target, desc: "Role classification & urgency" },
-    { label: "Allocation", icon: Users, desc: "Recruiter + Kleriq AI assigned" },
+    { label: "Allocation", icon: Users, desc: "Recruiter + AI tools assigned" },
     { label: "Submissions", icon: UserCheck, desc: "Vetted profiles delivered" },
     { label: "Quality", icon: ShieldCheck, desc: "Score validation & review" },
     { label: "Client", icon: Star, desc: "Offer & onboarding stage" },
@@ -2225,7 +2225,7 @@ function Slide10Connect() {
                 letterSpacing: 0.5,
               }}
             >
-              Powered by Kleriq AI · A Rayomind Company
+              AI-Enhanced · A Rayomind Company
             </span>
           </div>
         </div>
@@ -2272,7 +2272,7 @@ export function HiringDeck() {
     { id: 2, title: "About Us", component: <Slide2About /> },
     { id: 3, title: "IT Services", component: <Slide3Services /> },
     { id: 4, title: "Staffing Models", component: <Slide4Models /> },
-    { id: 5, title: "Kleriq AI", component: <Slide5KleriqAI /> },
+    { id: 5, title: "AI Tools We Leverage", component: <Slide5KleriqAI /> },
     { id: 6, title: "The Hire'in Advantage", component: <Slide6Advantage /> },
     { id: 7, title: "Sourcing Process", component: <Slide7Process /> },
     { id: 8, title: "Demand Fulfillment", component: <Slide8Fulfillment /> },
