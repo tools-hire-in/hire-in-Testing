@@ -626,7 +626,6 @@ function Slide2About() {
         </div>
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -780,7 +779,6 @@ function Slide3Services() {
         ))}
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -997,7 +995,6 @@ function Slide4Models() {
         </div>
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -1375,7 +1372,6 @@ function Slide6Advantage() {
         ))}
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -1564,7 +1560,6 @@ function Slide7Process() {
         </div>
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -1762,7 +1757,6 @@ function Slide8Fulfillment() {
         </div>
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
@@ -1987,7 +1981,6 @@ function Slide9Domains() {
         </div>
       </div>
 
-      <SlideFooter />
     </SlideWrapper>
   );
 }
