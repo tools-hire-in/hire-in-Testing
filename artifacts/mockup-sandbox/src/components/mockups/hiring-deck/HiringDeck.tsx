@@ -38,7 +38,7 @@ const WHITE = "#FFFFFF";
 const LIGHT_BG = "#F5F7FA";
 const LIGHT2 = "#EEF2F8";
 
-function HISLogo({ size = 40 }: { size?: number }) {
+function HISLogo({ size = 40, light = false }: { size?: number; light?: boolean }) {
   return (
     <div
       style={{
@@ -71,7 +71,7 @@ function HISLogo({ size = 40 }: { size?: number }) {
           style={{
             fontWeight: 800,
             fontSize: size * 0.36,
-            color: NAVY,
+            color: light ? WHITE : NAVY,
             fontFamily: "'Segoe UI', Arial, sans-serif",
             letterSpacing: -0.3,
           }}
@@ -94,7 +94,7 @@ function HISLogo({ size = 40 }: { size?: number }) {
   );
 }
 
-function RayomindBadge({ size = 28 }: { size?: number }) {
+function RayomindBadge({ size = 28, light = false }: { size?: number; light?: boolean }) {
   return (
     <div
       style={{
@@ -109,7 +109,7 @@ function RayomindBadge({ size = 28 }: { size?: number }) {
           width: size,
           height: size,
           borderRadius: 6,
-          background: NAVY2,
+          background: light ? "rgba(255,255,255,0.15)" : NAVY2,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -125,7 +125,7 @@ function RayomindBadge({ size = 28 }: { size?: number }) {
         style={{
           fontWeight: 700,
           fontSize: size * 0.5,
-          color: NAVY,
+          color: light ? "rgba(255,255,255,0.75)" : NAVY,
           fontFamily: "'Segoe UI', Arial, sans-serif",
           letterSpacing: 0.3,
         }}
@@ -150,7 +150,7 @@ function SlideFooter() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <HISLogo size={26} />
+        <HISLogo size={26} light />
         <span
           style={{
             color: "rgba(255,255,255,0.4)",
@@ -159,7 +159,7 @@ function SlideFooter() {
         >
           |
         </span>
-        <RayomindBadge size={22} />
+        <RayomindBadge size={22} light />
       </div>
       <span
         style={{
@@ -286,7 +286,7 @@ function Slide1Cover() {
               marginBottom: 32,
             }}
           >
-            <HISLogo size={44} />
+            <HISLogo size={44} light />
             <div
               style={{
                 width: 1,
@@ -294,7 +294,7 @@ function Slide1Cover() {
                 background: "rgba(255,255,255,0.2)",
               }}
             />
-            <RayomindBadge size={32} />
+            <RayomindBadge size={32} light />
           </div>
 
           <div
@@ -434,9 +434,9 @@ function Slide1Cover() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <HISLogo size={24} />
+          <HISLogo size={24} light />
           <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
-          <RayomindBadge size={20} />
+          <RayomindBadge size={20} light />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span
@@ -512,7 +512,7 @@ function Slide2About() {
             About Hire&apos;in Solutions
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -741,7 +741,7 @@ function Slide3Services() {
             IT Staffing Services
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -911,7 +911,7 @@ function Slide4Models() {
             Our Staffing Models
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -1147,7 +1147,7 @@ function Slide5KleriqAI() {
               Including Kleriq AI for job analysis, matching & screening
             </p>
           </div>
-          <HISLogo size={34} />
+          <HISLogo size={34} light />
         </div>
 
         {/* Feature grid */}
@@ -1318,7 +1318,7 @@ function Slide6Advantage() {
             The Hire&apos;in Advantage
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -1471,7 +1471,7 @@ function Slide7Process() {
             Our Sourcing Process
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -1662,7 +1662,7 @@ function Slide8Fulfillment() {
             Demand Fulfillment Framework
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -1863,7 +1863,7 @@ function Slide9Domains() {
             IT Domains We Cover
           </h2>
         </div>
-        <HISLogo size={32} />
+        <HISLogo size={32} light />
       </div>
 
       <div
@@ -2090,7 +2090,7 @@ function Slide10Connect() {
         >
           {/* Logos */}
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <HISLogo size={42} />
+            <HISLogo size={42} light />
             <div
               style={{
                 width: 1,
@@ -2098,7 +2098,7 @@ function Slide10Connect() {
                 background: "rgba(255,255,255,0.15)",
               }}
             />
-            <RayomindBadge size={30} />
+            <RayomindBadge size={30} light />
           </div>
 
           <div style={{ textAlign: "center" }}>
@@ -2243,9 +2243,9 @@ function Slide10Connect() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <HISLogo size={24} />
+            <HISLogo size={24} light />
             <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
-            <RayomindBadge size={20} />
+            <RayomindBadge size={20} light />
           </div>
           <span
             style={{
