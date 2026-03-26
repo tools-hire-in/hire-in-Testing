@@ -114,16 +114,29 @@ function SlideFooter() {
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <HISLogo size={22} light />
         <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>|</span>
-        <span
-          style={{
-            color: "rgba(255,255,255,0.5)",
-            fontSize: 9.5,
-            fontFamily: "'Segoe UI', Arial, sans-serif",
-            letterSpacing: 0.3,
-          }}
-        >
-          A Rayomind Company
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+          <span
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              letterSpacing: 0.1,
+            }}
+          >
+            Hire&apos;in Solutions
+          </span>
+          <span
+            style={{
+              color: "rgba(255,255,255,0.45)",
+              fontSize: 9.5,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              letterSpacing: 0.3,
+            }}
+          >
+            A Rayomind Company
+          </span>
+        </div>
       </div>
       <span
         style={{
@@ -391,7 +404,10 @@ function Slide1Cover() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <HISLogo size={22} light />
           <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>|</span>
-          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+            <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Hire&apos;in Solutions</span>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>A Rayomind Company</span>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span
