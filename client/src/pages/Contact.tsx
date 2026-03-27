@@ -97,19 +97,36 @@ export default function Contact() {
               <div>
                 <h2 className="text-2xl font-bold mb-6">Contact Information</h2>
                 <div className="space-y-6">
-                  {/* Address */}
+                  {/* US Office */}
                   <div className="flex items-start gap-4">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <MapPin className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Office Address</h3>
+                      <h3 className="font-semibold mb-1">US Office (Headquarters)</h3>
                       <p className="text-muted-foreground">
                         {CONTACT.address.street}
                         <br />
                         {CONTACT.address.city}, {CONTACT.address.state} {CONTACT.address.zip}
                         <br />
                         {CONTACT.address.country}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* India Office */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <MapPin className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-1">India Office</h3>
+                      <p className="text-muted-foreground">
+                        {CONTACT.addressIndia.street}
+                        <br />
+                        {CONTACT.addressIndia.city}, {CONTACT.addressIndia.zip}
+                        <br />
+                        {CONTACT.addressIndia.country}
                       </p>
                     </div>
                   </div>

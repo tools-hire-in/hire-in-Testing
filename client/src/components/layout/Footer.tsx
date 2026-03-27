@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Linkedin, Shield, Lock, Award, CheckCircle } from "lucide-react";
+import { Linkedin, Shield, Lock, Award, CheckCircle, MapPin } from "lucide-react";
 import { COMPANY, CONTACT, COMPLIANCE_BADGES } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
@@ -15,7 +15,7 @@ export function Footer() {
     <footer className="bg-card border-t">
       {/* Main Footer Content */}
       <div className="container mx-auto px-4 lg:px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           {/* Company Info */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -81,6 +81,31 @@ export function Footer() {
                 </Link>
               </li>
             </ul>
+          </div>
+
+          {/* Our Offices */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider">Our Offices</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+              <div className="flex items-start gap-2" data-testid="text-office-us">
+                <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">United States</p>
+                  <p className="text-xs text-muted-foreground">
+                    {CONTACT.address.city}, {CONTACT.address.state}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2" data-testid="text-office-india">
+                <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">India</p>
+                  <p className="text-xs text-muted-foreground">
+                    {CONTACT.addressIndia.city}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Services */}

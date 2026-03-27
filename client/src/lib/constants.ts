@@ -17,6 +17,13 @@ export const CONTACT = {
     country: "United States",
     full: "2621 Leigh Ave., San Jose, CA-95124, United States",
   },
+  addressIndia: {
+    street: "Suite No-101, Pocket-6, Sector-2",
+    city: "Rohini, New Delhi",
+    zip: "110085",
+    country: "India",
+    full: "Suite No-101, Pocket-6, Sector-2, Rohini, New Delhi, 110085, India",
+  },
   phones: {
     main: "+1 (415) 663-5944",
     healthcare: "+1 (408) 892-9656",

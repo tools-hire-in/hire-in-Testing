@@ -621,11 +621,12 @@ function Slide11Connect() {
             {[
               { icon: Globe, label: "hire-in.com", sub: "Website" },
               { icon: Mail, label: "contact@hire-in.com", sub: "Email" },
-              { icon: MapPin, label: "San Jose, CA · USA", sub: "Headquarters" },
+              { icon: MapPin, label: "San Jose, CA · USA", sub: "US Headquarters" },
+              { icon: MapPin, label: "Rohini, New Delhi · India", sub: "India Office" },
               { icon: Phone, label: "LinkedIn", sub: "Connect with us", href: "https://www.linkedin.com/company/hirein-solutions/" },
             ].map(({ icon: Icon, label, sub, href }, i) => {
               const card = (
-                <div key={i} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(244,124,32,0.3)", borderRadius: 12, padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, minWidth: 200, cursor: href ? "pointer" : undefined }}>
+                <div key={i} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(244,124,32,0.3)", borderRadius: 12, padding: "12px 18px", display: "flex", alignItems: "center", gap: 10, minWidth: 180, cursor: href ? "pointer" : undefined }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Icon size={18} color={WHITE} />
                   </div>
