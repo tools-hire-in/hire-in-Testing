@@ -20,7 +20,7 @@ function WorldMapWithPins() {
         }}
       />
       <svg
-        viewBox="0 0 800 400"
+        viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
@@ -35,24 +35,24 @@ function WorldMapWithPins() {
           </radialGradient>
         </defs>
 
-        <path d="M 160,160 Q 350,80 536,152" fill="none" stroke={ORANGE} strokeWidth="0.8" strokeDasharray="4 3" opacity="0.35" />
+        <path d="M 310,295 Q 700,160 1220,290" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
-        <circle cx="160" cy="160" r="24" fill="url(#cr-glow1)" />
-        <circle cx="160" cy="160" r="6" fill={ORANGE} />
-        <circle cx="160" cy="160" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="310" cy="295" r="50" fill="url(#cr-glow1)" />
+        <circle cx="310" cy="295" r="12" fill={ORANGE} />
+        <circle cx="310" cy="295" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="536" cy="152" r="24" fill="url(#cr-glow2)" />
-        <circle cx="536" cy="152" r="6" fill={ORANGE} />
-        <circle cx="536" cy="152" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="1220" cy="290" r="50" fill="url(#cr-glow2)" />
+        <circle cx="1220" cy="290" r="12" fill={ORANGE} />
+        <circle cx="1220" cy="290" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <text x="160" y="184" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="536" y="176" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="310" y="345" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+        <text x="1220" y="340" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );

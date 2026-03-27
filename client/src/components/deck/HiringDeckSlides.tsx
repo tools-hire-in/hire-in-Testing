@@ -228,7 +228,7 @@ function Slide3About() {
         </div>
         <HISLogo size={32} light />
       </div>
-      <div style={{ flex: 1, display: "flex", gap: 20, padding: "18px 36px 12px", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", gap: 20, padding: "18px 36px 12px", overflow: "hidden", alignItems: "center" }}>
         <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: WHITE, borderRadius: 10, padding: "16px 20px", borderLeft: `4px solid ${ORANGE}`, boxShadow: "0 2px 12px rgba(31,58,110,0.08)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Mission</p>
@@ -320,33 +320,33 @@ function Slide5Models() {
         </div>
         <HISLogo size={32} light />
       </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "16px 36px 12px", gap: 10 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 1fr 1fr", gap: 8 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "16px 36px 12px", gap: 12, justifyContent: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 1fr 1fr", gap: 10 }}>
           <div />
           {models.map((m, i) => (
-            <div key={i} style={{ background: m.color, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
-              <span style={{ color: WHITE, fontSize: 12, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{m.name}</span>
+            <div key={i} style={{ background: m.color, borderRadius: 8, padding: "10px 10px", textAlign: "center" }}>
+              <span style={{ color: WHITE, fontSize: 13, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{m.name}</span>
             </div>
           ))}
         </div>
         {[0, 1, 2, 3].map((rowIdx) => (
-          <div key={rowIdx} style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 1fr 1fr", gap: 8 }}>
-            <div style={{ background: WHITE, borderRadius: 6, padding: "7px 12px", display: "flex", alignItems: "center" }}>
-              <span style={{ color: NAVY, fontSize: 10, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+          <div key={rowIdx} style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr 1fr 1fr", gap: 10 }}>
+            <div style={{ background: WHITE, borderRadius: 6, padding: "10px 12px", display: "flex", alignItems: "center" }}>
+              <span style={{ color: NAVY, fontSize: 11, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
                 {["Engagement Type", "Billing Model", "Guarantee", "Deployment Speed"][rowIdx]}
               </span>
             </div>
             {models.map((m, colIdx) => (
-              <div key={colIdx} style={{ background: WHITE, borderRadius: 6, padding: "7px 10px", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 1px 4px rgba(31,58,110,0.06)" }}>
+              <div key={colIdx} style={{ background: WHITE, borderRadius: 6, padding: "10px 10px", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 1px 4px rgba(31,58,110,0.06)" }}>
                 <CheckCircle size={11} color={m.color} style={{ flexShrink: 0 }} />
-                <span style={{ color: "#374151", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.35 }}>{m.benefits[rowIdx]}</span>
+                <span style={{ color: "#374151", fontSize: 10.5, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.4 }}>{m.benefits[rowIdx]}</span>
               </div>
             ))}
           </div>
         ))}
-        <div style={{ background: NAVY, borderRadius: 8, padding: "9px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ background: NAVY, borderRadius: 8, padding: "11px 16px", display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
           <Brain size={14} color={ORANGE} />
-          <span style={{ color: "rgba(255,255,255,0.88)", fontSize: 11, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+          <span style={{ color: "rgba(255,255,255,0.88)", fontSize: 11.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
             All models are supported by <strong style={{ color: ORANGE }}>AI-driven tools</strong> — ensuring precision matching, faster screening, and compliance-first workflows.
           </span>
         </div>
@@ -619,7 +619,7 @@ function Slide11WorldMap() {
         }}
       />
       <svg
-        viewBox="0 0 800 400"
+        viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
@@ -634,24 +634,24 @@ function Slide11WorldMap() {
           </radialGradient>
         </defs>
 
-        <path d="M 160,160 Q 350,80 536,152" fill="none" stroke={ORANGE} strokeWidth="0.8" strokeDasharray="4 3" opacity="0.35" />
+        <path d="M 310,295 Q 700,160 1220,290" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
-        <circle cx="160" cy="160" r="24" fill="url(#s11g1)" />
-        <circle cx="160" cy="160" r="6" fill={ORANGE} />
-        <circle cx="160" cy="160" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="310" cy="295" r="50" fill="url(#s11g1)" />
+        <circle cx="310" cy="295" r="12" fill={ORANGE} />
+        <circle cx="310" cy="295" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="536" cy="152" r="24" fill="url(#s11g2)" />
-        <circle cx="536" cy="152" r="6" fill={ORANGE} />
-        <circle cx="536" cy="152" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="1220" cy="290" r="50" fill="url(#s11g2)" />
+        <circle cx="1220" cy="290" r="12" fill={ORANGE} />
+        <circle cx="1220" cy="290" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <text x="160" y="184" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="536" y="176" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="310" y="345" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+        <text x="1220" y="340" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );

@@ -672,6 +672,7 @@ function Slide3About() {
           gap: 20,
           padding: "18px 36px 12px",
           overflow: "hidden",
+          alignItems: "center",
         }}
       >
         {/* Mission card */}
@@ -1049,7 +1050,8 @@ function Slide5Models() {
           display: "flex",
           flexDirection: "column",
           padding: "16px 36px 12px",
-          gap: 10,
+          gap: 12,
+          justifyContent: "center",
         }}
       >
         {/* Header row */}
@@ -1057,7 +1059,7 @@ function Slide5Models() {
           style={{
             display: "grid",
             gridTemplateColumns: "160px 1fr 1fr 1fr 1fr",
-            gap: 8,
+            gap: 10,
           }}
         >
           <div />
@@ -1067,14 +1069,14 @@ function Slide5Models() {
               style={{
                 background: m.color,
                 borderRadius: 8,
-                padding: "8px 10px",
+                padding: "10px 10px",
                 textAlign: "center",
               }}
             >
               <span
                 style={{
                   color: WHITE,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 800,
                   fontFamily: "'Segoe UI', Arial, sans-serif",
                 }}
@@ -1092,14 +1094,14 @@ function Slide5Models() {
             style={{
               display: "grid",
               gridTemplateColumns: "160px 1fr 1fr 1fr 1fr",
-              gap: 8,
+              gap: 10,
             }}
           >
             <div
               style={{
                 background: WHITE,
                 borderRadius: 6,
-                padding: "7px 12px",
+                padding: "10px 12px",
                 display: "flex",
                 alignItems: "center",
               }}
@@ -1107,7 +1109,7 @@ function Slide5Models() {
               <span
                 style={{
                   color: NAVY,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: 700,
                   fontFamily: "'Segoe UI', Arial, sans-serif",
                 }}
@@ -1121,7 +1123,7 @@ function Slide5Models() {
                 style={{
                   background: WHITE,
                   borderRadius: 6,
-                  padding: "7px 10px",
+                  padding: "10px 10px",
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
@@ -1132,9 +1134,9 @@ function Slide5Models() {
                 <span
                   style={{
                     color: "#374151",
-                    fontSize: 9.5,
+                    fontSize: 10.5,
                     fontFamily: "'Segoe UI', Arial, sans-serif",
-                    lineHeight: 1.35,
+                    lineHeight: 1.4,
                   }}
                 >
                   {m.benefits[rowIdx]}
@@ -1149,17 +1151,18 @@ function Slide5Models() {
           style={{
             background: NAVY,
             borderRadius: 8,
-            padding: "9px 16px",
+            padding: "11px 16px",
             display: "flex",
             alignItems: "center",
             gap: 8,
+            marginTop: 4,
           }}
         >
           <Brain size={14} color={ORANGE} />
           <span
             style={{
               color: "rgba(255,255,255,0.88)",
-              fontSize: 11,
+              fontSize: 11.5,
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
@@ -2137,7 +2140,7 @@ function Slide11WorldMap() {
         }}
       />
       <svg
-        viewBox="0 0 800 400"
+        viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
@@ -2152,24 +2155,24 @@ function Slide11WorldMap() {
           </radialGradient>
         </defs>
 
-        <path d="M 160,160 Q 350,80 536,152" fill="none" stroke={ORANGE} strokeWidth="0.8" strokeDasharray="4 3" opacity="0.35" />
+        <path d="M 310,295 Q 700,160 1220,290" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
-        <circle cx="160" cy="160" r="24" fill="url(#hd-s11g1)" />
-        <circle cx="160" cy="160" r="6" fill={ORANGE} />
-        <circle cx="160" cy="160" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="310" cy="295" r="50" fill="url(#hd-s11g1)" />
+        <circle cx="310" cy="295" r="12" fill={ORANGE} />
+        <circle cx="310" cy="295" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="536" cy="152" r="24" fill="url(#hd-s11g2)" />
-        <circle cx="536" cy="152" r="6" fill={ORANGE} />
-        <circle cx="536" cy="152" r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
-          <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <circle cx="1220" cy="290" r="50" fill="url(#hd-s11g2)" />
+        <circle cx="1220" cy="290" r="12" fill={ORANGE} />
+        <circle cx="1220" cy="290" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+          <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <text x="160" y="184" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="536" y="176" textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="310" y="345" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+        <text x="1220" y="340" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );
