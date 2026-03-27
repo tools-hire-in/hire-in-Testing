@@ -200,8 +200,7 @@ function Slide2ByTheNumbers() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Proven Track Record</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>By the Numbers</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>By the Numbers</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -223,8 +222,7 @@ function Slide3About() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Who We Are</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>About Hire&apos;in Solutions</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>About Us</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -276,8 +274,7 @@ function Slide4Services() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>What We Offer</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT Staffing Services</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT Staffing Services</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -317,8 +314,7 @@ function Slide5Models() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Engagement Models</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Staffing Models</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Staffing Models</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -374,7 +370,7 @@ function Slide6KleriqAI() {
               <Brain size={11} color={ORANGE} />
               <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Smarter Hiring</span>
             </div>
-            <h2 style={{ color: WHITE, fontSize: 26, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI Tools We Leverage</h2>
+            <h2 style={{ color: ORANGE, fontSize: 22, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI Tools We Leverage</h2>
             <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>Including Kleriq AI for job analysis, matching & screening</p>
           </div>
           <HISLogo size={34} light />
@@ -412,8 +408,7 @@ function Slide7Advantage() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Why Choose Us</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>The Hire&apos;in Advantage</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Why Hire&apos;in</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -451,8 +446,7 @@ function Slide8Process() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>How It Works</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Sourcing Process</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Sourcing Process</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -505,8 +499,7 @@ function Slide9Fulfillment() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>SLA-Driven Model</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Demand Fulfillment Framework</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Demand Fulfillment</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -565,8 +558,7 @@ function Slide10Domains() {
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Technology Verticals</p>
-          <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT Domains We Cover</h2>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT Domains</p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -622,8 +614,7 @@ function Slide11Connect() {
             <HISLogo size={50} light />
           </div>
           <div style={{ textAlign: "center" }}>
-            <p style={{ color: ORANGE, fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", marginBottom: 8 }}>Ready to Hire Smarter?</p>
-            <h2 style={{ color: WHITE, fontSize: 34, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, letterSpacing: -0.5, marginBottom: 6 }}>Let&apos;s Connect</h2>
+            <h2 style={{ color: ORANGE, fontSize: 34, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, letterSpacing: -0.5, marginBottom: 6 }}>Let&apos;s Connect</h2>
             <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic" }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
           </div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>

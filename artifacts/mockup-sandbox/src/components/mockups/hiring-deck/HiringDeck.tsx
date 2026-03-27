@@ -554,25 +554,15 @@ function Slide2ByTheNumbers() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Proven Track Record
-          </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
             By the Numbers
-          </h2>
+          </p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -661,26 +651,15 @@ function Slide3About() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Who We Are
+            About Us
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-              lineHeight: 1.1,
-            }}
-          >
-            About Hire&apos;in Solutions
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -891,25 +870,15 @@ function Slide4Services() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            What We Offer
-          </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
             IT Staffing Services
-          </h2>
+          </p>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -1060,25 +1029,15 @@ function Slide5Models() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Engagement Models
+            Staffing Models
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            Our Staffing Models
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -1294,8 +1253,8 @@ function Slide6KleriqAI() {
             </div>
             <h2
               style={{
-                color: WHITE,
-                fontSize: 26,
+                color: ORANGE,
+                fontSize: 22,
                 fontWeight: 900,
                 fontFamily: "'Segoe UI', Arial, sans-serif",
                 lineHeight: 1.1,
@@ -1466,25 +1425,15 @@ function Slide7Advantage() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Why Choose Us
+            Why Hire&apos;in
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            The Hire&apos;in Advantage
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -1618,25 +1567,15 @@ function Slide8Process() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            How It Works
+            Sourcing Process
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            Our Sourcing Process
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -1808,25 +1747,15 @@ function Slide9Fulfillment() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            SLA-Driven Model
+            Demand Fulfillment
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            Demand Fulfillment Framework
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -2008,25 +1937,15 @@ function Slide10Domains() {
           <p
             style={{
               color: ORANGE,
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 1.5,
               textTransform: "uppercase",
               fontFamily: "'Segoe UI', Arial, sans-serif",
             }}
           >
-            Technology Verticals
+            IT Domains
           </p>
-          <h2
-            style={{
-              color: WHITE,
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
-            }}
-          >
-            IT Domains We Cover
-          </h2>
         </div>
         <HISLogo size={32} light />
       </div>
@@ -2262,29 +2181,16 @@ function Slide11Connect() {
             <p
               style={{
                 color: ORANGE,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 2,
-                textTransform: "uppercase",
-                fontFamily: "'Segoe UI', Arial, sans-serif",
-                marginBottom: 8,
-              }}
-            >
-              Ready to Hire Smarter?
-            </p>
-            <h2
-              style={{
-                color: WHITE,
                 fontSize: 34,
                 fontWeight: 900,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
-                lineHeight: 1.1,
                 letterSpacing: -0.5,
+                fontFamily: "'Segoe UI', Arial, sans-serif",
                 marginBottom: 6,
+                lineHeight: 1.1,
               }}
             >
               Let&apos;s Connect
-            </h2>
+            </p>
             <p
               style={{
                 color: "rgba(255,255,255,0.6)",
