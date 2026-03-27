@@ -85,6 +85,19 @@ The mockup sandbox serves design-only components at `/__mockup/preview/<path>`.
 
 Brand: Navy #1F3A6E, Orange #F47C20/#F96D3E. IT-only — no Healthcare/Engineering/Professional Services.
 
+### IT Staffing Marketing Page (`/it-staffing`)
+Public-facing marketing page for the IT Staffing deck with:
+- **Hero section**: Bold headline, tagline, brand visuals, two CTAs (View Deck scroll, Contact Us link)
+- **Stats strip**: 500+ placements, 48-hour submissions, 95% retention, 50 states, 25K+ candidates, 92% AI match
+- **Interactive slide viewer**: Prev/next navigation, slide counter (1/11), keyboard arrow support, fullscreen toggle, thumbnail strip
+- **Download section**: PDF download (html2canvas + jsPDF, client-side) and PPT download (html2canvas + pptxgenjs) with progress indicators
+- **Highlights cards**: AI-Powered Matching, 48-Hour Submissions, Compliance-First, IT Domain Experts
+- **CTA footer**: Consultation/call CTAs
+- **SEO**: Title, meta description, Open Graph tags
+- **Navigation**: "IT Staffing Deck" added under Services dropdown
+- **Files**: `client/src/pages/ITStaffing.tsx`, `client/src/components/deck/HiringDeckSlides.tsx`
+- **Dependencies**: jsPDF (added), html2canvas and pptxgenjs (existing)
+
 ## External Dependencies
 
 ### Database
