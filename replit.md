@@ -82,7 +82,7 @@ The mockup sandbox serves design-only components at `/__mockup/preview/<path>`.
 8. **Sourcing Process** — 5-step pipeline: Intake → AI Sourcing → Screening → Submit → Onboard
 9. **Demand Fulfillment** — 7-stage SLA flow with 4 SLA metrics (<24hrs first submissions)
 10. **IT Domains** — Domain grid × staffing model matrix
-11. **Let's Connect** — hire-in.com, hello@hire-in.com, LinkedIn, San Jose CA
+11. **Let's Connect** — hire-in.com, contact@hire-in.com, LinkedIn (with QR code), San Jose CA
 
 Brand: Navy #1F3A6E, Orange #F47C20/#F96D3E. IT-only — no Healthcare/Engineering/Professional Services.
 
