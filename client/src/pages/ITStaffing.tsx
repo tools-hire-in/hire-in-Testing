@@ -40,9 +40,9 @@ export default function ITStaffing() {
       }
       el.setAttribute("content", content);
     };
-    setMeta("description", "Hire'in Solutions IT Staffing — 500+ placements, 48-hour submissions, 95% retention. AI-powered IT recruitment across all 50 US states. View our deck and download PDF/PPT.");
+    setMeta("description", "Hire'in Solutions IT Staffing — 500+ placements, 24-hour submissions, 95% retention. AI-powered IT recruitment across all 50 US states. View our deck and download PDF/PPT.");
     setMeta("og:title", "IT Staffing Services | Hire'in Solutions", true);
-    setMeta("og:description", "AI-powered IT staffing with 500+ placements, 48-hour submissions, and 95% client retention. View our interactive deck.", true);
+    setMeta("og:description", "AI-powered IT staffing with 500+ placements, 24-hour submissions, and 95% client retention. View our interactive deck.", true);
     setMeta("og:type", "website", true);
     setMeta("og:url", `${window.location.origin}/it-staffing`, true);
     return () => { document.title = "Hire'in Solutions"; };
@@ -154,7 +154,7 @@ export default function ITStaffing() {
             <span className="text-primary">Powered by AI</span>
           </h1>
           <p className="text-lg md:text-xl text-white/70 mb-3 font-medium max-w-2xl mx-auto">
-            The Right Tech Talent, Right Now — 500+ placements, 48-hour first submissions, and 95% client retention.
+            The Right Tech Talent, Right Now — 500+ placements, 24-hour first submissions, and 95% client retention.
           </p>
           <p className="text-sm text-white/50 max-w-xl mx-auto mb-8">
             {COMPANY.name} delivers elite IT talent across all 50 US states, leveraging proprietary AI tools to match, screen, and place faster than any traditional staffing firm.
@@ -176,7 +176,7 @@ export default function ITStaffing() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[
               { value: "500+", label: "IT Placements" },
-              { value: "48hrs", label: "First Submissions" },
+              { value: "24hrs", label: "First Submissions" },
               { value: "95%", label: "Client Retention" },
               { value: "50", label: "US States" },
               { value: "25K+", label: "Candidate Pool" },
@@ -341,7 +341,7 @@ export default function ITStaffing() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { icon: Brain, title: "AI-Powered Matching", desc: "92% match accuracy using proprietary Kleriq AI for resume parsing, job matching, and candidate scoring." },
-              { icon: Zap, title: "48-Hour Submissions", desc: "Qualified candidate profiles delivered within 48 hours for most IT roles — the fastest in the industry." },
+              { icon: Zap, title: "24-Hour Submissions", desc: "Qualified candidate profiles delivered within 24 hours for most IT roles — the fastest in the industry." },
               { icon: Shield, title: "Compliance-First", desc: "Built-in I-9 verification, E-Verify, background checks, and federal/state employment law compliance." },
               { icon: Code2, title: "IT Domain Experts", desc: "60+ IT-specialist recruiters fluent in your tech stack — from Java to Kubernetes, React to SAP." },
             ].map(({ icon: Icon, title, desc }) => (

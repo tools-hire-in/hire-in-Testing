@@ -142,7 +142,7 @@ function Slide1Cover() {
           <h2 style={{ fontSize: 26, fontWeight: 600, color: ORANGE, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.4, marginBottom: 20 }}>US IT Staffing · Powered by AI</h2>
           <p style={{ fontSize: 16, color: "rgba(255,255,255,0.72)", fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic", letterSpacing: 0.3 }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
           <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 0", width: "fit-content" }}>
-            {["500+ IT Placements", "48-Hour First Submissions", "95% Client Retention"].map((stat, i) => (
+            {["500+ IT Placements", "24-Hour First Submissions", "95% Client Retention"].map((stat, i) => (
               <Fragment key={i}>
                 {i > 0 && <div style={{ width: 1, height: 20, background: "rgba(244,124,32,0.4)", flexShrink: 0 }} />}
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.3, padding: "0 16px", whiteSpace: "nowrap" }}>{stat}</span>
@@ -406,7 +406,7 @@ function Slide7Advantage() {
     { icon: Brain, title: "AI-Assisted Matching", desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.", highlight: "70% Faster Shortlisting" },
     { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "60+ IT-Only Recruiters" },
     { icon: ShieldCheck, title: "Compliance-First", desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.", highlight: "Zero-Risk: I-9 + E-Verify" },
-    { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 48 hours for most IT roles.", highlight: "First Profiles in 48 Hours" },
+    { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 24 hours for most IT roles.", highlight: "First Profiles in 24 Hours" },
   ];
   return (
     <SlideWrapper bg={LIGHT_BG}>
@@ -534,7 +534,7 @@ function Slide9Fulfillment() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
           {[
             { metric: "< 24 hrs", label: "Demand Acknowledgement" },
-            { metric: "48–72 hrs", label: "First Submissions" },
+            { metric: "< 24 hrs", label: "First Submissions" },
             { metric: "≥ 95%", label: "Submission Quality Score" },
             { metric: "100%", label: "Compliance Coverage" },
           ].map(({ metric, label }, i) => (

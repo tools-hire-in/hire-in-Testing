@@ -363,7 +363,7 @@ function Slide1Cover() {
           >
             {[
               "500+ IT Placements",
-              "48-Hour First Submissions",
+              "24-Hour First Submissions",
               "95% Client Retention",
             ].map((stat, i) => (
               <React.Fragment key={i}>
@@ -1445,8 +1445,8 @@ function Slide7Advantage() {
     {
       icon: Zap,
       title: "Fastest Time-to-Fill",
-      desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 48 hours for most IT roles.",
-      highlight: "First Profiles in 48 Hours",
+      desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 24 hours for most IT roles.",
+      highlight: "First Profiles in 24 Hours",
     },
   ];
 
@@ -1934,7 +1934,7 @@ function Slide9Fulfillment() {
         >
           {[
             { metric: "< 24 hrs", label: "Demand Acknowledgement" },
-            { metric: "48–72 hrs", label: "First Submissions" },
+            { metric: "< 24 hrs", label: "First Submissions" },
             { metric: "≥ 95%", label: "Submission Quality Score" },
             { metric: "100%", label: "Compliance Coverage" },
           ].map(({ metric, label }, i) => (

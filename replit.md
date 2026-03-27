@@ -71,27 +71,28 @@ The mockup sandbox serves design-only components at `/__mockup/preview/<path>`.
 
 ### HiringDeck — IT Staffing Marketing Deck
 
-10-slide marketing deck for Hire'in Solutions focused exclusively on IT Staffing:
-1. **Cover** — Logo, Kleriq AI badge, tagline "The Right Tech Talent, Right Now"
-2. **About Us** — Mission, Rayomind family, 4 value pillars
-3. **IT Services** — Permanent, Contract, Project-Based, RPO
-4. **Staffing Models** — Matrix: 4 models × 4 features
-5. **Kleriq AI** — Dedicated slide: resume parsing, JD matching, screening, bias-free, real-time scoring
-6. **The Hire'in Advantage** — 4 boxes: Kleriq AI, IT Experts, Compliance-First, Fastest Fill
-7. **Sourcing Process** — 5-step pipeline: Intake → AI Sourcing → Screening → Submit → Onboard
-8. **Demand Fulfillment** — 7-stage SLA flow with 4 SLA metrics
-9. **IT Domains** — Domain grid × staffing model matrix
-10. **Let's Connect** — hire-in.com, hello@hire-in.com, LinkedIn
+11-slide marketing deck for Hire'in Solutions focused exclusively on IT Staffing:
+1. **Cover** — Logo, tagline "The Right Tech Talent, Right Now", hero stats (500+ placements, 24-hour submissions, 95% retention)
+2. **By the Numbers** — 6 key metrics grid (placements, fill time, retention, states, candidate DB, AI match)
+3. **About Us** — Mission, Rayomind family, Est. 2014, 60+ recruiters, 4 value pillars
+4. **IT Services** — Permanent, Contract, Project-Based, RPO
+5. **Staffing Models** — Matrix: 4 models × 4 features (Engagement Type, Billing Model, Guarantee, Deployment Speed)
+6. **AI Tools We Leverage** — Resume parsing, JD matching, screening, bias-free, real-time scoring
+7. **The Hire'in Advantage** — 4 boxes: AI Matching, IT Experts, Compliance-First, Fastest Fill
+8. **Sourcing Process** — 5-step pipeline: Intake → AI Sourcing → Screening → Submit → Onboard
+9. **Demand Fulfillment** — 7-stage SLA flow with 4 SLA metrics (<24hrs first submissions)
+10. **IT Domains** — Domain grid × staffing model matrix
+11. **Let's Connect** — hire-in.com, hello@hire-in.com, LinkedIn, San Jose CA
 
 Brand: Navy #1F3A6E, Orange #F47C20/#F96D3E. IT-only — no Healthcare/Engineering/Professional Services.
 
 ### IT Staffing Marketing Page (`/it-staffing`)
 Public-facing marketing page for the IT Staffing deck with:
 - **Hero section**: Bold headline, tagline, brand visuals, two CTAs (View Deck scroll, Contact Us link)
-- **Stats strip**: 500+ placements, 48-hour submissions, 95% retention, 50 states, 25K+ candidates, 92% AI match
+- **Stats strip**: 500+ placements, 24-hour submissions, 95% retention, 50 states, 25K+ candidates, 92% AI match
 - **Interactive slide viewer**: Prev/next navigation, slide counter (1/11), keyboard arrow support, fullscreen toggle, thumbnail strip
 - **Download section**: PDF download (html2canvas + jsPDF, client-side) and PPT download (html2canvas + pptxgenjs) with progress indicators
-- **Highlights cards**: AI-Powered Matching, 48-Hour Submissions, Compliance-First, IT Domain Experts
+- **Highlights cards**: AI-Powered Matching, 24-Hour Submissions, Compliance-First, IT Domain Experts
 - **CTA footer**: Consultation/call CTAs
 - **SEO**: Title, meta description, Open Graph tags
 - **Navigation**: "IT Staffing Deck" added under Services dropdown
