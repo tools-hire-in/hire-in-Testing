@@ -10,6 +10,7 @@ import {
   Database,
   FileSearch,
   Globe,
+  Linkedin,
   Mail,
   MapPin,
   MessageSquare,
@@ -602,6 +603,62 @@ function Slide10Domains() {
   );
 }
 
+const S11_CONTINENT_PATHS = [
+  "M 22,56 L 56,38 L 100,36 L 156,36 L 200,40 L 240,52 L 268,68 L 280,88 L 268,98 L 250,104 L 236,112 L 224,136 L 220,148 L 207,153 L 196,156 L 184,160 L 178,166 L 166,178 L 156,168 L 148,156 L 140,142 L 136,132 L 129,118 L 124,100 L 118,86 L 108,78 L 88,68 L 64,60 L 38,56 Z",
+  "M 200,192 L 222,184 L 252,188 L 278,200 L 302,214 L 318,232 L 326,256 L 322,280 L 310,304 L 292,322 L 270,338 L 254,348 L 244,336 L 236,316 L 228,292 L 222,268 L 216,244 L 210,224 L 204,208 Z",
+  "M 382,118 L 396,96 L 406,78 L 420,66 L 444,56 L 470,56 L 490,66 L 494,82 L 486,96 L 476,106 L 462,114 L 446,120 L 428,118 L 410,118 L 396,120 Z",
+  "M 388,130 L 412,124 L 442,126 L 470,134 L 492,142 L 511,158 L 518,174 L 516,196 L 508,218 L 496,240 L 480,260 L 462,278 L 444,286 L 426,280 L 408,264 L 394,244 L 384,222 L 376,198 L 374,174 L 378,150 Z",
+  "M 494,66 L 530,48 L 580,38 L 640,36 L 700,40 L 750,44 L 790,54 L 790,68 L 778,80 L 750,90 L 720,100 L 696,108 L 672,112 L 648,114 L 622,118 L 600,122 L 582,128 L 570,136 L 562,152 L 558,168 L 552,182 L 544,192 L 534,188 L 526,178 L 520,164 L 516,148 L 510,136 L 498,128 L 490,118 L 484,106 L 482,92 L 486,78 Z",
+  "M 560,138 L 576,132 L 592,138 L 598,152 L 594,168 L 584,180 L 572,188 L 560,182 L 552,170 L 548,156 L 552,146 Z",
+  "M 504,136 L 520,132 L 536,140 L 540,154 L 534,168 L 524,176 L 512,172 L 506,158 L 502,146 Z",
+  "M 626,150 L 648,144 L 668,148 L 682,160 L 688,174 L 680,184 L 664,186 L 648,180 L 634,172 L 628,160 Z",
+  "M 616,196 L 636,192 L 660,194 L 684,198 L 706,204 L 716,212 L 708,218 L 688,216 L 664,212 L 640,208 L 622,204 Z",
+  "M 656,242 L 688,230 L 720,228 L 746,240 L 750,260 L 740,278 L 722,290 L 698,294 L 676,286 L 662,272 L 656,256 Z",
+  "M 710,96 L 718,90 L 726,96 L 724,108 L 718,118 L 710,112 Z",
+  "M 394,76 L 402,70 L 410,76 L 408,86 L 400,90 L 392,84 Z",
+  "M 250,24 L 270,18 L 296,18 L 316,24 L 320,36 L 312,48 L 296,52 L 276,52 L 260,46 L 252,36 Z",
+];
+
+function Slide11WorldMap() {
+  const sjX = 129, sjY = 117;
+  const ndX = 572, ndY = 136;
+  const midX = (sjX + ndX) / 2;
+  const midY = Math.min(sjY, ndY) - 50;
+
+  return (
+    <svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg" style={{ width: "100%", height: "100%" }}>
+      <defs>
+        <radialGradient id="s11g1" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ORANGE} stopOpacity="0.7" />
+          <stop offset="100%" stopColor={ORANGE} stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="s11g2" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ORANGE} stopOpacity="0.7" />
+          <stop offset="100%" stopColor={ORANGE} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      {S11_CONTINENT_PATHS.map((d, i) => (
+        <path key={i} d={d} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8" />
+      ))}
+      <path d={`M ${sjX},${sjY} Q ${midX},${midY} ${ndX},${ndY}`} fill="none" stroke={ORANGE} strokeWidth="0.8" strokeDasharray="4 3" opacity="0.35" />
+      <circle cx={sjX} cy={sjY} r="24" fill="url(#s11g1)" />
+      <circle cx={sjX} cy={sjY} r="6" fill={ORANGE} />
+      <circle cx={sjX} cy={sjY} r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
+        <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={ndX} cy={ndY} r="24" fill="url(#s11g2)" />
+      <circle cx={ndX} cy={ndY} r="6" fill={ORANGE} />
+      <circle cx={ndX} cy={ndY} r="12" fill="none" stroke={ORANGE} strokeWidth="0.8" opacity="0.4">
+        <animate attributeName="r" values="12;20;12" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
+      </circle>
+      <text x={sjX} y={sjY + 24} textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+      <text x={ndX} y={ndY + 24} textAnchor="middle" fill={WHITE} fontSize="10" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+    </svg>
+  );
+}
+
 function Slide11Connect() {
   const { slideNumber, totalSlides } = useContext(SlideNumberContext);
   return (
@@ -609,46 +666,64 @@ function Slide11Connect() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", left: -100, bottom: -100, width: 400, height: 400, borderRadius: "50%", background: "rgba(244,124,32,0.07)" }} />
         <div style={{ position: "absolute", right: -60, top: -60, width: 280, height: 280, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: "24px 36px", position: "relative", zIndex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <HISLogo size={50} light />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 36px 0", position: "relative", zIndex: 1 }}>
+          <HISLogo size={40} light />
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <h2 style={{ color: ORANGE, fontSize: 30, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, letterSpacing: -0.5, margin: 0 }}>Let&apos;s Connect</h2>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic", margin: "4px 0 0" }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
           </div>
-          <div style={{ textAlign: "center" }}>
-            <h2 style={{ color: ORANGE, fontSize: 34, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, letterSpacing: -0.5, marginBottom: 6 }}>Let&apos;s Connect</h2>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic" }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
-          </div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
-            {[
-              { icon: Globe, label: "hire-in.com", sub: "Website" },
-              { icon: Mail, label: "contact@hire-in.com", sub: "Email" },
-              { icon: MapPin, label: "San Jose, CA · USA", sub: "US Headquarters" },
-              { icon: MapPin, label: "Rohini, New Delhi · India", sub: "India Office" },
-              { icon: Phone, label: "LinkedIn", sub: "Connect with us", href: "https://www.linkedin.com/company/hirein-solutions/" },
-            ].map(({ icon: Icon, label, sub, href }, i) => {
-              const card = (
-                <div key={i} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(244,124,32,0.3)", borderRadius: 12, padding: "12px 18px", display: "flex", alignItems: "center", gap: 10, minWidth: 180, cursor: href ? "pointer" : undefined }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon size={18} color={WHITE} />
-                  </div>
-                  <div>
-                    <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 9, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>{sub}</p>
-                    <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{label}</p>
-                  </div>
-                </div>
-              );
-              return href ? <a key={i} href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }} data-testid="link-linkedin">{card}</a> : <Fragment key={i}>{card}</Fragment>;
-            })}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(244,124,32,0.15)", border: "1px solid rgba(244,124,32,0.35)", borderRadius: 24, padding: "6px 18px" }}>
-              <Brain size={13} color={ORANGE} />
-              <span style={{ color: ORANGE, fontSize: 10.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>AI-Enhanced Recruiting</span>
+          <div style={{ width: 40 }} />
+        </div>
+        <div style={{ flex: 1, display: "flex", gap: 0, padding: "8px 32px 8px", position: "relative", zIndex: 1 }}>
+          <div style={{ flex: 1.2, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+            <div style={{ width: "100%", maxWidth: 480 }}>
+              <Slide11WorldMap />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div style={{ background: "white", borderRadius: 8, padding: 6, width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center" }} data-testid="img-linkedin-qr">
-                <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 33 33" shapeRendering="crispEdges"><path stroke="#000000" d="M0 0.5h7m6 0h1m2 0h6m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h1m1 0h1m1 0h3m1 0h1m3 0h2m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h5m4 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h2m4 0h3m2 0h2m1 0h2m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h2m1 0h2m2 0h1m2 0h1m4 0h1m2 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m3 0h1m2 0h4m1 0h2m4 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h3m1 0h2m5 0h2M0 8.5h1m1 0h5m2 0h1m1 0h1m1 0h5m4 0h1m1 0h1m1 0h5M1 9.5h1m1 0h2m2 0h2m7 0h1m1 0h2m3 0h1m2 0h2m1 0h2m1 0h1M2 10.5h1m2 0h2m1 0h3m4 0h2m1 0h1m2 0h1m2 0h3m1 0h1m1 0h2M1 11.5h1m1 0h1m1 0h1m1 0h3m2 0h1m1 0h3m2 0h5m2 0h1m1 0h5M3 12.5h4m1 0h1m1 0h1m7 0h2m2 0h2m3 0h3m1 0h2M1 13.5h3m1 0h1m3 0h2m1 0h6m2 0h1m2 0h1m2 0h1m4 0h2M0 14.5h1m1 0h5m1 0h1m2 0h2m4 0h1m1 0h1m2 0h1m1 0h3m3 0h2M2 15.5h1m1 0h2m4 0h3m3 0h1m2 0h3m3 0h6M0 16.5h3m2 0h5m1 0h4m2 0h1m1 0h1m2 0h4m1 0h2m3 0h1M0 17.5h1m6 0h2m4 0h1m2 0h5m2 0h5m1 0h2m1 0h1M0 18.5h1m3 0h1m1 0h3m4 0h5m2 0h1m1 0h1m2 0h4m1 0h1M0 19.5h2m1 0h1m1 0h1m1 0h1m1 0h2m5 0h3m2 0h3m1 0h1m1 0h5M0 20.5h1m5 0h3m2 0h3m2 0h1m2 0h1m2 0h1m1 0h2m1 0h3m2 0h1M0 21.5h1m2 0h1m1 0h1m1 0h4m3 0h2m1 0h2m4 0h1m1 0h2m5 0h1M0 22.5h1m1 0h2m2 0h3m4 0h4m3 0h1m4 0h1m3 0h3M0 23.5h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m3 0h5m1 0h2m2 0h2m1 0h1M0 24.5h1m3 0h3m1 0h3m1 0h1m2 0h1m1 0h3m2 0h8M8 25.5h6m2 0h1m1 0h3m2 0h2m3 0h1m1 0h3M0 26.5h7m2 0h2m4 0h2m1 0h1m3 0h3m1 0h1m1 0h1m1 0h2M0 27.5h1m5 0h1m1 0h1m5 0h1m5 0h2m1 0h2m3 0h3m1 0h1M0 28.5h1m1 0h3m1 0h1m1 0h1m2 0h2m2 0h1m2 0h1m3 0h1m1 0h6m1 0h2M0 29.5h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h4m1 0h1m1 0h3m1 0h1m2 0h1m1 0h3M0 30.5h1m1 0h3m1 0h1m1 0h1m1 0h2m2 0h1m2 0h1m2 0h8M0 31.5h1m5 0h1m2 0h2m2 0h2m1 0h1m2 0h1m1 0h2m5 0h3M0 32.5h7m1 0h4m1 0h2m2 0h1m4 0h6m3 0h1"/></svg>
+            <div style={{ display: "flex", gap: 40, marginTop: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: ORANGE, boxShadow: `0 0 8px ${ORANGE}` }} />
+                <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>US Headquarters</span>
               </div>
-              <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Scan for LinkedIn</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: ORANGE, boxShadow: `0 0 8px ${ORANGE}` }} />
+                <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>India Office</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ width: 1, background: "rgba(255,255,255,0.08)", margin: "10px 16px" }} />
+          <div style={{ flex: 0.8, display: "flex", flexDirection: "column", justifyContent: "center", gap: 12, paddingLeft: 8 }}>
+            {[
+              { icon: Mail, label: "contact@hire-in.com", sub: "Email Us" },
+              { icon: Globe, label: "hire-in.com", sub: "Website" },
+              { icon: MapPin, label: "San Jose, CA · USA", sub: "US Headquarters" },
+              { icon: MapPin, label: "New Delhi · India", sub: "India Office" },
+            ].map(({ icon: Icon, label, sub }, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }} data-testid={`contact-item-${i}`}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={18} color={WHITE} />
+                </div>
+                <div>
+                  <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>{sub}</p>
+                  <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>{label}</p>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+              <a href="https://www.linkedin.com/company/hirein-solutions/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }} data-testid="link-linkedin">
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Linkedin size={18} color={WHITE} />
+                </div>
+                <div>
+                  <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn</p>
+                  <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Connect with us</p>
+                </div>
+              </a>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+                <div style={{ background: "white", borderRadius: 8, padding: 6, width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center" }} data-testid="img-linkedin-qr">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 33 33" shapeRendering="crispEdges"><path stroke="#000000" d="M0 0.5h7m6 0h1m2 0h6m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h1m1 0h1m1 0h3m1 0h1m3 0h2m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h5m4 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h2m4 0h3m2 0h2m1 0h2m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h2m1 0h2m2 0h1m2 0h1m4 0h1m2 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m3 0h1m2 0h4m1 0h2m4 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h3m1 0h2m5 0h2M0 8.5h1m1 0h5m2 0h1m1 0h1m1 0h5m4 0h1m1 0h1m1 0h5M1 9.5h1m1 0h2m2 0h2m7 0h1m1 0h2m3 0h1m2 0h2m1 0h2m1 0h1M2 10.5h1m2 0h2m1 0h3m4 0h2m1 0h1m2 0h1m2 0h3m1 0h1m1 0h2M1 11.5h1m1 0h1m1 0h1m1 0h3m2 0h1m1 0h3m2 0h5m2 0h1m1 0h5M3 12.5h4m1 0h1m1 0h1m7 0h2m2 0h2m3 0h3m1 0h2M1 13.5h3m1 0h1m3 0h2m1 0h6m2 0h1m2 0h1m2 0h1m4 0h2M0 14.5h1m1 0h5m1 0h1m2 0h2m4 0h1m1 0h1m2 0h1m1 0h3m3 0h2M2 15.5h1m1 0h2m4 0h3m3 0h1m2 0h3m3 0h6M0 16.5h3m2 0h5m1 0h4m2 0h1m1 0h1m2 0h4m1 0h2m3 0h1M0 17.5h1m6 0h2m4 0h1m2 0h5m2 0h5m1 0h2m1 0h1M0 18.5h1m3 0h1m1 0h3m4 0h5m2 0h1m1 0h1m2 0h4m1 0h1M0 19.5h2m1 0h1m1 0h1m1 0h1m1 0h2m5 0h3m2 0h3m1 0h1m1 0h5M0 20.5h1m5 0h3m2 0h3m2 0h1m2 0h1m2 0h1m1 0h2m1 0h3m2 0h1M0 21.5h1m2 0h1m1 0h1m1 0h4m3 0h2m1 0h2m4 0h1m1 0h2m5 0h1M0 22.5h1m1 0h2m2 0h3m4 0h4m3 0h1m4 0h1m3 0h3M0 23.5h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m3 0h5m1 0h2m2 0h2m1 0h1M0 24.5h1m3 0h3m1 0h3m1 0h1m2 0h1m1 0h3m2 0h8M8 25.5h6m2 0h1m1 0h3m2 0h2m3 0h1m1 0h3M0 26.5h7m2 0h2m4 0h2m1 0h1m3 0h3m1 0h1m1 0h1m1 0h2M0 27.5h1m5 0h1m1 0h1m5 0h1m5 0h2m1 0h2m3 0h3m1 0h1M0 28.5h1m1 0h3m1 0h1m1 0h1m2 0h2m2 0h1m2 0h1m3 0h1m1 0h6m1 0h2M0 29.5h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h4m1 0h1m1 0h3m1 0h1m2 0h1m1 0h3M0 30.5h1m1 0h3m1 0h1m1 0h1m1 0h2m2 0h1m2 0h1m2 0h8M0 31.5h1m5 0h1m2 0h2m2 0h2m1 0h1m2 0h1m1 0h2m5 0h3M0 32.5h7m1 0h4m1 0h2m2 0h1m4 0h6m3 0h1"/></svg>
+                </div>
+                <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Scan for LinkedIn</span>
+              </div>
             </div>
           </div>
         </div>
