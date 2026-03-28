@@ -674,11 +674,13 @@ function Slide11Connect() {
           <div style={{ width: 40 }} />
         </div>
         <div style={{ flex: 1, display: "flex", gap: 0, padding: "0px 16px 4px", position: "relative", zIndex: 1 }}>
-          <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
-            <div style={{ width: "100%", transform: "scale(1.35) translateY(-12%)", transformOrigin: "center top" }}>
-              <Slide11WorldMap />
+          <div style={{ flex: 1.5, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: "130%", marginLeft: "-15%" }}>
+                <Slide11WorldMap />
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 40, marginTop: 4 }}>
+            <div style={{ position: "absolute", bottom: 4, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 40 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: ORANGE, boxShadow: `0 0 8px ${ORANGE}` }} />
                 <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>US Headquarters</span>
