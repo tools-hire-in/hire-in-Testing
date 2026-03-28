@@ -613,7 +613,7 @@ function Slide11WorldMap() {
         style={{
           width: "100%",
           height: "100%",
-          objectFit: "contain",
+          objectFit: "cover",
           opacity: 0.18,
           filter: "brightness(2.5)",
         }}
@@ -621,7 +621,7 @@ function Slide11WorldMap() {
       <svg
         viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio="xMidYMid slice"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
         <defs>
@@ -674,13 +674,11 @@ function Slide11Connect() {
           <div style={{ width: 40 }} />
         </div>
         <div style={{ flex: 1, display: "flex", gap: 0, padding: "0px 16px 4px", position: "relative", zIndex: 1 }}>
-          <div style={{ flex: 1.5, position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ width: "130%", marginLeft: "-15%" }}>
-                <Slide11WorldMap />
-              </div>
+          <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
+            <div style={{ width: "100%", flex: 1, minHeight: 0 }}>
+              <Slide11WorldMap />
             </div>
-            <div style={{ position: "absolute", bottom: 4, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 40 }}>
+            <div style={{ display: "flex", gap: 40, marginTop: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: ORANGE, boxShadow: `0 0 8px ${ORANGE}` }} />
                 <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>US Headquarters</span>
