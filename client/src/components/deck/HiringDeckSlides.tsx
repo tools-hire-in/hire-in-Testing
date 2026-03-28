@@ -676,7 +676,7 @@ function Slide11Connect() {
         </div>
         <div style={{ flex: 1, display: "flex", gap: 0, padding: "0px 16px 4px", position: "relative", zIndex: 1 }}>
           <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
-            <div style={{ width: "115%", flex: 1, minHeight: 0, marginTop: -10, marginLeft: "-7.5%" }}>
+            <div style={{ width: "115%", flex: 1, minHeight: 0, marginTop: -35, marginLeft: "-7.5%" }}>
               <Slide11WorldMap />
             </div>
             <div style={{ display: "flex", gap: 40, marginTop: 0 }}>
