@@ -2155,7 +2155,7 @@ function Slide11WorldMap() {
           </radialGradient>
         </defs>
 
-        <path d="M 480,460 Q 780,350 1100,565" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
+        <path d="M 480,460 Q 780,350 1110,565" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
         <circle cx="480" cy="460" r="50" fill="url(#hd-s11g1)" />
         <circle cx="480" cy="460" r="12" fill={ORANGE} />
@@ -2164,15 +2164,15 @@ function Slide11WorldMap() {
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="1100" cy="565" r="50" fill="url(#hd-s11g2)" />
-        <circle cx="1100" cy="565" r="12" fill={ORANGE} />
-        <circle cx="1100" cy="565" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+        <circle cx="1110" cy="565" r="50" fill="url(#hd-s11g2)" />
+        <circle cx="1110" cy="565" r="12" fill={ORANGE} />
+        <circle cx="1110" cy="565" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
           <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
         <text x="480" y="510" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="1100" y="615" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="1110" y="615" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );
