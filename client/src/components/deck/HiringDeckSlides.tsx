@@ -634,24 +634,24 @@ function Slide11WorldMap() {
           </radialGradient>
         </defs>
 
-        <path d="M 310,295 Q 700,160 1220,290" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
+        <path d="M 480,460 Q 800,320 1180,480" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
-        <circle cx="310" cy="295" r="50" fill="url(#s11g1)" />
-        <circle cx="310" cy="295" r="12" fill={ORANGE} />
-        <circle cx="310" cy="295" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+        <circle cx="480" cy="460" r="50" fill="url(#s11g1)" />
+        <circle cx="480" cy="460" r="12" fill={ORANGE} />
+        <circle cx="480" cy="460" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
           <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="1220" cy="290" r="50" fill="url(#s11g2)" />
-        <circle cx="1220" cy="290" r="12" fill={ORANGE} />
-        <circle cx="1220" cy="290" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+        <circle cx="1180" cy="480" r="50" fill="url(#s11g2)" />
+        <circle cx="1180" cy="480" r="12" fill={ORANGE} />
+        <circle cx="1180" cy="480" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
           <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <text x="310" y="345" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="1220" y="340" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="480" y="510" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+        <text x="1180" y="530" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );
@@ -664,7 +664,7 @@ function Slide11Connect() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", left: -100, bottom: -100, width: 400, height: 400, borderRadius: "50%", background: "rgba(244,124,32,0.07)" }} />
         <div style={{ position: "absolute", right: -60, top: -60, width: 280, height: 280, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 36px 0", position: "relative", zIndex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px 0", position: "relative", zIndex: 1 }}>
           <HISLogo size={40} light />
           <div style={{ textAlign: "center", flex: 1 }}>
             <h2 style={{ color: ORANGE, fontSize: 30, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, letterSpacing: -0.5, margin: 0 }}>Let&apos;s Connect</h2>
@@ -672,12 +672,12 @@ function Slide11Connect() {
           </div>
           <div style={{ width: 40 }} />
         </div>
-        <div style={{ flex: 1, display: "flex", gap: 0, padding: "8px 32px 8px", position: "relative", zIndex: 1 }}>
-          <div style={{ flex: 1.2, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
-            <div style={{ width: "100%", maxWidth: 480 }}>
+        <div style={{ flex: 1, display: "flex", gap: 0, padding: "4px 20px 4px", position: "relative", zIndex: 1 }}>
+          <div style={{ flex: 1.3, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+            <div style={{ width: "100%" }}>
               <Slide11WorldMap />
             </div>
-            <div style={{ display: "flex", gap: 40, marginTop: 6 }}>
+            <div style={{ display: "flex", gap: 40, marginTop: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: ORANGE, boxShadow: `0 0 8px ${ORANGE}` }} />
                 <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>US Headquarters</span>
@@ -688,8 +688,8 @@ function Slide11Connect() {
               </div>
             </div>
           </div>
-          <div style={{ width: 1, background: "rgba(255,255,255,0.08)", margin: "10px 16px" }} />
-          <div style={{ flex: 0.8, display: "flex", flexDirection: "column", justifyContent: "center", gap: 12, paddingLeft: 8 }}>
+          <div style={{ width: 1, background: "rgba(255,255,255,0.08)", margin: "10px 12px" }} />
+          <div style={{ flex: 0.8, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, paddingLeft: 4 }}>
             {[
               { icon: Mail, label: "contact@hire-in.com", sub: "Email Us" },
               { icon: Globe, label: "hire-in.com", sub: "Website" },
@@ -697,8 +697,8 @@ function Slide11Connect() {
               { icon: MapPin, label: "New Delhi · India", sub: "India Office" },
             ].map(({ icon: Icon, label, sub }, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }} data-testid={`contact-item-${i}`}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon size={18} color={WHITE} />
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={16} color={WHITE} />
                 </div>
                 <div>
                   <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>{sub}</p>
@@ -706,26 +706,27 @@ function Slide11Connect() {
                 </div>
               </div>
             ))}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              <a href="https://www.linkedin.com/company/hirein-solutions/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }} data-testid="link-linkedin">
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Linkedin size={18} color={WHITE} />
-                </div>
-                <div>
-                  <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn</p>
-                  <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Connect with us</p>
-                </div>
-              </a>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginLeft: "auto" }}>
-                <div style={{ background: "white", borderRadius: 8, padding: 6, width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center" }} data-testid="img-linkedin-qr">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 33 33" shapeRendering="crispEdges"><path stroke="#000000" d="M0 0.5h7m6 0h1m2 0h6m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h1m1 0h1m1 0h3m1 0h1m3 0h2m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h5m4 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h2m4 0h3m2 0h2m1 0h2m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h2m1 0h2m2 0h1m2 0h1m4 0h1m2 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m3 0h1m2 0h4m1 0h2m4 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h3m1 0h2m5 0h2M0 8.5h1m1 0h5m2 0h1m1 0h1m1 0h5m4 0h1m1 0h1m1 0h5M1 9.5h1m1 0h2m2 0h2m7 0h1m1 0h2m3 0h1m2 0h2m1 0h2m1 0h1M2 10.5h1m2 0h2m1 0h3m4 0h2m1 0h1m2 0h1m2 0h3m1 0h1m1 0h2M1 11.5h1m1 0h1m1 0h1m1 0h3m2 0h1m1 0h3m2 0h5m2 0h1m1 0h5M3 12.5h4m1 0h1m1 0h1m7 0h2m2 0h2m3 0h3m1 0h2M1 13.5h3m1 0h1m3 0h2m1 0h6m2 0h1m2 0h1m2 0h1m4 0h2M0 14.5h1m1 0h5m1 0h1m2 0h2m4 0h1m1 0h1m2 0h1m1 0h3m3 0h2M2 15.5h1m1 0h2m4 0h3m3 0h1m2 0h3m3 0h6M0 16.5h3m2 0h5m1 0h4m2 0h1m1 0h1m2 0h4m1 0h2m3 0h1M0 17.5h1m6 0h2m4 0h1m2 0h5m2 0h5m1 0h2m1 0h1M0 18.5h1m3 0h1m1 0h3m4 0h5m2 0h1m1 0h1m2 0h4m1 0h1M0 19.5h2m1 0h1m1 0h1m1 0h1m1 0h2m5 0h3m2 0h3m1 0h1m1 0h5M0 20.5h1m5 0h3m2 0h3m2 0h1m2 0h1m2 0h1m1 0h2m1 0h3m2 0h1M0 21.5h1m2 0h1m1 0h1m1 0h4m3 0h2m1 0h2m4 0h1m1 0h2m5 0h1M0 22.5h1m1 0h2m2 0h3m4 0h4m3 0h1m4 0h1m3 0h3M0 23.5h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m3 0h5m1 0h2m2 0h2m1 0h1M0 24.5h1m3 0h3m1 0h3m1 0h1m2 0h1m1 0h3m2 0h8M8 25.5h6m2 0h1m1 0h3m2 0h2m3 0h1m1 0h3M0 26.5h7m2 0h2m4 0h2m1 0h1m3 0h3m1 0h1m1 0h1m1 0h2M0 27.5h1m5 0h1m1 0h1m5 0h1m5 0h2m1 0h2m3 0h3m1 0h1M0 28.5h1m1 0h3m1 0h1m1 0h1m2 0h2m2 0h1m2 0h1m3 0h1m1 0h6m1 0h2M0 29.5h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h4m1 0h1m1 0h3m1 0h1m2 0h1m1 0h3M0 30.5h1m1 0h3m1 0h1m1 0h1m1 0h2m2 0h1m2 0h1m2 0h8M0 31.5h1m5 0h1m2 0h2m2 0h2m1 0h1m2 0h1m1 0h2m5 0h3M0 32.5h7m1 0h4m1 0h2m2 0h1m4 0h6m3 0h1"/></svg>
-                </div>
-                <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Scan for LinkedIn</span>
+            <a href="https://www.linkedin.com/company/hirein-solutions/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }} data-testid="link-linkedin">
+              <div style={{ width: 36, height: 36, borderRadius: 9, background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Linkedin size={16} color={WHITE} />
+              </div>
+              <div>
+                <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn</p>
+                <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Connect with us</p>
+              </div>
+            </a>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
+              <div style={{ background: "white", borderRadius: 8, padding: 5, width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} data-testid="img-linkedin-qr">
+                <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 33 33" shapeRendering="crispEdges"><path stroke="#000000" d="M0 0.5h7m6 0h1m2 0h6m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h1m1 0h1m1 0h3m1 0h1m3 0h2m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h5m4 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h2m4 0h3m2 0h2m1 0h2m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h2m1 0h2m2 0h1m2 0h1m4 0h1m2 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m3 0h1m2 0h4m1 0h2m4 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h3m1 0h2m5 0h2M0 8.5h1m1 0h5m2 0h1m1 0h1m1 0h5m4 0h1m1 0h1m1 0h5M1 9.5h1m1 0h2m2 0h2m7 0h1m1 0h2m3 0h1m2 0h2m1 0h2m1 0h1M2 10.5h1m2 0h2m1 0h3m4 0h2m1 0h1m2 0h1m2 0h3m1 0h1m1 0h2M1 11.5h1m1 0h1m1 0h1m1 0h3m2 0h1m1 0h3m2 0h5m2 0h1m1 0h5M3 12.5h4m1 0h1m1 0h1m7 0h2m2 0h2m3 0h3m1 0h2M1 13.5h3m1 0h1m3 0h2m1 0h6m2 0h1m2 0h1m2 0h1m4 0h2M0 14.5h1m1 0h5m1 0h1m2 0h2m4 0h1m1 0h1m2 0h1m1 0h3m3 0h2M2 15.5h1m1 0h2m4 0h3m3 0h1m2 0h3m3 0h6M0 16.5h3m2 0h5m1 0h4m2 0h1m1 0h1m2 0h4m1 0h2m3 0h1M0 17.5h1m6 0h2m4 0h1m2 0h5m2 0h5m1 0h2m1 0h1M0 18.5h1m3 0h1m1 0h3m4 0h5m2 0h1m1 0h1m2 0h4m1 0h1M0 19.5h2m1 0h1m1 0h1m1 0h1m1 0h2m5 0h3m2 0h3m1 0h1m1 0h5M0 20.5h1m5 0h3m2 0h3m2 0h1m2 0h1m2 0h1m1 0h2m1 0h3m2 0h1M0 21.5h1m2 0h1m1 0h1m1 0h4m3 0h2m1 0h2m4 0h1m1 0h2m5 0h1M0 22.5h1m1 0h2m2 0h3m4 0h4m3 0h1m4 0h1m3 0h3M0 23.5h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m3 0h5m1 0h2m2 0h2m1 0h1M0 24.5h1m3 0h3m1 0h3m1 0h1m2 0h1m1 0h3m2 0h8M8 25.5h6m2 0h1m1 0h3m2 0h2m3 0h1m1 0h3M0 26.5h7m2 0h2m4 0h2m1 0h1m3 0h3m1 0h1m1 0h1m1 0h2M0 27.5h1m5 0h1m1 0h1m5 0h1m5 0h2m1 0h2m3 0h3m1 0h1M0 28.5h1m1 0h3m1 0h1m1 0h1m2 0h2m2 0h1m2 0h1m3 0h1m1 0h6m1 0h2M0 29.5h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h4m1 0h1m1 0h3m1 0h1m2 0h1m1 0h3M0 30.5h1m1 0h3m1 0h1m1 0h1m1 0h2m2 0h1m2 0h1m2 0h8M0 31.5h1m5 0h1m2 0h2m2 0h2m1 0h1m2 0h1m1 0h2m5 0h3M0 32.5h7m1 0h4m1 0h2m2 0h1m4 0h6m3 0h1"/></svg>
+              </div>
+              <div>
+                <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Scan QR Code</p>
+                <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn Profile</p>
               </div>
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 36px", background: "rgba(255,255,255,0.04)", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 24px", background: "rgba(255,255,255,0.04)", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <HISLogo size={22} light />
             <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>|</span>
