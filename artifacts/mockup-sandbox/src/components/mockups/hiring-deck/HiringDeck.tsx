@@ -2155,24 +2155,24 @@ function Slide11WorldMap() {
           </radialGradient>
         </defs>
 
-        <path d="M 310,295 Q 700,160 1220,290" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
+        <path d="M 480,460 Q 780,340 1110,520" fill="none" stroke={ORANGE} strokeWidth="1.8" strokeDasharray="8 6" opacity="0.35" />
 
-        <circle cx="310" cy="295" r="50" fill="url(#hd-s11g1)" />
-        <circle cx="310" cy="295" r="12" fill={ORANGE} />
-        <circle cx="310" cy="295" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+        <circle cx="480" cy="460" r="50" fill="url(#hd-s11g1)" />
+        <circle cx="480" cy="460" r="12" fill={ORANGE} />
+        <circle cx="480" cy="460" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
           <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <circle cx="1220" cy="290" r="50" fill="url(#hd-s11g2)" />
-        <circle cx="1220" cy="290" r="12" fill={ORANGE} />
-        <circle cx="1220" cy="290" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
+        <circle cx="1110" cy="520" r="50" fill="url(#hd-s11g2)" />
+        <circle cx="1110" cy="520" r="12" fill={ORANGE} />
+        <circle cx="1110" cy="520" r="24" fill="none" stroke={ORANGE} strokeWidth="1.5" opacity="0.4">
           <animate attributeName="r" values="24;42;24" dur="3s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
         </circle>
 
-        <text x="310" y="345" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
-        <text x="1220" y="340" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
+        <text x="480" y="510" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">San Jose, CA</text>
+        <text x="1110" y="570" textAnchor="middle" fill={WHITE} fontSize="22" fontWeight="700" fontFamily="'Segoe UI', Arial, sans-serif">New Delhi, India</text>
       </svg>
     </div>
   );
