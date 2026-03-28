@@ -606,7 +606,7 @@ function Slide10Domains() {
 
 function Slide11WorldMap() {
   return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: "1816/740" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <img
         src={worldMapImage}
         alt="World Map"
@@ -621,6 +621,7 @@ function Slide11WorldMap() {
       <svg
         viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
+        preserveAspectRatio="xMidYMid meet"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
         <defs>
@@ -673,8 +674,8 @@ function Slide11Connect() {
           <div style={{ width: 40 }} />
         </div>
         <div style={{ flex: 1, display: "flex", gap: 0, padding: "0px 16px 4px", position: "relative", zIndex: 1 }}>
-          <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
-            <div style={{ width: "100%" }}>
+          <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
+            <div style={{ width: "100%", flex: 1, minHeight: 0 }}>
               <Slide11WorldMap />
             </div>
             <div style={{ display: "flex", gap: 40, marginTop: 4 }}>
