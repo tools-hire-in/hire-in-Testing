@@ -613,7 +613,8 @@ function Slide11WorldMap() {
         style={{
           width: "100%",
           height: "100%",
-          objectFit: "cover",
+          objectFit: "contain",
+          objectPosition: "center center",
           opacity: 0.18,
           filter: "brightness(2.5)",
         }}
@@ -621,7 +622,7 @@ function Slide11WorldMap() {
       <svg
         viewBox="0 0 1816 740"
         xmlns="http://www.w3.org/2000/svg"
-        preserveAspectRatio="xMidYMid slice"
+        preserveAspectRatio="xMidYMid meet"
         style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       >
         <defs>
@@ -675,7 +676,7 @@ function Slide11Connect() {
         </div>
         <div style={{ flex: 1, display: "flex", gap: 0, padding: "0px 16px 4px", position: "relative", zIndex: 1 }}>
           <div style={{ flex: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
-            <div style={{ width: "98%", flex: 1, minHeight: 0, marginTop: -40, padding: "0 10px", maxHeight: "calc(100% - 20px)" }}>
+            <div style={{ width: "100%", flex: 1, minHeight: 0 }}>
               <Slide11WorldMap />
             </div>
             <div style={{ display: "flex", gap: 40, marginTop: 4 }}>
