@@ -557,17 +557,20 @@ function TrackPlayer({
   );
 }
 
-function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted }: {
+function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue }: {
   assignmentId: string;
   trackTitle: string;
   onSubmitted: () => void;
+  isOverdue?: boolean;
 }) {
   const { toast } = useToast();
   const [nonCompletionReason, setNonCompletionReason] = useState("");
   const [extensionReason, setExtensionReason] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
 
-  const combinedReason = `[Why not completed] ${nonCompletionReason.trim()}\n[Why extension needed] ${extensionReason.trim()}`;
+  const combinedReason = isOverdue
+    ? `[Why not completed] ${nonCompletionReason.trim()}\n[Why extension needed] ${extensionReason.trim()}`
+    : `[Why extension needed] ${extensionReason.trim()}`;
 
   const submitMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/onboarding/extension-requests", {
@@ -583,7 +586,7 @@ function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted }: {
   });
 
   const minDate = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-  const isValid = nonCompletionReason.trim().length > 0 && extensionReason.trim().length > 0 && !!newDueDate;
+  const isValid = (isOverdue ? nonCompletionReason.trim().length > 0 : true) && extensionReason.trim().length > 0 && !!newDueDate;
 
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-white dark:bg-card" data-testid={`form-extension-${assignmentId}`}>
@@ -591,16 +594,18 @@ function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted }: {
         <CalendarPlus className="h-4 w-4 text-blue-600" />
         Request Due Date Extension — {trackTitle}
       </p>
-      <div className="space-y-2">
-        <Label>Why were you unable to complete the training on time?</Label>
-        <Textarea
-          value={nonCompletionReason}
-          onChange={e => setNonCompletionReason(e.target.value)}
-          placeholder="e.g. Was on approved leave, heavy workload, technical issues..."
-          rows={2}
-          data-testid="input-non-completion-reason"
-        />
-      </div>
+      {isOverdue && (
+        <div className="space-y-2">
+          <Label>Why were you unable to complete the training on time?</Label>
+          <Textarea
+            value={nonCompletionReason}
+            onChange={e => setNonCompletionReason(e.target.value)}
+            placeholder="e.g. Was on approved leave, heavy workload, technical issues..."
+            rows={2}
+            data-testid="input-non-completion-reason"
+          />
+        </div>
+      )}
       <div className="space-y-2">
         <Label>Why do you need an extension?</Label>
         <Textarea
@@ -693,6 +698,7 @@ export default function MyTraining() {
 
   const now = new Date();
   const in3days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const in5days = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
   const activeAssignments = assignments.filter((a: any) => a.status !== "completed");
   const overdueCount = activeAssignments.filter((a: any) => a.dueDate && new Date(a.dueDate) < now).length;
   const dueSoonCount = activeAssignments.filter((a: any) => {
@@ -804,6 +810,10 @@ export default function MyTraining() {
               ? extensionsForThis.sort((x: any, y: any) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0]
               : null;
 
+            const isOverdue = status === "overdue";
+            const isDueSoon = !isOverdue && a.dueDate && new Date(a.dueDate) >= now && new Date(a.dueDate) <= in5days;
+            const showExtensionSection = status !== "completed" && !!a.dueDate;
+
             return (
               <div key={a.id} className="space-y-2">
                 <Card
@@ -814,9 +824,16 @@ export default function MyTraining() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}>
-                        {status.replace("_", " ")}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {isDueSoon && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700" data-testid={`badge-due-soon-${a.id}`}>
+                            due soon
+                          </span>
+                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}>
+                          {status.replace("_", " ")}
+                        </span>
+                      </div>
                     </div>
                     {a.track?.description && (
                       <p className="text-sm text-muted-foreground line-clamp-2">{a.track.description}</p>
@@ -830,7 +847,10 @@ export default function MyTraining() {
                       </div>
                       <Progress value={a.progressPct} className="h-2" />
                       {a.dueDate && (
-                        <p className="text-xs text-muted-foreground">Due: {formatDate(a.dueDate)}</p>
+                        <p className={`text-xs ${isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
+                          Due: {formatDate(a.dueDate)}
+                          {isDueSoon && " — due within 5 days"}
+                        </p>
                       )}
                       {status === "completed" && (
                         <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
@@ -842,15 +862,15 @@ export default function MyTraining() {
                 </CardContent>
               </Card>
 
-              {status === "overdue" && isLocked && (
+              {showExtensionSection && (
                 <div className="space-y-2">
                   {latestExt && latestExt.status === "pending" && (
                     <div className="text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3 flex items-start gap-2" data-testid={`status-extension-pending-${a.id}`}>
                       <Clock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-semibold text-amber-800 dark:text-amber-300">Extension request pending endorsement</p>
+                        <p className="font-semibold text-amber-800 dark:text-amber-300">Extension request pending review</p>
                         <p className="text-amber-700 dark:text-amber-400">New date requested: {formatDate(latestExt.newDueDate)}</p>
-                        <p className="text-amber-600 dark:text-amber-500 mt-1">Awaiting endorsement from your manager/supervisor before final review.</p>
+                        <p className="text-amber-600 dark:text-amber-500 mt-1">Awaiting review from your manager/supervisor.</p>
                       </div>
                     </div>
                   )}
@@ -892,6 +912,7 @@ export default function MyTraining() {
                           assignmentId={a.id}
                           trackTitle={a.track?.title || ""}
                           onSubmitted={() => setShowExtensionFor(null)}
+                          isOverdue={isOverdue}
                         />
                       ) : (
                         <Button

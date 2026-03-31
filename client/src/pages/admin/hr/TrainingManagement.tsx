@@ -99,14 +99,17 @@ export default function TrainingManagement() {
   });
 
   const endorseExtension = useMutation({
-    mutationFn: ({ id, comment }: { id: string; comment?: string }) =>
-      apiRequest("PATCH", `/api/onboarding/extension-requests/${id}/endorse`, { comment }),
-    onSuccess: () => {
+    mutationFn: ({ id, comment, action }: { id: string; comment?: string; action?: string }) =>
+      apiRequest("PATCH", `/api/onboarding/extension-requests/${id}/endorse`, { comment, action }),
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/to-endorse"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/pending"] });
-      toast({ title: "Extension request endorsed and forwarded for approval" });
+      const msg = variables.action === "approve" ? "Extension request approved"
+        : variables.action === "reject" ? "Extension request rejected"
+        : "Extension request endorsed and forwarded for approval";
+      toast({ title: msg });
     },
-    onError: () => toast({ title: "Failed to endorse request", variant: "destructive" }),
+    onError: () => toast({ title: "Failed to process request", variant: "destructive" }),
   });
 
   const resolveExtension = useMutation({
@@ -335,7 +338,7 @@ export default function TrainingManagement() {
                 data-testid="button-toggle-endorsements"
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Endorse
+                {user?.role === "manager" ? "Review Requests" : "Endorse"}
                 {toEndorse.length > 0 && (
                   <span className="ml-1.5 bg-amber-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center" data-testid="badge-to-endorse">
                     {toEndorse.length}
@@ -378,7 +381,7 @@ export default function TrainingManagement() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <CheckCircle className="h-5 w-5 text-amber-600" />
-                Requests Awaiting Your Endorsement
+                {user?.role === "manager" ? "Extension Requests from Your Reports" : "Requests Awaiting Your Endorsement"}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -408,7 +411,9 @@ export default function TrainingManagement() {
                             <span className="font-medium">Requested new date:</span> {new Date(ext.newDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                           </p>
                         </div>
-                        <Badge variant="outline" className="shrink-0 text-amber-700 border-amber-300">Pending Endorsement</Badge>
+                        <Badge variant="outline" className="shrink-0 text-amber-700 border-amber-300">
+                          {ext.isDirectReport && user?.role === "manager" ? "Pending Your Approval" : "Pending Endorsement"}
+                        </Badge>
                       </div>
                       <div className="bg-muted/50 rounded-md p-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reason</p>
@@ -424,15 +429,38 @@ export default function TrainingManagement() {
                           data-testid={`input-endorse-comment-${ext.id}`}
                         />
                       </div>
-                      <Button
-                        size="sm"
-                        className="bg-blue-700 hover:bg-blue-800"
-                        onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "" })}
-                        disabled={endorseExtension.isPending}
-                        data-testid={`button-endorse-${ext.id}`}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" /> Endorse & Forward to Super Admin
-                      </Button>
+                      {ext.isDirectReport && user?.role === "manager" ? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-700 hover:bg-green-800"
+                            onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "", action: "approve" })}
+                            disabled={endorseExtension.isPending}
+                            data-testid={`button-approve-${ext.id}`}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "", action: "reject" })}
+                            disabled={endorseExtension.isPending}
+                            data-testid={`button-reject-${ext.id}`}
+                          >
+                            <AlertCircle className="h-4 w-4 mr-1" /> Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-blue-700 hover:bg-blue-800"
+                          onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "" })}
+                          disabled={endorseExtension.isPending}
+                          data-testid={`button-endorse-${ext.id}`}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" /> Endorse & Forward to Super Admin
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

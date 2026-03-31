@@ -267,6 +267,25 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     }
   }, [isComplianceLocked, isOnTrainingPage, setLocation]);
 
+  const ENDORSER_ROLES = ["manager", "hr", "admin"];
+  const isEndorserRole = ENDORSER_ROLES.includes(user?.role || "");
+
+  const { data: pendingEndorseCount } = useQuery<number>({
+    queryKey: ["/api/onboarding/extension-requests/to-endorse", "count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/extension-requests/to-endorse", { credentials: "include" });
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return Array.isArray(data) ? data.length : 0;
+      } catch {
+        return 0;
+      }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && isEndorserRole,
+  });
+
   const ADMIN_TRAINING_ROLES = ["super_admin", "admin", "hr", "manager"];
 
   const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
@@ -452,28 +471,37 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <SidebarGroupLabel>HR & Operations</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {filteredHrOps.map((item) => (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild={!isComplianceLocked}
-                          isActive={isActive(item.href)}
-                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
-                          data-testid={`nav-hrops-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                        >
-                          {isComplianceLocked ? (
-                            <span className="flex items-center gap-2">
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </span>
-                          ) : (
-                            <Link href={item.href}>
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </Link>
-                          )}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
+                    {filteredHrOps.map((item) => {
+                      const isTrainingMgmt = item.href === "/admin/hr/training";
+                      const endorseBadge = isTrainingMgmt && isEndorserRole && (pendingEndorseCount ?? 0) > 0;
+                      return (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton
+                            asChild={!isComplianceLocked}
+                            isActive={isActive(item.href)}
+                            className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                            data-testid={`nav-hrops-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                          >
+                            {isComplianceLocked ? (
+                              <span className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.label}</span>
+                              </span>
+                            ) : (
+                              <Link href={item.href}>
+                                <item.icon className="h-4 w-4" />
+                                <span className="flex-1">{item.label}</span>
+                                {endorseBadge && (
+                                  <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center bg-amber-500 text-white" data-testid="badge-pending-endorsements">
+                                    {(pendingEndorseCount ?? 0) > 9 ? "9+" : pendingEndorseCount}
+                                  </span>
+                                )}
+                              </Link>
+                            )}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

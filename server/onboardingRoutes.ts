@@ -945,9 +945,8 @@ export function registerOnboardingRoutes(app: Express) {
         return res.status(400).json({ error: "Cannot request extension for a completed assignment" });
       }
 
-      const isOverdue = assignment.dueDate && new Date(assignment.dueDate) < new Date();
-      if (!isOverdue) {
-        return res.status(400).json({ error: "Extension requests are only allowed for overdue assignments" });
+      if (!assignment.dueDate) {
+        return res.status(400).json({ error: "Assignment has no due date set" });
       }
 
       if (assignment.dueDate && requestedDate <= new Date(assignment.dueDate)) {
@@ -1070,6 +1069,8 @@ export function registerOnboardingRoutes(app: Express) {
           currentDueDate = assignment.dueDate;
         }
 
+        const isDirectReport = myRole === "manager" && requester.role === "employee" && requester.managerId === req.session.userId!;
+
         return {
           ...r,
           trackTitle,
@@ -1077,6 +1078,7 @@ export function registerOnboardingRoutes(app: Express) {
           requesterName: `${requester.firstName} ${requester.lastName}`,
           requesterRole: requester.role,
           requesterEmail: requester.email,
+          isDirectReport,
         };
       });
 
@@ -1111,21 +1113,54 @@ export function registerOnboardingRoutes(app: Express) {
         return res.status(403).json({ error: "You are not authorized to endorse this request" });
       }
 
-      const [updated] = await db.update(trainingExtensionRequests).set({
-        status: "endorsed",
-        endorsedById: req.session.userId,
-        endorsedAt: new Date(),
-        endorserComment: comment || null,
-      }).where(eq(trainingExtensionRequests.id, id)).returning();
+      const { action } = req.body;
+      const isManagerDirectReport = myRole === "manager" && requester.role === "employee" && requester.managerId === req.session.userId!;
 
-      await appendAuditEvent(req.session.userId, "extension_endorsed", {
-        extensionRequestId: id,
-        assignmentId: request.assignmentId,
-        userId: request.userId,
-        comment: comment || null,
-      });
+      if (isManagerDirectReport && (action === "approve" || action === "reject")) {
+        const finalStatus = action === "approve" ? "approved" : "rejected";
+        const [updated] = await db.update(trainingExtensionRequests).set({
+          status: finalStatus,
+          endorsedById: req.session.userId,
+          endorsedAt: new Date(),
+          endorserComment: comment || null,
+          resolvedById: req.session.userId,
+          resolvedAt: new Date(),
+          resolverComment: comment || null,
+        }).where(eq(trainingExtensionRequests.id, id)).returning();
 
-      res.json(updated);
+        if (finalStatus === "approved") {
+          await db.update(trackAssignments).set({
+            dueDate: new Date(request.newDueDate),
+          }).where(eq(trackAssignments.id, request.assignmentId));
+        }
+
+        await appendAuditEvent(req.session.userId, `extension_${finalStatus}`, {
+          extensionRequestId: id,
+          assignmentId: request.assignmentId,
+          userId: request.userId,
+          comment: comment || null,
+          newDueDate: request.newDueDate,
+          managerDirectApproval: true,
+        });
+
+        res.json(updated);
+      } else {
+        const [updated] = await db.update(trainingExtensionRequests).set({
+          status: "endorsed",
+          endorsedById: req.session.userId,
+          endorsedAt: new Date(),
+          endorserComment: comment || null,
+        }).where(eq(trainingExtensionRequests.id, id)).returning();
+
+        await appendAuditEvent(req.session.userId, "extension_endorsed", {
+          extensionRequestId: id,
+          assignmentId: request.assignmentId,
+          userId: request.userId,
+          comment: comment || null,
+        });
+
+        res.json(updated);
+      }
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to endorse extension request" });
