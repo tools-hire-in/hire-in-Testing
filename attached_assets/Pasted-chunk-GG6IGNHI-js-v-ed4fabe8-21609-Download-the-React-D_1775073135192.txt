@@ -1,0 +1,58 @@
+chunk-GG6IGNHI.js?v=ed4fabe8:21609 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+/api/auth/me:1  Failed to load resource: the server responded with a status of 401 (Unauthorized)
+MyTeam.tsx:520 Uncaught TypeError: Cannot read properties of undefined (reading 'firstName')
+    at EmployeeDetailView (MyTeam.tsx:520:58)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=ed4fabe8:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=ed4fabe8:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=ed4fabe8:15972:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=ed4fabe8:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=ed4fabe8:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=ed4fabe8:3739:39)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=ed4fabe8:19818:15)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=ed4fabe8:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=ed4fabe8:19190:13)
+MyTeam.tsx:520 Uncaught TypeError: Cannot read properties of undefined (reading 'firstName')
+    at EmployeeDetailView (MyTeam.tsx:520:58)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=ed4fabe8:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=ed4fabe8:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=ed4fabe8:15972:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=ed4fabe8:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=ed4fabe8:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=ed4fabe8:3739:39)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=ed4fabe8:19818:15)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=ed4fabe8:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=ed4fabe8:19190:13)
+chunk-GG6IGNHI.js?v=ed4fabe8:14080 The above error occurred in the <EmployeeDetailView> component:
+
+    at EmployeeDetailView (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/src/pages/admin/hr/MyTeam.tsx:424:3)
+    at main
+    at div
+    at div
+    at div
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=ed4fabe8:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=ed4fabe8:62:5)
+    at SidebarProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/src/components/ui/sidebar.tsx:59:3)
+    at AdminLayout (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/src/components/admin/AdminLayout.tsx:240:31)
+    at MyTeam (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/src/pages/admin/hr/MyTeam.tsx:2314:21)
+    at Route (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=ed4fabe8:264:16)
+    at Switch (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=ed4fabe8:320:17)
+    at PublicRouter
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=ed4fabe8:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=ed4fabe8:62:5)
+    at QueryClientProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=ed4fabe8:2747:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-GG6IGNHI.js?v=ed4fabe8:14080
+chunk-GG6IGNHI.js?v=ed4fabe8:9176 Uncaught TypeError: Cannot read properties of undefined (reading 'firstName')
+    at EmployeeDetailView (MyTeam.tsx:520:58)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=ed4fabe8:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=ed4fabe8:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=ed4fabe8:15972:22)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=ed4fabe8:19806:22)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=ed4fabe8:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=ed4fabe8:19190:13)
+    at renderRootSync (chunk-GG6IGNHI.js?v=ed4fabe8:19169:15)
+    at recoverFromConcurrentError (chunk-GG6IGNHI.js?v=ed4fabe8:18786:28)
+    at performSyncWorkOnRoot (chunk-GG6IGNHI.js?v=ed4fabe8:18932:28)

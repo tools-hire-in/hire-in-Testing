@@ -84,7 +84,7 @@ const recruitmentMenu = [
   },
 ];
 
-const employeeMenu = [
+const myWorkspaceMenu = [
   {
     href: "/admin/hr",
     label: "My Dashboard",
@@ -148,18 +148,12 @@ const employeeMenu = [
   },
 ];
 
-const hrOpsMenu = [
+const teamManagementMenu = [
   {
     href: "/admin/hr/my-team",
     label: "My Team",
     icon: Network,
     roles: ["super_admin", "admin", "hr", "operations", "manager"]
-  },
-  {
-    href: "/admin/users",
-    label: "Team Management",
-    icon: Users,
-    roles: ["super_admin", "admin", "hr", "operations"]
   },
   {
     href: "/admin/hr/team-attendance",
@@ -172,6 +166,21 @@ const hrOpsMenu = [
     label: "Leave Approvals",
     icon: CalendarCheck,
     roles: ["super_admin", "admin", "hr", "manager"]
+  },
+  {
+    href: "/admin/hr/training-progress",
+    label: "Training Progress",
+    icon: BarChart3,
+    roles: ["super_admin", "admin", "hr", "manager", "operations"]
+  },
+];
+
+const administrationMenu = [
+  {
+    href: "/admin/users",
+    label: "User Management",
+    icon: Users,
+    roles: ["super_admin", "admin", "hr", "operations"]
   },
   {
     href: "/admin/hr/salary-reports",
@@ -201,12 +210,6 @@ const hrOpsMenu = [
     href: "/admin/hr/training",
     label: "Training Management",
     icon: GraduationCap,
-    roles: ["super_admin", "admin", "hr", "manager", "operations"]
-  },
-  {
-    href: "/admin/hr/training-progress",
-    label: "Training Progress",
-    icon: BarChart3,
     roles: ["super_admin", "admin", "hr", "manager", "operations"]
   },
   {
@@ -331,13 +334,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     user?.role && item.roles.includes(user.role)
   );
 
-  const filteredEmployee = (employeeMenu as any[]).filter(item => {
+  const filteredMyWorkspace = (myWorkspaceMenu as any[]).filter(item => {
     if (!user?.role || !item.roles.includes(user.role)) return false;
     if (item.trainingGated) return trainingEnabled;
     return true;
   });
 
-  const filteredHrOps = hrOpsMenu.filter(item => 
+  const filteredTeamMgmt = teamManagementMenu.filter(item => 
+    user?.role && item.roles.includes(user.role)
+  );
+
+  const filteredAdmin = administrationMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
 
@@ -430,12 +437,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </SidebarGroup>
             )}
 
-            {filteredEmployee.length > 0 && (
+            {filteredMyWorkspace.length > 0 && (
               <SidebarGroup>
-                <SidebarGroupLabel>Employee</SidebarGroupLabel>
+                <SidebarGroupLabel>My Workspace</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {filteredEmployee.map((item) => {
+                    {filteredMyWorkspace.map((item) => {
                       const isTraining = item.href === "/admin/hr/my-training";
                       const alertCount = trainingAlerts?.total ?? 0;
                       const isOverdue = (trainingAlerts?.overdue ?? 0) > 0;
@@ -473,12 +480,44 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </SidebarGroup>
             )}
 
-            {filteredHrOps.length > 0 && (
+            {filteredTeamMgmt.length > 0 && (
               <SidebarGroup>
-                <SidebarGroupLabel>HR & Operations</SidebarGroupLabel>
+                <SidebarGroupLabel>Team Management</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {filteredHrOps.map((item) => {
+                    {filteredTeamMgmt.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild={!isComplianceLocked}
+                          isActive={isActive(item.href)}
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                          data-testid={`nav-team-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                        >
+                          {isComplianceLocked ? (
+                            <span className="flex items-center gap-2">
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          ) : (
+                            <Link href={item.href}>
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </Link>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
+
+            {filteredAdmin.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Administration</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {filteredAdmin.map((item) => {
                       const isTrainingMgmt = item.href === "/admin/hr/training";
                       const endorseBadge = isTrainingMgmt && isEndorserRole && (pendingEndorseCount ?? 0) > 0;
                       return (
@@ -487,7 +526,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             asChild={!isComplianceLocked}
                             isActive={isActive(item.href)}
                             className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
-                            data-testid={`nav-hrops-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                            data-testid={`nav-admin-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                           >
                             {isComplianceLocked ? (
                               <span className="flex items-center gap-2">
