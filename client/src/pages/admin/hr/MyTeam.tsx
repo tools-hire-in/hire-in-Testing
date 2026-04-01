@@ -190,14 +190,22 @@ interface LeaveRequest {
   createdAt: string;
 }
 
+interface ResolvedHoliday {
+  id: string;
+  name: string;
+  date: string;
+  type: string;
+  isOptional: boolean;
+}
+
 interface EmployeeDetails {
-  user: TeamMember & { joiningDate: string | null; managerId: string | null };
-  profile?: EmployeeProfile; // For backward compatibility if needed, but OUR uses details.user
+  user: TeamMember & { joiningDate: string | null; managerId: string | null; salary?: string | null };
   salary?: { currentSalary: string | null; slips: SalarySlip[] };
   attendance: AttendanceRecord[];
   emergencyContacts: EmergencyContact[];
   tickets: TicketRecord[];
   regionalHolidaySelections: RegionalSelection[];
+  holidays?: ResolvedHoliday[];
   leaveBalances?: LeaveBalance[];
   recentLeaves?: LeaveRequest[];
 }
@@ -478,15 +486,37 @@ function MemberCard({
   );
 }
 
+interface EmployeeDetailViewProps {
+  userId: string;
+  onBack: () => void;
+  onEditProfile?: () => void;
+  onEditAttendance?: (record: AttendanceRecord) => void;
+  onAddHoliday?: () => void;
+  onRemoveHoliday?: (selectionId: string, note: string) => void;
+  onAddContact?: () => void;
+  onEditContact?: (contact: EmergencyContact) => void;
+  onDeleteContact?: (contactId: string, note: string) => void;
+  onReviewTicket?: (ticket: TicketRecord) => void;
+}
+
 function EmployeeDetailView({
   userId,
   onBack,
-}: {
-  userId: string;
-  onBack: () => void;
-}) {
+  onEditProfile,
+  onEditAttendance,
+  onAddHoliday,
+  onRemoveHoliday,
+  onAddContact,
+  onEditContact,
+  onDeleteContact,
+  onReviewTicket,
+}: EmployeeDetailViewProps) {
   const { data, isLoading } = useQuery<EmployeeDetails>({
     queryKey: ["/api/admin/my-team", userId, "details"],
+  });
+
+  const auditQuery = useQuery<{ logs: AuditLogEntry[]; total: number }>({
+    queryKey: ["/api/admin/my-team", userId, "audit-log"],
   });
 
   if (isLoading) {
@@ -508,7 +538,22 @@ function EmployeeDetailView({
     );
   }
 
-  const { profile, salary, attendance, holidays, leaveBalances, recentLeaves } = data;
+  const user = data.user;
+  const profile: EmployeeProfile = {
+    id: user.id,
+    employeeId: user.employeeId,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    role: user.role,
+    designation: user.designation,
+    departmentId: user.departmentId,
+    departmentName: user.departmentName,
+    joiningDate: user.joiningDate,
+    isActive: user.isActive,
+    hierarchyLevel: user.hierarchyLevel,
+    salary: user.salary || null,
+  };
 
   return (
     <div className="space-y-4">
@@ -545,32 +590,60 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-leave-tracking" value="leave-tracking" className="gap-1">
             <CalendarPlus className="h-4 w-4" /> Leave Tracking
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-emergency" value="emergency" className="gap-1">
+            <Phone className="h-4 w-4" /> Emergency Contacts
+          </TabsTrigger>
+          <TabsTrigger data-testid="tab-tickets" value="tickets" className="gap-1">
+            <FileText className="h-4 w-4" /> Tickets
+          </TabsTrigger>
+          <TabsTrigger data-testid="tab-history" value="history" className="gap-1">
+            <History className="h-4 w-4" /> Change History
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
-          <ProfileTab profile={profile} />
+          <ProfileTab profile={profile} onEdit={onEditProfile} />
         </TabsContent>
         <TabsContent value="salary">
-          <SalaryTab salary={salary} />
+          <SalaryTab salary={data.salary} />
         </TabsContent>
         <TabsContent value="attendance">
-          <AttendanceTab records={attendance} />
+          <AttendanceTab records={data.attendance} onEdit={onEditAttendance} />
         </TabsContent>
         <TabsContent value="holidays">
-          <HolidaysTab holidays={holidays} />
+          <HolidaysTab
+            holidays={data.holidays || []}
+            regionalSelections={data.regionalHolidaySelections}
+            onAddHoliday={onAddHoliday}
+            onRemoveHoliday={onRemoveHoliday}
+          />
         </TabsContent>
         <TabsContent value="leaves">
-          <LeavesTab balances={leaveBalances} recentLeaves={recentLeaves} />
+          <LeavesTab balances={data.leaveBalances || []} recentLeaves={data.recentLeaves || []} />
         </TabsContent>
         <TabsContent value="leave-tracking">
           <LeaveTrackingTab userId={userId} />
+        </TabsContent>
+        <TabsContent value="emergency">
+          <EmergencyContactsTab
+            contacts={data.emergencyContacts}
+            onAdd={onAddContact}
+            onEdit={onEditContact}
+            onDelete={onDeleteContact}
+          />
+        </TabsContent>
+        <TabsContent value="tickets">
+          <TicketsTab tickets={data.tickets} onReview={onReviewTicket} />
+        </TabsContent>
+        <TabsContent value="history">
+          <ChangeHistoryTab auditQuery={auditQuery} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function ProfileTab({ profile }: { profile: EmployeeProfile }) {
+function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: () => void }) {
   const fields = [
     { label: "Employee ID", value: profile.employeeId || "—" },
     { label: "Email", value: profile.email },
@@ -584,10 +657,15 @@ function ProfileTab({ profile }: { profile: EmployeeProfile }) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-lg">
           <UserCircle className="h-5 w-5" /> Personal Information
         </CardTitle>
+        {onEdit && (
+          <Button data-testid="button-edit-profile" variant="outline" size="sm" onClick={onEdit}>
+            <Edit className="h-4 w-4 mr-1" /> Edit
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -604,6 +682,16 @@ function ProfileTab({ profile }: { profile: EmployeeProfile }) {
 }
 
 function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
+  if (!salary) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No salary information available.
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -622,7 +710,7 @@ function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
           <CardTitle className="text-lg">Salary Slip History</CardTitle>
         </CardHeader>
         <CardContent>
-          {salary.slips.length === 0 ? (
+          {(salary.slips || []).length === 0 ? (
             <div className="text-sm text-muted-foreground text-center py-6">No salary slips found.</div>
           ) : (
             <div className="overflow-x-auto">
@@ -656,7 +744,7 @@ function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
   );
 }
 
-function AttendanceTab({ records }: { records: AttendanceRecord[] }) {
+function AttendanceTab({ records, onEdit }: { records: AttendanceRecord[]; onEdit?: (record: AttendanceRecord) => void }) {
   return (
     <Card>
       <CardHeader>
@@ -677,6 +765,7 @@ function AttendanceTab({ records }: { records: AttendanceRecord[] }) {
                   <th className="text-left py-2 font-medium">Punch In</th>
                   <th className="text-left py-2 font-medium">Punch Out</th>
                   <th className="text-right py-2 font-medium">Hours</th>
+                  {onEdit && <th className="text-right py-2 font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -691,6 +780,13 @@ function AttendanceTab({ records }: { records: AttendanceRecord[] }) {
                     <td className="py-2">{formatTime(r.punchIn)}</td>
                     <td className="py-2">{formatTime(r.punchOut)}</td>
                     <td className="text-right py-2">{r.totalHours ? parseFloat(r.totalHours).toFixed(1) : "—"}</td>
+                    {onEdit && (
+                      <td className="text-right py-2">
+                        <Button data-testid={`button-edit-attendance-${r.id}`} variant="ghost" size="icon" onClick={() => onEdit(r)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -702,29 +798,299 @@ function AttendanceTab({ records }: { records: AttendanceRecord[] }) {
   );
 }
 
-function HolidaysTab({ holidays }: { holidays: Holiday[] }) {
+function HolidaysTab({
+  holidays,
+  regionalSelections,
+  onAddHoliday,
+  onRemoveHoliday,
+}: {
+  holidays: ResolvedHoliday[];
+  regionalSelections: RegionalSelection[];
+  onAddHoliday?: () => void;
+  onRemoveHoliday?: (selectionId: string, note: string) => void;
+}) {
+  const [removeNote, setRemoveNote] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg flex items-center gap-2">
           <TreePalm className="h-5 w-5" /> Holidays ({new Date().getFullYear()})
         </CardTitle>
+        {onAddHoliday && (
+          <Button data-testid="button-add-holiday" variant="outline" size="sm" onClick={onAddHoliday}>
+            <Plus className="h-4 w-4 mr-1" /> Add Regional Holiday
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {holidays.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center py-6">No holidays found.</div>
         ) : (
           <div className="space-y-2">
-            {holidays.map(h => (
-              <div key={h.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                <div>
-                  <div className="font-medium">{h.name}</div>
-                  <div className="text-sm text-muted-foreground">{formatDate(h.date)}</div>
+            {holidays.map(h => {
+              const selection = regionalSelections.find(s => s.holidayId === h.id);
+              return (
+                <div key={h.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <div>
+                    <div className="font-medium">{h.name}</div>
+                    <div className="text-sm text-muted-foreground">{formatDate(h.date)}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {h.isOptional && <Badge variant="outline">Regional</Badge>}
+                    <Badge variant="secondary">{h.type}</Badge>
+                    {selection && onRemoveHoliday && (
+                      removingId === selection.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            className="h-8 w-40 text-xs"
+                            placeholder="Reason..."
+                            value={removeNote}
+                            onChange={e => setRemoveNote(e.target.value)}
+                            data-testid={`input-remove-holiday-reason-${h.id}`}
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            disabled={!removeNote.trim()}
+                            onClick={() => { onRemoveHoliday(selection.id, removeNote); setRemovingId(null); setRemoveNote(""); }}
+                            data-testid={`button-confirm-remove-holiday-${h.id}`}
+                          >
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setRemovingId(null); setRemoveNote(""); }}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          data-testid={`button-remove-holiday-${h.id}`}
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setRemovingId(selection.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {h.isOptional && <Badge variant="outline">Regional</Badge>}
-                  <Badge variant="secondary">{h.type}</Badge>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmergencyContactsTab({
+  contacts,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  contacts: EmergencyContact[];
+  onAdd?: () => void;
+  onEdit?: (contact: EmergencyContact) => void;
+  onDelete?: (contactId: string, note: string) => void;
+}) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteNote, setDeleteNote] = useState("");
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Phone className="h-5 w-5" /> Emergency Contacts
+        </CardTitle>
+        {onAdd && (
+          <Button data-testid="button-add-contact" variant="outline" size="sm" onClick={onAdd}>
+            <Plus className="h-4 w-4 mr-1" /> Add Contact
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {contacts.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-6">No emergency contacts found.</div>
+        ) : (
+          <div className="space-y-3">
+            {contacts.map(c => (
+              <div key={c.id} className="border rounded-lg p-4 flex items-start justify-between" data-testid={`card-contact-${c.id}`}>
+                <div className="space-y-1">
+                  <div className="font-medium flex items-center gap-2">
+                    {c.name}
+                    {c.isPrimary && <Badge variant="default" className="text-xs">Primary</Badge>}
+                  </div>
+                  <div className="text-sm text-muted-foreground">{c.relationship}</div>
+                  <div className="text-sm">{c.phone}</div>
+                  {c.email && <div className="text-sm text-muted-foreground">{c.email}</div>}
+                  {c.address && <div className="text-sm text-muted-foreground">{c.address}</div>}
                 </div>
+                <div className="flex gap-1">
+                  {onEdit && (
+                    <Button data-testid={`button-edit-contact-${c.id}`} variant="ghost" size="icon" onClick={() => onEdit(c)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {onDelete && (
+                    deletingId === c.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          className="h-8 w-40 text-xs"
+                          placeholder="Reason..."
+                          value={deleteNote}
+                          onChange={e => setDeleteNote(e.target.value)}
+                          data-testid={`input-delete-contact-reason-${c.id}`}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          disabled={!deleteNote.trim()}
+                          onClick={() => { onDelete(c.id, deleteNote); setDeletingId(null); setDeleteNote(""); }}
+                          data-testid={`button-confirm-delete-contact-${c.id}`}
+                        >
+                          <Check className="h-4 w-4 text-green-600" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setDeletingId(null); setDeleteNote(""); }}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button data-testid={`button-delete-contact-${c.id}`} variant="ghost" size="icon" onClick={() => setDeletingId(c.id)}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    )
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TicketsTab({
+  tickets,
+  onReview,
+}: {
+  tickets: TicketRecord[];
+  onReview?: (ticket: TicketRecord) => void;
+}) {
+  const ticketStatusColors: Record<string, string> = {
+    open: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    in_review: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    rejected: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <FileText className="h-5 w-5" /> Tickets
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {tickets.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-6">No tickets found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 font-medium">Date</th>
+                  <th className="text-left py-2 font-medium">Type</th>
+                  <th className="text-left py-2 font-medium">Reason</th>
+                  <th className="text-left py-2 font-medium">Status</th>
+                  {onReview && <th className="text-right py-2 font-medium">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map(t => (
+                  <tr key={t.id} className="border-b last:border-0" data-testid={`row-ticket-${t.id}`}>
+                    <td className="py-2">{formatDate(t.date)}</td>
+                    <td className="py-2">{t.type.replace("_", " ")}</td>
+                    <td className="py-2 max-w-[200px] truncate">{t.reason}</td>
+                    <td className="py-2">
+                      <Badge className={ticketStatusColors[t.status] || ""} variant="secondary">
+                        {t.status.replace("_", " ")}
+                      </Badge>
+                    </td>
+                    {onReview && (
+                      <td className="text-right py-2">
+                        {(t.status === "open" || t.status === "in_review") && (
+                          <Button data-testid={`button-review-ticket-${t.id}`} variant="outline" size="sm" onClick={() => onReview(t)}>
+                            Review
+                          </Button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChangeHistoryTab({ auditQuery }: { auditQuery: ReturnType<typeof useQuery<{ logs: AuditLogEntry[]; total: number }>> }) {
+  if (auditQuery.isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-16" />)}
+      </div>
+    );
+  }
+
+  const logs = auditQuery.data?.logs || [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <History className="h-5 w-5" /> Change History
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {logs.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-6">No audit trail entries found.</div>
+        ) : (
+          <div className="space-y-3">
+            {logs.map(log => (
+              <div key={log.id} className="border rounded-lg p-3" data-testid={`audit-log-${log.id}`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-medium text-sm">{log.action.replace(/_/g, " ")}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      by {log.actorName} ({log.actorEmail})
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                {log.changes && (
+                  <div className="mt-2 text-xs bg-muted p-2 rounded">
+                    {typeof log.changes === "object" ? (
+                      <div className="space-y-1">
+                        {Object.entries(log.changes).map(([key, val]) => (
+                          <div key={key}><span className="font-medium">{key}:</span> {JSON.stringify(val)}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span>{String(log.changes)}</span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1221,7 +1587,6 @@ export default function MyTeam() {
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState("attendance");
 
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
@@ -1257,11 +1622,6 @@ export default function MyTeam() {
   const detailsQuery = useQuery<EmployeeDetails>({
     queryKey: ["/api/admin/my-team", selectedUserId, "details"],
     enabled: !!selectedUserId,
-  });
-
-  const auditQuery = useQuery<{ logs: AuditLogEntry[]; total: number }>({
-    queryKey: ["/api/admin/my-team", selectedUserId, "audit-log"],
-    enabled: !!selectedUserId && activeTab === "history",
   });
 
   const departmentsQuery = useQuery<Department[]>({
@@ -1467,7 +1827,15 @@ export default function MyTeam() {
       <AdminLayout>
         <EmployeeDetailView
           userId={selectedUserId}
-          onBack={() => { setSelectedUserId(null); setActiveTab("attendance"); }}
+          onBack={() => setSelectedUserId(null)}
+          onEditProfile={openEditProfile}
+          onEditAttendance={openEditAttendance}
+          onAddHoliday={() => { setFormNote(""); setFormHolidayId(""); setAddHolidayOpen(true); }}
+          onRemoveHoliday={(selectionId, note) => removeHolidayMutation.mutate({ selectionId, note })}
+          onAddContact={() => { resetForm(); setAddContactOpen(true); }}
+          onEditContact={openEditContact}
+          onDeleteContact={(contactId, note) => deleteContactMutation.mutate({ contactId, note })}
+          onReviewTicket={openReviewTicket}
         />
 
         <Dialog open={editAttendanceOpen} onOpenChange={setEditAttendanceOpen}>

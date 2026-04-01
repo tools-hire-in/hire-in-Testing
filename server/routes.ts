@@ -3889,17 +3889,43 @@ export async function registerRoutes(
       }
 
       const today = new Date().toISOString().split("T")[0];
-      const monthStart = `${today.substring(0, 7)}-01`;
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const year = new Date().getFullYear();
 
-      const [attendanceRecords, emergencyContacts, tickets, regionalSelections, departments] = await Promise.all([
-        storage.getAttendanceByUser(userId, monthStart, today),
+      const [attendanceRecords, emergencyContacts, tickets, regionalSelections, departments, salarySlips, allHolidays, leaveBalances, leaveRequests] = await Promise.all([
+        storage.getAttendanceByUser(userId, ninetyDaysAgo, today),
         storage.getEmergencyContacts(userId),
         storage.getTickets({ userId }),
-        storage.getRegionalHolidaySelections(userId, new Date().getFullYear()),
+        storage.getRegionalHolidaySelections(userId, year),
         storage.getDepartments(),
+        storage.getSalarySlipsByUser(userId),
+        storage.getHolidays(year),
+        storage.getLeaveBalances(userId, year),
+        storage.getLeaveRequests({ userId }),
       ]);
 
       const dept = departments.find(d => d.id === user.departmentId);
+
+      const mandatoryHolidays = allHolidays.filter(h => h.type === "mandatory" || !h.isOptional);
+      const selectedRegionalIds = new Set(regionalSelections.map(s => s.holidayId));
+      const selectedRegionalHolidays = allHolidays.filter(h => selectedRegionalIds.has(h.id));
+      const resolvedHolidays = [...mandatoryHolidays, ...selectedRegionalHolidays]
+        .filter((h, i, arr) => arr.findIndex(x => x.id === h.id) === i)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      const leaveTypes = await storage.getLeaveTypes();
+      const enrichedBalances = leaveBalances.map(b => ({
+        ...b,
+        leaveTypeName: leaveTypes.find(lt => lt.id === b.leaveTypeId)?.name || "Unknown",
+      }));
+
+      const recentLeaves = leaveRequests
+        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+        .slice(0, 20)
+        .map(lr => ({
+          ...lr,
+          leaveTypeName: leaveTypes.find(lt => lt.id === lr.leaveTypeId)?.name || "Unknown",
+        }));
 
       res.json({
         user: {
@@ -3916,11 +3942,19 @@ export async function registerRoutes(
           employeeId: user.employeeId,
           joiningDate: user.joiningDate,
           isActive: user.isActive,
+          salary: user.salary || null,
         },
         attendance: attendanceRecords,
         emergencyContacts,
         tickets,
         regionalHolidaySelections: regionalSelections,
+        salary: {
+          currentSalary: user.salary || null,
+          slips: salarySlips,
+        },
+        holidays: resolvedHolidays,
+        leaveBalances: enrichedBalances,
+        recentLeaves,
       });
     } catch (error) {
       console.error("Employee details error:", error);
