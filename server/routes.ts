@@ -3385,7 +3385,7 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // MY TEAM API ROUTES
+  // MY TEAM API ROUTES (with edit and audit trail)
   // ==========================================
 
   app.get("/api/admin/my-team", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
@@ -3445,105 +3445,485 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/my-team/:userId/details", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
+  async function getAllReporteeIds(managerId: string): Promise<string[]> {
+    const result: string[] = [];
+    const queue = [managerId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const directReports = await storage.getTeamMembers(currentId);
+      for (const report of directReports) {
+        result.push(report.id);
+        queue.push(report.id);
+      }
+    }
+    return result;
+  }
+
+  async function validateMyTeamAccess(req: Request, res: Response, targetUserId: string): Promise<boolean> {
+    const actorRole = req.session.role!;
+    const actorId = req.session.userId!;
+
+    if (["super_admin", "admin", "hr", "operations"].includes(actorRole)) {
+      return true;
+    }
+
+    if (actorRole === "manager") {
+      const reporteeIds = await getAllReporteeIds(actorId);
+      if (reporteeIds.includes(targetUserId)) {
+        return true;
+      }
+    }
+
+    res.status(403).json({ error: "You do not have permission to edit this employee's data" });
+    return false;
+  }
+
+  app.patch("/api/admin/my-team/:userId/attendance/:attendanceId", requireRole("hr", "manager", "operations"), async (req, res) => {
     try {
-      const requesterId = req.session.userId!;
-      const requesterRole = req.session.role!;
-      const targetUserId = req.params.userId as string;
+      const { userId, attendanceId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
 
-      const targetUser = await storage.getAdminUser(targetUserId);
-      if (!targetUser) return res.status(404).json({ error: "User not found" });
-
-      if (requesterRole === "manager") {
-        const allUsers = await storage.getAdminUsers();
-        const visited = new Set<string>();
-        const queue = [requesterId];
-        let isReportee = false;
-        while (queue.length > 0) {
-          const mgr = queue.shift()!;
-          if (visited.has(mgr)) continue;
-          visited.add(mgr);
-          const reports = allUsers.filter(u => u.managerId === mgr);
-          for (const r of reports) {
-            if (r.id === targetUserId) { isReportee = true; break; }
-            queue.push(r.id);
-          }
-          if (isReportee) break;
-        }
-        if (!isReportee) return res.status(403).json({ error: "Not your reportee" });
+      const { punchIn, punchOut, status, note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
       }
 
-      const allDepartments = await storage.getDepartments();
-      const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
-      const currentYear = new Date().getFullYear();
+      const existing = await storage.getAttendanceByUser(userId);
+      const record = existing.find(r => r.id === attendanceId);
+      if (!record) {
+        return res.status(404).json({ error: "Attendance record not found" });
+      }
+      if (record.userId !== userId) {
+        return res.status(403).json({ error: "Attendance record does not belong to this user" });
+      }
 
-      const [
-        salarySlips,
-        attendanceRecords,
-        leaveBalances_,
-        leaveRequests_,
-        leaveTypes_,
-        regionalSelections,
-        allHolidays,
-      ] = await Promise.all([
-        storage.getSalarySlipsByUser(targetUserId),
-        storage.getAttendanceByUser(targetUserId),
-        storage.getLeaveBalances(targetUserId, currentYear),
-        storage.getLeaveRequests({ userId: targetUserId }),
-        storage.getLeaveTypes(),
-        storage.getRegionalHolidaySelections(targetUserId, currentYear),
-        storage.getHolidays(currentYear),
+      const before: Record<string, any> = {};
+      const after: Record<string, any> = {};
+      const updateData: any = {};
+
+      if (punchIn !== undefined) {
+        before.punchIn = record.punchIn;
+        after.punchIn = punchIn;
+        updateData.punchIn = punchIn ? new Date(punchIn) : null;
+      }
+      if (punchOut !== undefined) {
+        before.punchOut = record.punchOut;
+        after.punchOut = punchOut;
+        updateData.punchOut = punchOut ? new Date(punchOut) : null;
+      }
+      if (status !== undefined) {
+        before.status = record.status;
+        after.status = status;
+        updateData.status = status;
+      }
+
+      if (updateData.punchIn && updateData.punchOut) {
+        const diffMs = new Date(updateData.punchOut).getTime() - new Date(updateData.punchIn).getTime();
+        updateData.totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+      } else if (updateData.punchIn && record.punchOut) {
+        const diffMs = new Date(record.punchOut).getTime() - new Date(updateData.punchIn).getTime();
+        updateData.totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+      } else if (updateData.punchOut && record.punchIn) {
+        const diffMs = new Date(updateData.punchOut).getTime() - new Date(record.punchIn).getTime();
+        updateData.totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+      }
+
+      const updated = await storage.updateAttendance(attendanceId, updateData);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "edit_attendance",
+        changes: { before, after, note: note.trim(), attendanceId, date: record.date },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Edit attendance error:", error);
+      res.status(500).json({ error: "Failed to update attendance" });
+    }
+  });
+
+  app.patch("/api/admin/my-team/:userId/profile", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { designation, departmentId, hierarchyLevel, note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+
+      const targetUser = await storage.getAdminUser(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const before: Record<string, any> = {};
+      const after: Record<string, any> = {};
+      const updateData: any = {};
+
+      if (designation !== undefined) {
+        before.designation = targetUser.designation;
+        after.designation = designation;
+        updateData.designation = designation;
+      }
+      if (departmentId !== undefined) {
+        before.departmentId = targetUser.departmentId;
+        after.departmentId = departmentId;
+        updateData.departmentId = departmentId;
+      }
+      if (hierarchyLevel !== undefined) {
+        before.hierarchyLevel = targetUser.hierarchyLevel;
+        after.hierarchyLevel = hierarchyLevel;
+        updateData.hierarchyLevel = hierarchyLevel;
+      }
+
+      const updated = await storage.updateAdminUser(userId, updateData);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "edit_profile",
+        changes: { before, after, note: note.trim() },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Edit profile error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  app.post("/api/admin/my-team/:userId/regional-holidays", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { holidayId, note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+      if (!holidayId) {
+        return res.status(400).json({ error: "holidayId is required" });
+      }
+
+      const holiday = await storage.getHoliday(holidayId);
+      if (!holiday || holiday.type !== "regional") {
+        return res.status(400).json({ error: "Invalid regional holiday" });
+      }
+
+      const holidayYear = parseInt(holiday.date.substring(0, 4)) || new Date().getFullYear();
+      const existing = await storage.getRegionalHolidaySelections(userId, holidayYear);
+      if (existing.some(s => s.holidayId === holidayId)) {
+        return res.status(400).json({ error: "This holiday is already selected for this employee" });
+      }
+
+      const selection = await storage.createRegionalHolidaySelection({
+        userId,
+        holidayId,
+        year: holidayYear,
+      });
+
+      await storage.stampHolidayAttendance(userId, holiday.date, "regional");
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "add_regional_holiday",
+        changes: { holidayId, holidayName: holiday.name, holidayDate: holiday.date, note: note.trim() },
+      });
+
+      res.status(201).json(selection);
+    } catch (error) {
+      console.error("Add regional holiday error:", error);
+      res.status(500).json({ error: "Failed to add regional holiday" });
+    }
+  });
+
+  app.delete("/api/admin/my-team/:userId/regional-holidays/:selectionId", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId, selectionId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+
+      const year = new Date().getFullYear();
+      const selections = await storage.getRegionalHolidaySelections(userId, year);
+      const selection = selections.find(s => s.id === selectionId);
+
+      if (selection) {
+        const holiday = await storage.getHoliday(selection.holidayId);
+        if (holiday) {
+          await storage.removeUserHolidayAttendanceStamp(userId, holiday.date, "regional");
+        }
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: userId,
+          action: "remove_regional_holiday",
+          changes: { selectionId, holidayId: selection.holidayId, holidayName: holiday?.name, note: note.trim() },
+        });
+      }
+
+      await storage.deleteRegionalHolidaySelection(selectionId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Remove regional holiday error:", error);
+      res.status(500).json({ error: "Failed to remove regional holiday" });
+    }
+  });
+
+  app.post("/api/admin/my-team/:userId/emergency-contacts", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { name, relationship, phone, email, address, isPrimary, note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+      if (!name || !relationship || !phone) {
+        return res.status(400).json({ error: "Name, relationship, and phone are required" });
+      }
+
+      const contact = await storage.createEmergencyContact({
+        userId,
+        name,
+        relationship,
+        phone,
+        email: email || null,
+        address: address || null,
+        isPrimary: isPrimary || false,
+      });
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "add_emergency_contact",
+        changes: { contactId: contact.id, name, relationship, phone, note: note.trim() },
+      });
+
+      res.status(201).json(contact);
+    } catch (error) {
+      console.error("Add emergency contact error:", error);
+      res.status(500).json({ error: "Failed to add emergency contact" });
+    }
+  });
+
+  app.patch("/api/admin/my-team/:userId/emergency-contacts/:contactId", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId, contactId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { note, ...updates } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+
+      const existingContacts = await storage.getEmergencyContacts(userId);
+      const existing = existingContacts.find(c => c.id === contactId);
+      if (!existing) {
+        return res.status(404).json({ error: "Emergency contact not found" });
+      }
+
+      const before: Record<string, any> = {};
+      const after: Record<string, any> = {};
+      for (const key of ["name", "relationship", "phone", "email", "address", "isPrimary"] as const) {
+        if (updates[key] !== undefined && updates[key] !== existing[key]) {
+          before[key] = existing[key];
+          after[key] = updates[key];
+        }
+      }
+
+      const updated = await storage.updateEmergencyContact(contactId, updates);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "edit_emergency_contact",
+        changes: { contactId, before, after, note: note.trim() },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Edit emergency contact error:", error);
+      res.status(500).json({ error: "Failed to update emergency contact" });
+    }
+  });
+
+  app.delete("/api/admin/my-team/:userId/emergency-contacts/:contactId", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId, contactId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+
+      const existingContacts = await storage.getEmergencyContacts(userId);
+      const existing = existingContacts.find(c => c.id === contactId);
+
+      await storage.deleteEmergencyContact(contactId);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "delete_emergency_contact",
+        changes: { contactId, deleted: existing ? { name: existing.name, relationship: existing.relationship, phone: existing.phone } : null, note: note.trim() },
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete emergency contact error:", error);
+      res.status(500).json({ error: "Failed to delete emergency contact" });
+    }
+  });
+
+  app.patch("/api/admin/my-team/:userId/tickets/:ticketId", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId, ticketId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const { status, reviewComment, note } = req.body;
+      if (!note || !note.trim()) {
+        return res.status(400).json({ error: "Reason for change is required" });
+      }
+      if (!["in_review", "resolved", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'in_review', 'resolved', or 'rejected'" });
+      }
+
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      if (ticket.userId !== userId) {
+        return res.status(403).json({ error: "Ticket does not belong to this user" });
+      }
+
+      const before = { status: ticket.status, reviewComment: ticket.reviewComment };
+
+      const updated = await storage.updateTicket(ticketId, {
+        status,
+        reviewComment: reviewComment || note.trim(),
+        reviewedBy: req.session.userId!,
+        reviewedAt: new Date(),
+      });
+
+      if (status === "resolved" && ticket.attendanceId && ticket.requestedPunchIn) {
+        const updateData: any = {};
+        if (ticket.requestedPunchIn) updateData.punchIn = ticket.requestedPunchIn;
+        if (ticket.requestedPunchOut) updateData.punchOut = ticket.requestedPunchOut;
+        if (updateData.punchIn && updateData.punchOut) {
+          const diffMs = new Date(updateData.punchOut).getTime() - new Date(updateData.punchIn).getTime();
+          updateData.totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+        }
+        await storage.updateAttendance(ticket.attendanceId, updateData);
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "review_ticket",
+        changes: { ticketId, before, after: { status, reviewComment: reviewComment || note.trim() }, note: note.trim() },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Review ticket error:", error);
+      res.status(500).json({ error: "Failed to review ticket" });
+    }
+  });
+
+  app.get("/api/admin/my-team/:userId/audit-log", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+
+      const [logs, total] = await Promise.all([
+        storage.getAuditLogs({ targetId: userId, limit, offset }),
+        storage.getAuditLogCount({ targetId: userId }),
       ]);
 
-      const leaveTypeMap = new Map(leaveTypes_.map(lt => [lt.id, lt.name]));
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, { firstName: u.firstName, lastName: u.lastName, email: u.email }]));
 
-      const selectedHolidayIds = new Set(regionalSelections.map(s => s.holidayId));
-      const selectedHolidays = allHolidays.filter(h =>
-        !h.isOptional || selectedHolidayIds.has(h.id)
-      );
-
-      const profile = {
-        id: targetUser.id,
-        employeeId: targetUser.employeeId,
-        firstName: targetUser.firstName,
-        lastName: targetUser.lastName,
-        email: targetUser.email,
-        role: targetUser.role,
-        designation: targetUser.designation,
-        departmentId: targetUser.departmentId,
-        departmentName: targetUser.departmentId ? deptMap.get(targetUser.departmentId) || null : null,
-        joiningDate: targetUser.joiningDate,
-        isActive: targetUser.isActive,
-        hierarchyLevel: targetUser.hierarchyLevel,
-        salary: targetUser.salary,
-      };
-
-      const balancesWithNames = leaveBalances_.map(lb => ({
-        ...lb,
-        leaveTypeName: leaveTypeMap.get(lb.leaveTypeId) || "Unknown",
+      const enrichedLogs = logs.map(log => ({
+        ...log,
+        actorName: userMap.get(log.actorId) ? `${userMap.get(log.actorId)!.firstName} ${userMap.get(log.actorId)!.lastName}` : "Unknown",
+        actorEmail: userMap.get(log.actorId)?.email || "Unknown",
+        targetName: log.targetId && userMap.get(log.targetId) ? `${userMap.get(log.targetId)!.firstName} ${userMap.get(log.targetId)!.lastName}` : "Unknown",
       }));
 
-      const recentLeaves = leaveRequests_
-        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-        .slice(0, 20)
-        .map(lr => ({
-          ...lr,
-          leaveTypeName: leaveTypeMap.get(lr.leaveTypeId) || "Unknown",
-        }));
+      res.json({ logs: enrichedLogs, total });
+    } catch (error) {
+      console.error("Audit log error:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.get("/api/admin/my-team/:userId/details", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, userId);
+      if (!hasAccess) return;
+
+      const user = await storage.getAdminUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const monthStart = `${today.substring(0, 7)}-01`;
+
+      const [attendanceRecords, emergencyContacts, tickets, regionalSelections, departments] = await Promise.all([
+        storage.getAttendanceByUser(userId, monthStart, today),
+        storage.getEmergencyContacts(userId),
+        storage.getTickets({ userId }),
+        storage.getRegionalHolidaySelections(userId, new Date().getFullYear()),
+        storage.getDepartments(),
+      ]);
+
+      const dept = departments.find(d => d.id === user.departmentId);
 
       res.json({
-        profile,
-        salary: {
-          currentSalary: targetUser.salary,
-          slips: salarySlips.sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month)),
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          designation: user.designation,
+          departmentId: user.departmentId,
+          departmentName: dept?.name || null,
+          hierarchyLevel: user.hierarchyLevel,
+          managerId: user.managerId,
+          employeeId: user.employeeId,
+          joiningDate: user.joiningDate,
+          isActive: user.isActive,
         },
-        attendance: attendanceRecords.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 90),
-        holidays: selectedHolidays,
-        leaveBalances: balancesWithNames,
-        recentLeaves,
+        attendance: attendanceRecords,
+        emergencyContacts,
+        tickets,
+        regionalHolidaySelections: regionalSelections,
       });
     } catch (error) {
-      console.error("My team detail error:", error);
+      console.error("Employee details error:", error);
       res.status(500).json({ error: "Failed to fetch employee details" });
     }
   });
@@ -3681,6 +4061,44 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Apply leave on behalf error:", error);
       res.status(500).json({ error: "Failed to apply leave on behalf" });
+    }
+  });
+
+  app.get("/api/admin/my-team/members", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+
+      let members: AdminUser[];
+      if (["super_admin", "admin", "hr", "operations"].includes(actorRole)) {
+        members = await storage.getAdminUsers();
+      } else {
+        const reporteeIds = await getAllReporteeIds(actorId);
+        const allUsers = await storage.getAdminUsers();
+        members = allUsers.filter(u => reporteeIds.includes(u.id));
+      }
+
+      const departments = await storage.getDepartments();
+      const deptMap = new Map(departments.map(d => [d.id, d.name]));
+
+      const safeMembers = members.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        designation: u.designation,
+        departmentId: u.departmentId,
+        departmentName: u.departmentId ? deptMap.get(u.departmentId) || null : null,
+        hierarchyLevel: u.hierarchyLevel,
+        employeeId: u.employeeId,
+        isActive: u.isActive,
+      }));
+
+      res.json(safeMembers);
+    } catch (error) {
+      console.error("My team members error:", error);
+      res.status(500).json({ error: "Failed to fetch team members" });
     }
   });
 

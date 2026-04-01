@@ -45,6 +45,14 @@ An integrated internal employee management system within the admin panel featuri
 - **Counter-Signature Flow**: After candidate accepts, HR/super_admin counter-signs via Offer Letters Dashboard. Pre-filled "Alina Carter" as HR signatory. Generates counterAuthCode via same cryptographic method. Status → "countersigned". Start Onboarding only available after counter-sign.
 - **Manual Adjustments**: HR can manually adjust leave balances with an audit trail.
 - **Employee ID System**: Format `HIS-{DEPT}-{WORD}` (e.g., HIS-IT-NOVA, HIS-HC-LYNX). Uses ~200 curated memorable 4-letter words, checks for collisions against existing IDs, fallback to random 4 letters if exhausted.
+- **My Team Management**: `/admin/hr/my-team` — Managers, HR, Ops, Admin, and Super Admin can view and edit employee data for their team members. Features:
+  - Employee list with search, click to drill into detail view
+  - Editable fields: attendance (punch-in/out, status), profile (designation, department, hierarchy level), regional holidays, emergency contacts, ticket resolution
+  - Every edit requires a mandatory "Reason for change" note
+  - All changes recorded in audit trail with before/after diff
+  - Change History tab shows audit log entries for each employee
+  - Role-based scoping: managers restricted to direct+indirect reportees; hr/ops/admin/super_admin can edit all employees
+  - Backend APIs: `/api/admin/my-team/*` endpoints with role validation
 - **Post-Onboarding Documents**: A system for managing employee documents, bank details, and emergency contacts with compliance tracking and reminders.
 - **Security**: Mandatory TOTP 2FA for all users (enforced on both frontend and backend), 30-minute auto session timeout with 15-minute idle warning, rolling sessions.
 - **Onboarding Training & SOPs System**: Structured learning track system for employee onboarding. Hierarchy: Track → Section → Content + Quiz Question → Section Acknowledgement → Track Completion Receipt.

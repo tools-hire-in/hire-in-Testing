@@ -20,6 +20,15 @@ import {
   Check,
   X,
   AlertTriangle,
+  Edit,
+  Plus,
+  Trash2,
+  User,
+  Phone,
+  FileText,
+  History,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,9 +36,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -45,6 +54,14 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -101,6 +118,7 @@ interface SalarySlip {
 
 interface AttendanceRecord {
   id: string;
+  userId: string;
   date: string;
   punchIn: string | null;
   punchOut: string | null;
@@ -109,7 +127,39 @@ interface AttendanceRecord {
   notes: string | null;
 }
 
-interface Holiday {
+interface EmergencyContact {
+  id: string;
+  userId: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  isPrimary: boolean;
+}
+
+interface TicketRecord {
+  id: string;
+  userId: string;
+  type: string;
+  attendanceId: string | null;
+  date: string;
+  requestedPunchIn: string | null;
+  requestedPunchOut: string | null;
+  reason: string;
+  status: string;
+  reviewedBy: string | null;
+  reviewComment: string | null;
+}
+
+interface RegionalSelection {
+  id: string;
+  userId: string;
+  holidayId: string;
+  year: number;
+}
+
+interface HolidayItem {
   id: string;
   name: string;
   date: string;
@@ -141,12 +191,32 @@ interface LeaveRequest {
 }
 
 interface EmployeeDetails {
-  profile: EmployeeProfile;
-  salary: { currentSalary: string | null; slips: SalarySlip[] };
+  user: TeamMember & { joiningDate: string | null; managerId: string | null };
+  profile?: EmployeeProfile; // For backward compatibility if needed, but OUR uses details.user
+  salary?: { currentSalary: string | null; slips: SalarySlip[] };
   attendance: AttendanceRecord[];
-  holidays: Holiday[];
-  leaveBalances: LeaveBalance[];
-  recentLeaves: LeaveRequest[];
+  emergencyContacts: EmergencyContact[];
+  tickets: TicketRecord[];
+  regionalHolidaySelections: RegionalSelection[];
+  leaveBalances?: LeaveBalance[];
+  recentLeaves?: LeaveRequest[];
+}
+
+interface AuditLogEntry {
+  id: string;
+  actorId: string;
+  actorName: string;
+  actorEmail: string;
+  targetId: string | null;
+  targetName: string;
+  action: string;
+  changes: any;
+  createdAt: string;
+}
+
+interface Department {
+  id: string;
+  name: string;
 }
 
 interface LeaveType {
@@ -202,7 +272,6 @@ const roleColors: Record<string, string> = {
   manager: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   employee: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
 };
-
 const statusColors: Record<string, string> = {
   present: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   absent: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
@@ -1149,53 +1218,681 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
 }
 
 export default function MyTeam() {
-  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("attendance");
 
-  if (authLoading) {
+  const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
+  const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [addHolidayOpen, setAddHolidayOpen] = useState(false);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [editContactOpen, setEditContactOpen] = useState(false);
+  const [editContactRecord, setEditContactRecord] = useState<EmergencyContact | null>(null);
+  const [reviewTicketOpen, setReviewTicketOpen] = useState(false);
+  const [reviewTicketRecord, setReviewTicketRecord] = useState<TicketRecord | null>(null);
+
+  const [formNote, setFormNote] = useState("");
+  const [formPunchIn, setFormPunchIn] = useState("");
+  const [formPunchOut, setFormPunchOut] = useState("");
+  const [formStatus, setFormStatus] = useState("");
+  const [formDesignation, setFormDesignation] = useState("");
+  const [formDepartmentId, setFormDepartmentId] = useState("");
+  const [formHierarchyLevel, setFormHierarchyLevel] = useState("");
+  const [formHolidayId, setFormHolidayId] = useState("");
+  const [formContactName, setFormContactName] = useState("");
+  const [formContactRelationship, setFormContactRelationship] = useState("");
+  const [formContactPhone, setFormContactPhone] = useState("");
+  const [formContactEmail, setFormContactEmail] = useState("");
+  const [formContactAddress, setFormContactAddress] = useState("");
+  const [formContactIsPrimary, setFormContactIsPrimary] = useState(false);
+  const [formTicketStatus, setFormTicketStatus] = useState("");
+  const [formTicketComment, setFormTicketComment] = useState("");
+
+  const membersQuery = useQuery<TeamMember[]>({
+    queryKey: ["/api/admin/my-team/members"],
+  });
+
+  const detailsQuery = useQuery<EmployeeDetails>({
+    queryKey: ["/api/admin/my-team", selectedUserId, "details"],
+    enabled: !!selectedUserId,
+  });
+
+  const auditQuery = useQuery<{ logs: AuditLogEntry[]; total: number }>({
+    queryKey: ["/api/admin/my-team", selectedUserId, "audit-log"],
+    enabled: !!selectedUserId && activeTab === "history",
+  });
+
+  const departmentsQuery = useQuery<Department[]>({
+    queryKey: ["/api/departments"],
+  });
+
+  const holidaysQuery = useQuery<HolidayItem[]>({
+    queryKey: ["/api/hr/holidays"],
+  });
+
+  const editAttendanceMutation = useMutation({
+    mutationFn: async (data: { punchIn?: string; punchOut?: string; status?: string; note: string }) => {
+      await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/attendance/${editAttendanceRecord!.id}`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Attendance updated successfully" });
+      setEditAttendanceOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update attendance", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const editProfileMutation = useMutation({
+    mutationFn: async (data: { designation?: string; departmentId?: string; hierarchyLevel?: string; note: string }) => {
+      await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/profile`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Profile updated successfully" });
+      setEditProfileOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update profile", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const addHolidayMutation = useMutation({
+    mutationFn: async (data: { holidayId: string; note: string }) => {
+      await apiRequest("POST", `/api/admin/my-team/${selectedUserId}/regional-holidays`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Regional holiday added" });
+      setAddHolidayOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add holiday", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeHolidayMutation = useMutation({
+    mutationFn: async ({ selectionId, note }: { selectionId: string; note: string }) => {
+      await apiRequest("DELETE", `/api/admin/my-team/${selectedUserId}/regional-holidays/${selectionId}`, { note });
+    },
+    onSuccess: () => {
+      toast({ title: "Regional holiday removed" });
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to remove holiday", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const addContactMutation = useMutation({
+    mutationFn: async (data: any) => {
+      await apiRequest("POST", `/api/admin/my-team/${selectedUserId}/emergency-contacts`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Emergency contact added" });
+      setAddContactOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add contact", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const editContactMutation = useMutation({
+    mutationFn: async (data: any) => {
+      await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/emergency-contacts/${editContactRecord!.id}`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Emergency contact updated" });
+      setEditContactOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update contact", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteContactMutation = useMutation({
+    mutationFn: async ({ contactId, note }: { contactId: string; note: string }) => {
+      await apiRequest("DELETE", `/api/admin/my-team/${selectedUserId}/emergency-contacts/${contactId}`, { note });
+    },
+    onSuccess: () => {
+      toast({ title: "Emergency contact deleted" });
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to delete contact", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const reviewTicketMutation = useMutation({
+    mutationFn: async (data: { status: string; reviewComment?: string; note: string }) => {
+      await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/tickets/${reviewTicketRecord!.id}`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Ticket reviewed successfully" });
+      setReviewTicketOpen(false);
+      resetForm();
+      invalidateDetails();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to review ticket", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function invalidateDetails() {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", selectedUserId, "details"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", selectedUserId, "audit-log"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team/members"] });
+  }
+
+  function resetForm() {
+    setFormNote("");
+    setFormPunchIn("");
+    setFormPunchOut("");
+    setFormStatus("");
+    setFormDesignation("");
+    setFormDepartmentId("");
+    setFormHierarchyLevel("");
+    setFormHolidayId("");
+    setFormContactName("");
+    setFormContactRelationship("");
+    setFormContactPhone("");
+    setFormContactEmail("");
+    setFormContactAddress("");
+    setFormContactIsPrimary(false);
+    setFormTicketStatus("");
+    setFormTicketComment("");
+  }
+
+  function openEditAttendance(record: AttendanceRecord) {
+    setEditAttendanceRecord(record);
+    setFormPunchIn(record.punchIn ? new Date(record.punchIn).toISOString().slice(0, 16) : "");
+    setFormPunchOut(record.punchOut ? new Date(record.punchOut).toISOString().slice(0, 16) : "");
+    setFormStatus(record.status);
+    setFormNote("");
+    setEditAttendanceOpen(true);
+  }
+
+  function openEditProfile() {
+    const user = detailsQuery.data?.user;
+    if (!user) return;
+    setFormDesignation(user.designation || "");
+    setFormDepartmentId(user.departmentId || "");
+    setFormHierarchyLevel(user.hierarchyLevel || "");
+    setFormNote("");
+    setEditProfileOpen(true);
+  }
+
+  function openEditContact(contact: EmergencyContact) {
+    setEditContactRecord(contact);
+    setFormContactName(contact.name);
+    setFormContactRelationship(contact.relationship);
+    setFormContactPhone(contact.phone);
+    setFormContactEmail(contact.email || "");
+    setFormContactAddress(contact.address || "");
+    setFormContactIsPrimary(contact.isPrimary);
+    setFormNote("");
+    setEditContactOpen(true);
+  }
+
+  function openReviewTicket(ticket: TicketRecord) {
+    setReviewTicketRecord(ticket);
+    setFormTicketStatus("");
+    setFormTicketComment("");
+    setFormNote("");
+    setReviewTicketOpen(true);
+  }
+
+  const filteredMembers = (membersQuery.data || []).filter(m => {
+    const term = searchTerm.toLowerCase();
     return (
-      <AdminLayout>
-        <div className="p-6"><Skeleton className="h-48 w-full" /></div>
-      </AdminLayout>
+      m.firstName.toLowerCase().includes(term) ||
+      m.lastName.toLowerCase().includes(term) ||
+      m.email.toLowerCase().includes(term) ||
+      (m.employeeId || "").toLowerCase().includes(term)
     );
-  }
+  });
 
-  if (!isAuthenticated || !user) {
-    setLocation("/admin/login");
-    return null;
-  }
-
-  const allowed = ["super_admin", "admin", "hr", "operations", "manager"];
-  if (!allowed.includes(user.role)) {
+  if (selectedUserId && detailsQuery.data) {
     return (
       <AdminLayout>
-        <div className="p-6 text-center text-muted-foreground">
-          You do not have permission to view this page.
-        </div>
+        <EmployeeDetail
+          details={detailsQuery.data}
+          auditData={auditQuery.data}
+          isLoadingAudit={auditQuery.isLoading}
+          departments={departmentsQuery.data || []}
+          holidays={holidaysQuery.data || []}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onBack={() => { setSelectedUserId(null); setActiveTab("attendance"); }}
+          onEditAttendance={openEditAttendance}
+          onEditProfile={openEditProfile}
+          onAddHoliday={() => { resetForm(); setAddHolidayOpen(true); }}
+          onRemoveHoliday={(selectionId: string) => {
+            const reason = prompt("Reason for removing this holiday selection:");
+            if (reason && reason.trim()) {
+              removeHolidayMutation.mutate({ selectionId, note: reason.trim() });
+            }
+          }}
+          onAddContact={() => { resetForm(); setAddContactOpen(true); }}
+          onEditContact={openEditContact}
+          onDeleteContact={(contactId: string) => {
+            const reason = prompt("Reason for deleting this emergency contact:");
+            if (reason && reason.trim()) {
+              deleteContactMutation.mutate({ contactId, note: reason.trim() });
+            }
+          }}
+          onReviewTicket={openReviewTicket}
+        />
+
+        <Dialog open={editAttendanceOpen} onOpenChange={setEditAttendanceOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Attendance - {editAttendanceRecord?.date}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Punch In</label>
+                <Input data-testid="input-punch-in" type="datetime-local" value={formPunchIn} onChange={e => setFormPunchIn(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Punch Out</label>
+                <Input data-testid="input-punch-out" type="datetime-local" value={formPunchOut} onChange={e => setFormPunchOut(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <Select value={formStatus} onValueChange={setFormStatus}>
+                  <SelectTrigger data-testid="select-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="present">Present</SelectItem>
+                    <SelectItem value="absent">Absent</SelectItem>
+                    <SelectItem value="half_day">Half Day</SelectItem>
+                    <SelectItem value="late">Late</SelectItem>
+                    <SelectItem value="on_leave">On Leave</SelectItem>
+                    <SelectItem value="holiday">Holiday</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason for change *</label>
+                <Textarea data-testid="input-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you making this change?" />
+                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-attendance" variant="outline" onClick={() => setEditAttendanceOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-attendance"
+                disabled={!formNote.trim() || editAttendanceMutation.isPending}
+                onClick={() => {
+                  editAttendanceMutation.mutate({
+                    punchIn: formPunchIn || undefined,
+                    punchOut: formPunchOut || undefined,
+                    status: formStatus || undefined,
+                    note: formNote,
+                  });
+                }}
+              >
+                {editAttendanceMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={editProfileOpen} onOpenChange={setEditProfileOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Profile</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Designation</label>
+                <Input data-testid="input-designation" value={formDesignation} onChange={e => setFormDesignation(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Department</label>
+                <Select value={formDepartmentId} onValueChange={setFormDepartmentId}>
+                  <SelectTrigger data-testid="select-department">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(departmentsQuery.data || []).map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Hierarchy Level</label>
+                <Select value={formHierarchyLevel} onValueChange={setFormHierarchyLevel}>
+                  <SelectTrigger data-testid="select-hierarchy">
+                    <SelectValue placeholder="Select level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ceo">CEO</SelectItem>
+                    <SelectItem value="vp">VP</SelectItem>
+                    <SelectItem value="director">Director</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="team_lead">Team Lead</SelectItem>
+                    <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
+                    <SelectItem value="team_member">Team Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason for change *</label>
+                <Textarea data-testid="input-profile-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you making this change?" />
+                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-profile" variant="outline" onClick={() => setEditProfileOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-profile"
+                disabled={!formNote.trim() || editProfileMutation.isPending}
+                onClick={() => {
+                  editProfileMutation.mutate({
+                    designation: formDesignation || undefined,
+                    departmentId: formDepartmentId || undefined,
+                    hierarchyLevel: formHierarchyLevel || undefined,
+                    note: formNote,
+                  });
+                }}
+              >
+                {editProfileMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={addHolidayOpen} onOpenChange={setAddHolidayOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Regional Holiday</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Regional Holiday</label>
+                <Select value={formHolidayId} onValueChange={setFormHolidayId}>
+                  <SelectTrigger data-testid="select-holiday">
+                    <SelectValue placeholder="Select a regional holiday" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(holidaysQuery.data || [])
+                      .filter(h => h.type === "regional")
+                      .map(h => (
+                        <SelectItem key={h.id} value={h.id}>{h.name} ({h.date})</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason *</label>
+                <Textarea data-testid="input-holiday-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you adding this holiday?" />
+                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-holiday" variant="outline" onClick={() => setAddHolidayOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-holiday"
+                disabled={!formNote.trim() || !formHolidayId || addHolidayMutation.isPending}
+                onClick={() => addHolidayMutation.mutate({ holidayId: formHolidayId, note: formNote })}
+              >
+                {addHolidayMutation.isPending ? "Adding..." : "Add"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Emergency Contact</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Name *</label>
+                <Input data-testid="input-contact-name" value={formContactName} onChange={e => setFormContactName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Relationship *</label>
+                <Input data-testid="input-contact-relationship" value={formContactRelationship} onChange={e => setFormContactRelationship(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Phone *</label>
+                <Input data-testid="input-contact-phone" value={formContactPhone} onChange={e => setFormContactPhone(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Email</label>
+                <Input data-testid="input-contact-email" value={formContactEmail} onChange={e => setFormContactEmail(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Address</label>
+                <Textarea data-testid="input-contact-address" value={formContactAddress} onChange={e => setFormContactAddress(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason *</label>
+                <Textarea data-testid="input-contact-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you adding this contact?" />
+                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-add-contact" variant="outline" onClick={() => setAddContactOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-add-contact"
+                disabled={!formNote.trim() || !formContactName || !formContactRelationship || !formContactPhone || addContactMutation.isPending}
+                onClick={() => addContactMutation.mutate({
+                  name: formContactName,
+                  relationship: formContactRelationship,
+                  phone: formContactPhone,
+                  email: formContactEmail || undefined,
+                  address: formContactAddress || undefined,
+                  isPrimary: formContactIsPrimary,
+                  note: formNote,
+                })}
+              >
+                {addContactMutation.isPending ? "Adding..." : "Add"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={editContactOpen} onOpenChange={setEditContactOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Emergency Contact</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Name *</label>
+                <Input data-testid="input-edit-contact-name" value={formContactName} onChange={e => setFormContactName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Relationship *</label>
+                <Input data-testid="input-edit-contact-relationship" value={formContactRelationship} onChange={e => setFormContactRelationship(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Phone *</label>
+                <Input data-testid="input-edit-contact-phone" value={formContactPhone} onChange={e => setFormContactPhone(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Email</label>
+                <Input data-testid="input-edit-contact-email" value={formContactEmail} onChange={e => setFormContactEmail(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Address</label>
+                <Textarea data-testid="input-edit-contact-address" value={formContactAddress} onChange={e => setFormContactAddress(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason *</label>
+                <Textarea data-testid="input-edit-contact-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you editing this contact?" />
+                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-edit-contact" variant="outline" onClick={() => setEditContactOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-edit-contact"
+                disabled={!formNote.trim() || !formContactName || !formContactRelationship || !formContactPhone || editContactMutation.isPending}
+                onClick={() => editContactMutation.mutate({
+                  name: formContactName,
+                  relationship: formContactRelationship,
+                  phone: formContactPhone,
+                  email: formContactEmail || undefined,
+                  address: formContactAddress || undefined,
+                  isPrimary: formContactIsPrimary,
+                  note: formNote,
+                })}
+              >
+                {editContactMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={reviewTicketOpen} onOpenChange={setReviewTicketOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Review Ticket</DialogTitle>
+            </DialogHeader>
+            {reviewTicketRecord && (
+              <div className="space-y-4">
+                <div className="bg-muted p-3 rounded text-sm">
+                  <p><strong>Date:</strong> {reviewTicketRecord.date}</p>
+                  <p><strong>Type:</strong> {reviewTicketRecord.type}</p>
+                  <p><strong>Reason:</strong> {reviewTicketRecord.reason}</p>
+                  {reviewTicketRecord.requestedPunchIn && (
+                    <p><strong>Requested Punch In:</strong> {new Date(reviewTicketRecord.requestedPunchIn).toLocaleString()}</p>
+                  )}
+                  {reviewTicketRecord.requestedPunchOut && (
+                    <p><strong>Requested Punch Out:</strong> {new Date(reviewTicketRecord.requestedPunchOut).toLocaleString()}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Decision</label>
+                  <Select value={formTicketStatus} onValueChange={setFormTicketStatus}>
+                    <SelectTrigger data-testid="select-ticket-status">
+                      <SelectValue placeholder="Select decision" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in_review">In Review</SelectItem>
+                      <SelectItem value="resolved">Resolve</SelectItem>
+                      <SelectItem value="rejected">Reject</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Review Comment</label>
+                  <Textarea data-testid="input-ticket-comment" value={formTicketComment} onChange={e => setFormTicketComment(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Reason for action *</label>
+                  <Textarea data-testid="input-ticket-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you taking this action?" />
+                  {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button data-testid="button-cancel-ticket" variant="outline" onClick={() => setReviewTicketOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-ticket"
+                disabled={!formNote.trim() || !formTicketStatus || reviewTicketMutation.isPending}
+                onClick={() => reviewTicketMutation.mutate({
+                  status: formTicketStatus,
+                  reviewComment: formTicketComment || undefined,
+                  note: formNote,
+                })}
+              >
+                {reviewTicketMutation.isPending ? "Saving..." : "Submit"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </AdminLayout>
     );
   }
 
   return (
     <AdminLayout>
-      <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-        {!selectedUserId ? (
-          <>
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-my-team-title">
-                <Users className="h-6 w-6" /> My Team
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {user.role === "manager"
-                  ? "View your direct and indirect reports"
-                  : "View all employees"}
-              </p>
-            </div>
-            <TeamList onSelect={(id) => setSelectedUserId(id)} />
-          </>
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+              <Users className="h-6 w-6" />
+              My Team
+            </h1>
+            <p className="text-muted-foreground mt-1">View and manage employee data for your team members</p>
+          </div>
+        </div>
+
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            data-testid="input-search"
+            placeholder="Search by name, email, or employee ID..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        {membersQuery.isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              {searchTerm ? "No team members match your search" : "No team members found"}
+            </CardContent>
+          </Card>
         ) : (
-          <EmployeeDetailView userId={selectedUserId} onBack={() => setSelectedUserId(null)} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredMembers.map(member => (
+              <Card
+                key={member.id}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                data-testid={`card-member-${member.id}`}
+                onClick={() => setSelectedUserId(member.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                      {member.firstName[0]}{member.lastName[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
+                        {member.firstName} {member.lastName}
+                      </p>
+                      <p className="text-sm text-muted-foreground truncate">{member.email}</p>
+                    </div>
+                    <Badge variant={member.isActive ? "default" : "secondary"} className="shrink-0">
+                      {member.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {member.designation && <span>{member.designation}</span>}
+                    {member.departmentName && <span>| {member.departmentName}</span>}
+                    {member.employeeId && <span>| {member.employeeId}</span>}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
       </div>
     </AdminLayout>

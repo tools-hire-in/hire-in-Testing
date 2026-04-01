@@ -27,6 +27,7 @@ import {
   Wrench,
   GraduationCap,
   BarChart3,
+  UsersRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,6 +160,12 @@ const hrOpsMenu = [
     label: "Team Management",
     icon: Users,
     roles: ["super_admin", "admin", "hr", "operations"]
+  },
+  {
+    href: "/admin/hr/my-team",
+    label: "My Team",
+    icon: UsersRound,
+    roles: ["super_admin", "admin", "hr", "operations", "manager"]
   },
   {
     href: "/admin/hr/team-attendance",
