@@ -162,12 +162,6 @@ const hrOpsMenu = [
     roles: ["super_admin", "admin", "hr", "operations"]
   },
   {
-    href: "/admin/hr/my-team",
-    label: "My Team",
-    icon: UsersRound,
-    roles: ["super_admin", "admin", "hr", "operations", "manager"]
-  },
-  {
     href: "/admin/hr/team-attendance",
     label: "Team Attendance",
     icon: Clock,
