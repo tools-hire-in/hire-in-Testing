@@ -149,6 +149,12 @@ const employeeMenu = [
 
 const hrOpsMenu = [
   {
+    href: "/admin/hr/my-team",
+    label: "My Team",
+    icon: Network,
+    roles: ["super_admin", "admin", "hr", "operations", "manager"]
+  },
+  {
     href: "/admin/users",
     label: "Team Management",
     icon: Users,

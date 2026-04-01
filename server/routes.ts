@@ -3384,6 +3384,170 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // MY TEAM API ROUTES
+  // ==========================================
+
+  app.get("/api/admin/my-team", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+
+      const allUsers = await storage.getAdminUsers();
+      const allDepartments = await storage.getDepartments();
+      const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
+
+      let teamMembers: typeof allUsers;
+      let directReportIds: Set<string> = new Set();
+
+      if (["super_admin", "admin", "hr", "operations"].includes(userRole)) {
+        teamMembers = allUsers;
+      } else {
+        const direct = allUsers.filter(u => u.managerId === userId);
+        directReportIds = new Set(direct.map(u => u.id));
+
+        const allReportees: typeof allUsers = [];
+        const visited = new Set<string>();
+        const queue = [userId];
+        while (queue.length > 0) {
+          const mgr = queue.shift()!;
+          if (visited.has(mgr)) continue;
+          visited.add(mgr);
+          const reports = allUsers.filter(u => u.managerId === mgr);
+          for (const r of reports) {
+            allReportees.push(r);
+            queue.push(r.id);
+          }
+        }
+        teamMembers = allReportees;
+      }
+
+      const result = teamMembers.map(u => ({
+        id: u.id,
+        employeeId: u.employeeId,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        designation: u.designation,
+        departmentId: u.departmentId,
+        departmentName: u.departmentId ? deptMap.get(u.departmentId) || null : null,
+        joiningDate: u.joiningDate,
+        isActive: u.isActive,
+        hierarchyLevel: u.hierarchyLevel,
+        isDirect: userRole === "manager" ? directReportIds.has(u.id) : true,
+      }));
+
+      res.json({ members: result, role: userRole });
+    } catch (error) {
+      console.error("My team error:", error);
+      res.status(500).json({ error: "Failed to fetch team members" });
+    }
+  });
+
+  app.get("/api/admin/my-team/:userId/details", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
+    try {
+      const requesterId = req.session.userId!;
+      const requesterRole = req.session.role!;
+      const targetUserId = req.params.userId as string;
+
+      const targetUser = await storage.getAdminUser(targetUserId);
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+
+      if (requesterRole === "manager") {
+        const allUsers = await storage.getAdminUsers();
+        const visited = new Set<string>();
+        const queue = [requesterId];
+        let isReportee = false;
+        while (queue.length > 0) {
+          const mgr = queue.shift()!;
+          if (visited.has(mgr)) continue;
+          visited.add(mgr);
+          const reports = allUsers.filter(u => u.managerId === mgr);
+          for (const r of reports) {
+            if (r.id === targetUserId) { isReportee = true; break; }
+            queue.push(r.id);
+          }
+          if (isReportee) break;
+        }
+        if (!isReportee) return res.status(403).json({ error: "Not your reportee" });
+      }
+
+      const allDepartments = await storage.getDepartments();
+      const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
+      const currentYear = new Date().getFullYear();
+
+      const [
+        salarySlips,
+        attendanceRecords,
+        leaveBalances_,
+        leaveRequests_,
+        leaveTypes_,
+        regionalSelections,
+        allHolidays,
+      ] = await Promise.all([
+        storage.getSalarySlipsByUser(targetUserId),
+        storage.getAttendanceByUser(targetUserId),
+        storage.getLeaveBalances(targetUserId, currentYear),
+        storage.getLeaveRequests({ userId: targetUserId }),
+        storage.getLeaveTypes(),
+        storage.getRegionalHolidaySelections(targetUserId, currentYear),
+        storage.getHolidays(currentYear),
+      ]);
+
+      const leaveTypeMap = new Map(leaveTypes_.map(lt => [lt.id, lt.name]));
+
+      const selectedHolidayIds = new Set(regionalSelections.map(s => s.holidayId));
+      const selectedHolidays = allHolidays.filter(h =>
+        !h.isOptional || selectedHolidayIds.has(h.id)
+      );
+
+      const profile = {
+        id: targetUser.id,
+        employeeId: targetUser.employeeId,
+        firstName: targetUser.firstName,
+        lastName: targetUser.lastName,
+        email: targetUser.email,
+        role: targetUser.role,
+        designation: targetUser.designation,
+        departmentId: targetUser.departmentId,
+        departmentName: targetUser.departmentId ? deptMap.get(targetUser.departmentId) || null : null,
+        joiningDate: targetUser.joiningDate,
+        isActive: targetUser.isActive,
+        hierarchyLevel: targetUser.hierarchyLevel,
+        salary: targetUser.salary,
+      };
+
+      const balancesWithNames = leaveBalances_.map(lb => ({
+        ...lb,
+        leaveTypeName: leaveTypeMap.get(lb.leaveTypeId) || "Unknown",
+      }));
+
+      const recentLeaves = leaveRequests_
+        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
+        .slice(0, 20)
+        .map(lr => ({
+          ...lr,
+          leaveTypeName: leaveTypeMap.get(lr.leaveTypeId) || "Unknown",
+        }));
+
+      res.json({
+        profile,
+        salary: {
+          currentSalary: targetUser.salary,
+          slips: salarySlips.sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month)),
+        },
+        attendance: attendanceRecords.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 90),
+        holidays: selectedHolidays,
+        leaveBalances: balancesWithNames,
+        recentLeaves,
+      });
+    } catch (error) {
+      console.error("My team detail error:", error);
+      res.status(500).json({ error: "Failed to fetch employee details" });
+    }
+  });
+
   registerOnboardingRoutes(app);
 
   return httpServer;

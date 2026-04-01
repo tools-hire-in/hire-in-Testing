@@ -47,6 +47,7 @@ import OnboardAccept from "@/pages/OnboardAccept";
 import MyTraining from "@/pages/admin/hr/MyTraining";
 import TrainingManagement from "@/pages/admin/hr/TrainingManagement";
 import TrainingProgress from "@/pages/admin/hr/TrainingProgress";
+import MyTeam from "@/pages/admin/hr/MyTeam";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -114,6 +115,7 @@ function PublicRouter() {
       <Route path="/admin/hr/my-training" component={MyTraining} />
       <Route path="/admin/hr/training" component={TrainingManagement} />
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
+      <Route path="/admin/hr/my-team" component={MyTeam} />
 
       <Route component={NotFound} />
     </Switch>
@@ -156,6 +158,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/my-training" component={MyTraining} />
       <Route path="/admin/hr/training" component={TrainingManagement} />
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
+      <Route path="/admin/hr/my-team" component={MyTeam} />
 
       <Route component={NotFound} />
     </Switch>
