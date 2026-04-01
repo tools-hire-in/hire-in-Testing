@@ -1,29 +1,35 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Users,
   Search,
   ArrowLeft,
-  Briefcase,
   Calendar,
   Clock,
   DollarSign,
   TreePalm,
   CalendarDays,
+  CalendarPlus,
   ChevronRight,
   UserCircle,
   Building2,
   BadgeCheck,
   Star,
+  TrendingUp,
+  Check,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -31,7 +37,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface TeamMember {
   id: string;
@@ -113,11 +129,14 @@ interface LeaveBalance {
 interface LeaveRequest {
   id: string;
   leaveTypeName: string;
+  leaveTypeId?: string;
   startDate: string;
   endDate: string;
   totalDays: string;
   reason: string | null;
   status: string;
+  reviewedBy?: string | null;
+  reviewComment?: string | null;
   createdAt: string;
 }
 
@@ -128,6 +147,51 @@ interface EmployeeDetails {
   holidays: Holiday[];
   leaveBalances: LeaveBalance[];
   recentLeaves: LeaveRequest[];
+}
+
+interface LeaveType {
+  id: string;
+  name: string;
+  defaultDays: number;
+  monthlyAccrual: string;
+  isActive: boolean;
+}
+
+interface LeaveAccrual {
+  id: string;
+  userId: string;
+  leaveTypeId: string;
+  year: number;
+  month: number;
+  accruedDays: string;
+  hoursWorked: string;
+  qualified: boolean;
+}
+
+interface EmployeeLeaveData {
+  employee: { id: string; firstName: string; lastName: string; email: string };
+  balances: Array<{ id: string; leaveTypeId: string; totalDays: string; usedDays: string; year: number }>;
+  leaveTypes: LeaveType[];
+  requests: Array<{
+    id: string;
+    userId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    totalDays: string;
+    reason: string | null;
+    status: string;
+    reviewedBy: string | null;
+    reviewComment: string | null;
+    createdAt: string;
+  }>;
+  accruals: LeaveAccrual[];
+  summary: {
+    totalDaysTaken: number;
+    pendingCount: number;
+    mostUsedLeaveType: string;
+  };
+  year: number;
 }
 
 const roleColors: Record<string, string> = {
@@ -409,6 +473,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-leaves" value="leaves" className="gap-1">
             <CalendarDays className="h-4 w-4" /> Leave Balances
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-leave-tracking" value="leave-tracking" className="gap-1">
+            <CalendarPlus className="h-4 w-4" /> Leave Tracking
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -425,6 +492,9 @@ function EmployeeDetailView({
         </TabsContent>
         <TabsContent value="leaves">
           <LeavesTab balances={leaveBalances} recentLeaves={recentLeaves} />
+        </TabsContent>
+        <TabsContent value="leave-tracking">
+          <LeaveTrackingTab userId={userId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -682,6 +752,402 @@ function LeavesTab({
   );
 }
 
+function LeaveTrackingTab({ userId }: { userId: string }) {
+  const { toast } = useToast();
+  const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
+  const [reviewData, setReviewData] = useState<{ id: string; action: string; comment: string } | null>(null);
+  const [leaveForm, setLeaveForm] = useState({
+    leaveTypeId: "",
+    startDate: "",
+    endDate: "",
+    totalDays: "1",
+    reason: "",
+    note: "",
+  });
+
+  const { data: leaveData, isLoading } = useQuery<EmployeeLeaveData>({
+    queryKey: ["/api/admin/my-team", userId, "leaves"],
+  });
+
+  const applyLeaveMutation = useMutation({
+    mutationFn: (data: typeof leaveForm) =>
+      apiRequest("POST", `/api/admin/my-team/${userId}/apply-leave`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", userId, "leaves"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", userId, "details"] });
+      setApplyLeaveOpen(false);
+      setLeaveForm({ leaveTypeId: "", startDate: "", endDate: "", totalDays: "1", reason: "", note: "" });
+      toast({ title: "Leave Applied", description: "Leave has been applied and auto-approved on behalf of the employee." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to apply leave", variant: "destructive" });
+    },
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: (data: { id: string; status: string; reviewComment: string }) =>
+      apiRequest("PATCH", `/api/hr/leave-requests/${data.id}/review`, {
+        status: data.status,
+        reviewComment: data.reviewComment,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", userId, "leaves"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", userId, "details"] });
+      setReviewData(null);
+      toast({ title: "Reviewed", description: "Leave request has been updated." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to review", variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (!leaveData) {
+    return <div className="text-center py-8 text-muted-foreground">Failed to load leave tracking data.</div>;
+  }
+
+  const getLeaveTypeName = (id: string) => leaveData.leaveTypes?.find(lt => lt.id === id)?.name || "Unknown";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Leave Tracking ({leaveData.year})</h3>
+        <Button onClick={() => setApplyLeaveOpen(true)} data-testid="button-apply-leave-behalf">
+          <CalendarPlus className="h-4 w-4 mr-2" />
+          Apply Leave on Behalf
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card data-testid="card-total-days-taken">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <CalendarDays className="h-8 w-8 text-blue-500" />
+              <div>
+                <p className="text-2xl font-bold">{leaveData.summary.totalDaysTaken}</p>
+                <p className="text-sm text-muted-foreground">Days Taken ({leaveData.year})</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-pending-requests">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Clock className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-2xl font-bold">{leaveData.summary.pendingCount}</p>
+                <p className="text-sm text-muted-foreground">Pending Requests</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-most-used-type">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-8 w-8 text-green-500" />
+              <div>
+                <p className="text-lg font-bold">{leaveData.summary.mostUsedLeaveType}</p>
+                <p className="text-sm text-muted-foreground">Most Used Type</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Leave Balances ({leaveData.year})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {leaveData.balances.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {leaveData.balances.map((bal) => {
+                const total = parseFloat(bal.totalDays || "0");
+                const used = parseFloat(bal.usedDays || "0");
+                const remaining = Math.max(0, total - used);
+                const pct = total > 0 ? (used / total) * 100 : 0;
+                return (
+                  <div key={bal.id} className="border rounded-lg p-4 space-y-2" data-testid={`balance-card-${bal.id}`}>
+                    <p className="font-medium">{getLeaveTypeName(bal.leaveTypeId)}</p>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Earned: {total}</span>
+                      <span>Used: {used}</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className="bg-primary rounded-full h-2 transition-all"
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-sm font-semibold text-right">Remaining: {remaining}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-center py-4">No leave balances found for this year.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {leaveData.accruals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Leave Accrual History ({leaveData.year})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Month</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Leave Type</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Accrued</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Hours Worked</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Qualified</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveData.accruals.map((acc) => (
+                    <tr key={acc.id} className="border-b last:border-0" data-testid={`accrual-row-${acc.id}`}>
+                      <td className="py-2 px-2">{monthNames[acc.month - 1] || acc.month}</td>
+                      <td className="py-2 px-2">{getLeaveTypeName(acc.leaveTypeId)}</td>
+                      <td className="py-2 px-2">{acc.accruedDays}</td>
+                      <td className="py-2 px-2">{parseFloat(acc.hoursWorked).toFixed(1)}h</td>
+                      <td className="py-2 px-2">
+                        <Badge variant="secondary" className={acc.qualified ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}>
+                          {acc.qualified ? "Yes" : "No"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Leave History ({leaveData.year})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {leaveData.requests.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Type</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">From</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">To</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Days</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Reason</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Status</th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveData.requests.map((lr) => (
+                    <tr key={lr.id} className="border-b last:border-0" data-testid={`leave-row-${lr.id}`}>
+                      <td className="py-2 px-2">{getLeaveTypeName(lr.leaveTypeId)}</td>
+                      <td className="py-2 px-2">{lr.startDate}</td>
+                      <td className="py-2 px-2">{lr.endDate}</td>
+                      <td className="py-2 px-2">{lr.totalDays}</td>
+                      <td className="py-2 px-2 max-w-[200px] truncate">{lr.reason || "-"}</td>
+                      <td className="py-2 px-2">
+                        <Badge variant="secondary" className={leaveStatusColors[lr.status] || ""}>
+                          {lr.status}
+                        </Badge>
+                      </td>
+                      <td className="py-2 px-2">
+                        {lr.status === "pending" && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setReviewData({ id: lr.id, action: "approved", comment: "" })}
+                              data-testid={`button-approve-${lr.id}`}
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setReviewData({ id: lr.id, action: "rejected", comment: "" })}
+                              data-testid={`button-reject-${lr.id}`}
+                            >
+                              <X className="h-4 w-4 text-red-600" />
+                            </Button>
+                          </div>
+                        )}
+                        {lr.reviewComment && (
+                          <span className="text-xs text-muted-foreground block mt-1 max-w-[150px] truncate" title={lr.reviewComment}>
+                            {lr.reviewComment}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No leave requests for {leaveData.year}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={applyLeaveOpen} onOpenChange={setApplyLeaveOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply Leave on Behalf</DialogTitle>
+            <DialogDescription>
+              Apply retroactive leave for {leaveData.employee.firstName} {leaveData.employee.lastName}. Only past dates are allowed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Leave Type *</Label>
+              <Select value={leaveForm.leaveTypeId} onValueChange={(v) => setLeaveForm(f => ({ ...f, leaveTypeId: v }))}>
+                <SelectTrigger data-testid="select-leave-type">
+                  <SelectValue placeholder="Select leave type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {leaveData.leaveTypes.filter(lt => lt.isActive).map(lt => (
+                    <SelectItem key={lt.id} value={lt.id}>{lt.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Start Date *</Label>
+                <Input
+                  type="date"
+                  value={leaveForm.startDate}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setLeaveForm(f => ({ ...f, startDate: e.target.value }))}
+                  data-testid="input-start-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date *</Label>
+                <Input
+                  type="date"
+                  value={leaveForm.endDate}
+                  max={new Date().toISOString().split("T")[0]}
+                  min={leaveForm.startDate}
+                  onChange={(e) => setLeaveForm(f => ({ ...f, endDate: e.target.value }))}
+                  data-testid="input-end-date"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Total Days *</Label>
+              <Input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={leaveForm.totalDays}
+                onChange={(e) => setLeaveForm(f => ({ ...f, totalDays: e.target.value }))}
+                data-testid="input-total-days"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <Textarea
+                value={leaveForm.reason}
+                onChange={(e) => setLeaveForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="Leave reason..."
+                data-testid="input-reason"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Note (why applying on behalf) *</Label>
+              <Textarea
+                value={leaveForm.note}
+                onChange={(e) => setLeaveForm(f => ({ ...f, note: e.target.value }))}
+                placeholder="Explain why this leave is being applied on behalf..."
+                data-testid="input-note"
+              />
+            </div>
+            <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-sm">
+              <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+              <p className="text-yellow-800 dark:text-yellow-200">
+                This leave will be auto-approved and deducted from the employee's balance immediately.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApplyLeaveOpen(false)} data-testid="button-cancel-apply-leave">Cancel</Button>
+            <Button
+              onClick={() => applyLeaveMutation.mutate(leaveForm)}
+              disabled={applyLeaveMutation.isPending || !leaveForm.leaveTypeId || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.note}
+              data-testid="button-confirm-apply-leave"
+            >
+              {applyLeaveMutation.isPending ? "Applying..." : "Apply Leave"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reviewData} onOpenChange={() => setReviewData(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {reviewData?.action === "approved" ? "Approve" : "Reject"} Leave Request
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Comment (optional)</Label>
+              <Textarea
+                value={reviewData?.comment || ""}
+                onChange={(e) => setReviewData(prev => prev ? { ...prev, comment: e.target.value } : null)}
+                placeholder="Add a comment..."
+                data-testid="input-review-comment"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewData(null)} data-testid="button-cancel-review">Cancel</Button>
+            <Button
+              variant={reviewData?.action === "approved" ? "default" : "destructive"}
+              onClick={() => {
+                if (reviewData) {
+                  reviewMutation.mutate({
+                    id: reviewData.id,
+                    status: reviewData.action,
+                    reviewComment: reviewData.comment,
+                  });
+                }
+              }}
+              disabled={reviewMutation.isPending}
+              data-testid="button-confirm-review"
+            >
+              {reviewMutation.isPending ? "Processing..." : (reviewData?.action === "approved" ? "Approve" : "Reject")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function MyTeam() {
   const [, setLocation] = useLocation();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -717,7 +1183,7 @@ export default function MyTeam() {
         {!selectedUserId ? (
           <>
             <div className="mb-6">
-              <h1 className="text-2xl font-bold flex items-center gap-2">
+              <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-my-team-title">
                 <Users className="h-6 w-6" /> My Team
               </h1>
               <p className="text-sm text-muted-foreground mt-1">

@@ -3548,6 +3548,142 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // MY TEAM — LEAVE TRACKING & APPLY ON BEHALF
+  // ==========================================
+
+  app.get("/api/admin/my-team/:userId/leaves", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const targetUserId = req.params.userId as string;
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+
+      const targetUser = await storage.getAdminUser(targetUserId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
+
+      if (actorRole === "manager") {
+        const directReports = await storage.getTeamMembers(actorId);
+        const isReport = directReports.some(r => r.id === targetUserId);
+        if (!isReport) {
+          return res.status(403).json({ error: "You can only view leave details for your reportees" });
+        }
+      }
+
+      const currentYear = new Date().getFullYear();
+      const year = parseInt(req.query.year as string) || currentYear;
+
+      const [balances, leaveTypesList, requests, accruals] = await Promise.all([
+        storage.getLeaveBalances(targetUserId, year),
+        storage.getLeaveTypes(),
+        storage.getLeaveRequests({ userId: targetUserId }),
+        storage.getLeaveAccrualsByUser(targetUserId, year),
+      ]);
+
+      const yearRequests = requests.filter(r => r.startDate.startsWith(String(year)));
+      const approvedRequests = yearRequests.filter(r => r.status === "approved");
+      const totalDaysTaken = approvedRequests.reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+      const pendingCount = yearRequests.filter(r => r.status === "pending").length;
+
+      const leaveTypeUsage: Record<string, number> = {};
+      for (const r of approvedRequests) {
+        const ltName = leaveTypesList.find(lt => lt.id === r.leaveTypeId)?.name || "Unknown";
+        leaveTypeUsage[ltName] = (leaveTypeUsage[ltName] || 0) + parseFloat(r.totalDays || "0");
+      }
+      const mostUsedLeaveType = Object.entries(leaveTypeUsage).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+
+      res.json({
+        employee: { id: targetUser.id, firstName: targetUser.firstName, lastName: targetUser.lastName, email: targetUser.email },
+        balances,
+        leaveTypes: leaveTypesList,
+        requests: yearRequests,
+        accruals,
+        summary: {
+          totalDaysTaken,
+          pendingCount,
+          mostUsedLeaveType,
+        },
+        year,
+      });
+    } catch (error) {
+      console.error("Fetch employee leave details error:", error);
+      res.status(500).json({ error: "Failed to fetch employee leave details" });
+    }
+  });
+
+  app.post("/api/admin/my-team/:userId/apply-leave", requireRole("hr", "manager", "operations"), async (req, res) => {
+    try {
+      const targetUserId = req.params.userId as string;
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+
+      const targetUser = await storage.getAdminUser(targetUserId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
+
+      if (actorRole === "manager") {
+        const directReports = await storage.getTeamMembers(actorId);
+        const isReport = directReports.some(r => r.id === targetUserId);
+        if (!isReport) {
+          return res.status(403).json({ error: "You can only apply leave for your reportees" });
+        }
+      }
+
+      const { leaveTypeId, startDate, endDate, totalDays, reason, note } = req.body;
+
+      if (!leaveTypeId || !startDate || !endDate || !totalDays || !note) {
+        return res.status(400).json({ error: "leaveTypeId, startDate, endDate, totalDays, and note are required" });
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      if (endDate > today) {
+        return res.status(400).json({ error: "Cannot apply leave on behalf for future dates. Employee should apply themselves." });
+      }
+
+      const lr = await storage.createLeaveRequest({
+        userId: targetUserId,
+        leaveTypeId,
+        startDate,
+        endDate,
+        totalDays: String(totalDays),
+        reason: reason || null,
+      });
+
+      const approved = await storage.updateLeaveRequest(lr.id, {
+        status: "approved",
+        reviewedBy: actorId,
+        reviewComment: `Applied on behalf: ${note}`,
+        reviewedAt: new Date(),
+      });
+
+      const year = parseInt(startDate.split("-")[0]);
+      const balances = await storage.getLeaveBalances(targetUserId, year);
+      const balance = balances.find(b => b.leaveTypeId === leaveTypeId);
+      if (balance) {
+        const newUsed = parseFloat(balance.usedDays || "0") + parseFloat(String(totalDays));
+        await storage.updateLeaveBalance(balance.id, { usedDays: String(newUsed) });
+      }
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: targetUserId,
+        action: "apply_leave_on_behalf",
+        changes: {
+          leaveTypeId,
+          startDate,
+          endDate,
+          totalDays,
+          reason: reason || null,
+          note,
+          leaveRequestId: lr.id,
+        },
+      });
+
+      res.status(201).json(approved);
+    } catch (error) {
+      console.error("Apply leave on behalf error:", error);
+      res.status(500).json({ error: "Failed to apply leave on behalf" });
+    }
+  });
+
   registerOnboardingRoutes(app);
 
   return httpServer;
