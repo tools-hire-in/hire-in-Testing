@@ -1462,36 +1462,12 @@ export default function MyTeam() {
     );
   });
 
-  if (selectedUserId && detailsQuery.data) {
+  if (selectedUserId) {
     return (
       <AdminLayout>
-        <EmployeeDetail
-          details={detailsQuery.data}
-          auditData={auditQuery.data}
-          isLoadingAudit={auditQuery.isLoading}
-          departments={departmentsQuery.data || []}
-          holidays={holidaysQuery.data || []}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
+        <EmployeeDetailView
+          userId={selectedUserId}
           onBack={() => { setSelectedUserId(null); setActiveTab("attendance"); }}
-          onEditAttendance={openEditAttendance}
-          onEditProfile={openEditProfile}
-          onAddHoliday={() => { resetForm(); setAddHolidayOpen(true); }}
-          onRemoveHoliday={(selectionId: string) => {
-            const reason = prompt("Reason for removing this holiday selection:");
-            if (reason && reason.trim()) {
-              removeHolidayMutation.mutate({ selectionId, note: reason.trim() });
-            }
-          }}
-          onAddContact={() => { resetForm(); setAddContactOpen(true); }}
-          onEditContact={openEditContact}
-          onDeleteContact={(contactId: string) => {
-            const reason = prompt("Reason for deleting this emergency contact:");
-            if (reason && reason.trim()) {
-              deleteContactMutation.mutate({ contactId, note: reason.trim() });
-            }
-          }}
-          onReviewTicket={openReviewTicket}
         />
 
         <Dialog open={editAttendanceOpen} onOpenChange={setEditAttendanceOpen}>
