@@ -812,7 +812,7 @@ export default function MyTraining() {
 
             const isOverdue = status === "overdue";
             const isDueSoon = !isOverdue && a.dueDate && new Date(a.dueDate) >= now && new Date(a.dueDate) <= in5days;
-            const showExtensionSection = status !== "completed" && !!a.dueDate;
+            const showExtensionSection = status !== "completed";
 
             return (
               <div key={a.id} className="space-y-2">
@@ -846,12 +846,13 @@ export default function MyTraining() {
                         <span className="font-medium">{a.progressPct}%</span>
                       </div>
                       <Progress value={a.progressPct} className="h-2" />
-                      {a.dueDate && (
-                        <p className={`text-xs ${isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
-                          Due: {formatDate(a.dueDate)}
-                          {isDueSoon && " — due within 5 days"}
-                        </p>
-                      )}
+                      <p className={`text-xs ${isOverdue ? "text-red-600 font-medium" : isDueSoon ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
+                        {a.dueDate ? (
+                          <>Due: {formatDate(a.dueDate)}{isDueSoon && " — due within 5 days"}</>
+                        ) : (
+                          <>Due date: Not set</>
+                        )}
+                      </p>
                       {status === "completed" && (
                         <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
                       )}
@@ -923,7 +924,7 @@ export default function MyTraining() {
                           data-testid={`button-apply-extension-${a.id}`}
                         >
                           <CalendarPlus className="h-4 w-4 mr-2" />
-                          Apply for Due Date Extension
+                          {a.dueDate ? "Apply for Due Date Extension" : "Request Due Date"}
                         </Button>
                       )}
                     </>
