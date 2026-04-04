@@ -17,6 +17,7 @@ import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
+import { registerPerformanceRoutes } from "./performanceRoutes";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -4137,6 +4138,7 @@ export async function registerRoutes(
   });
 
   registerOnboardingRoutes(app);
+  registerPerformanceRoutes(app);
 
   return httpServer;
 }

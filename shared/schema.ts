@@ -644,6 +644,122 @@ export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
 });
 
 // ==========================================
+// PERFORMANCE MANAGEMENT SYSTEM
+// ==========================================
+
+export const performanceGoalStatusEnum = pgEnum("performance_goal_status", ["not_started", "in_progress", "completed", "cancelled"]);
+export const performanceGoalCategoryEnum = pgEnum("performance_goal_category", ["individual", "team", "company", "development"]);
+export const checkInStatusEnum = pgEnum("check_in_status", ["scheduled", "completed", "cancelled"]);
+export const reviewCycleTypeEnum = pgEnum("review_cycle_type", ["annual", "semi_annual", "quarterly"]);
+export const reviewCycleStatusEnum = pgEnum("review_cycle_status", ["draft", "active", "in_review", "closed"]);
+export const reviewTypeEnum = pgEnum("review_type", ["self", "manager"]);
+export const reviewStatusEnum = pgEnum("review_status", ["pending", "submitted"]);
+export const feedbackTypeEnum = pgEnum("feedback_type", ["praise", "constructive", "general"]);
+
+export const performanceGoals = pgTable("performance_goals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  category: performanceGoalCategoryEnum("category").notNull().default("individual"),
+  startDate: varchar("start_date"),
+  targetDate: varchar("target_date"),
+  weight: integer("weight").default(0),
+  status: performanceGoalStatusEnum("status").notNull().default("not_started"),
+  progress: integer("progress").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const checkIns = pgTable("check_ins", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  scheduledDate: varchar("scheduled_date").notNull(),
+  status: checkInStatusEnum("status").notNull().default("scheduled"),
+  employeeNotes: text("employee_notes"),
+  managerNotes: text("manager_notes"),
+  actionItems: text("action_items"),
+  rating: integer("rating"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const reviewCycles = pgTable("review_cycles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  startDate: varchar("start_date").notNull(),
+  endDate: varchar("end_date").notNull(),
+  type: reviewCycleTypeEnum("type").notNull().default("annual"),
+  status: reviewCycleStatusEnum("status").notNull().default("draft"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const reviews = pgTable("reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cycleId: varchar("cycle_id").notNull().references(() => reviewCycles.id),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  reviewerId: varchar("reviewer_id").notNull().references(() => adminUsers.id),
+  type: reviewTypeEnum("type").notNull().default("self"),
+  goalsReflection: text("goals_reflection"),
+  strengths: text("strengths"),
+  improvements: text("improvements"),
+  developmentNeeds: text("development_needs"),
+  rating: integer("rating"),
+  comments: text("comments"),
+  status: reviewStatusEnum("status").notNull().default("pending"),
+  submittedAt: timestamp("submitted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const performanceFeedback = pgTable("performance_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromEmployeeId: varchar("from_employee_id").notNull().references(() => adminUsers.id),
+  toEmployeeId: varchar("to_employee_id").notNull().references(() => adminUsers.id),
+  type: feedbackTypeEnum("type").notNull().default("general"),
+  message: text("message").notNull(),
+  goalId: varchar("goal_id").references(() => performanceGoals.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const performanceGoalsRelations = relations(performanceGoals, ({ one }) => ({
+  employee: one(adminUsers, { fields: [performanceGoals.employeeId], references: [adminUsers.id], relationName: "goalEmployee" }),
+  manager: one(adminUsers, { fields: [performanceGoals.managerId], references: [adminUsers.id], relationName: "goalManager" }),
+}));
+
+export const checkInsRelations = relations(checkIns, ({ one }) => ({
+  employee: one(adminUsers, { fields: [checkIns.employeeId], references: [adminUsers.id], relationName: "checkInEmployee" }),
+  manager: one(adminUsers, { fields: [checkIns.managerId], references: [adminUsers.id], relationName: "checkInManager" }),
+}));
+
+export const reviewCyclesRelations = relations(reviewCycles, ({ one, many }) => ({
+  creator: one(adminUsers, { fields: [reviewCycles.createdBy], references: [adminUsers.id], relationName: "cycleCreator" }),
+  reviews: many(reviews),
+}));
+
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  cycle: one(reviewCycles, { fields: [reviews.cycleId], references: [reviewCycles.id] }),
+  employee: one(adminUsers, { fields: [reviews.employeeId], references: [adminUsers.id], relationName: "reviewEmployee" }),
+  reviewer: one(adminUsers, { fields: [reviews.reviewerId], references: [adminUsers.id], relationName: "reviewReviewer" }),
+}));
+
+export const performanceFeedbackRelations = relations(performanceFeedback, ({ one }) => ({
+  fromEmployee: one(adminUsers, { fields: [performanceFeedback.fromEmployeeId], references: [adminUsers.id], relationName: "feedbackFrom" }),
+  toEmployee: one(adminUsers, { fields: [performanceFeedback.toEmployeeId], references: [adminUsers.id], relationName: "feedbackTo" }),
+  goal: one(performanceGoals, { fields: [performanceFeedback.goalId], references: [performanceGoals.id] }),
+}));
+
+export const insertPerformanceGoalSchema = createInsertSchema(performanceGoals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCheckInSchema = createInsertSchema(checkIns).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
+export const insertReviewCycleSchema = createInsertSchema(reviewCycles).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true, submittedAt: true });
+export const insertPerformanceFeedbackSchema = createInsertSchema(performanceFeedback).omit({ id: true, createdAt: true });
+
+// ==========================================
 // ONBOARDING TRAINING SYSTEM
 // ==========================================
 
@@ -857,3 +973,13 @@ export type OnboardingAuditEvent = typeof onboardingAuditEvents.$inferSelect;
 export type InsertOnboardingAuditEvent = z.infer<typeof insertOnboardingAuditEventSchema>;
 export type TrainingExtensionRequest = typeof trainingExtensionRequests.$inferSelect;
 export type InsertTrainingExtensionRequest = z.infer<typeof insertTrainingExtensionRequestSchema>;
+export type PerformanceGoal = typeof performanceGoals.$inferSelect;
+export type InsertPerformanceGoal = z.infer<typeof insertPerformanceGoalSchema>;
+export type CheckIn = typeof checkIns.$inferSelect;
+export type InsertCheckIn = z.infer<typeof insertCheckInSchema>;
+export type ReviewCycle = typeof reviewCycles.$inferSelect;
+export type InsertReviewCycle = z.infer<typeof insertReviewCycleSchema>;
+export type Review = typeof reviews.$inferSelect;
+export type InsertReview = z.infer<typeof insertReviewSchema>;
+export type PerformanceFeedback = typeof performanceFeedback.$inferSelect;
+export type InsertPerformanceFeedback = z.infer<typeof insertPerformanceFeedbackSchema>;

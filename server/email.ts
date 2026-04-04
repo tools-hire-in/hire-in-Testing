@@ -511,3 +511,132 @@ export async function sendOnboardingWelcomeEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendReviewCycleOpenedEmail(options: {
+  to: string;
+  firstName: string;
+  cycleName: string;
+  endDate: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Performance Review Cycle Opened: ${options.cycleName}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Performance Review</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              A new performance review cycle <strong>"${options.cycleName}"</strong> has been opened.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please submit your self-review before <strong>${options.endDate}</strong>.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nA new performance review cycle "${options.cycleName}" has been opened. Please submit your self-review before ${options.endDate}.`,
+    };
+    await client.send(msg);
+    console.log(`Review cycle opened email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send review cycle email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendSelfReviewDueReminderEmail(options: {
+  to: string;
+  firstName: string;
+  cycleName: string;
+  dueDate: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Reminder: Self-Review Due — ${options.cycleName}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Self-Review Reminder</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Your self-review for <strong>"${options.cycleName}"</strong> is due by <strong>${options.dueDate}</strong>.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please log in to the portal and complete your review.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nYour self-review for "${options.cycleName}" is due by ${options.dueDate}. Please log in to the portal and complete it.`,
+    };
+    await client.send(msg);
+    console.log(`Self-review reminder sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send self-review reminder:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendCheckInReminderEmail(options: {
+  to: string;
+  firstName: string;
+  scheduledDate: string;
+  managerName: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Check-In Reminder: ${options.scheduledDate}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Check-In Reminder</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              You have a check-in scheduled for <strong>${options.scheduledDate}</strong> with <strong>${options.managerName}</strong>.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please prepare your notes and discussion items before the meeting.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nYou have a check-in scheduled for ${options.scheduledDate} with ${options.managerName}. Please prepare your notes.`,
+    };
+    await client.send(msg);
+    console.log(`Check-in reminder sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send check-in reminder:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

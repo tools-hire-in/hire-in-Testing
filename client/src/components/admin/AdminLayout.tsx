@@ -28,6 +28,10 @@ import {
   GraduationCap,
   BarChart3,
   UsersRound,
+  Target,
+  MessageSquare,
+  Star,
+  TrendingUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,6 +176,61 @@ const teamManagementMenu = [
     label: "Training Progress",
     icon: BarChart3,
     roles: ["super_admin", "admin", "hr", "manager", "operations"]
+  },
+];
+
+const performanceEmployeeMenu = [
+  {
+    href: "/admin/hr/my-goals",
+    label: "My Goals",
+    icon: Target,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+    performanceGated: true,
+  },
+  {
+    href: "/admin/hr/check-ins",
+    label: "Check-Ins",
+    icon: MessageSquare,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+    performanceGated: true,
+  },
+  {
+    href: "/admin/hr/my-reviews",
+    label: "My Reviews",
+    icon: Star,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+    performanceGated: true,
+  },
+  {
+    href: "/admin/hr/feedback",
+    label: "Feedback",
+    icon: MessageSquare,
+    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+    performanceGated: true,
+  },
+  {
+    href: "/admin/hr/team-goals",
+    label: "Team Goals",
+    icon: Target,
+    roles: ["super_admin", "admin", "manager"],
+  },
+  {
+    href: "/admin/hr/team-reviews",
+    label: "Team Reviews",
+    icon: Star,
+    roles: ["super_admin", "admin", "manager"],
+  },
+  {
+    href: "/admin/hr/review-cycles",
+    label: "Review Cycles",
+    icon: CalendarCheck,
+    roles: ["super_admin", "admin", "hr"],
+  },
+  {
+    href: "/admin/hr/performance-analytics",
+    label: "Performance Analytics",
+    icon: TrendingUp,
+    roles: ["super_admin", "admin", "hr"],
   },
 ];
 
@@ -330,19 +389,59 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const trainingEnabled = trainingFlagData?.value === true || ADMIN_TRAINING_ROLES.includes(user?.role || "");
 
+  const PERF_ADMIN_ROLES = ["super_admin", "admin", "hr", "manager"];
+
+  const { data: perfFlagData } = useQuery<{ value: boolean | null }>({
+    queryKey: ["/api/system-settings/performance_management_enabled"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/system-settings/performance_management_enabled", { credentials: "include" });
+        if (!res.ok) return { value: null };
+        return res.json();
+      } catch {
+        return { value: null };
+      }
+    },
+    enabled: !!user,
+    staleTime: 60000,
+  });
+
+  const perfEnabled = perfFlagData?.value === true || PERF_ADMIN_ROLES.includes(user?.role || "");
+
+  const { data: perfAlerts } = useQuery<{ pendingSelfReviews: number; upcomingCheckIns: number; total: number }>({
+    queryKey: ["/api/performance/my-alerts"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/performance/my-alerts", { credentials: "include" });
+        if (!res.ok) return { pendingSelfReviews: 0, upcomingCheckIns: 0, total: 0 };
+        return res.json();
+      } catch {
+        return { pendingSelfReviews: 0, upcomingCheckIns: 0, total: 0 };
+      }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && perfEnabled,
+  });
+
   const filteredRecruitment = recruitmentMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
 
-  const filteredMyWorkspace = (myWorkspaceMenu as any[]).filter(item => {
+  const filteredMyWorkspace = myWorkspaceMenu.filter(item => {
     if (!user?.role || !item.roles.includes(user.role)) return false;
-    if (item.trainingGated) return trainingEnabled;
+    if ("trainingGated" in item && item.trainingGated) return trainingEnabled;
     return true;
   });
 
   const filteredTeamMgmt = teamManagementMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
+
+  const filteredPerformance = performanceEmployeeMenu.filter(item => {
+    if (!user?.role || !item.roles.includes(user.role)) return false;
+    if ("performanceGated" in item && item.performanceGated) return perfEnabled;
+    return true;
+  });
 
   const filteredAdmin = administrationMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
@@ -507,6 +606,48 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
+
+            {filteredPerformance.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Performance</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {filteredPerformance.map((item) => {
+                      const isMyGoals = item.href === "/admin/hr/my-goals";
+                      const perfAlertCount = perfAlerts?.total ?? 0;
+                      const isLockedItem = isComplianceLocked;
+                      return (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton
+                            asChild={!isLockedItem}
+                            isActive={isActive(item.href)}
+                            className={isLockedItem ? "opacity-40 pointer-events-none" : ""}
+                            data-testid={`nav-perf-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                          >
+                            {isLockedItem ? (
+                              <span className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.label}</span>
+                              </span>
+                            ) : (
+                              <Link href={item.href}>
+                                <item.icon className="h-4 w-4" />
+                                <span className="flex-1">{item.label}</span>
+                                {isMyGoals && perfAlertCount > 0 && (
+                                  <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center bg-blue-500 text-white" data-testid="badge-perf-alerts">
+                                    {perfAlertCount > 9 ? "9+" : perfAlertCount}
+                                  </span>
+                                )}
+                              </Link>
+                            )}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

@@ -59,6 +59,15 @@ An integrated internal employee management system within the admin panel:
     - **Feature Flag**: `onboarding_training_enabled` controls visibility for employees.
     - **Training Compliance Lock**: Overdue training locks portal access for certain roles, blocking actions like punch-in/out. Includes an extension request endorsement workflow.
 
+### Performance Management Module (Phase 1)
+An integrated performance management system behind the `performance_management_enabled` feature flag:
+- **Database Tables**: `performance_goals`, `check_ins`, `review_cycles`, `reviews`, `performance_feedback` with full enum types.
+- **API Routes**: All under `/api/performance/` namespace in `server/performanceRoutes.ts`. Includes Goals CRUD, Check-ins CRUD, Review Cycles management, Reviews (self/manager), Feedback (send/receive), and alerts badge endpoint.
+- **Feature Flag**: `performance_management_enabled` in system_settings, toggleable from HR Settings page. Disabled by default. Admin/HR/Manager always have access; employees see menu items only when flag is enabled.
+- **Sidebar**: "Performance" category with menu items: My Goals, Check-Ins, My Reviews, Feedback (employee-gated), Team Goals, Team Reviews (manager+), Review Cycles, Performance Analytics (HR/Admin).
+- **Email Templates**: Review cycle opened notification, self-review due reminder, check-in reminder (24hr before) in `server/email.ts`.
+- **Role-Based Access**: All endpoints enforce role-based access. Manager endpoints validate team membership via `getTeamMembers()`. All write operations create audit logs.
+
 ### UI/UX & Design Artifacts
 - **Mockup Sandbox**: Serves design-only components for LinkedIn cover pages, payslips, and a comprehensive IT Staffing Marketing Deck.
 - **IT Staffing Marketing Deck**: An 11-slide deck focusing on IT Staffing, detailing services, models, AI tools, sourcing processes, and contact information. Uses specific brand colors: Navy #1F3A6E, Orange #F47C20/#F96D3E.
