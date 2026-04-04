@@ -67,6 +67,10 @@ An integrated performance management system behind the `performance_management_e
 - **Sidebar**: "Performance" category with menu items: My Goals, Check-Ins, My Reviews, Feedback (employee-gated), Team Goals, Team Reviews (manager+), Review Cycles, Performance Analytics (HR/Admin).
 - **Email Templates**: Review cycle opened notification, self-review due reminder, check-in reminder (24hr before) in `server/email.ts`.
 - **Role-Based Access**: All endpoints enforce role-based access. Manager endpoints validate team membership via `getTeamMembers()`. All write operations create audit logs.
+- **UI Pages** (Phase 1):
+  - **My Goals** (`/admin/performance/goals`): Employee goal tracking with progress bars, status badges, filters (all/active/completed), create/edit/delete with validation. Categories include professional development, project delivery, leadership, technical skills, communication, innovation.
+  - **Team Goals** (`/admin/performance/team-goals`): Manager/HR/Admin view of direct reports' goals grouped by employee in collapsible sections. Summary stats (total, % completed, % in progress). Ability to assign goals to team members.
+  - **Check-Ins** (`/admin/performance/check-ins`): 1:1 meeting management with upcoming/past tabs. Create, edit, add notes (employee & manager), action items, star ratings, and mark complete. Manager sees all direct reports; employees see their own check-ins.
 
 ### UI/UX & Design Artifacts
 - **Mockup Sandbox**: Serves design-only components for LinkedIn cover pages, payslips, and a comprehensive IT Staffing Marketing Deck.

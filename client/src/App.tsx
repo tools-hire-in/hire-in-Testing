@@ -48,6 +48,9 @@ import MyTraining from "@/pages/admin/hr/MyTraining";
 import TrainingManagement from "@/pages/admin/hr/TrainingManagement";
 import TrainingProgress from "@/pages/admin/hr/TrainingProgress";
 import MyTeam from "@/pages/admin/hr/MyTeam";
+import MyGoals from "@/pages/admin/performance/MyGoals";
+import TeamGoals from "@/pages/admin/performance/TeamGoals";
+import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -117,6 +120,10 @@ function PublicRouter() {
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
       <Route path="/admin/hr/my-team" component={MyTeam} />
 
+      <Route path="/admin/performance/goals" component={MyGoals} />
+      <Route path="/admin/performance/team-goals" component={TeamGoals} />
+      <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -159,6 +166,10 @@ function EmployeeRouter() {
       <Route path="/admin/hr/training" component={TrainingManagement} />
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
       <Route path="/admin/hr/my-team" component={MyTeam} />
+
+      <Route path="/admin/performance/goals" component={MyGoals} />
+      <Route path="/admin/performance/team-goals" component={TeamGoals} />
+      <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
 
       <Route component={NotFound} />
     </Switch>

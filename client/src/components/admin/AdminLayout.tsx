@@ -181,14 +181,14 @@ const teamManagementMenu = [
 
 const performanceEmployeeMenu = [
   {
-    href: "/admin/hr/my-goals",
+    href: "/admin/performance/goals",
     label: "My Goals",
     icon: Target,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
     performanceGated: true,
   },
   {
-    href: "/admin/hr/check-ins",
+    href: "/admin/performance/check-ins",
     label: "Check-Ins",
     icon: MessageSquare,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
@@ -209,7 +209,7 @@ const performanceEmployeeMenu = [
     performanceGated: true,
   },
   {
-    href: "/admin/hr/team-goals",
+    href: "/admin/performance/team-goals",
     label: "Team Goals",
     icon: Target,
     roles: ["super_admin", "admin", "manager"],
@@ -617,7 +617,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {filteredPerformance.map((item) => {
-                      const isMyGoals = item.href === "/admin/hr/my-goals";
+                      const isMyGoals = item.href === "/admin/performance/goals";
                       const perfAlertCount = perfAlerts?.total ?? 0;
                       const isLockedItem = isComplianceLocked;
                       return (
