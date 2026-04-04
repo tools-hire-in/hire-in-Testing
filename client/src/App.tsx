@@ -51,6 +51,11 @@ import MyTeam from "@/pages/admin/hr/MyTeam";
 import MyGoals from "@/pages/admin/performance/MyGoals";
 import TeamGoals from "@/pages/admin/performance/TeamGoals";
 import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
+import PerformanceMyReviews from "@/pages/admin/performance/MyReviews";
+import PerformanceTeamReviews from "@/pages/admin/performance/TeamReviews";
+import PerformanceReviewCycles from "@/pages/admin/performance/ReviewCycles";
+import PerformanceFeedback from "@/pages/admin/performance/Feedback";
+import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -123,6 +128,11 @@ function PublicRouter() {
       <Route path="/admin/performance/goals" component={MyGoals} />
       <Route path="/admin/performance/team-goals" component={TeamGoals} />
       <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
+      <Route path="/admin/performance/reviews" component={PerformanceMyReviews} />
+      <Route path="/admin/performance/team-reviews" component={PerformanceTeamReviews} />
+      <Route path="/admin/performance/review-cycles" component={PerformanceReviewCycles} />
+      <Route path="/admin/performance/feedback" component={PerformanceFeedback} />
+      <Route path="/admin/performance/analytics" component={PerformanceAnalytics} />
 
       <Route component={NotFound} />
     </Switch>
@@ -170,6 +180,11 @@ function EmployeeRouter() {
       <Route path="/admin/performance/goals" component={MyGoals} />
       <Route path="/admin/performance/team-goals" component={TeamGoals} />
       <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
+      <Route path="/admin/performance/reviews" component={PerformanceMyReviews} />
+      <Route path="/admin/performance/team-reviews" component={PerformanceTeamReviews} />
+      <Route path="/admin/performance/review-cycles" component={PerformanceReviewCycles} />
+      <Route path="/admin/performance/feedback" component={PerformanceFeedback} />
+      <Route path="/admin/performance/analytics" component={PerformanceAnalytics} />
 
       <Route component={NotFound} />
     </Switch>

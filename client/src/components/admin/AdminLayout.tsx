@@ -32,6 +32,8 @@ import {
   MessageSquare,
   Star,
   TrendingUp,
+  ClipboardList,
+  RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -195,14 +197,14 @@ const performanceEmployeeMenu = [
     performanceGated: true,
   },
   {
-    href: "/admin/hr/my-reviews",
+    href: "/admin/performance/reviews",
     label: "My Reviews",
-    icon: Star,
+    icon: ClipboardList,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
     performanceGated: true,
   },
   {
-    href: "/admin/hr/feedback",
+    href: "/admin/performance/feedback",
     label: "Feedback",
     icon: MessageSquare,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
@@ -215,20 +217,20 @@ const performanceEmployeeMenu = [
     roles: ["super_admin", "admin", "manager"],
   },
   {
-    href: "/admin/hr/team-reviews",
+    href: "/admin/performance/team-reviews",
     label: "Team Reviews",
-    icon: Star,
+    icon: UsersRound,
     roles: ["super_admin", "admin", "manager"],
   },
   {
-    href: "/admin/hr/review-cycles",
+    href: "/admin/performance/review-cycles",
     label: "Review Cycles",
-    icon: CalendarCheck,
+    icon: RefreshCw,
     roles: ["super_admin", "admin", "hr"],
   },
   {
-    href: "/admin/hr/performance-analytics",
-    label: "Performance Analytics",
+    href: "/admin/performance/analytics",
+    label: "Analytics",
     icon: TrendingUp,
     roles: ["super_admin", "admin", "hr"],
   },
@@ -278,6 +280,7 @@ const administrationMenu = [
     roles: ["super_admin", "admin", "hr"]
   },
 ];
+
 
 const roleLabels: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-primary text-primary-foreground" },

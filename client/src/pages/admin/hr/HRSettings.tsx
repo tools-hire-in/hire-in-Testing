@@ -194,6 +194,102 @@ function PerformanceSettingsSection() {
   );
 }
 
+function RayoAcademySettingsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const [urlValue, setUrlValue] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  const { data: urlData, isLoading } = useQuery<{ value: any }>({
+    queryKey: ["/api/system-settings/rayo_academy_url"],
+    queryFn: async () => {
+      const res = await fetch("/api/system-settings/rayo_academy_url", { credentials: "include" });
+      if (!res.ok) return { value: "" };
+      return res.json();
+    },
+    enabled: isHrOrAbove,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const res = await apiRequest("PUT", "/api/system-settings/rayo_academy_url", { value: url });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system-settings/rayo_academy_url"] });
+      setEditing(false);
+      toast({ title: "Rayo Academy URL saved" });
+    },
+    onError: () => toast({ title: "Failed to save URL", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  const currentUrl = urlData?.value || "";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Rayo Academy
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Configure the Rayo Academy URL. Employees can access it from the Performance section with their email pre-filled.
+          </p>
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                placeholder="https://academy.example.com"
+                className="flex-1"
+                data-testid="input-rayo-academy-url"
+              />
+              <Button
+                size="sm"
+                onClick={() => saveMutation.mutate(urlValue)}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-rayo-url"
+              >
+                {saveMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm">
+                {currentUrl ? (
+                  <span className="text-blue-600 dark:text-blue-400 break-all">{currentUrl}</span>
+                ) : (
+                  <span className="text-muted-foreground">Not configured</span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setUrlValue(currentUrl);
+                  setEditing(true);
+                }}
+                data-testid="button-edit-rayo-url"
+              >
+                {currentUrl ? "Edit" : "Configure"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -896,6 +992,7 @@ export default function HRSettings() {
         <TrainingSettingsSection />
 
         <PerformanceSettingsSection />
+        <RayoAcademySettingsSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>
           <DialogContent className="sm:max-w-lg">

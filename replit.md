@@ -67,10 +67,17 @@ An integrated performance management system behind the `performance_management_e
 - **Sidebar**: "Performance" category with menu items: My Goals, Check-Ins, My Reviews, Feedback (employee-gated), Team Goals, Team Reviews (manager+), Review Cycles, Performance Analytics (HR/Admin).
 - **Email Templates**: Review cycle opened notification, self-review due reminder, check-in reminder (24hr before) in `server/email.ts`.
 - **Role-Based Access**: All endpoints enforce role-based access. Manager endpoints validate team membership via `getTeamMembers()`. All write operations create audit logs.
-- **UI Pages** (Phase 1):
+- **UI Pages**:
   - **My Goals** (`/admin/performance/goals`): Employee goal tracking with progress bars, status badges, filters (all/active/completed), create/edit/delete with validation. Categories include professional development, project delivery, leadership, technical skills, communication, innovation.
   - **Team Goals** (`/admin/performance/team-goals`): Manager/HR/Admin view of direct reports' goals grouped by employee in collapsible sections. Summary stats (total, % completed, % in progress). Ability to assign goals to team members.
   - **Check-Ins** (`/admin/performance/check-ins`): 1:1 meeting management with upcoming/past tabs. Create, edit, add notes (employee & manager), action items, star ratings, and mark complete. Manager sees all direct reports; employees see their own check-ins.
+  - **My Reviews** (`/admin/performance/reviews`): Employees view active/past reviews and submit self-reviews (goals reflection, strengths, improvements, development needs, 1-5 star rating). Includes Rayo Academy CTA button.
+  - **Team Reviews** (`/admin/performance/team-reviews`): Managers see direct reports' review status and submit manager assessments with side-by-side self-review reference.
+  - **Review Cycles** (`/admin/performance/review-cycles`): HR/Admin create and manage review cycles (annual/semi-annual/quarterly) with status transitions (draft→active→in_review→closed) and participant breakdown.
+  - **Feedback** (`/admin/performance/feedback`): Send/receive feedback with type badges (praise/constructive/general), recipient search, and optional goal linking.
+  - **Analytics** (`/admin/performance/analytics`): Summary cards (active goals, completion %, review completion rate, avg rating, feedback count) with department breakdown for HR/Admin.
+- **Rayo Academy CTA**: Configurable URL (via HR Settings) that opens in new tab with pre-filled employee email. Settings stored via system_settings API.
+- **Sidebar Badge**: Performance alerts badge on "My Goals" showing count of pending self-reviews and upcoming check-ins.
 
 ### UI/UX & Design Artifacts
 - **Mockup Sandbox**: Serves design-only components for LinkedIn cover pages, payslips, and a comprehensive IT Staffing Marketing Deck.
