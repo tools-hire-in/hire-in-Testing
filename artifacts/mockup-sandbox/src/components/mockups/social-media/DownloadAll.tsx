@@ -1,67 +1,46 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import html2canvas from "html2canvas";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
 const ORANGE = "#F47C20";
 
-function downloadAsImage(el: HTMLDivElement, filename: string, width: number, height: number) {
-  const clone = el.cloneNode(true) as HTMLDivElement;
-  clone.style.transform = "none";
-  clone.style.position = "relative";
-  clone.style.left = "0";
-  clone.style.top = "0";
-
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>${filename}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  @media print {
-    @page { size: ${width}px ${height}px; margin: 0; }
-    body { width: ${width}px; height: ${height}px; overflow: hidden; }
-  }
-</style>
-</head>
-<body>
-${clone.outerHTML}
-<script>
-  const imgs = document.images;
-  let loaded = 0;
-  const total = imgs.length;
-  function tryPrint() {
-    loaded++;
-    if (loaded >= total) { window.print(); }
-  }
-  if (total === 0) { window.print(); }
-  else { for (let i = 0; i < total; i++) {
-    if (imgs[i].complete) { tryPrint(); }
-    else { imgs[i].addEventListener('load', tryPrint); imgs[i].addEventListener('error', tryPrint); }
-  }}
-<\/script>
-</body>
-</html>`);
-  win.document.close();
+async function downloadAsPng(el: HTMLDivElement, filename: string) {
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: null,
+    logging: false,
+  });
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/png")
+  );
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-function DownloadButton({ onClick, label }: { onClick: () => void; label: string }) {
+function DownloadButton({ onClick, label, downloading }: { onClick: () => void; label: string; downloading?: boolean }) {
   return (
     <button
       onClick={onClick}
+      disabled={downloading}
       style={{
-        background: NAVY, color: "#fff",
+        background: downloading ? "#9CA3AF" : NAVY, color: "#fff",
         border: "none", borderRadius: 5,
         padding: "6px 16px", fontSize: 11, fontWeight: 600,
-        cursor: "pointer", letterSpacing: 0.3,
+        cursor: downloading ? "not-allowed" : "pointer", letterSpacing: 0.3,
         boxShadow: "0 2px 8px rgba(31,58,110,0.2)",
         display: "flex", alignItems: "center", gap: 6,
       }}
     >
-      ⬇ {label}
+      ⬇ {downloading ? "Downloading..." : label}
     </button>
   );
 }
@@ -91,12 +70,23 @@ function ProfilePictureContent() {
 
 function ProfilePictureAsset({ label, id }: { label: string; id: string }) {
   const exportRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const baseStyle: React.CSSProperties = {
     width: 320, height: 320,
     background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY2} 100%)`,
     display: "flex", alignItems: "center", justifyContent: "center",
     position: "relative", overflow: "hidden",
+  };
+
+  const handleDownload = async () => {
+    if (!exportRef.current || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadAsPng(exportRef.current, `hirein-${id}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -133,7 +123,7 @@ function ProfilePictureAsset({ label, id }: { label: string; id: string }) {
         </div>
       </div>
       <div style={{ fontSize: 9, color: "#9CA3AF" }}>Circle preview</div>
-      <DownloadButton onClick={() => exportRef.current && downloadAsImage(exportRef.current, `hirein-${id}`, 320, 320)} label="Download" />
+      <DownloadButton onClick={handleDownload} label="Download PNG" downloading={downloading} />
     </div>
   );
 }
@@ -245,6 +235,8 @@ function InstagramStoryContent() {
 export function DownloadAll() {
   const fbCoverExportRef = useRef<HTMLDivElement>(null);
   const storyExportRef = useRef<HTMLDivElement>(null);
+  const [fbDownloading, setFbDownloading] = useState(false);
+  const [storyDownloading, setStoryDownloading] = useState(false);
 
   const fbCoverStyle: React.CSSProperties = {
     width: 851, height: 315,
@@ -256,6 +248,26 @@ export function DownloadAll() {
     background: `linear-gradient(160deg, ${NAVY} 0%, ${NAVY2} 50%, #0F2240 100%)`,
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
     position: "relative", overflow: "hidden",
+  };
+
+  const handleFbDownload = async () => {
+    if (!fbCoverExportRef.current || fbDownloading) return;
+    setFbDownloading(true);
+    try {
+      await downloadAsPng(fbCoverExportRef.current, "hirein-facebook-cover");
+    } finally {
+      setFbDownloading(false);
+    }
+  };
+
+  const handleStoryDownload = async () => {
+    if (!storyExportRef.current || storyDownloading) return;
+    setStoryDownloading(true);
+    try {
+      await downloadAsPng(storyExportRef.current, "hirein-instagram-story");
+    } finally {
+      setStoryDownloading(false);
+    }
   };
 
   return (
@@ -291,7 +303,7 @@ export function DownloadAll() {
           Hire'in Solutions — Instagram & Facebook
         </div>
         <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-          Click download on each asset → Save as PDF or "Print to image"
+          Click download to save each asset as a PNG image
         </div>
       </div>
 
@@ -336,7 +348,7 @@ export function DownloadAll() {
               <FacebookCoverContent />
             </div>
           </div>
-          <DownloadButton onClick={() => fbCoverExportRef.current && downloadAsImage(fbCoverExportRef.current, "hirein-facebook-cover", 851, 315)} label="Download Facebook Cover" />
+          <DownloadButton onClick={handleFbDownload} label="Download Facebook Cover PNG" downloading={fbDownloading} />
         </div>
       </div>
 
@@ -369,12 +381,8 @@ export function DownloadAll() {
               <InstagramStoryContent />
             </div>
           </div>
-          <DownloadButton onClick={() => storyExportRef.current && downloadAsImage(storyExportRef.current, "hirein-instagram-story", 1080, 1920)} label="Download Story Cover" />
+          <DownloadButton onClick={handleStoryDownload} label="Download Story Cover PNG" downloading={storyDownloading} />
         </div>
-      </div>
-
-      <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", maxWidth: 500, lineHeight: 1.6, marginTop: -10 }}>
-        Each download opens a new window. Use "Save as PDF" or "Print to image" in the print dialog to save the asset at exact pixel dimensions.
       </div>
     </div>
   );

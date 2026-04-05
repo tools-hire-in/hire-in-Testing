@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import html2canvas from "html2canvas";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
@@ -7,46 +8,25 @@ const WIDTH = 1080;
 const HEIGHT = 1920;
 const PREVIEW_SCALE = 0.35;
 
-function downloadAsImage(el: HTMLDivElement, filename: string, w: number, h: number) {
-  const clone = el.cloneNode(true) as HTMLDivElement;
-  clone.style.transform = "none";
-  clone.style.transformOrigin = "top left";
-
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>${filename}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  @media print {
-    @page { size: ${w}px ${h}px; margin: 0; }
-    body { width: ${w}px; height: ${h}px; overflow: hidden; }
-  }
-</style>
-</head>
-<body>
-${clone.outerHTML}
-<script>
-  const imgs = document.images;
-  let loaded = 0;
-  const total = imgs.length;
-  function tryPrint() {
-    loaded++;
-    if (loaded >= total) { window.print(); }
-  }
-  if (total === 0) { window.print(); }
-  else { for (let i = 0; i < total; i++) {
-    if (imgs[i].complete) { tryPrint(); }
-    else { imgs[i].addEventListener('load', tryPrint); imgs[i].addEventListener('error', tryPrint); }
-  }}
-<\/script>
-</body>
-</html>`);
-  win.document.close();
+async function downloadAsPng(el: HTMLDivElement, filename: string) {
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: null,
+    logging: false,
+  });
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/png")
+  );
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function StoryContent() {
@@ -175,6 +155,7 @@ function StoryContent() {
 
 export function InstagramStory() {
   const storyRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const storyBaseStyle: React.CSSProperties = {
     width: WIDTH,
@@ -186,6 +167,16 @@ export function InstagramStory() {
     justifyContent: "center",
     position: "relative",
     overflow: "hidden",
+  };
+
+  const handleDownload = async () => {
+    if (!storyRef.current || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadAsPng(storyRef.current, "hirein-instagram-story");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -243,21 +234,19 @@ export function InstagramStory() {
 
       <button
         data-testid="download-instagram-story"
-        onClick={() => storyRef.current && downloadAsImage(storyRef.current, "hirein-instagram-story", WIDTH, HEIGHT)}
+        onClick={handleDownload}
+        disabled={downloading}
         style={{
-          background: NAVY, color: "#fff",
+          background: downloading ? "#9CA3AF" : NAVY, color: "#fff",
           border: "none", borderRadius: 6,
           padding: "10px 28px", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", letterSpacing: 0.3,
+          cursor: downloading ? "not-allowed" : "pointer", letterSpacing: 0.3,
           boxShadow: "0 2px 12px rgba(31,58,110,0.25)",
           display: "flex", alignItems: "center", gap: 8,
         }}
       >
-        ⬇ Download / Print Story Cover
+        ⬇ {downloading ? "Downloading..." : "Download PNG"}
       </button>
-      <div style={{ fontSize: 11, color: "#6B7280" }}>
-        In the print dialog → Save as PDF or use "Print to image"
-      </div>
     </div>
   );
 }

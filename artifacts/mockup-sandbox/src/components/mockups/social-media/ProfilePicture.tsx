@@ -1,49 +1,44 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import html2canvas from "html2canvas";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
 const ORANGE = "#F47C20";
 
-function downloadAsImage(el: HTMLDivElement, filename: string) {
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>${filename}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  @media print {
-    @page { size: 320px 320px; margin: 0; }
-    body { width: 320px; height: 320px; overflow: hidden; }
-  }
-</style>
-</head>
-<body>
-${el.outerHTML}
-<script>
-  const imgs = document.images;
-  let loaded = 0;
-  const total = imgs.length;
-  function tryPrint() {
-    loaded++;
-    if (loaded >= total) { window.print(); }
-  }
-  if (total === 0) { window.print(); }
-  else { for (let i = 0; i < total; i++) {
-    if (imgs[i].complete) { tryPrint(); }
-    else { imgs[i].addEventListener('load', tryPrint); imgs[i].addEventListener('error', tryPrint); }
-  }}
-<\/script>
-</body>
-</html>`);
-  win.document.close();
+async function downloadAsPng(el: HTMLDivElement, filename: string) {
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: null,
+    logging: false,
+  });
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/png")
+  );
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function ProfilePictureCard({ size, label, id }: { size: number; label: string; id: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!ref.current || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadAsPng(ref.current, `hirein-${id}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
@@ -148,17 +143,18 @@ function ProfilePictureCard({ size, label, id }: { size: number; label: string; 
 
       <button
         data-testid={`download-${id}`}
-        onClick={() => ref.current && downloadAsImage(ref.current, `hirein-${id}`)}
+        onClick={handleDownload}
+        disabled={downloading}
         style={{
-          background: NAVY, color: "#fff",
+          background: downloading ? "#9CA3AF" : NAVY, color: "#fff",
           border: "none", borderRadius: 6,
           padding: "8px 20px", fontSize: 12, fontWeight: 600,
-          cursor: "pointer", letterSpacing: 0.3,
+          cursor: downloading ? "not-allowed" : "pointer", letterSpacing: 0.3,
           boxShadow: "0 2px 12px rgba(31,58,110,0.25)",
           display: "flex", alignItems: "center", gap: 6,
         }}
       >
-        ⬇ Download
+        ⬇ {downloading ? "Downloading..." : "Download PNG"}
       </button>
     </div>
   );
@@ -199,7 +195,6 @@ export function ProfilePicture() {
       <div style={{ fontSize: 11, color: "#6B7280", maxWidth: 400, textAlign: "center", lineHeight: 1.6 }}>
         Both profile pictures are designed at 320×320 px for optimal quality.
         The circle preview shows how the image will appear when cropped by the platform.
-        Use the download button, then "Save as PDF" or "Print to image".
       </div>
     </div>
   );
