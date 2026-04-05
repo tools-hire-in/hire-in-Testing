@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Wrench, FileText, Receipt, Download, Loader2, User, Building, Search,
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
+  FileSearch, Printer, ShieldCheck,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -1086,6 +1087,7 @@ function OfferLettersDashboard() {
   const [, setLocation] = useLocation();
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
   const [countersignModal, setCountersignModal] = useState<any>(null);
+  const [viewLetterModal, setViewLetterModal] = useState<any>(null);
   const [hireInEmail, setHireInEmail] = useState("");
   const [counterSignedName, setCounterSignedName] = useState("Alina Carter");
   const [counterSignedDate, setCounterSignedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -1216,6 +1218,17 @@ function OfferLettersDashboard() {
                         <td className="p-3">{letter.hireInEmail || "—"}</td>
                         <td className="p-3">
                           <div className="flex gap-1">
+                            {letter.status !== "cancelled" && letter.status !== "expired" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setViewLetterModal(letter)}
+                                data-testid={`button-view-letter-${letter.id}`}
+                              >
+                                <FileSearch className="h-4 w-4 mr-1" />
+                                View Letter
+                              </Button>
+                            )}
                             {(letter.status === "sent" || letter.status === "viewed") && (
                               <Button
                                 size="sm"
@@ -1405,6 +1418,217 @@ function OfferLettersDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Sheet open={!!viewLetterModal} onOpenChange={(open) => { if (!open) setViewLetterModal(null); }}>
+        <SheetContent side="right" className="sm:max-w-2xl w-full overflow-y-auto" data-testid="sheet-view-letter">
+          <SheetHeader>
+            <div className="flex items-center justify-between pr-8">
+              <SheetTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Offer Letter — {viewLetterModal?.candidateName}
+              </SheetTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const printContent = document.getElementById("offer-letter-print-area");
+                  if (!printContent) return;
+                  const printWindow = window.open("", "_blank");
+                  if (!printWindow) return;
+                  const safeTitle = (viewLetterModal?.candidateName || "Document").replace(/[<>"'&]/g, "");
+                  printWindow.document.write(`
+                    <html>
+                      <head>
+                        <title>Offer Letter - ${safeTitle}</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
+                        <style>
+                          * { margin: 0; padding: 0; box-sizing: border-box; }
+                          body { font-family: system-ui, -apple-system, sans-serif; padding: 40px 30px; color: #1a1a1a; line-height: 1.6; }
+                          h1, h2, h3, h4 { margin-top: 1em; margin-bottom: 0.5em; }
+                          p { margin-bottom: 0.5em; }
+                          strong { font-weight: 600; }
+                          code { font-family: ui-monospace, monospace; font-size: 0.85em; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }
+                          hr { border: none; border-top: 1px solid #e5e5e5; margin: 1em 0; }
+                          [data-slot="separator"] { display: block; height: 1px; background: #e5e5e5; margin: 1em 0; }
+                          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                          .space-y-4 > * + * { margin-top: 1em; }
+                          .space-y-6 > * + * { margin-top: 1.5em; }
+                          .text-muted-foreground { color: #6b7280; }
+                          .font-medium { font-weight: 500; }
+                          .font-semibold { font-weight: 600; }
+                          .text-sm { font-size: 0.875rem; }
+                          .text-xs { font-size: 0.75rem; }
+                          .text-lg { font-size: 1.125rem; }
+                          .text-2xl { font-size: 1.5rem; }
+                          .text-3xl { font-size: 1.875rem; }
+                          .uppercase { text-transform: uppercase; }
+                          .tracking-wider { letter-spacing: 0.05em; }
+                          .break-all { word-break: break-all; }
+                          .border { border: 1px solid #e5e5e5; }
+                          .border-b { border-bottom: 1px solid #e5e5e5; }
+                          .rounded-lg, .rounded-md { border-radius: 8px; }
+                          .p-3, .p-4 { padding: 12px; }
+                          .pt-4, .pt-6 { padding-top: 16px; }
+                          .pb-3 { padding-bottom: 12px; }
+                          .mb-1 { margin-bottom: 4px; }
+                          .mb-2 { margin-bottom: 8px; }
+                          .mt-1 { margin-top: 4px; }
+                          .mt-2 { margin-top: 8px; }
+                          .py-3 { padding-top: 12px; padding-bottom: 12px; }
+                          .gap-3 { gap: 12px; }
+                          .bg-blue-50 { background: #eff6ff; }
+                          .bg-green-50 { background: #f0fdf4; }
+                          .bg-purple-50 { background: #faf5ff; }
+                          .border-blue-100 { border-color: #dbeafe; }
+                          .border-purple-100 { border-color: #e9d5ff; }
+                          .text-blue-900 { color: #1e3a5f; }
+                          .text-blue-800 { color: #1e40af; }
+                          .text-green-900 { color: #14532d; }
+                          .text-purple-900 { color: #581c87; }
+                          .text-purple-800 { color: #6b21a8; }
+                          .flex { display: flex; }
+                          .flex-col { flex-direction: column; }
+                          .items-center { align-items: center; }
+                          .items-start { align-items: flex-start; }
+                          .justify-center { justify-content: center; }
+                          .gap-2 { gap: 8px; }
+                          .text-center { text-align: center; }
+                          @media print {
+                            body { padding: 20px; }
+                            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                          }
+                        </style>
+                      </head>
+                      <body>${printContent.innerHTML}</body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.onload = () => {
+                    printWindow.print();
+                    printWindow.close();
+                  };
+                }}
+                data-testid="button-download-pdf"
+              >
+                <Printer className="h-4 w-4 mr-1" />
+                Download as PDF
+              </Button>
+            </div>
+            <SheetDescription>
+              Full offer letter with signature details
+            </SheetDescription>
+          </SheetHeader>
+
+          {viewLetterModal && (
+            <div className="mt-4 space-y-6 print-area" id="offer-letter-print-area">
+              <OfferLetterBody
+                offer={{
+                  candidateTitle: viewLetterModal.candidateTitle || "",
+                  candidateName: viewLetterModal.candidateName,
+                  candidateAddress: viewLetterModal.candidateAddress,
+                  designation: viewLetterModal.designation,
+                  subjectDesignation: viewLetterModal.subjectDesignation,
+                  departmentName: viewLetterModal.departmentName,
+                  managerName: viewLetterModal.managerName,
+                  location: viewLetterModal.location || "",
+                  proposedStartDate: viewLetterModal.proposedStartDate,
+                  employmentType: viewLetterModal.employmentType || "",
+                  salary: viewLetterModal.salary,
+                  hrManagerName: viewLetterModal.hrManagerName,
+                  offerDate: viewLetterModal.offerDate || "",
+                  jurisdiction: viewLetterModal.jurisdiction,
+                  refId: viewLetterModal.id,
+                }}
+              />
+
+              {(viewLetterModal.status === "accepted" || viewLetterModal.status === "countersigned" || viewLetterModal.status === "onboarded") && viewLetterModal.acceptedName && (
+                <Card data-testid="card-digital-signature">
+                  <CardHeader className="bg-green-50 border-b pb-3">
+                    <CardTitle className="flex items-center gap-2 text-green-900 text-base">
+                      <ShieldCheck className="h-5 w-5" />
+                      Digital Signature — Candidate Acceptance
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <div className="flex flex-col items-center py-3">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Signed as</p>
+                      <p
+                        className="text-3xl text-blue-900"
+                        style={{ fontFamily: "'Dancing Script', cursive" }}
+                        data-testid="text-accepted-signature"
+                      >
+                        {viewLetterModal.acceptedName}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Accepted Name</p>
+                        <p className="font-medium" data-testid="text-accepted-name">{viewLetterModal.acceptedName}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Acceptance Date</p>
+                        <p className="font-medium" data-testid="text-acceptance-date">{viewLetterModal.acceptanceDate || (viewLetterModal.acceptedAt ? new Date(viewLetterModal.acceptedAt).toLocaleDateString() : "—")}</p>
+                      </div>
+                    </div>
+                    {viewLetterModal.authCode && (
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                        <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider mb-1">Cryptographic Auth Code</p>
+                        <code className="text-xs font-mono font-bold text-blue-900 block tracking-wider break-all" data-testid="text-candidate-auth-code">
+                          {viewLetterModal.authCode}
+                        </code>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {(viewLetterModal.status === "countersigned" || viewLetterModal.status === "onboarded") && viewLetterModal.counterSignedName && (
+                <Card data-testid="card-counter-signature">
+                  <CardHeader className="bg-purple-50 border-b pb-3">
+                    <CardTitle className="flex items-center gap-2 text-purple-900 text-base">
+                      <CheckCircle className="h-5 w-5" />
+                      Counter-Signature — HR Authorization
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <div className="flex flex-col items-center py-3">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Counter-signed by</p>
+                      <p
+                        className="text-3xl text-blue-900"
+                        style={{ fontFamily: "'Dancing Script', cursive" }}
+                        data-testid="text-counter-signature"
+                      >
+                        {viewLetterModal.counterSignedName}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Counter-Signer Name</p>
+                        <p className="font-medium" data-testid="text-counter-signer-name">{viewLetterModal.counterSignedName}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Counter-Sign Date</p>
+                        <p className="font-medium" data-testid="text-counter-sign-date">{viewLetterModal.counterSignedDate || (viewLetterModal.counterSignedAt ? new Date(viewLetterModal.counterSignedAt).toLocaleDateString() : "—")}</p>
+                      </div>
+                    </div>
+                    {viewLetterModal.counterAuthCode && (
+                      <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                        <p className="text-xs font-semibold text-purple-800 uppercase tracking-wider mb-1">Counter-Signature Auth Code</p>
+                        <code className="text-xs font-mono font-bold text-purple-900 block tracking-wider break-all" data-testid="text-counter-auth-code">
+                          {viewLetterModal.counterAuthCode}
+                        </code>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
