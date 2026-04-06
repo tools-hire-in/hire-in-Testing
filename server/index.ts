@@ -5,7 +5,7 @@ import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { db } from "./db";
 import { adminUsers, holidays, attendance, regionalHolidaySelections } from "@shared/schema";
-import { isNull, eq, or, and, gte, lte, inArray } from "drizzle-orm";
+import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,6 +62,129 @@ app.use((req, res, next) => {
 
   next();
 });
+
+async function ensurePerformanceTables() {
+  try {
+    const result = await db.execute(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'performance_goals'
+    `);
+    if (result.rows.length > 0) return;
+
+    log("Creating performance management tables...");
+
+    await db.execute(sql`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'performance_goal_status') THEN
+        CREATE TYPE performance_goal_status AS ENUM ('not_started', 'in_progress', 'completed', 'cancelled');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'performance_goal_category') THEN
+        CREATE TYPE performance_goal_category AS ENUM ('individual', 'team', 'company', 'development');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'check_in_status') THEN
+        CREATE TYPE check_in_status AS ENUM ('scheduled', 'completed', 'cancelled');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'review_cycle_type') THEN
+        CREATE TYPE review_cycle_type AS ENUM ('annual', 'semi_annual', 'quarterly');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'review_cycle_status') THEN
+        CREATE TYPE review_cycle_status AS ENUM ('draft', 'active', 'in_review', 'closed');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'review_type') THEN
+        CREATE TYPE review_type AS ENUM ('self', 'manager');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'review_status') THEN
+        CREATE TYPE review_status AS ENUM ('pending', 'submitted');
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'feedback_type') THEN
+        CREATE TYPE feedback_type AS ENUM ('praise', 'constructive', 'general');
+      END IF;
+    END $$`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS performance_goals (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        manager_id VARCHAR REFERENCES admin_users(id),
+        title VARCHAR NOT NULL,
+        description TEXT,
+        category performance_goal_category NOT NULL DEFAULT 'individual',
+        start_date VARCHAR,
+        target_date VARCHAR,
+        weight INTEGER DEFAULT 0,
+        status performance_goal_status NOT NULL DEFAULT 'not_started',
+        progress INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS check_ins (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        manager_id VARCHAR REFERENCES admin_users(id),
+        scheduled_date VARCHAR NOT NULL,
+        status check_in_status NOT NULL DEFAULT 'scheduled',
+        employee_notes TEXT,
+        manager_notes TEXT,
+        action_items TEXT,
+        rating INTEGER,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS review_cycles (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR NOT NULL,
+        start_date VARCHAR NOT NULL,
+        end_date VARCHAR NOT NULL,
+        type review_cycle_type NOT NULL DEFAULT 'annual',
+        status review_cycle_status NOT NULL DEFAULT 'draft',
+        created_by VARCHAR REFERENCES admin_users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        cycle_id VARCHAR NOT NULL REFERENCES review_cycles(id),
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        reviewer_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        type review_type NOT NULL DEFAULT 'self',
+        goals_reflection TEXT,
+        strengths TEXT,
+        improvements TEXT,
+        development_needs TEXT,
+        rating INTEGER,
+        comments TEXT,
+        status review_status NOT NULL DEFAULT 'pending',
+        submitted_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS performance_feedback (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        from_employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        to_employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        type feedback_type NOT NULL DEFAULT 'general',
+        message TEXT NOT NULL,
+        goal_id VARCHAR REFERENCES performance_goals(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    log("Performance management tables created successfully");
+  } catch (err) {
+    console.error("Performance tables migration error:", err);
+  }
+}
 
 async function backfillEmployeeIds() {
   try {
@@ -164,6 +287,7 @@ async function backfillHolidayAttendance() {
 }
 
 (async () => {
+  await ensurePerformanceTables();
   await backfillEmployeeIds();
   await backfillHolidayAttendance();
   await registerRoutes(httpServer, app);

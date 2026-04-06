@@ -1,0 +1,154 @@
+
+Search
+Time
+Deployment
+Source
+Log
+2026-04-05 20:02:36.33
+5e97c101
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-05 20:08:35.32
+5e97c101
+User
+hint: undefined,
+2026-04-05 20:08:35.32
+5e97c101
+User
+at async /home/runner/workspace/dist/index.cjs:1949:14822 {
+2026-04-05 20:51:43.58
+5e97c101
+System
+system: received signal terminated
+2026-04-05 20:51:43.60
+5e97c101
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+2026-04-05 20:51:43.67
+5e97c101
+System
+main done, exiting
+2026-04-05 20:56:42.92
+5e97c101
+System
+starting up user application
+2026-04-05 20:56:42.92
+5e97c101
+System
+metasidecar: loaded enterprise status from environment is_enterprise=false
+2026-04-05 20:56:42.92
+5e97c101
+System
+forwarding local port 5000 to external port 80 (mapped as 1104)
+2026-04-05 20:56:46.53
+5e97c101
+User
+3:56:46 AM [express] serving on port 5000
+2026-04-05 20:56:46.54
+5e97c101
+User
+[scheduler] Monthly salary report cron job scheduled (last day of month at 6 PM CST).
+2026-04-05 21:07:08.75
+5e97c101
+User
+4:07:08 AM [express] POST /api/auth/logout 200 in 920ms :: {"message":"Logged out successfully"}
+2026-04-05 21:07:09.23
+5e97c101
+User
+4:07:09 AM [express] GET /api/auth/me 401 in 4ms :: {"message":"Not authenticated"}
+2026-04-05 22:25:46.84
+5e97c101
+User
+5:25:46 AM [express] POST /api/auth/login 200 in 1392ms :: {"totpRequired":true}
+2026-04-05 22:27:01.96
+5e97c101
+User
+^
+2026-04-05 22:27:01.96
+5e97c101
+User
+at TLSSocket.emit (node:events:524:28)
+2026-04-05 22:27:01.96
+5e97c101
+User
+throw er; // Unhandled 'error' event
+2026-04-05 22:27:01.96
+5e97c101
+User
+at addChunk (node:internal/streams/readable:561:12)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at TLSSocket.<anonymous> (/home/runner/workspace/dist/index.cjs:205:49036)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at _h._handleErrorEvent (/home/runner/workspace/dist/index.cjs:206:8593)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at _h._handleErrorMessage (/home/runner/workspace/dist/index.cjs:206:8730)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at Zy.parseErrorMessage (/home/runner/workspace/dist/index.cjs:205:48341)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at /home/runner/workspace/dist/index.cjs:205:51701
+2026-04-05 22:27:01.96
+5e97c101
+User
+at Zy.handlePacket (/home/runner/workspace/dist/index.cjs:205:44973)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at rb.emit (node:events:524:28)
+2026-04-05 22:27:01.96
+5e97c101
+User
+error: terminating connection due to administrator command
+2026-04-05 22:27:01.96
+5e97c101
+User
+at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at Zy.parse (/home/runner/workspace/dist/index.cjs:205:43640)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at TLSSocket.<anonymous> (/home/runner/workspace/dist/index.cjs:205:49036)
+2026-04-05 22:27:01.96
+5e97c101
+User
+data: [Function (anonymous)]
+2026-04-05 22:27:01.96
+5e97c101
+User
+newListener: [ [Function: keylogNewListener], [Function: newListener] ],
+2026-04-05 22:27:01.96
+5e97c101
+User
+secure: [Function: onConnectSecure],
+2026-04-05 22:27:01.96
+5e97c101
+User
+at addChunk (node:internal/streams/readable:561:12) {
+2026-04-05 22:27:01.96
+5e97c101
+User
+node:events:502
+2026-04-05 22:27:01.96
+5e97c101
+User
+},
+2026-04-05 22:27:01.96
+5e97c101
+User
+at Zy.parse (/home/runner/workspace/dist/index.cjs:205:43605)
+2026-04-05 22:27:01.96
+5e97c101
+User
+at TLSSocket.emit (node:events:524:28)
