@@ -234,10 +234,41 @@ export function registerPerformanceRoutes(app: Express) {
     if (!(await requireFeatureAccess(req, res))) return;
 
     try {
+      const role = req.session.role!;
+      const isManagerRole = MANAGER_ROLES.includes(role);
+
       const list = await db.select().from(checkIns)
         .where(or(eq(checkIns.employeeId, userId), eq(checkIns.managerId, userId)))
         .orderBy(desc(checkIns.scheduledDate));
-      res.json(list);
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const enrichedList = list.map(ci => {
+        const emp = userMap.get(ci.employeeId);
+        const mgr = ci.managerId ? userMap.get(ci.managerId) : null;
+        return {
+          ...ci,
+          employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
+          managerName: mgr ? `${mgr.firstName} ${mgr.lastName}` : "Unknown",
+        };
+      });
+
+      let teamMembers: { id: string; firstName: string; lastName: string; email: string }[] = [];
+      if (isManagerRole) {
+        if (ADMIN_ROLES.includes(role)) {
+          teamMembers = allUsers
+            .filter(u => u.isActive && u.id !== userId)
+            .map(u => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email }));
+        } else {
+          const members = await storage.getTeamMembers(userId);
+          teamMembers = members
+            .filter(u => u.isActive)
+            .map(u => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email }));
+        }
+      }
+
+      res.json({ checkIns: enrichedList, teamMembers, userRole: role });
     } catch (error) {
       console.error("Error fetching check-ins:", error);
       res.status(500).json({ error: "Failed to fetch check-ins" });
