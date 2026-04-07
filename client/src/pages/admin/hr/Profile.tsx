@@ -297,12 +297,12 @@ export default function Profile() {
 
   const { data: balances } = useQuery<LeaveBalance[]>({
     queryKey: ["/api/hr/leave-balances/my"],
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!user?.totpEnabled,
   });
 
   const { data: leaveTypes } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!user?.totpEnabled,
   });
 
   const currentMonth = (() => {
@@ -316,7 +316,7 @@ export default function Profile() {
 
   const { data: monthlyAttendance } = useQuery<AttendanceRecord[]>({
     queryKey: ["/api/hr/attendance/my", { startDate, endDate }],
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!user?.totpEnabled,
   });
 
   useEffect(() => {

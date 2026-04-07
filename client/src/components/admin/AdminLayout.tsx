@@ -333,11 +333,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const isComplianceLocked = !isLockExempt && complianceStatus?.locked === true;
   const isOnTrainingPage = location === "/admin/hr/my-training" || location.startsWith("/admin/hr/my-training");
 
+  const userNeeds2FASetup = user && !user.totpEnabled;
+
   useEffect(() => {
-    if (isComplianceLocked && !isOnTrainingPage) {
+    if (isComplianceLocked && !isOnTrainingPage && !userNeeds2FASetup) {
       setLocation("/admin/hr/my-training");
     }
-  }, [isComplianceLocked, isOnTrainingPage, setLocation]);
+  }, [isComplianceLocked, isOnTrainingPage, userNeeds2FASetup, setLocation]);
 
   const ENDORSER_ROLES = ["manager", "hr", "admin"];
   const isEndorserRole = ENDORSER_ROLES.includes(user?.role || "");
