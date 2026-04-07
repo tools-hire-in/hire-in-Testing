@@ -1,0 +1,180 @@
+/api/auth/me:1  Failed to load resource: the server responded with a status of 401 ()
+/api/hr/regional-holiday-selections?year=2026:1  Failed to load resource: the server responded with a status of 403 ()
+/api/admin/stats:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/dashboard-stats:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/holidays?year=2026:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-types:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-balances/my:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-types:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-balances/my:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-types:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-balances/my:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-types:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-balances/my:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/leave-types:1  Failed to load resource: the server responded with a status of 403 ()
+/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30:1  Failed to load resource: the server responded with a status of 403 ()
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-balances/my 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-types 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-balances/my 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-types 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-balances/my 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/attendance/my?startDate=2026-04-01&endDate=2026-04-30 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
+index-CN1xykoH.js:8  GET https://employee.hire-in.com/api/hr/leave-types 403 (Forbidden)
+(anonymous) @ index-CN1xykoH.js:8
+o @ index-CN1xykoH.js:8
+S @ index-CN1xykoH.js:8
+start @ index-CN1xykoH.js:8
+fetch @ index-CN1xykoH.js:8
+#u @ index-CN1xykoH.js:8
+onSubscribe @ index-CN1xykoH.js:8
+subscribe @ index-CN1xykoH.js:8
+(anonymous) @ index-CN1xykoH.js:8
+Oy @ index-CN1xykoH.js:6
+Md @ index-CN1xykoH.js:8
+io @ index-CN1xykoH.js:8
+Q4 @ index-CN1xykoH.js:8
+li @ index-CN1xykoH.js:8
+_v @ index-CN1xykoH.js:8
+hr @ index-CN1xykoH.js:6
+(anonymous) @ index-CN1xykoH.js:8
