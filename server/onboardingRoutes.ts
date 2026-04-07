@@ -557,7 +557,58 @@ export function registerOnboardingRoutes(app: Express) {
 
       await appendAuditEvent(userId, "section_acknowledged", { assignmentId, sectionId, typedName, documentHash });
 
-      res.json({ ok: true, documentHash });
+      // Auto-complete: check if all sections for this track are now acknowledged
+      let autoCompleted = false;
+      let autoReceiptHash = "";
+      let autoReceiptData: any = null;
+      try {
+        const [assignment] = await db.select().from(trackAssignments)
+          .where(eq(trackAssignments.id, assignmentId));
+        if (assignment && assignment.status !== "completed") {
+          const allSections = await db.select().from(trackSections)
+            .where(eq(trackSections.trackId, assignment.trackId));
+          const allAcks = await db.select().from(sectionAcknowledgements)
+            .where(eq(sectionAcknowledgements.assignmentId, assignmentId));
+
+          if (allAcks.length >= allSections.length) {
+            const allHashes = allAcks.sort((a, b) => a.sectionId.localeCompare(b.sectionId))
+              .map(a => a.documentHash || "").join("|");
+            autoReceiptHash = crypto.createHash("sha256").update(allHashes).digest("hex");
+
+            autoReceiptData = {
+              trackId: assignment.trackId,
+              assignmentId,
+              userId,
+              completedAt: new Date().toISOString(),
+              acknowledgements: allAcks.map(a => ({
+                sectionId: a.sectionId,
+                typedName: a.typedName,
+                acknowledgedAt: a.acknowledgedAt,
+                documentHash: a.documentHash,
+              })),
+            };
+
+            const [existingCompletion] = await db.select().from(trackCompletions)
+              .where(eq(trackCompletions.assignmentId, assignmentId));
+            if (!existingCompletion) {
+              await db.insert(trackCompletions).values({
+                assignmentId, userId, receiptHash: autoReceiptHash, receiptData: autoReceiptData,
+              });
+            }
+
+            await db.update(trackAssignments)
+              .set({ status: "completed", completedAt: new Date() })
+              .where(eq(trackAssignments.id, assignmentId));
+
+            await appendAuditEvent(userId, "track_auto_completed", { assignmentId, trackId: assignment.trackId, receiptHash: autoReceiptHash });
+            autoCompleted = true;
+          }
+        }
+      } catch (autoErr) {
+        console.error("Auto-complete check failed (non-fatal):", autoErr);
+      }
+
+      res.json({ ok: true, documentHash, autoCompleted, receiptHash: autoReceiptHash || undefined, receiptData: autoReceiptData || undefined });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to acknowledge section" });
@@ -575,6 +626,13 @@ export function registerOnboardingRoutes(app: Express) {
       const [assignment] = await db.select().from(trackAssignments)
         .where(eq(trackAssignments.id, assignmentId));
       if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      // If already completed, return existing completion data
+      if (assignment.status === "completed") {
+        const [existingCompletion] = await db.select().from(trackCompletions)
+          .where(eq(trackCompletions.assignmentId, assignmentId));
+        return res.json({ receiptHash: existingCompletion?.receiptHash || "", receiptData: existingCompletion?.receiptData || null, alreadyCompleted: true });
+      }
 
       // Verify all sections are acknowledged
       const sections = await db.select().from(trackSections)

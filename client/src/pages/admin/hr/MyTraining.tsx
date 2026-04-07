@@ -218,8 +218,16 @@ function SectionPlayer({
     if (!nameMatch) return;
     setAcknowledging(true);
     try {
-      await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${section.id}/acknowledge`, { typedName: typedName.trim() });
-      toast({ title: "Section acknowledged!" });
+      const res = await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${section.id}/acknowledge`, { typedName: typedName.trim() });
+      const data = await res.json();
+      if (data.autoCompleted) {
+        toast({ title: "Track completed! All sections acknowledged." });
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-assignments"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-training-alerts"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
+      } else {
+        toast({ title: "Section acknowledged!" });
+      }
       onCompleted();
     } catch {
       toast({ title: "Failed to acknowledge", variant: "destructive" });

@@ -369,9 +369,25 @@ function SidebarSeparator({
   )
 }
 
+let _sidebarScrollTop = 0
+
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = _sidebarScrollTop
+    const handleScroll = () => {
+      _sidebarScrollTop = el.scrollTop
+    }
+    el.addEventListener("scroll", handleScroll, { passive: true })
+    return () => el.removeEventListener("scroll", handleScroll)
+  }, [])
+
   return (
     <div
+      ref={scrollRef}
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(

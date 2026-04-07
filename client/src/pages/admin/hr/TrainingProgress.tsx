@@ -1,16 +1,20 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BarChart3, Download, CheckCircle, Clock, AlertCircle, Loader2,
-  ChevronRight, User, GraduationCap,
+  ChevronRight, User, GraduationCap, CalendarPlus,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const STATUS_CONFIG: Record<string, { label: string; class: string; icon?: any }> = {
   not_assigned: { label: "Not Assigned", class: "bg-gray-100 text-gray-500" },
@@ -36,8 +40,13 @@ function StatusCell({ status }: { status: string }) {
 
 export default function TrainingProgress() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [endorseComment, setEndorseComment] = useState<Record<string, string>>({});
+
+  const endorserRoles = ["manager", "hr", "admin"];
+  const isEndorser = endorserRoles.includes(user?.role || "");
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/onboarding/team-progress"],
@@ -46,6 +55,34 @@ export default function TrainingProgress() {
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
+  });
+
+  const { data: toEndorse = [], isLoading: loadingEndorse } = useQuery<any[]>({
+    queryKey: ["/api/onboarding/extension-requests/to-endorse"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/extension-requests/to-endorse", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+    enabled: isEndorser,
+  });
+
+  const endorseExtension = useMutation({
+    mutationFn: ({ id, comment, action }: { id: string; comment?: string; action?: string }) =>
+      apiRequest("PATCH", `/api/onboarding/extension-requests/${id}/endorse`, { comment, action }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/to-endorse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/team-progress"] });
+      const msg = variables.action === "approve" ? "Extension request approved"
+        : variables.action === "reject" ? "Extension request rejected"
+        : "Extension request endorsed and forwarded for approval";
+      toast({ title: msg });
+    },
+    onError: () => toast({ title: "Failed to process request", variant: "destructive" }),
   });
 
   const { data: userDetail, isLoading: detailLoading } = useQuery<any[]>({
@@ -179,6 +216,103 @@ export default function TrainingProgress() {
               );
             })}
           </div>
+        )}
+
+        {isEndorser && (
+          <Card data-testid="panel-extension-requests">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarPlus className="h-5 w-5 text-amber-600" />
+                Extension Requests
+                {toEndorse.length > 0 && (
+                  <span className="ml-1.5 bg-amber-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center" data-testid="badge-extension-count">
+                    {toEndorse.length}
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingEndorse && (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading extension requests...
+                </div>
+              )}
+              {!loadingEndorse && toEndorse.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4" data-testid="text-no-extensions">No pending extension requests from your reports.</p>
+              )}
+              {!loadingEndorse && toEndorse.length > 0 && (
+                <div className="space-y-3">
+                  {toEndorse.map((ext: any) => (
+                    <div key={ext.id} className="border rounded-lg p-4 space-y-3" data-testid={`extension-request-${ext.id}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          <p className="font-semibold text-sm">{ext.requesterName} <span className="text-muted-foreground font-normal">({ext.requesterRole})</span></p>
+                          <p className="text-sm">
+                            <span className="font-medium">Track:</span> {ext.trackTitle}
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Current due:</span> {ext.currentDueDate ? new Date(ext.currentDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "None"}
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Requested new date:</span> {new Date(ext.newDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="shrink-0 text-amber-700 border-amber-300">
+                          {ext.isDirectReport && user?.role === "manager" ? "Pending Your Approval" : "Pending Endorsement"}
+                        </Badge>
+                      </div>
+                      <div className="bg-muted/50 rounded-md p-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reason</p>
+                        <p className="text-sm whitespace-pre-wrap">{ext.reason}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Comment (optional)</Label>
+                        <Input
+                          value={endorseComment[ext.id] || ""}
+                          onChange={e => setEndorseComment(prev => ({ ...prev, [ext.id]: e.target.value }))}
+                          placeholder="Add a comment..."
+                          className="h-8 text-sm"
+                          data-testid={`input-extension-comment-${ext.id}`}
+                        />
+                      </div>
+                      {ext.isDirectReport && user?.role === "manager" ? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-700 hover:bg-green-800"
+                            onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "", action: "approve" })}
+                            disabled={endorseExtension.isPending}
+                            data-testid={`button-approve-extension-${ext.id}`}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "", action: "reject" })}
+                            disabled={endorseExtension.isPending}
+                            data-testid={`button-reject-extension-${ext.id}`}
+                          >
+                            <AlertCircle className="h-4 w-4 mr-1" /> Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-blue-700 hover:bg-blue-800"
+                          onClick={() => endorseExtension.mutate({ id: ext.id, comment: endorseComment[ext.id] || "" })}
+                          disabled={endorseExtension.isPending}
+                          data-testid={`button-endorse-extension-${ext.id}`}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" /> Endorse & Forward to Super Admin
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
 
