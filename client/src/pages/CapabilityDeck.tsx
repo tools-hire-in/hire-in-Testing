@@ -75,7 +75,7 @@ const TECH_TOOLS = [
     badgeColor: "bg-primary/10 text-primary",
   },
   {
-    name: "CredentialRX",
+    name: "proKred.com",
     tagline: "Healthcare Credentialing Excellence",
     description: "Purpose-built credentialing platform that streamlines and secures the entire healthcare credentialing process — transforming complex workflows into a seamless, future-ready system.",
     features: ["Secure Credentialing", "Compliance Automation", "Real-Time Verification", "Future-Ready Architecture"],
@@ -98,13 +98,13 @@ const PROCESS_STEPS = [
   { step: "01", title: "Discovery", description: "Deep-dive into requirements, culture, and goals. AI Booster creates intelligent candidate profiles.", icon: Search },
   { step: "02", title: "AI Sourcing", description: "KlerHire AI matches candidates by fit, skills, and experience with 90%+ accuracy.", icon: Brain },
   { step: "03", title: "Validation", description: "Expert recruiters assess cultural fit, soft skills, and career alignment.", icon: UserCheck },
-  { step: "04", title: "Credentials", description: "CredentialRX handles compliance verification and credentialing with 100% accuracy.", icon: FileCheck },
+  { step: "04", title: "Credentials", description: "proKred.com handles compliance verification and credentialing with 100% accuracy.", icon: FileCheck },
   { step: "05", title: "Placement", description: "Pre-vetted candidates delivered with complete documentation, ready for onboarding.", icon: Handshake },
 ];
 
 const DIFFERENTIATORS = [
   { icon: Sparkles, title: "Tech-Forward DNA", description: "Born from a software company — we build like technologists, not just staffing firms." },
-  { icon: Brain, title: "Proprietary AI Tools", description: "KlerHire and CredentialRX give us capabilities no traditional agency can match." },
+  { icon: Brain, title: "Proprietary AI Tools", description: "KlerHire and proKred.com give us capabilities no traditional agency can match." },
   { icon: Clock, title: "50% Faster Placements", description: "AI pre-screening cuts time-to-hire in half while improving quality." },
   { icon: Shield, title: "100% Compliance", description: "Zero-compromise credential verification for every placement." },
   { icon: Globe, title: "10+ Years of Excellence", description: "Backed by Rayomind with over a decade of technology expertise." },
@@ -204,7 +204,7 @@ export default function CapabilityDeck() {
                   <strong className="text-foreground">{COMPANY.name}</strong> was established as a tech-forward startup under <strong className="text-foreground">Rayomind</strong> (est. 2014) with a singular mission: to revolutionize recruitment by merging cutting-edge AI technology with genuine human understanding.
                 </p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  With over a decade of technology expertise as our foundation, we don't just fill positions — we engineer perfect matches. Our proprietary tools like KlerHire AI and CredentialRX give us capabilities that traditional staffing firms simply cannot replicate.
+                  With over a decade of technology expertise as our foundation, we don't just fill positions — we engineer perfect matches. Our proprietary tools like KlerHire AI and proKred.com give us capabilities that traditional staffing firms simply cannot replicate.
                 </p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   We specialize in Healthcare, IT, Engineering, and Professional Services — serving clients from Fortune 500 companies to innovative startups across the United States.
@@ -470,7 +470,7 @@ export default function CapabilityDeck() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-sm">Compliance & Credentialing Guarantee</h3>
-                <p className="text-xs text-muted-foreground">Every healthcare placement comes with complete CredentialRX verification. HIPAA-ready, TJC-HCSS aligned, 100% compliant.</p>
+                <p className="text-xs text-muted-foreground">Every healthcare placement comes with complete proKred.com verification. HIPAA-ready, TJC-HCSS aligned, 100% compliant.</p>
               </div>
               <div className="hidden sm:flex flex-wrap gap-1.5 shrink-0">
                 {["HIPAA", "TJC", "Verified"].map((b) => (

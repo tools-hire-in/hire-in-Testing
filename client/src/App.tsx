@@ -18,6 +18,7 @@ import ProfessionalServices from "@/pages/services/ProfessionalServices";
 import ContractStaffing from "@/pages/services/ContractStaffing";
 import CapabilityDeck from "@/pages/CapabilityDeck";
 import ITStaffing from "@/pages/ITStaffing";
+import EHealthcareStaffing from "@/pages/EHealthcareStaffing";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminJobs from "@/pages/admin/Jobs";
 import AdminApplications from "@/pages/admin/Applications";
@@ -92,6 +93,7 @@ function PublicRouter() {
       <Route path="/services/contract-staffing" component={ContractStaffing} />
       <Route path="/capability-deck" component={CapabilityDeck} />
       <Route path="/it-staffing" component={ITStaffing} />
+      <Route path="/ehealthcare-staffing" component={EHealthcareStaffing} />
       <Route path="/onboard/:token" component={OnboardAccept} />
 
       <Route path="/admin/login" component={AdminLogin} />

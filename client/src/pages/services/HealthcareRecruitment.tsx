@@ -24,7 +24,7 @@ export default function HealthcareRecruitment() {
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const valueProps = [
-    { icon: Shield, title: "Joint Commission Compliance", description: "All candidates meet TJC standards" },
+    { icon: Shield, title: "Joint Commission-Aligned", description: "Workflows built around TJC standards" },
     { icon: Clock, title: "Rapid Placement", description: "Fill critical positions faster" },
     { icon: Award, title: "Quality Guarantee", description: "98% first-year retention rate" },
   ];

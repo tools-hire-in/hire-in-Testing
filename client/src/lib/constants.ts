@@ -97,6 +97,7 @@ export const NAV_LINKS = [
       { href: "/services/non-it-professional", label: "Professional Services" },
       { href: "/services/contract-staffing", label: "Contract Staffing" },
       { href: "/it-staffing", label: "IT Staffing Deck" },
+      { href: "/ehealthcare-staffing", label: "eHealthcare Staffing Deck" },
     ],
   },
   { href: "/jobs", label: "Jobs" },
