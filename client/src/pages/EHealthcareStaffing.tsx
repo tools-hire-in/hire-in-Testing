@@ -39,9 +39,9 @@ export default function EHealthcareStaffing() {
       }
       el.setAttribute("content", content);
     };
-    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows and AI-powered credentialing via proKred.com. Clinical recruitment across all 50 US states.");
+    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows, verified documents & compliant submission packages via proKred.com. Clinical recruitment across all 50 US states.");
     setMeta("og:title", "eHealthcare Staffing Services | Hire'in Solutions", true);
-    setMeta("og:description", "AI-powered healthcare staffing with Joint Commission-aligned workflows and proKred.com credentialing. Travel nursing, locum tenens, allied health. View our interactive deck.", true);
+    setMeta("og:description", "AI-powered healthcare staffing with Joint Commission-aligned workflows, verified documents & compliant submission packages. Travel nursing, locum tenens, allied health. View our interactive deck.", true);
     setMeta("og:type", "website", true);
     setMeta("og:url", `${window.location.origin}/ehealthcare-staffing`, true);
     setMeta("keywords", "healthcare staffing, travel nursing, locum tenens, allied health staffing, Joint Commission aligned, proKred, clinical recruitment, healthcare MSP, nurse staffing agency");
@@ -153,10 +153,10 @@ export default function EHealthcareStaffing() {
             <span className="text-primary">AI + Compliance</span>
           </h1>
           <p className="text-lg md:text-xl text-white/70 mb-3 font-medium max-w-2xl mx-auto">
-            We place credentialed clinical professionals in all 50 US states with Joint Commission-aligned workflows and AI-powered credentialing.
+            We place compliance-verified clinical professionals in all 50 US states with Joint Commission-aligned workflows and compliant submission packages.
           </p>
           <p className="text-sm text-white/50 max-w-xl mx-auto mb-8">
-            {COMPANY.name} delivers credentialed clinical professionals across all 50 US states, leveraging proKred.com and KlerHire AI to match, credential, and place with speed and compliance.
+            {COMPANY.name} delivers compliance-verified clinical professionals across all 50 US states, leveraging proKred.com and KlerHire AI to verify documents and deliver compliant submission packages with speed.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button size="lg" onClick={() => document.getElementById("hc-deck-viewer")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-hc-view-deck">
@@ -174,11 +174,11 @@ export default function EHealthcareStaffing() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[
               { value: "TJC", label: "JC-Aligned" },
-              { value: "AI+", label: "proKred Credentialing" },
+              { value: "AI+", label: "Verified Documents" },
               { value: "50", label: "US States" },
               { value: "RN/LPN", label: "Clinical Roles" },
               { value: "MSP", label: "Managed Service" },
-              { value: "Fast", label: "Credentialing" },
+              { value: "Fast", label: "Compliant Packages" },
             ].map((s) => (
               <div key={s.label} className="text-center py-2" data-testid={`stat-hc-${s.label.toLowerCase().replace(/\s/g, "-")}`}>
                 <p className="text-xl md:text-2xl font-bold text-primary leading-none mb-0.5">{s.value}</p>
@@ -332,8 +332,8 @@ export default function EHealthcareStaffing() {
         <div className="container mx-auto max-w-5xl">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our credentialing workflows are built around TJC standards with automated verification via proKred.com, so your placements are audit-ready from day one." },
-              { icon: Zap, title: "Rapid Credentialing", desc: "proKred.com automates license verification and compliance tracking, delivering credentialed candidates faster than traditional firms." },
+              { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our compliance workflows are built around TJC standards with automated document verification via proKred.com, so your placements are audit-ready from day one." },
+              { icon: Zap, title: "Compliant Submission Packages", desc: "proKred.com automates license verification and compliance tracking, delivering verified documents and compliant submission packages faster than traditional firms." },
               { icon: Heart, title: "Clinical Domain Experts", desc: "Specialty-trained recruiters for RN, LPN, CNA, allied health, physicians, and telehealth professionals." },
               { icon: Stethoscope, title: "Healthcare-Only Focus", desc: "Dedicated healthcare staffing division with deep clinical recruitment expertise across all care settings." },
             ].map(({ icon: Icon, title, desc }) => (
@@ -360,7 +360,7 @@ export default function EHealthcareStaffing() {
             <span className="text-primary">Clinical Team</span>
           </h2>
           <p className="text-white/60 mb-8 max-w-lg mx-auto">
-            Whether you need travel nurses, locum tenens physicians, or a full allied health team, our AI-powered credentialing platform delivers pre-verified, compliance-ready clinical talent.
+            Whether you need travel nurses, locum tenens physicians, or a full allied health team, our AI-powered platform delivers verified documents and compliant submission packages for every placement.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button size="lg" asChild data-testid="button-hc-cta-contact">

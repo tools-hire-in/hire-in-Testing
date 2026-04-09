@@ -95,7 +95,7 @@ export default function About() {
                 <div>
                   <h4 className="font-semibold text-primary mb-2">Our Purpose</h4>
                   <p className="text-muted-foreground">
-                    Full-service recruitment firm with healthcare excellence
+                    Full-service recruitment firm with expertise in healthcare and IT talent acquisition
                   </p>
                 </div>
               </CardContent>

@@ -144,7 +144,7 @@ function Slide1Cover() {
           <h2 style={{ fontSize: 26, fontWeight: 600, color: ORANGE, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.4, marginBottom: 20 }}>US Healthcare Staffing · AI + Compliance</h2>
           <p style={{ fontSize: 16, color: "rgba(255,255,255,0.72)", fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic", letterSpacing: 0.3 }}>&ldquo;The Right Clinical Talent, Right Now&rdquo;</p>
           <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 0", width: "fit-content" }}>
-            {["Joint Commission-Aligned Process", "AI-Powered Credentialing", "All 50 US States"].map((stat, i) => (
+            {["Joint Commission-Aligned Process", "Verified Documents & Compliant Submissions", "All 50 US States"].map((stat, i) => (
               <Fragment key={i}>
                 {i > 0 && <div style={{ width: 1, height: 20, background: "rgba(244,124,32,0.4)", flexShrink: 0 }} />}
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.3, padding: "0 16px", whiteSpace: "nowrap" }}>{stat}</span>
@@ -157,7 +157,7 @@ function Slide1Cover() {
             { icon: Stethoscope, label: "Clinical Specialists" },
             { icon: ShieldCheck, label: "TJC-Aligned Process" },
             { icon: Brain, label: "proKred.com Powered" },
-            { icon: Zap, label: "Fastest Credentialing" },
+            { icon: Zap, label: "Compliant Submissions" },
           ].map(({ icon: Icon, label }, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
               <div style={{ width: 42, height: 42, borderRadius: 10, background: "rgba(244,124,32,0.15)", border: "1px solid rgba(244,124,32,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -195,7 +195,7 @@ function Slide2ByTheNumbers() {
     { value: "AI+", label: "proKred.com Credentialing", sub: "Automated license & compliance verification" },
     { value: "50", label: "US States Covered", sub: "True coast-to-coast clinical reach" },
     { value: "RN/LPN", label: "Clinical Specializations", sub: "Nursing, allied health & physician roles" },
-    { value: "Fast", label: "Credentialing Turnaround", sub: "From intake to credentialed submission" },
+    { value: "Fast", label: "Compliance Turnaround", sub: "From intake to compliant submission package" },
     { value: "MSP", label: "Managed Service Ready", sub: "VMS-integrated staffing programs" },
   ];
   return (
@@ -232,12 +232,12 @@ function Slide3About() {
         <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: WHITE, borderRadius: 10, padding: "16px 20px", borderLeft: `4px solid ${ORANGE}`, boxShadow: "0 2px 12px rgba(31,58,110,0.08)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Healthcare Mission</p>
-            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 · 10+ years in healthcare staffing. We connect hospital systems, health networks, and clinical facilities with credentialed talent that fits. Headquartered in San Jose, CA, serving all 50 states.</p>
+            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 · 10+ years in healthcare staffing. We connect hospital systems, health networks, and clinical facilities with compliance-verified talent that fits. Headquartered in San Jose, CA, serving all 50 states.</p>
           </div>
           <div style={{ background: NAVY, borderRadius: 10, padding: "16px 20px", boxShadow: "0 2px 12px rgba(31,58,110,0.12)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>The Rayomind Family</p>
             <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, lineHeight: 1.55, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group, a technology-driven ecosystem building next-generation workforce solutions. Our healthcare division uses <strong style={{ color: ORANGE }}>proKred.com</strong> for credentialing automation and <strong style={{ color: ORANGE }}>KlerHire AI</strong> for clinical skills matching, so every placement is credential-verified and compliance-ready.
+              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group, a technology-driven ecosystem building next-generation workforce solutions. Our healthcare division uses <strong style={{ color: ORANGE }}>proKred.com</strong> for credentialing automation and <strong style={{ color: ORANGE }}>KlerHire AI</strong> for clinical skills matching, so every placement is document-verified and submission-compliant.
               <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>A subsidiary of Rayomind Inc.</span>
             </p>
           </div>
@@ -267,9 +267,9 @@ function Slide3About() {
 
 function Slide4Services() {
   const services = [
-    { icon: Stethoscope, title: "Travel Nursing", desc: "Credentialed travel nurses deployed nationwide for short-term and long-term assignments at hospitals, clinics, and healthcare systems.", bullets: ["13/26-week contracts", "Multi-state licensure support", "Housing coordination"] },
+    { icon: Stethoscope, title: "Travel Nursing", desc: "Compliance-verified travel nurses deployed nationwide with complete submission packages for hospitals, clinics, and healthcare systems.", bullets: ["13/26-week contracts", "Multi-state licensure support", "Housing coordination"] },
     { icon: UserCheck, title: "Permanent Clinical Hiring", desc: "Full-time placement of nurses, physicians, and allied health professionals matched via AI and credential verification.", bullets: ["Culture-fit scoring", "Clinical assessment", "End-to-end onboarding"] },
-    { icon: Clock, title: "Locum Tenens / Temp Staffing", desc: "Temporary physicians and specialists for coverage gaps, seasonal surges, or facility expansion needs.", bullets: ["Rapid deployment", "Per diem & short-term", "Credentialed & ready"] },
+    { icon: Clock, title: "Locum Tenens / Temp Staffing", desc: "Temporary physicians and specialists for coverage gaps, seasonal surges, or facility expansion needs.", bullets: ["Rapid deployment", "Per diem & short-term", "Verified & compliant"] },
     { icon: HeartPulse, title: "Allied Health & Therapy Staffing", desc: "Physical therapists, occupational therapists, respiratory therapists, and medical technologists placed with precision.", bullets: ["Specialty matching", "License verification", "Therapy team builds"] },
   ];
   return (
@@ -307,7 +307,7 @@ function Slide4Services() {
 
 function Slide5Models() {
   const models = [
-    { name: "Per Diem", color: NAVY, benefits: ["Shift-based engagement", "Daily/hourly billing", "48-hour deployment", "Credentialed pool ready"] },
+    { name: "Per Diem", color: NAVY, benefits: ["Shift-based engagement", "Daily/hourly billing", "48-hour deployment", "Compliant pool ready"] },
     { name: "Travel Contract", color: "#1E5C9C", benefits: ["13/26-week assignments", "All-inclusive bill rate", "Housing & travel included", "Multi-state licensure"] },
     { name: "Direct Hire", color: ORANGE, benefits: ["Full-time permanent", "Flat placement fee", "90-day guarantee", "Comprehensive onboarding"] },
     { name: "MSP/VMS", color: ORANGE2, benefits: ["Managed service program", "Consolidated billing", "SLA-backed delivery", "Full compliance coverage"] },
@@ -373,7 +373,7 @@ function Slide6AICredentialing() {
               <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>AI + Credentialing</span>
             </div>
             <h2 style={{ color: ORANGE, fontSize: 22, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI &amp; Credentialing Tools</h2>
-            <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>proKred.com + KlerHire AI for healthcare excellence</p>
+            <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>proKred.com + KlerHire AI — Verified Documents &amp; Compliant Submissions</p>
           </div>
           <HISLogo size={34} light />
         </div>
@@ -390,7 +390,7 @@ function Slide6AICredentialing() {
           <div style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
             <Zap size={22} color={WHITE} />
             <h4 style={{ color: WHITE, fontSize: 13, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Why AI + Credentialing Wins</h4>
-            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 10, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>By combining proKred.com with KlerHire AI, we deliver fully credentialed, compliance-verified candidates faster than any traditional healthcare staffing firm.</p>
+            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 10, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>By combining proKred.com with KlerHire AI, we deliver candidates with fully verified documents and compliant submission packages faster than any traditional healthcare staffing firm.</p>
           </div>
         </div>
         <SlideFooter />
@@ -402,9 +402,9 @@ function Slide6AICredentialing() {
 function Slide7Advantage() {
   const advantages = [
     { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our credentialing workflows are built around TJC standards, covering everything from primary source verification to ongoing monitoring, so your placements are audit-ready.", highlight: "TJC-Ready Process" },
-    { icon: ClipboardCheck, title: "proKred.com-Powered Verification", desc: "Our proKred.com platform automates license verification, privilege delineation, and compliance tracking, dramatically cutting credentialing turnaround time.", highlight: "Faster Credentialing" },
+    { icon: ClipboardCheck, title: "proKred.com-Powered Verification", desc: "Our proKred.com platform automates license verification, privilege delineation, and compliance tracking — delivering verified documents and compliant submission packages.", highlight: "Verified & Compliant" },
     { icon: Stethoscope, title: "Clinical Domain Experts", desc: "Our recruiters specialize in clinical staffing across RN, LPN, CNA, allied health, and physician placements. They understand unit-level needs, shift patterns, and patient acuity.", highlight: "RN / LPN / CNA Specialists" },
-    { icon: Zap, title: "Rapid Credentialing Turnaround", desc: "With proKred.com running continuous verification, we deliver fully credentialed candidates faster than traditional healthcare staffing firms.", highlight: "Rapid Credentialing" },
+    { icon: Zap, title: "Rapid Compliance Turnaround", desc: "With proKred.com running continuous verification, we deliver candidates with verified documents and compliant submission packages faster than traditional healthcare staffing firms.", highlight: "Compliant Packages" },
   ];
   return (
     <SlideWrapper bg={LIGHT_BG}>
@@ -494,7 +494,7 @@ function Slide9Fulfillment() {
     { label: "Triage", icon: Activity, desc: "Urgency classification (ER/ICU/Floor)" },
     { label: "Credential", icon: ClipboardCheck, desc: "proKred.com verification" },
     { label: "Match", icon: Brain, desc: "KlerHire AI clinical matching" },
-    { label: "Submit", icon: UserCheck, desc: "Credentialed profiles delivered" },
+    { label: "Submit", icon: UserCheck, desc: "Compliant submission packages delivered" },
     { label: "Compliance", icon: ShieldCheck, desc: "TJC-aligned review & clearance" },
     { label: "Deploy", icon: Star, desc: "Onboarding & shift start" },
   ];
@@ -530,7 +530,7 @@ function Slide9Fulfillment() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
           {[
             { metric: "Rapid", label: "ER/ICU Priority Fill" },
-            { metric: "Fast", label: "Credentialed Submissions" },
+            { metric: "Fast", label: "Compliant Submissions" },
             { metric: "TJC", label: "Joint Commission Aligned" },
             { metric: "Scalable", label: "Census-Based Coverage" },
           ].map(({ metric, label }, i) => (
