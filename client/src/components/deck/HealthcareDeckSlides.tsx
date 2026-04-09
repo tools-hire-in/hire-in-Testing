@@ -194,7 +194,7 @@ function Slide2ByTheNumbers() {
     { value: "TJC", label: "Joint Commission Aligned", sub: "Workflows built around TJC standards" },
     { value: "AI+", label: "proKred.com Credentialing", sub: "Automated license & compliance verification" },
     { value: "50", label: "US States Covered", sub: "True coast-to-coast clinical reach" },
-    { value: "RN/LPN", label: "Clinical Specializations", sub: "Nursing, allied health & physician roles" },
+    { value: "100+", label: "Healthcare Role Types", sub: "Nurses, physicians, therapists & allied health" },
     { value: "Fast", label: "Compliance Turnaround", sub: "From intake to compliant submission package" },
     { value: "MSP", label: "Managed Service Ready", sub: "VMS-integrated staffing programs" },
   ];

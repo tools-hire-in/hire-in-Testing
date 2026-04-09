@@ -176,7 +176,7 @@ export default function EHealthcareStaffing() {
               { value: "TJC", label: "JC-Aligned" },
               { value: "AI+", label: "Verified Documents" },
               { value: "50", label: "US States" },
-              { value: "RN/LPN", label: "Clinical Roles" },
+              { value: "100+", label: "Healthcare Roles" },
               { value: "MSP", label: "Managed Service" },
               { value: "Fast", label: "Compliant Packages" },
             ].map((s) => (
