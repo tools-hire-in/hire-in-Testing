@@ -184,6 +184,37 @@ async function ensurePerformanceTables() {
   } catch (err) {
     console.error("Performance tables migration error:", err);
   }
+
+  try {
+    const extResult = await db.execute(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'training_extension_requests'
+    `);
+    if (extResult.rows.length === 0) {
+      log("Creating training_extension_requests table...");
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS training_extension_requests (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          assignment_id VARCHAR NOT NULL REFERENCES track_assignments(id),
+          user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+          requested_by_id VARCHAR NOT NULL REFERENCES admin_users(id),
+          reason TEXT NOT NULL,
+          new_due_date TIMESTAMP NOT NULL,
+          status VARCHAR NOT NULL DEFAULT 'pending',
+          endorsed_by_id VARCHAR REFERENCES admin_users(id),
+          endorsed_at TIMESTAMP,
+          endorser_comment TEXT,
+          resolved_by_id VARCHAR REFERENCES admin_users(id),
+          resolved_at TIMESTAMP,
+          resolver_comment TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      log("training_extension_requests table created successfully");
+    }
+  } catch (err) {
+    console.error("Training extension requests table migration error:", err);
+  }
 }
 
 async function backfillEmployeeIds() {

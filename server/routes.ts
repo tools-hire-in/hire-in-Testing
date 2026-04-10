@@ -2091,7 +2091,8 @@ export async function registerRoutes(
 
   app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations"), async (req, res) => {
     try {
-      const ExcelJS = await import("exceljs");
+      const ExcelJSModule = await import("exceljs");
+      const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule;
       const userId = req.session.userId!;
       const userRole = req.session.role;
       const startDate = req.query.startDate as string;
