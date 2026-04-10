@@ -29,7 +29,7 @@ interface TicketData {
   createdAt: string;
 }
 
-export default function Tickets() {
+export function TicketsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -86,11 +86,10 @@ export default function Tickets() {
   };
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-tickets-title">Tickets</h1>
+            <h1 className="text-3xl font-bold" data-testid="text-tickets-title">Regularization Requests</h1>
             <p className="text-muted-foreground">Attendance regularization requests</p>
           </div>
           <Button onClick={() => setShowCreate(true)} data-testid="button-create-ticket">
@@ -204,6 +203,13 @@ export default function Tickets() {
           </DialogContent>
         </Dialog>
       </div>
+  );
+}
+
+export default function Tickets() {
+  return (
+    <AdminLayout>
+      <TicketsContent />
     </AdminLayout>
   );
 }

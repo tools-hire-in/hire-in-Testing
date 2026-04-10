@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -10,6 +10,7 @@ import {
   LogOut,
   Home,
   ChevronRight,
+  ChevronDown,
   Shield,
   Clock,
   CalendarDays,
@@ -17,24 +18,21 @@ import {
   UserCircle,
   Receipt,
   FileBarChart,
-  Ticket,
   Settings,
   Network,
   FileCheck,
-  ClipboardCheck,
   AlertTriangle,
   ShieldAlert,
   Wrench,
   GraduationCap,
   BarChart3,
-  UsersRound,
   Target,
   MessageSquare,
-  Star,
   TrendingUp,
   ClipboardList,
   RefreshCw,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,15 +69,9 @@ const recruitmentMenu = [
     roles: ["super_admin", "admin", "operations", "manager"]
   },
   {
-    href: "/admin/jobs",
-    label: "Jobs",
+    href: "/admin/recruitment",
+    label: "Recruitment",
     icon: Briefcase,
-    roles: ["super_admin", "admin", "operations", "manager"]
-  },
-  {
-    href: "/admin/applications",
-    label: "Applications",
-    icon: FileText,
     roles: ["super_admin", "admin", "operations", "manager"]
   },
   {
@@ -99,7 +91,7 @@ const myWorkspaceMenu = [
   },
   {
     href: "/admin/hr/attendance",
-    label: "My Attendance",
+    label: "Attendance",
     icon: Clock,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
@@ -125,12 +117,6 @@ const myWorkspaceMenu = [
     href: "/admin/hr/salary-slips",
     label: "My Salary Slips",
     icon: Receipt,
-    roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
-  },
-  {
-    href: "/admin/hr/tickets",
-    label: "Tickets",
-    icon: Ticket,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"]
   },
   {
@@ -181,10 +167,10 @@ const teamManagementMenu = [
   },
 ];
 
-const performanceEmployeeMenu = [
+const performanceMenu = [
   {
     href: "/admin/performance/goals",
-    label: "My Goals",
+    label: "Goals",
     icon: Target,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
     performanceGated: true,
@@ -198,7 +184,7 @@ const performanceEmployeeMenu = [
   },
   {
     href: "/admin/performance/reviews",
-    label: "My Reviews",
+    label: "Reviews",
     icon: ClipboardList,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
     performanceGated: true,
@@ -209,18 +195,6 @@ const performanceEmployeeMenu = [
     icon: MessageSquare,
     roles: ["super_admin", "admin", "hr", "operations", "manager", "employee"],
     performanceGated: true,
-  },
-  {
-    href: "/admin/performance/team-goals",
-    label: "Team Goals",
-    icon: Target,
-    roles: ["super_admin", "admin", "manager"],
-  },
-  {
-    href: "/admin/performance/team-reviews",
-    label: "Team Reviews",
-    icon: UsersRound,
-    roles: ["super_admin", "admin", "manager"],
   },
   {
     href: "/admin/performance/review-cycles",
@@ -244,22 +218,10 @@ const administrationMenu = [
     roles: ["super_admin", "admin", "hr", "operations"]
   },
   {
-    href: "/admin/hr/salary-reports",
-    label: "Salary Reports",
+    href: "/admin/hr/reports",
+    label: "Reports & Compliance",
     icon: FileBarChart,
     roles: ["super_admin", "admin", "hr"]
-  },
-  {
-    href: "/admin/hr/document-compliance",
-    label: "Document Compliance",
-    icon: ClipboardCheck,
-    roles: ["super_admin", "admin", "hr"]
-  },
-  {
-    href: "/admin/audit-logs",
-    label: "Audit Logs",
-    icon: FileText,
-    roles: ["super_admin", "admin"]
   },
   {
     href: "/admin/hr/tools",
@@ -445,6 +407,22 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     enabled: !!user && perfEnabled,
   });
 
+  const isTeamPerfRouteActive = location.startsWith("/admin/hr/my-team") || 
+    location.startsWith("/admin/hr/team-attendance") || 
+    location.startsWith("/admin/hr/leave-approvals") || 
+    location.startsWith("/admin/hr/training-progress") || 
+    location.startsWith("/admin/performance/");
+
+  const [teamPerfOpen, setTeamPerfOpen] = useState(isTeamPerfRouteActive);
+
+  useEffect(() => {
+    if (isTeamPerfRouteActive && !teamPerfOpen) {
+      setTeamPerfOpen(true);
+    }
+  }, [isTeamPerfRouteActive]);
+
+  const teamPerfBadgeTotal = (perfAlerts?.total ?? 0);
+
   const filteredRecruitment = recruitmentMenu.filter(item => 
     user?.role && item.roles.includes(user.role)
   );
@@ -459,7 +437,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     user?.role && item.roles.includes(user.role)
   );
 
-  const filteredPerformance = performanceEmployeeMenu.filter(item => {
+  const filteredPerformance = performanceMenu.filter(item => {
     if (!user?.role || !item.roles.includes(user.role)) return false;
     if ("performanceGated" in item && item.performanceGated) return perfEnabled;
     return true;
@@ -472,6 +450,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const isActive = (href: string) => {
     if (href === "/admin") return location === "/admin";
     if (href === "/admin/hr") return location === "/admin/hr";
+    if (href === "/admin/recruitment") return location === "/admin/recruitment" || location === "/admin/jobs" || location === "/admin/applications";
+    if (href === "/admin/hr/reports") return location === "/admin/hr/reports" || location === "/admin/hr/salary-reports" || location === "/admin/hr/document-compliance" || location === "/admin/audit-logs";
+    if (href === "/admin/performance/goals") return location.startsWith("/admin/performance/goals") || location.startsWith("/admin/performance/team-goals");
+    if (href === "/admin/performance/reviews") return location.startsWith("/admin/performance/reviews") || location.startsWith("/admin/performance/team-reviews");
+    if (href === "/admin/hr/attendance") return location.startsWith("/admin/hr/attendance") || location.startsWith("/admin/hr/tickets");
     return location.startsWith(href);
   };
 
@@ -601,77 +584,95 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </SidebarGroup>
             )}
 
-            {filteredTeamMgmt.length > 0 && (
+            {(filteredTeamMgmt.length > 0 || filteredPerformance.length > 0) && (
               <SidebarGroup>
-                <SidebarGroupLabel>Team Management</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {filteredTeamMgmt.map((item) => (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild={!isComplianceLocked}
-                          isActive={isActive(item.href)}
-                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
-                          data-testid={`nav-team-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                        >
-                          {isComplianceLocked ? (
-                            <span className="flex items-center gap-2">
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </span>
-                          ) : (
-                            <Link href={item.href}>
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.label}</span>
-                            </Link>
-                          )}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
-
-            {filteredPerformance.length > 0 && (
-              <SidebarGroup>
-                <SidebarGroupLabel>Performance</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {filteredPerformance.map((item) => {
-                      const isMyGoals = item.href === "/admin/performance/goals";
-                      const perfAlertCount = perfAlerts?.total ?? 0;
-                      const isLockedItem = isComplianceLocked;
-                      return (
-                        <SidebarMenuItem key={item.href}>
-                          <SidebarMenuButton
-                            asChild={!isLockedItem}
-                            isActive={isActive(item.href)}
-                            className={isLockedItem ? "opacity-40 pointer-events-none" : ""}
-                            data-testid={`nav-perf-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-                          >
-                            {isLockedItem ? (
-                              <span className="flex items-center gap-2">
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.label}</span>
-                              </span>
-                            ) : (
-                              <Link href={item.href}>
-                                <item.icon className="h-4 w-4" />
-                                <span className="flex-1">{item.label}</span>
-                                {isMyGoals && perfAlertCount > 0 && (
-                                  <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center bg-blue-500 text-white" data-testid="badge-perf-alerts">
-                                    {perfAlertCount > 9 ? "9+" : perfAlertCount}
-                                  </span>
-                                )}
-                              </Link>
-                            )}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
+                <Collapsible open={teamPerfOpen} onOpenChange={setTeamPerfOpen}>
+                  <CollapsibleTrigger className="w-full" data-testid="nav-team-perf-toggle">
+                    <SidebarGroupLabel className="flex items-center justify-between cursor-pointer hover:text-foreground transition-colors w-full">
+                      <span>Team & Performance</span>
+                      <span className="flex items-center gap-1">
+                        {!teamPerfOpen && teamPerfBadgeTotal > 0 && (
+                          <span className="text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center bg-blue-500 text-white" data-testid="badge-team-perf-collapsed">
+                            {teamPerfBadgeTotal > 9 ? "9+" : teamPerfBadgeTotal}
+                          </span>
+                        )}
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${teamPerfOpen ? "rotate-180" : ""}`} />
+                      </span>
+                    </SidebarGroupLabel>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarGroupContent>
+                      {filteredTeamMgmt.length > 0 && (
+                        <>
+                          <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Team</p>
+                          <SidebarMenu>
+                            {filteredTeamMgmt.map((item) => (
+                              <SidebarMenuItem key={item.href}>
+                                <SidebarMenuButton
+                                  asChild={!isComplianceLocked}
+                                  isActive={isActive(item.href)}
+                                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                                  data-testid={`nav-team-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                                >
+                                  {isComplianceLocked ? (
+                                    <span className="flex items-center gap-2">
+                                      <item.icon className="h-4 w-4" />
+                                      <span>{item.label}</span>
+                                    </span>
+                                  ) : (
+                                    <Link href={item.href}>
+                                      <item.icon className="h-4 w-4" />
+                                      <span>{item.label}</span>
+                                    </Link>
+                                  )}
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            ))}
+                          </SidebarMenu>
+                        </>
+                      )}
+                      {filteredPerformance.length > 0 && (
+                        <>
+                          <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Performance</p>
+                          <SidebarMenu>
+                            {filteredPerformance.map((item) => {
+                              const isGoals = item.href === "/admin/performance/goals";
+                              const perfAlertCount = perfAlerts?.total ?? 0;
+                              const isLockedItem = isComplianceLocked;
+                              return (
+                                <SidebarMenuItem key={item.href}>
+                                  <SidebarMenuButton
+                                    asChild={!isLockedItem}
+                                    isActive={isActive(item.href)}
+                                    className={isLockedItem ? "opacity-40 pointer-events-none" : ""}
+                                    data-testid={`nav-perf-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                                  >
+                                    {isLockedItem ? (
+                                      <span className="flex items-center gap-2">
+                                        <item.icon className="h-4 w-4" />
+                                        <span>{item.label}</span>
+                                      </span>
+                                    ) : (
+                                      <Link href={item.href}>
+                                        <item.icon className="h-4 w-4" />
+                                        <span className="flex-1">{item.label}</span>
+                                        {isGoals && perfAlertCount > 0 && (
+                                          <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center bg-blue-500 text-white" data-testid="badge-perf-alerts">
+                                            {perfAlertCount > 9 ? "9+" : perfAlertCount}
+                                          </span>
+                                        )}
+                                      </Link>
+                                    )}
+                                  </SidebarMenuButton>
+                                </SidebarMenuItem>
+                              );
+                            })}
+                          </SidebarMenu>
+                        </>
+                      )}
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </Collapsible>
               </SidebarGroup>
             )}
 

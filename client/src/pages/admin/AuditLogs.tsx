@@ -102,7 +102,7 @@ function ChangeSummary({ action, changes }: { action: string; changes: any }) {
   return null;
 }
 
-export default function AuditLogs() {
+export function AuditLogsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [page, setPage] = useState(0);
@@ -133,18 +133,15 @@ export default function AuditLogs() {
 
   if (user?.role !== "super_admin" && user?.role !== "admin") {
     return (
-      <AdminLayout>
         <div className="text-center py-12">
           <p className="text-muted-foreground">You do not have permission to view audit logs.</p>
         </div>
-      </AdminLayout>
     );
   }
 
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -226,6 +223,13 @@ export default function AuditLogs() {
           </CardContent>
         </Card>
       </div>
+  );
+}
+
+export default function AuditLogs() {
+  return (
+    <AdminLayout>
+      <AuditLogsContent />
     </AdminLayout>
   );
 }

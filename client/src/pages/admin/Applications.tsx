@@ -59,7 +59,7 @@ const statusColors: Record<string, string> = {
   rejected: "bg-red-100 text-red-800",
 };
 
-export default function AdminApplications() {
+export function AdminApplicationsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [search, setSearch] = useState("");
@@ -158,7 +158,6 @@ export default function AdminApplications() {
   }
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-page-title">Applications</h1>
@@ -322,6 +321,13 @@ export default function AdminApplications() {
           </Card>
         )}
       </div>
+  );
+}
+
+export default function AdminApplications() {
+  return (
+    <AdminLayout>
+      <AdminApplicationsContent />
     </AdminLayout>
   );
 }

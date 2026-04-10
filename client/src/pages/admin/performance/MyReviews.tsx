@@ -71,7 +71,7 @@ function StarRating({ value, onChange, readOnly = false }: { value: number; onCh
   );
 }
 
-export default function MyReviews() {
+export function MyReviewsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -147,7 +147,6 @@ export default function MyReviews() {
   const rayoAcademyUrl = rayoUrl?.value;
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
@@ -384,6 +383,13 @@ export default function MyReviews() {
           </DialogContent>
         </Dialog>
       </div>
+  );
+}
+
+export default function MyReviews() {
+  return (
+    <AdminLayout>
+      <MyReviewsContent />
     </AdminLayout>
   );
 }

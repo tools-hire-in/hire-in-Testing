@@ -60,7 +60,7 @@ function StarRating({ value, onChange, readOnly = false }: { value: number; onCh
   );
 }
 
-export default function TeamReviews() {
+export function TeamReviewsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -102,11 +102,9 @@ export default function TeamReviews() {
 
   if (!isManager) {
     return (
-      <AdminLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <p className="text-muted-foreground" data-testid="text-no-access">You don't have access to this page.</p>
         </div>
-      </AdminLayout>
     );
   }
 
@@ -130,7 +128,6 @@ export default function TeamReviews() {
   }, {} as Record<string, TeamReview[]>);
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-team-reviews-title">Team Reviews</h1>
@@ -335,6 +332,13 @@ export default function TeamReviews() {
           </DialogContent>
         </Dialog>
       </div>
+  );
+}
+
+export default function TeamReviews() {
+  return (
+    <AdminLayout>
+      <TeamReviewsContent />
     </AdminLayout>
   );
 }

@@ -87,7 +87,7 @@ const emptyFormData: JobFormData = {
   isHot: false,
 };
 
-export default function AdminJobs() {
+export function AdminJobsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -321,7 +321,6 @@ export default function AdminJobs() {
   };
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -824,6 +823,13 @@ export default function AdminJobs() {
           </DialogContent>
         </Dialog>
       </div>
+  );
+}
+
+export default function AdminJobs() {
+  return (
+    <AdminLayout>
+      <AdminJobsContent />
     </AdminLayout>
   );
 }

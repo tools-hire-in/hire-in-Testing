@@ -584,7 +584,7 @@ function GoalCard({
   );
 }
 
-export default function MyGoals() {
+export function MyGoalsContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [filter, setFilter] = useState("all");
@@ -634,7 +634,6 @@ export default function MyGoals() {
   };
 
   return (
-    <AdminLayout>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -755,6 +754,13 @@ export default function MyGoals() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+  );
+}
+
+export default function MyGoals() {
+  return (
+    <AdminLayout>
+      <MyGoalsContent />
     </AdminLayout>
   );
 }

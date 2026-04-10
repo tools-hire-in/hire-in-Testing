@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
+import { TicketsContent } from "./Tickets";
 
 interface AttendanceRecord {
   id: string;
@@ -59,6 +61,12 @@ const statusLabels: Record<string, string> = {
 export default function Attendance() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  const params = new URLSearchParams(window.location.search);
+  const requestedTab = params.get("tab");
+  const validTabs = ["attendance", "tickets"];
+  const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
   const [selectedDay, setSelectedDay] = useState<{
     dateStr: string;
@@ -131,14 +139,32 @@ export default function Attendance() {
     return "absent";
   };
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const url = new URL(window.location.href);
+    if (value === "attendance") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", value);
+    }
+    window.history.replaceState({}, "", url.toString());
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-attendance-title">Attendance</h1>
-            <p className="text-muted-foreground">Your attendance history</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-attendance-title">Attendance</h1>
+          <p className="text-muted-foreground">Your attendance and regularization requests</p>
+        </div>
+        <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
+          <TabsList>
+            <TabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</TabsTrigger>
+            <TabsTrigger value="tickets" data-testid="tab-tickets">Regularization Requests</TabsTrigger>
+          </TabsList>
+          <TabsContent value="attendance">
+            <div className="space-y-6">
+        <div className="flex items-center justify-end flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <div className="flex items-center border rounded-md overflow-hidden mr-2">
               <Button
@@ -336,6 +362,12 @@ export default function Attendance() {
           )}
         </DialogContent>
       </Dialog>
+          </TabsContent>
+          <TabsContent value="tickets">
+            <TicketsContent />
+          </TabsContent>
+        </Tabs>
+      </div>
     </AdminLayout>
   );
 }

@@ -72,7 +72,7 @@ An integrated performance management system behind the `performance_management_e
 - **Database Tables**: `performance_goals`, `check_ins`, `review_cycles`, `reviews`, `performance_feedback` with full enum types.
 - **API Routes**: All under `/api/performance/` namespace in `server/performanceRoutes.ts`. Includes Goals CRUD, Check-ins CRUD, Review Cycles management, Reviews (self/manager), Feedback (send/receive), and alerts badge endpoint.
 - **Feature Flag**: `performance_management_enabled` in system_settings, toggleable from HR Settings page. Disabled by default. Admin/HR/Manager always have access; employees see menu items only when flag is enabled.
-- **Sidebar**: "Performance" category with menu items: My Goals, Check-Ins, My Reviews, Feedback (employee-gated), Team Goals, Team Reviews (manager+), Review Cycles, Performance Analytics (HR/Admin).
+- **Sidebar**: Consolidated admin sidebar (~20 items) with 5 groups: Recruitment (3), My Workspace (9), Team Management (4), Performance (6), Administration (5). Combined pages use tabbed views: Goals (My+Team tabs), Reviews (My+Team tabs), Attendance (incl. Regularization Requests tab), Profile (incl. Emergency Contacts tab), Recruitment (Jobs+Applications tabs), Reports & Compliance (Salary+Compliance+Audit tabs). Old routes redirect to new tabbed equivalents via query params.
 - **Email Templates**: Review cycle opened notification, self-review due reminder, check-in reminder (24hr before) in `server/email.ts`.
 - **Role-Based Access**: All endpoints enforce role-based access. Manager endpoints validate team membership via `getTeamMembers()`. All write operations create audit logs.
 - **UI Pages**:

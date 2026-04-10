@@ -227,7 +227,7 @@ function ReportRecipientsCard() {
   );
 }
 
-export default function SalaryReports() {
+export function SalaryReportsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -307,11 +307,9 @@ export default function SalaryReports() {
   const allowedRoles = ["super_admin", "admin", "hr"];
   if (user?.role && !allowedRoles.includes(user.role)) {
     return (
-      <AdminLayout>
         <div className="flex items-center justify-center h-64">
           <p className="text-muted-foreground">You do not have permission to access this page.</p>
         </div>
-      </AdminLayout>
     );
   }
 
@@ -322,7 +320,6 @@ export default function SalaryReports() {
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 
   return (
-    <AdminLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-salary-reports-title">Salary Reports</h1>
@@ -527,6 +524,13 @@ export default function SalaryReports() {
           </Card>
         )}
       </div>
+  );
+}
+
+export default function SalaryReports() {
+  return (
+    <AdminLayout>
+      <SalaryReportsContent />
     </AdminLayout>
   );
 }

@@ -162,7 +162,7 @@ function getEmployeeStatusBadge(emp: ComplianceEmployee) {
   return <Badge variant="destructive" data-testid="badge-employee-incomplete">Incomplete</Badge>;
 }
 
-export default function DocumentCompliance() {
+export function DocumentComplianceContent() {
   const { toast } = useToast();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -735,4 +735,8 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
       )}
     </>
   );
+}
+
+export default function DocumentCompliance() {
+  return <DocumentComplianceContent />;
 }

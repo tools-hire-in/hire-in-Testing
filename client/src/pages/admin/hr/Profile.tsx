@@ -9,9 +9,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { EmergencyContactsSection } from "@/components/admin/EmergencyContacts";
 
 interface LeaveBalance {
   id: string;
@@ -295,6 +297,12 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
+  const params = new URLSearchParams(window.location.search);
+  const requestedTab = params.get("tab");
+  const validTabs = ["profile", "emergency-contacts"];
+  const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "profile";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
   const { data: balances } = useQuery<LeaveBalance[]>({
     queryKey: ["/api/hr/leave-balances/my"],
     enabled: isAuthenticated && !!user?.totpEnabled,
@@ -338,6 +346,17 @@ export default function Profile() {
   const presentDays = monthlyAttendance?.filter(r => ["present", "late", "half_day"].includes(r.status)).length || 0;
   const totalHours = monthlyAttendance?.reduce((s, r) => s + parseFloat(r.totalHours || "0"), 0) || 0;
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const url = new URL(window.location.href);
+    if (value === "profile") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", value);
+    }
+    window.history.replaceState({}, "", url.toString());
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -346,6 +365,12 @@ export default function Profile() {
           <p className="text-muted-foreground">Personal information and overview</p>
         </div>
 
+        <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-profile">
+          <TabsList>
+            <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
+            <TabsTrigger value="emergency-contacts" data-testid="tab-emergency-contacts">Emergency Contacts</TabsTrigger>
+          </TabsList>
+          <TabsContent value="profile">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-1">
             <CardContent className="p-6 text-center">
@@ -443,6 +468,11 @@ export default function Profile() {
             <TwoFactorSection />
           </div>
         </div>
+          </TabsContent>
+          <TabsContent value="emergency-contacts">
+            <EmergencyContactsSection />
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminLayout>
   );

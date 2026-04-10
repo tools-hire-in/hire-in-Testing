@@ -470,7 +470,7 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
   );
 }
 
-export default function TeamGoals() {
+export function TeamGoalsContent() {
   const { user } = useAuth();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -484,7 +484,6 @@ export default function TeamGoals() {
 
   if (!hasAccess) {
     return (
-      <AdminLayout>
         <div className="p-6 max-w-5xl mx-auto">
           <Card>
             <CardContent className="py-16 text-center">
@@ -496,7 +495,6 @@ export default function TeamGoals() {
             </CardContent>
           </Card>
         </div>
-      </AdminLayout>
     );
   }
 
@@ -517,7 +515,6 @@ export default function TeamGoals() {
       : 0;
 
   return (
-    <AdminLayout>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -602,6 +599,13 @@ export default function TeamGoals() {
           members={data?.members || []}
         />
       </div>
+  );
+}
+
+export default function TeamGoals() {
+  return (
+    <AdminLayout>
+      <TeamGoalsContent />
     </AdminLayout>
   );
 }
