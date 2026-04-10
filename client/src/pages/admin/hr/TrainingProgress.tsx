@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BarChart3, Download, CheckCircle, Clock, AlertCircle, Loader2,
-  ChevronRight, User, GraduationCap, CalendarPlus,
+  ChevronRight, User, GraduationCap, CalendarPlus, WifiOff, ExternalLink,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,10 +48,24 @@ export default function TrainingProgress() {
   const endorserRoles = ["manager", "hr", "admin"];
   const isEndorser = endorserRoles.includes(user?.role || "");
 
-  const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/onboarding/team-progress"],
+  const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/rayo-academy/status"],
     queryFn: async () => {
-      const res = await fetch("/api/onboarding/team-progress", { credentials: "include" });
+      try {
+        const res = await fetch("/api/rayo-academy/status", { credentials: "include" });
+        if (!res.ok) return { enabled: false };
+        return res.json();
+      } catch { return { enabled: false }; }
+    },
+    staleTime: 60000,
+  });
+  const isRayoEnabled = rayoStatus?.enabled === true;
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: isRayoEnabled ? ["/api/rayo-academy/team-progress"] : ["/api/onboarding/team-progress"],
+    queryFn: async () => {
+      const url = isRayoEnabled ? "/api/rayo-academy/team-progress" : "/api/onboarding/team-progress";
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
@@ -86,8 +100,18 @@ export default function TrainingProgress() {
   });
 
   const { data: userDetail, isLoading: detailLoading } = useQuery<any[]>({
-    queryKey: ["/api/onboarding/team-progress", selectedUserId],
+    queryKey: [isRayoEnabled ? "/api/rayo-academy/team-progress" : "/api/onboarding/team-progress", "detail", selectedUserId],
     queryFn: async () => {
+      if (isRayoEnabled && data?.fromApi) {
+        const userRow = data?.matrix?.find((row: any) => row.user.id === selectedUserId);
+        if (userRow) {
+          return userRow.trackProgress.map((tp: any) => ({
+            track: { title: tp.trackTitle, id: tp.trackId },
+            assignment: { id: tp.assignmentId || tp.trackId, status: tp.status, dueDate: tp.dueDate, completedAt: tp.completedAt },
+            sections: [],
+          }));
+        }
+      }
       const res = await fetch(`/api/onboarding/team-progress/${selectedUserId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
@@ -113,11 +137,35 @@ export default function TrainingProgress() {
             </h1>
             <p className="text-muted-foreground mt-1">Monitor your team's training completion across all tracks</p>
           </div>
-          <Button variant="outline" onClick={handleExport} data-testid="button-export-csv">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <div className="flex gap-2">
+            {isRayoEnabled && (
+              <Button
+                onClick={() => window.open("https://rayo.academy", "_blank")}
+                className="bg-indigo-600 hover:bg-indigo-700"
+                data-testid="button-open-rayo-academy"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open Rayo Academy
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleExport} data-testid="button-export-csv">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          </div>
         </div>
+
+        {isRayoEnabled && data && data.fromApi === false && (
+          <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30" data-testid="banner-rayo-fallback">
+            <WifiOff className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">Training data may be delayed</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                Unable to reach Rayo Academy. Showing locally cached training data.
+              </p>
+            </div>
+          </div>
+        )}
 
         {isLoading && (
           <div className="flex items-center gap-2 text-muted-foreground">

@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
   Loader2, AlertCircle, Trophy, Download, ArrowLeft, X, AlertTriangle,
-  ShieldAlert, CalendarPlus, Send,
+  ShieldAlert, CalendarPlus, Send, ExternalLink, Award, WifiOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +53,6 @@ function DwellTimer({
       });
     }, 1000);
 
-    // Post dwell every 15s
     postRef.current = setInterval(async () => {
       await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsedRef.current });
     }, 15000);
@@ -61,7 +60,6 @@ function DwellTimer({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (postRef.current) clearInterval(postRef.current);
-      // Final dwell post on unmount
       if (elapsedRef.current > 0) {
         apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/dwell`, { seconds: elapsedRef.current });
       }
@@ -209,7 +207,6 @@ function SectionPlayer({
       setViewStarted(true);
       apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${section.id}/view`);
     }
-    // Reset step when section changes
     setStep("read");
     setQuizPassed(section.progress?.quizPassed ?? false);
   }, [section.id]);
@@ -225,6 +222,7 @@ function SectionPlayer({
         queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-assignments"] });
         queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-training-alerts"] });
         queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/my-assignments"] });
       } else {
         toast({ title: "Section acknowledged!" });
       }
@@ -270,7 +268,6 @@ function SectionPlayer({
 
   return (
     <div className="space-y-6">
-      {/* Step indicators */}
       <div className="flex items-center gap-2 text-sm">
         {["read", "quiz", "signoff"].map((s, i) => (
           <div key={s} className="flex items-center gap-2">
@@ -410,6 +407,7 @@ function TrackPlayer({
       setCompleted(true);
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/my-assignments"] });
       toast({ title: "Track completed! Well done!" });
     } catch {
       toast({ title: "Failed to complete track", variant: "destructive" });
@@ -483,7 +481,6 @@ function TrackPlayer({
 
   return (
     <div className="flex h-full">
-      {/* Sidebar */}
       <div className="w-64 border-r bg-muted/30 p-4 space-y-2 shrink-0">
         <Button variant="ghost" size="sm" onClick={onBack} className="mb-2 -ml-2 text-muted-foreground">
           <ArrowLeft className="h-4 w-4 mr-1" />
@@ -518,7 +515,6 @@ function TrackPlayer({
         })}
       </div>
 
-      {/* Main content */}
       <div className="flex-1 overflow-y-auto p-6">
         {activeSection && (
           <>
@@ -540,7 +536,6 @@ function TrackPlayer({
               userName={`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
               onCompleted={async () => {
                 await refetch();
-                // Auto advance to next section
                 const nextIdx = activeSectionIdx + 1;
                 if (nextIdx < (data?.sections?.length ?? 0)) {
                   setTimeout(() => setActiveSectionId(data.sections[nextIdx].id), 500);
@@ -654,7 +649,36 @@ export default function MyTraining() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showExtensionFor, setShowExtensionFor] = useState<string | null>(null);
 
-  const { data: assignments = [], isLoading } = useQuery<any[]>({
+  const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/rayo-academy/status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/status", { credentials: "include" });
+        if (!res.ok) return { enabled: false };
+        return res.json();
+      } catch {
+        return { enabled: false };
+      }
+    },
+    staleTime: 60000,
+  });
+
+  const isRayoEnabled = rayoStatus?.enabled === true;
+
+  const { data: rayoData, isLoading: rayoLoading } = useQuery<{ assignments: any[]; fromApi: boolean }>({
+    queryKey: ["/api/rayo-academy/my-assignments"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/my-assignments", { credentials: "include" });
+        if (!res.ok) return { assignments: [], fromApi: false };
+        return res.json();
+      } catch {
+        return { assignments: [], fromApi: false };
+      }
+    },
+  });
+
+  const { data: localAssignments = [], isLoading: localLoading } = useQuery<any[]>({
     queryKey: ["/api/onboarding/my-assignments"],
     queryFn: async () => {
       const res = await fetch("/api/onboarding/my-assignments", { credentials: "include" });
@@ -664,7 +688,40 @@ export default function MyTraining() {
       }
       return res.json();
     },
+    enabled: !isRayoEnabled,
   });
+
+  const assignments = isRayoEnabled && rayoData?.fromApi
+    ? rayoData.assignments.map((a: any) => ({
+        id: a.id,
+        status: a.status,
+        dueDate: a.dueDate,
+        completedAt: a.completedAt,
+        totalSections: a.totalSections,
+        completedSections: a.completedSections,
+        progressPct: a.progressPct,
+        track: { title: a.trackTitle, description: a.trackDescription },
+        certificateUrl: a.certificateUrl,
+        fromRayo: true,
+      }))
+    : isRayoEnabled && rayoData
+      ? rayoData.assignments.map((a: any) => ({
+          id: a.id,
+          status: a.status,
+          dueDate: a.dueDate,
+          completedAt: a.completedAt,
+          totalSections: a.totalSections,
+          completedSections: a.completedSections,
+          progressPct: a.progressPct,
+          track: { title: a.trackTitle, description: a.trackDescription },
+          certificateUrl: a.certificateUrl,
+          fromRayo: false,
+        }))
+      : localAssignments;
+
+  const isLoading = isRayoEnabled ? rayoLoading : localLoading;
+  const isFromApi = isRayoEnabled && rayoData?.fromApi === true;
+  const showFallbackBanner = isRayoEnabled && rayoData && !rayoData.fromApi;
 
   const EXEMPT_ROLES = ["super_admin", "admin"];
   const isLockExempt = user?.role ? EXEMPT_ROLES.includes(user.role) : true;
@@ -674,11 +731,13 @@ export default function MyTraining() {
     overdueCount: number;
     trackTitles: string[];
     pendingExtensions: any[];
+    fromApi?: boolean;
   }>({
-    queryKey: ["/api/onboarding/compliance-status"],
+    queryKey: isRayoEnabled ? ["/api/rayo-academy/compliance-status"] : ["/api/onboarding/compliance-status"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/onboarding/compliance-status", { credentials: "include" });
+        const url = isRayoEnabled ? "/api/rayo-academy/compliance-status" : "/api/onboarding/compliance-status";
+        const res = await fetch(url, { credentials: "include" });
         if (!res.ok) return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
         return res.json();
       } catch {
@@ -720,7 +779,7 @@ export default function MyTraining() {
     return myExtensionRequests.filter((r: any) => r.assignmentId === assignmentId);
   };
 
-  if (activeAssignmentId) {
+  if (activeAssignmentId && !(assignments as any[]).find((a: any) => a.fromRayo && a.id === activeAssignmentId)) {
     return (
       <AdminLayout>
         <TrackPlayer assignmentId={activeAssignmentId} onBack={() => setActiveAssignmentId(null)} />
@@ -731,13 +790,38 @@ export default function MyTraining() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <GraduationCap className="h-6 w-6 text-blue-600" />
-            My Training
-          </h1>
-          <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <GraduationCap className="h-6 w-6 text-blue-600" />
+              My Training
+            </h1>
+            <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
+          </div>
+          <Button
+            onClick={() => window.open("https://rayo.academy", "_blank")}
+            className="bg-indigo-600 hover:bg-indigo-700"
+            data-testid="button-open-rayo-academy"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Open Rayo Academy
+          </Button>
         </div>
+
+        {showFallbackBanner && (
+          <div
+            className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30"
+            data-testid="banner-rayo-fallback"
+          >
+            <WifiOff className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">Training data may be delayed</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                Unable to reach Rayo Academy. Showing locally cached training data. Your progress may not reflect recent activity on Rayo Academy.
+              </p>
+            </div>
+          </div>
+        )}
 
         {isLocked && (
           <div
@@ -802,6 +886,15 @@ export default function MyTraining() {
               <GraduationCap className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">No training assigned yet</p>
               <p className="text-sm mt-1">Your manager will assign training tracks when ready.</p>
+              {isRayoEnabled && (
+                <p className="text-sm mt-3">
+                  Visit{" "}
+                  <a href="https://rayo.academy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">
+                    Rayo Academy
+                  </a>{" "}
+                  to explore available courses.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -820,19 +913,30 @@ export default function MyTraining() {
 
             const isOverdue = status === "overdue";
             const isDueSoon = !isOverdue && a.dueDate && new Date(a.dueDate) >= now && new Date(a.dueDate) <= in5days;
-            const showExtensionSection = status !== "completed";
+            const showExtensionSection = status !== "completed" && !a.fromRayo;
 
             return (
               <div key={a.id} className="space-y-2">
                 <Card
                   className="hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => setActiveAssignmentId(a.id)}
+                  onClick={() => {
+                    if (a.fromRayo) {
+                      window.open("https://rayo.academy", "_blank");
+                    } else {
+                      setActiveAssignmentId(a.id);
+                    }
+                  }}
                   data-testid={`card-assignment-${a.id}`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
                       <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {a.fromRayo && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700" data-testid={`badge-rayo-${a.id}`}>
+                            Rayo Academy
+                          </span>
+                        )}
                         {isDueSoon && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700" data-testid={`badge-due-soon-${a.id}`}>
                             due soon
@@ -864,9 +968,24 @@ export default function MyTraining() {
                       {status === "completed" && (
                         <p className="text-xs text-green-600 font-medium">✓ Completed {formatDate(a.completedAt)}</p>
                       )}
+                      {status === "completed" && a.certificateUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-1"
+                          onClick={(e) => { e.stopPropagation(); window.open(a.certificateUrl, "_blank"); }}
+                          data-testid={`button-certificate-${a.id}`}
+                        >
+                          <Award className="h-4 w-4 mr-1" />
+                          View Certificate
+                        </Button>
+                      )}
                     </div>
                     <Button size="sm" className="mt-3 w-full" variant={status === "completed" ? "outline" : "default"}>
-                      {status === "completed" ? "Review" : status === "not_started" ? "Start" : "Continue"} →
+                      {a.fromRayo
+                        ? <><ExternalLink className="h-4 w-4 mr-2" />Open in Rayo Academy</>
+                        : status === "completed" ? "Review" : status === "not_started" ? "Start" : "Continue"
+                      } {!a.fromRayo && "→"}
                   </Button>
                 </CardContent>
               </Card>

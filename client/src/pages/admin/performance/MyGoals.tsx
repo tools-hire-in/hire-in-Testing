@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Target,
@@ -12,6 +12,8 @@ import {
   Clock,
   AlertCircle,
   Filter,
+  ExternalLink,
+  GraduationCap,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +67,7 @@ interface PerformanceGoal {
   progress: number;
   status: string;
   successCriteria: string | null;
+  rayoAcademyTrackId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,6 +145,7 @@ interface GoalFormData {
   progress: number;
   status: string;
   successCriteria: string;
+  rayoAcademyTrackId: string;
 }
 
 const defaultFormData: GoalFormData = {
@@ -154,6 +158,7 @@ const defaultFormData: GoalFormData = {
   progress: 0,
   status: "not_started",
   successCriteria: "",
+  rayoAcademyTrackId: "",
 };
 
 function GoalFormDialog({
@@ -169,7 +174,32 @@ function GoalFormDialog({
   const [form, setForm] = useState<GoalFormData>(defaultFormData);
   const [errors, setErrors] = useState<Partial<Record<keyof GoalFormData, string>>>({});
 
-  useState(() => {
+  const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/rayo-academy/status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/status", { credentials: "include" });
+        if (!res.ok) return { enabled: false };
+        return res.json();
+      } catch { return { enabled: false }; }
+    },
+    staleTime: 60000,
+  });
+  const isRayoEnabled = rayoStatus?.enabled === true;
+
+  const { data: rayoTracks } = useQuery<{ tracks: any[]; fromApi: boolean }>({
+    queryKey: ["/api/rayo-academy/tracks"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/tracks", { credentials: "include" });
+        if (!res.ok) return { tracks: [], fromApi: false };
+        return res.json();
+      } catch { return { tracks: [], fromApi: false }; }
+    },
+    enabled: isRayoEnabled,
+  });
+
+  useEffect(() => {
     if (editGoal) {
       setForm({
         title: editGoal.title,
@@ -181,11 +211,12 @@ function GoalFormDialog({
         progress: editGoal.progress,
         status: editGoal.status,
         successCriteria: editGoal.successCriteria || "",
+        rayoAcademyTrackId: editGoal.rayoAcademyTrackId || "",
       });
     } else {
       setForm(defaultFormData);
     }
-  });
+  }, [editGoal]);
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof GoalFormData, string>> = {};
@@ -277,6 +308,31 @@ function GoalFormDialog({
               rows={3}
             />
           </div>
+
+          {isRayoEnabled && rayoTracks && rayoTracks.tracks.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="goal-rayo-track">Link to Rayo Academy Track (optional)</Label>
+              <Select
+                value={form.rayoAcademyTrackId || "none"}
+                onValueChange={(val) => setForm({ ...form, rayoAcademyTrackId: val === "none" ? "" : val })}
+              >
+                <SelectTrigger data-testid="select-goal-rayo-track">
+                  <SelectValue placeholder="No linked track" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No linked track</SelectItem>
+                  {rayoTracks.tracks.map((track: any) => (
+                    <SelectItem key={track.id} value={track.id}>
+                      {track.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Linking a Rayo Academy track helps track training progress alongside your performance goal.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -399,6 +455,38 @@ function GoalFormDialog({
   );
 }
 
+function RayoTrackProgressInline({ trackId }: { trackId: string }) {
+  const { data } = useQuery<{ trackId: string; progressPct: number; status: string }>({
+    queryKey: ["/api/rayo-academy/track-progress", trackId],
+    queryFn: async () => {
+      const res = await fetch(`/api/rayo-academy/track-progress/${trackId}`, { credentials: "include" });
+      if (!res.ok) return { trackId, progressPct: 0, status: "unknown" };
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  if (!data || data.status === "unknown") return null;
+
+  return (
+    <div className="mt-2 p-2 rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800" data-testid={`rayo-track-progress-${trackId}`}>
+      <div className="flex items-center gap-2 text-xs">
+        <GraduationCap className="h-3.5 w-3.5 text-indigo-600" />
+        <span className="text-indigo-700 dark:text-indigo-300 font-medium">Rayo Academy Track</span>
+        <span className="ml-auto font-medium text-indigo-700 dark:text-indigo-300">{data.progressPct}%</span>
+      </div>
+      <Progress value={data.progressPct} className="h-1.5 mt-1" />
+      <button
+        className="text-xs text-indigo-600 hover:text-indigo-800 mt-1 flex items-center gap-1"
+        onClick={(e) => { e.stopPropagation(); window.open("https://rayo.academy", "_blank"); }}
+      >
+        <ExternalLink className="h-3 w-3" />
+        Open in Rayo Academy
+      </button>
+    </div>
+  );
+}
+
 function GoalCard({
   goal,
   onEdit,
@@ -459,6 +547,10 @@ function GoalCard({
               </div>
               <Progress value={goal.progress} className="h-2" />
             </div>
+
+            {goal.rayoAcademyTrackId && (
+              <RayoTrackProgressInline trackId={goal.rayoAcademyTrackId} />
+            )}
 
             <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">

@@ -310,16 +310,33 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const EXEMPT_LOCK_ROLES = ["super_admin", "admin"];
   const isLockExempt = user?.role ? EXEMPT_LOCK_ROLES.includes(user.role) : true;
 
+  const { data: rayoStatusForLayout } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/rayo-academy/status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/status", { credentials: "include" });
+        if (!res.ok) return { enabled: false };
+        return res.json();
+      } catch { return { enabled: false }; }
+    },
+    staleTime: 60000,
+    enabled: !!user,
+  });
+
+  const complianceEndpoint = rayoStatusForLayout?.enabled
+    ? "/api/rayo-academy/compliance-status"
+    : "/api/onboarding/compliance-status";
+
   const { data: complianceStatus } = useQuery<{
     locked: boolean;
     overdueCount: number;
     trackTitles: string[];
     pendingExtensions: any[];
   }>({
-    queryKey: ["/api/onboarding/compliance-status"],
+    queryKey: [complianceEndpoint],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/onboarding/compliance-status", { credentials: "include" });
+        const res = await fetch(complianceEndpoint, { credentials: "include" });
         if (!res.ok) return { locked: false, overdueCount: 0, trackTitles: [], pendingExtensions: [] };
         return res.json();
       } catch {

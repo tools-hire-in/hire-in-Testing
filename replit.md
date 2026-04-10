@@ -53,11 +53,19 @@ An integrated internal employee management system within the admin panel:
 - **Post-Onboarding Documents**: Management of employee documents, bank details, and emergency contacts.
 - **Security**: Mandatory TOTP 2FA, 30-minute auto session timeout with warning, rolling sessions.
 - **Onboarding Training & SOPs System**: Structured learning tracks with sections, markdown content, quizzes, and acknowledgements.
-    - **HR Admin — Training Management**: Authors tracks, assigns to employees, publishes/unpublishes, and can seed pre-built SOP tracks.
-    - **Employee — My Training**: Displays assigned tracks, provides a player with dwell time gates, quiz logic, and sign-off.
-    - **Manager/HR — Training Progress**: Matrix view of employee training progress with drill-down details and CSV export.
+    - **HR Admin — Training Management**: Authors tracks, assigns to employees, publishes/unpublishes, and can seed pre-built SOP tracks. When Rayo Academy is enabled, assignments go through Rayo API.
+    - **Employee — My Training**: Displays assigned tracks, provides a player with dwell time gates, quiz logic, and sign-off. When Rayo Academy enabled, shows Rayo-sourced assignments with "Open Rayo Academy" button. Graceful fallback banner when API is unreachable.
+    - **Manager/HR — Training Progress**: Matrix view of employee training progress with drill-down details and CSV export. Uses Rayo Academy team progress API when enabled.
     - **Feature Flag**: `onboarding_training_enabled` controls visibility for employees.
     - **Training Compliance Lock**: Overdue training locks portal access for certain roles, blocking actions like punch-in/out. Includes an extension request endorsement workflow.
+    - **Rayo Academy Integration**: External training platform thin-client integration.
+        - **Feature Flags**: `rayo_academy_enabled`, `rayo_academy_api_url`, `rayo_academy_api_key` in `system_settings`.
+        - **API Client**: `server/rayoAcademyClient.ts` wraps all Rayo Academy API calls with graceful fallback to local DB.
+        - **API Routes**: Under `/api/rayo-academy/` namespace — status, tracks, my-assignments, assign, team-progress, compliance-status, track-progress, certificates, provision.
+        - **User Provisioning**: New employees auto-provisioned in Rayo Academy on creation (non-fatal).
+        - **Performance Goal Linking**: `rayoAcademyTrackId` column on `performance_goals` table links dev goals to Rayo tracks.
+        - **Compliance Gating**: AdminLayout compliance check uses Rayo API when enabled, falling back to local.
+        - **Fallback Banner**: "Training data may be delayed" banner shown when Rayo API is unreachable but feature is enabled.
 
 ### Performance Management Module (Phase 1)
 An integrated performance management system behind the `performance_management_enabled` feature flag:

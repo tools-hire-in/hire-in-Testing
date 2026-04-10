@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
-  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle,
+  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,31 @@ export default function TrainingManagement() {
       { optionText: "", isCorrect: false },
       { optionText: "", isCorrect: false },
     ],
+  });
+
+  const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/rayo-academy/status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/status", { credentials: "include" });
+        if (!res.ok) return { enabled: false };
+        return res.json();
+      } catch { return { enabled: false }; }
+    },
+    staleTime: 60000,
+  });
+  const isRayoEnabled = rayoStatus?.enabled === true;
+
+  const { data: rayoTracks } = useQuery<{ tracks: any[]; fromApi: boolean }>({
+    queryKey: ["/api/rayo-academy/tracks"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/rayo-academy/tracks", { credentials: "include" });
+        if (!res.ok) return { tracks: [], fromApi: false };
+        return res.json();
+      } catch { return { tracks: [], fromApi: false }; }
+    },
+    enabled: isRayoEnabled,
   });
 
   const { data: tracks = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/onboarding/tracks"] });
@@ -234,16 +259,27 @@ export default function TrainingManagement() {
   const [assignDueDate, setAssignDueDate] = useState("");
 
   const assignTrack = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/onboarding/tracks/${assignTrackId}/assign`, {
-      userIds: assignSelectedUsers,
-      dueDate: assignDueDate || null,
-    }),
+    mutationFn: async () => {
+      if (isRayoEnabled) {
+        return apiRequest("POST", "/api/rayo-academy/assign", {
+          userIds: assignSelectedUsers,
+          trackId: assignTrackId,
+          dueDate: assignDueDate || null,
+        });
+      }
+      return apiRequest("POST", `/api/onboarding/tracks/${assignTrackId}/assign`, {
+        userIds: assignSelectedUsers,
+        dueDate: assignDueDate || null,
+      });
+    },
     onSuccess: async (res) => {
       const data = await res.json();
-      const assigned = data.results.filter((r: any) => r.status === "assigned").length;
+      const assigned = data.results.filter((r: any) => r.status === "assigned" || r.success).length;
       const skipped = data.results.filter((r: any) => r.status === "already_assigned").length;
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks", assignTrackId, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/my-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/team-progress"] });
       toast({ title: `Assigned to ${assigned} employee(s)${skipped > 0 ? `, ${skipped} already assigned` : ""}` });
       setAssignSelectedUsers([]);
       setAssignDueDate("");
@@ -327,6 +363,9 @@ export default function TrainingManagement() {
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <GraduationCap className="h-6 w-6 text-blue-600" />
               Training Management
+              {isRayoEnabled && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">Rayo Academy</span>
+              )}
             </h1>
             <p className="text-muted-foreground mt-1">Author tracks, manage content, and assign training to employees</p>
           </div>
@@ -556,15 +595,86 @@ export default function TrainingManagement() {
           </Card>
         )}
 
+        {isRayoEnabled && rayoTracks && (
+          <div className="space-y-4">
+            {!rayoTracks.fromApi && (
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30" data-testid="banner-rayo-fallback">
+                <WifiOff className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">Training data may be delayed</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                    Unable to reach Rayo Academy. Showing locally cached track data.
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                Rayo Academy Tracks ({rayoTracks.tracks.length})
+              </h2>
+              <Button size="sm" variant="outline" onClick={() => window.open("https://rayo.academy", "_blank")} data-testid="button-open-rayo-academy">
+                <ExternalLink className="h-4 w-4 mr-1" />
+                Manage in Rayo Academy
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {rayoTracks.tracks.map((track: any) => (
+                <Card key={track.id} className="hover:shadow-md transition-all" data-testid={`card-rayo-track-${track.id}`}>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm leading-tight truncate">{track.title}</p>
+                        {track.description && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{track.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
+                            Rayo Academy
+                          </span>
+                          {track.category && (
+                            <span className="text-xs text-muted-foreground">{track.category}</span>
+                          )}
+                          {track.estimatedHours > 0 && (
+                            <span className="text-xs text-muted-foreground">{track.estimatedHours}h</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="mt-3 w-full"
+                      variant="outline"
+                      onClick={() => {
+                        setAssignTrackId(track.id);
+                        setShowAssignModal(true);
+                      }}
+                      data-testid={`button-assign-rayo-track-${track.id}`}
+                    >
+                      <UserPlus className="h-4 w-4 mr-1" />
+                      Assign to Employees
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isRayoEnabled && <Separator />}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Track List */}
           <div className="space-y-3">
-            <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Learning Tracks</h2>
+            <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+              {isRayoEnabled ? "Local Learning Tracks (Legacy)" : "Learning Tracks"}
+            </h2>
             {isLoading && <div className="text-muted-foreground text-sm">Loading...</div>}
             {!isLoading && tracks.length === 0 && (
               <Card className="border-dashed">
                 <CardContent className="pt-6 pb-6 text-center text-muted-foreground text-sm">
-                  No tracks yet. Create one or load the SOP content.
+                  {isRayoEnabled
+                    ? "No local tracks. Use Rayo Academy tracks above for new assignments."
+                    : "No tracks yet. Create one or load the SOP content."}
                 </CardContent>
               </Card>
             )}
@@ -600,7 +710,7 @@ export default function TrainingManagement() {
               <Card className="border-dashed">
                 <CardContent className="pt-12 pb-12 text-center text-muted-foreground">
                   <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p>Select a track to view and edit its content</p>
+                  <p>{isRayoEnabled ? "Select a local track to view, or use Rayo Academy tracks above" : "Select a track to view and edit its content"}</p>
                 </CardContent>
               </Card>
             )}

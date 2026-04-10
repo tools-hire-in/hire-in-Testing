@@ -112,6 +112,68 @@ export async function sendInvitationEmail(options: {
   }
 }
 
+export async function sendRayoAcademyCredentialsEmail(options: {
+  to: string;
+  firstName: string;
+  tempPassword: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: "Your Rayo Academy Training Account",
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayo Academy</h1>
+            <p style="color: #ede9fe; margin: 8px 0 0; font-size: 14px;">Professional Development Platform</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              A Rayo Academy training account has been created for you. Use the credentials below to access your training courses.
+            </p>
+            <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Your Rayo Academy Credentials</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0; width: 140px;">Email:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0;">${options.to}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0;">Temporary Password:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0; font-family: monospace;">${options.tempPassword}</td>
+                </tr>
+              </table>
+            </div>
+            <p style="color: #dc2626; font-size: 13px; margin: 0 0 24px;">
+              Please change your password after your first login to Rayo Academy.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="https://rayo.academy" style="display: inline-block; background: #7c3aed; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Open Rayo Academy
+              </a>
+            </div>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nA Rayo Academy training account has been created for you.\n\nYour credentials:\nEmail: ${options.to}\nTemporary Password: ${options.tempPassword}\n\nPlease visit https://rayo.academy to log in and change your password.\n\nHire'in Solutions`,
+    };
+    await client.send(msg);
+    console.log(`Rayo Academy credentials email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send Rayo Academy credentials email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendDocumentReminderEmail(options: {
   to: string;
   firstName: string;

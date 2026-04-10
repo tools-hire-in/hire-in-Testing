@@ -142,9 +142,20 @@ export default function AdminUsers() {
     mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string; hierarchyLevel?: string }) => {
       return apiRequest("POST", "/api/admin/users", data);
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "User invited successfully", description: "An invitation email with login credentials has been sent." });
+      let rayoMsg = "";
+      try {
+        const data = await res.json();
+        if (data.rayoProvisioning?.success) {
+          rayoMsg = data.rayoProvisioning.tempPassword
+            ? ` Rayo Academy account provisioned. Temporary password: ${data.rayoProvisioning.tempPassword} (also emailed to user).`
+            : " Rayo Academy account has been provisioned.";
+        } else if (data.rayoProvisioning && !data.rayoProvisioning.success) {
+          rayoMsg = ` Rayo Academy provisioning failed: ${data.rayoProvisioning.error || "unknown error"}.`;
+        }
+      } catch {}
+      toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
       setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId("");

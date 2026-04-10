@@ -131,7 +131,7 @@ export function registerPerformanceRoutes(app: Express) {
     const role = req.session.role!;
 
     try {
-      const { title, description, category, startDate, targetDate, weight, employeeId } = req.body;
+      const { title, description, category, startDate, targetDate, weight, employeeId, rayoAcademyTrackId } = req.body;
       if (!title) return res.status(400).json({ error: "Title is required" });
 
       const targetEmployee = employeeId || userId;
@@ -151,6 +151,7 @@ export function registerPerformanceRoutes(app: Express) {
         startDate: startDate || null,
         targetDate: targetDate || null,
         weight: weight || 0,
+        rayoAcademyTrackId: rayoAcademyTrackId || null,
       }).returning();
 
       await createAuditLog(userId, "performance_goal_created", { goalId: goal.id, title }, targetEmployee !== userId ? targetEmployee : undefined);
@@ -178,7 +179,7 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
-      const { title, description, category, startDate, targetDate, weight, status, progress } = req.body;
+      const { title, description, category, startDate, targetDate, weight, status, progress, rayoAcademyTrackId } = req.body;
       const updates: Partial<PerformanceGoal> = { updatedAt: new Date() };
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
@@ -188,6 +189,7 @@ export function registerPerformanceRoutes(app: Express) {
       if (weight !== undefined) updates.weight = weight;
       if (status !== undefined) updates.status = status;
       if (progress !== undefined) updates.progress = Math.min(100, Math.max(0, progress));
+      if (rayoAcademyTrackId !== undefined) updates.rayoAcademyTrackId = rayoAcademyTrackId;
 
       const [updated] = await db.update(performanceGoals).set(updates).where(eq(performanceGoals.id, req.params.id)).returning();
       await createAuditLog(userId, "performance_goal_updated", { goalId: req.params.id, changes: updates as Record<string, unknown> }, existing.employeeId);

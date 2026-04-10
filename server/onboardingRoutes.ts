@@ -8,6 +8,11 @@ import {
 import { eq, and, inArray, sql, isNull, lt, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
+import {
+  isRayoEnabled, getRayoTracks, getRayoUserAssignments, assignRayoTrack,
+  getRayoTeamProgress, getRayoComplianceStatus, getRayoTrackProgress,
+  getRayoCertificates, provisionRayoUser,
+} from "./rayoAcademyClient";
 
 const ADMIN_ROLES = ["super_admin", "admin", "hr", "manager", "operations"];
 const HR_ROLES = ["super_admin", "admin", "hr"];
@@ -1318,6 +1323,241 @@ export function registerOnboardingRoutes(app: Express) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to update extension request" });
+    }
+  });
+
+  // ==========================================
+  // RAYO ACADEMY INTEGRATION
+  // ==========================================
+
+  app.get("/api/rayo-academy/status", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const enabled = await isRayoEnabled();
+      res.json({ enabled });
+    } catch (error) {
+      res.json({ enabled: false });
+    }
+  });
+
+  app.get("/api/rayo-academy/tracks", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const result = await getRayoTracks();
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch Rayo Academy tracks" });
+    }
+  });
+
+  app.get("/api/rayo-academy/my-assignments", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+
+    try {
+      const result = await getRayoUserAssignments(req.session.userId!);
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch Rayo Academy assignments" });
+    }
+  });
+
+  app.post("/api/rayo-academy/assign", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const { userIds, trackId, dueDate } = req.body;
+      if (!Array.isArray(userIds) || !trackId) {
+        return res.status(400).json({ error: "userIds and trackId are required" });
+      }
+
+      const rayoEnabled = await isRayoEnabled();
+      const results = [];
+
+      for (const userId of userIds) {
+        let assignedViaRayo = false;
+        if (rayoEnabled) {
+          const [user] = await db.select({ email: adminUsers.email }).from(adminUsers).where(eq(adminUsers.id, userId));
+          if (user) {
+            const result = await assignRayoTrack(user.email, trackId, dueDate);
+            if (result.success) {
+              results.push({ userId, ...result, source: "rayo" });
+              assignedViaRayo = true;
+            }
+          }
+        }
+
+        if (!assignedViaRayo) {
+          const [existing] = await db.select().from(trackAssignments)
+            .where(and(eq(trackAssignments.trackId, trackId), eq(trackAssignments.userId, userId)));
+          if (existing) {
+            results.push({ userId, success: true, status: "already_assigned", source: "local" });
+            continue;
+          }
+
+          const autoDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+          await db.insert(trackAssignments).values({
+            trackId, userId, assignedBy: req.session.userId!,
+            dueDate: dueDate ? new Date(dueDate) : autoDate,
+            status: "not_started",
+          });
+          results.push({ userId, success: true, status: "assigned", source: rayoEnabled ? "local_fallback" : "local" });
+        }
+      }
+
+      res.json({ results });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to assign track" });
+    }
+  });
+
+  app.get("/api/rayo-academy/team-progress", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role!;
+
+      let users;
+      if (["super_admin", "admin", "hr"].includes(role)) {
+        users = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
+      } else {
+        users = await db.select().from(adminUsers)
+          .where(and(eq(adminUsers.managerId, userId), eq(adminUsers.isActive, true)));
+      }
+
+      const rayoEnabled = await isRayoEnabled();
+
+      if (rayoEnabled) {
+        const userIds = users.map(u => u.id);
+        const { data, fromApi } = await getRayoTeamProgress(userIds);
+        if (data && fromApi) {
+          return res.json({ ...data, fromApi: true });
+        }
+      }
+
+      const tracks = await db.select().from(learningTracks)
+        .where(eq(learningTracks.status, "published"));
+
+      const matrix = await Promise.all(users.map(async (user) => {
+        const userAssignments = await db.select({
+          assignment: trackAssignments,
+        }).from(trackAssignments)
+          .where(eq(trackAssignments.userId, user.id));
+
+        const trackProgress = tracks.map(track => {
+          const assignment = userAssignments.find(a => a.assignment.trackId === track.id)?.assignment;
+          if (!assignment) return { trackId: track.id, trackTitle: track.title, status: "not_assigned", progressPct: 0 };
+
+          const now = new Date();
+          let status = assignment.status;
+          if (status !== "completed" && assignment.dueDate && new Date(assignment.dueDate) < now) {
+            status = "overdue";
+          }
+          return {
+            trackId: track.id,
+            trackTitle: track.title,
+            assignmentId: assignment.id,
+            status,
+            progressPct: 0,
+            dueDate: assignment.dueDate,
+            completedAt: assignment.completedAt,
+          };
+        });
+
+        return {
+          user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, employeeId: user.employeeId },
+          trackProgress,
+        };
+      }));
+
+      res.json({ tracks: tracks.map(t => ({ id: t.id, title: t.title })), matrix, fromApi: false });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch team progress" });
+    }
+  });
+
+  app.get("/api/rayo-academy/compliance-status", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const rayoEnabled = await isRayoEnabled();
+      if (rayoEnabled) {
+        const [user] = await db.select({ email: adminUsers.email }).from(adminUsers).where(eq(adminUsers.id, req.session.userId));
+        if (user) {
+          const { status, fromApi } = await getRayoComplianceStatus(user.email);
+          if (status && fromApi) {
+            return res.json({ ...status, fromApi: true });
+          }
+        }
+      }
+
+      const result = await getComplianceStatus(req.session.userId, req.session.role!);
+      res.json({ ...result, fromApi: false });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to check compliance status" });
+    }
+  });
+
+  app.get("/api/rayo-academy/track-progress/:trackId", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const { trackId } = req.params;
+      const [user] = await db.select({ email: adminUsers.email }).from(adminUsers).where(eq(adminUsers.id, req.session.userId));
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const progress = await getRayoTrackProgress(trackId, user.email);
+      if (progress) {
+        return res.json(progress);
+      }
+
+      res.json({ trackId, progressPct: 0, status: "unknown" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch track progress" });
+    }
+  });
+
+  app.get("/api/rayo-academy/certificates", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const [user] = await db.select({ email: adminUsers.email }).from(adminUsers).where(eq(adminUsers.id, req.session.userId));
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const result = await getRayoCertificates(user.email);
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch certificates" });
+    }
+  });
+
+  app.post("/api/rayo-academy/provision", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const { userId } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+
+      const [user] = await db.select().from(adminUsers).where(eq(adminUsers.id, userId));
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const result = await provisionRayoUser(user.email, user.firstName, user.lastName, user.role);
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to provision Rayo Academy user" });
     }
   });
 

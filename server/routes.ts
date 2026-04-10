@@ -11,13 +11,14 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
+import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -665,7 +666,37 @@ export async function registerRoutes(
         employeeId: employeeIdVal,
       }).catch((err) => console.error("Background invitation email error:", err));
 
-      res.status(201).json(user);
+      let rayoProvisioning: { success: boolean; tempPassword?: string; error?: string } | null = null;
+      try {
+        const rayoEnabled = await isRayoEnabled();
+        if (rayoEnabled) {
+          rayoProvisioning = await provisionRayoUser(
+            email.toLowerCase(),
+            firstName || "",
+            lastName || "",
+            assignedRole
+          );
+          if (rayoProvisioning.success) {
+            await storage.createAuditLog({
+              actorId: req.session.userId!,
+              targetId: user.id,
+              action: "rayo_academy_provisioned",
+              changes: { email: email.toLowerCase(), rayoTempPassword: "[redacted]" },
+            });
+            if (rayoProvisioning.tempPassword) {
+              sendRayoAcademyCredentialsEmail({
+                to: email.toLowerCase(),
+                firstName: firstName || email.split("@")[0],
+                tempPassword: rayoProvisioning.tempPassword,
+              }).catch((err) => console.error("Failed to send Rayo credentials email:", err));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Rayo Academy provisioning failed (non-fatal):", err);
+      }
+
+      res.status(201).json({ ...user, rayoProvisioning });
     } catch (error) {
       res.status(500).json({ error: "Failed to create user" });
     }
@@ -3351,7 +3382,37 @@ export async function registerRoutes(
         changes: { candidateName: letter.candidateName, email: hireInEmail, employeeId, offerLetterId: letter.id },
       });
 
-      res.json({ success: true, userId: newUser.id, employeeId });
+      let rayoProvisioning: { success: boolean; tempPassword?: string; error?: string } | null = null;
+      try {
+        const rayoEnabled = await isRayoEnabled();
+        if (rayoEnabled) {
+          rayoProvisioning = await provisionRayoUser(
+            hireInEmail.toLowerCase(),
+            firstName,
+            lastName,
+            "employee"
+          );
+          if (rayoProvisioning.success) {
+            await storage.createAuditLog({
+              actorId,
+              targetId: newUser.id,
+              action: "rayo_academy_provisioned",
+              changes: { email: hireInEmail.toLowerCase(), rayoTempPassword: "[redacted]" },
+            });
+            if (rayoProvisioning.tempPassword) {
+              sendRayoAcademyCredentialsEmail({
+                to: hireInEmail.toLowerCase(),
+                firstName,
+                tempPassword: rayoProvisioning.tempPassword,
+              }).catch((err) => console.error("Failed to send Rayo credentials email:", err));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Rayo Academy provisioning failed (non-fatal):", err);
+      }
+
+      res.json({ success: true, userId: newUser.id, employeeId, rayoProvisioning });
     } catch (error: any) {
       console.error("Start onboarding error:", error);
       res.status(500).json({ error: error.message || "Failed to start onboarding" });
