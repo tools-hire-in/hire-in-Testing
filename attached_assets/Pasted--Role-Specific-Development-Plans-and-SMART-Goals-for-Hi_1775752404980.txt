@@ -1,0 +1,337 @@
+# Role-Specific Development Plans and SMART Goals for Hire’in Talent Acquisition and Leadership Roles
+
+## Executive summary and near-term checklist  
+A cost-sensitive, pre-revenue startup can still run high-quality professional development by combining (a) **role-specific competency frameworks**, (b) **SMART + learning-outcome goals**, and (c) **regular, two-way coaching check-ins captured in the Hire’in portal**. CIPD frames performance management as a set of practices that includes **objective setting aligned to strategy**, accountability, and—at its best—**regular, open, supportive discussions**, connecting performance to learning and development. citeturn1view0  For complex work, CIPD notes it can be better to set **learning-outcome objectives** rather than only rigid targets—this is especially relevant for early-stage teams building new recruiting playbooks. citeturn3view1  SHRM also emphasizes replacing annual-only approaches with **more frequent check-ins** that support ongoing development, plus coaching/mentoring and data-driven measurement. citeturn1view2  
+
+**Copy-paste action checklist for the next 10 days (manager + developer ready):**  
+- [ ] Lock the **role definitions** (Healthcare TA, IT TA, Delivery Manager, Asst. Manager Healthcare, Asst. Manager IT) and confirm reporting lines in Hire’in (manager_id).  
+- [ ] Approve the **competency library** (core TA + role-specific) and the **proficiency scale** (Foundational / Working / Proficient / Expert).  
+- [ ] Create a **Goal Library** in Hire’in: pre-filled SMART goal templates per role for 30/60/90 and 6/12 months (content below).  
+- [ ] Create a **Development Plan template** in Hire’in (fields + workflow below) and publish as the default for all five roles.  
+- [ ] Implement **weekly check-in notes** (15–20 min) and a monthly longer “growth check-in” (30–45 min), with at least 3 prompts stored per role. citeturn1view0turn1view2  
+- [ ] Curate a **low-cost learning catalog** in Hire’in (links + tags + track mapping) including free/low-cost options listed below (AWS/Microsoft/DMU/edX). citeturn13view8turn23view0turn14view3turn14view4  
+- [ ] Publish the **questionnaire-to-track mapping rules** (below) and add “Recommended Track” + “Recommended Next Two Micro-lessons” to the Development Plan screen.  
+- [ ] Stand up a minimal **TA Metrics dashboard** (time-to-hire, source quality, funnel conversion, offer acceptance proxy, and quality-of-hire proxy). citeturn7view4turn17view0turn17view2  
+- [ ] Pilot with 1 recruiter from each team + 1 assistant manager for one week; collect friction points; adjust templates (only). citeturn7view1  
+- [ ] Publish a one-page internal “How we do PD in Hire’in” guide and ship in-app microcopy (sample below) to drive adoption.
+
+## Competency frameworks and learning objectives by role  
+This section defines the “what good looks like” for development plans and measurable goals. CIPD emphasizes that performance management typically involves setting objectives aligned to strategy and that it works best as a two-way, supportive discussion process that integrates learning and development. citeturn1view0  We therefore model development plans as a structured but lightweight system: role competencies → prioritized learning objectives → SMART + learning-outcome goals → evidence/KPIs → coaching check-ins.
+
+### Core competency library used across all five roles  
+Use these as reusable “competency IDs” in the portal (for templates, scoring, and dashboards).  
+
+- **TA-CORE-1 Intake & role scoping:** clarifying must-haves/nice-to-haves, interview plan, and decision criteria.  
+- **TA-CORE-2 Sourcing & pipeline building:** channel strategy, outreach, prospect nurturing.  
+- **TA-CORE-3 Assessment & selection:** screening quality, structured interviews, fair evaluation.  
+- **TA-CORE-4 Stakeholder partnering:** hiring manager trust, expectation setting, communication.  
+- **TA-CORE-5 Candidate experience:** transparency, responsiveness, offer/closure handling.  
+- **TA-CORE-6 Compliance & inclusion:** lawful, inclusive, bias-aware practice; structured methods. citeturn13view2  
+- **TA-CORE-7 Recruiting analytics:** funnel conversion, source quality, quality-of-hire proxy, and continuous improvement. citeturn17view0turn17view1turn17view2  
+- **LEAD-CORE-1 Coaching & mentoring:** non-directive coaching; strength/development area clarity; regular one-to-ones. citeturn3view0turn1view2  
+- **LEAD-CORE-2 Delivery & operating rhythm:** capacity planning, prioritization, SLAs, predictable execution.  
+- **LEAD-CORE-3 Quality & process improvement:** playbooks, QA, retros, measurable improvements.
+
+### Role-specific frameworks and prioritized learning objectives  
+Use this table as the “Role Template” payload stored in Hire’in (e.g., `role_templates` table or JSON config).
+
+| Role | Primary outcomes in a pre-revenue, cost-sensitive startup | Core learning objectives (prioritized) | Evidence captured in Hire’in |
+|---|---|---|---|
+| Healthcare TA (IC) | Build credible healthcare pipelines fast; ensure compliant/inclusive screening; partner with clinical stakeholders | Domain literacy (credentials/licensure), sourcing channels, credentialing-aware screening, candidate experience in shift/clinical contexts, metrics discipline | Intake notes, role glossary, slate delivery timestamps, screen-to-interview conversion, candidate response time |
+| IT TA (IC) | Build technical pipelines; translate “tech talk” into sourcing and screening signals; improve conversion without sacrificing quality | Technical literacy (roles + stacks), advanced sourcing (Boolean/OSINT), structured screening notes, hiring-manager partnering, funnel optimization | Boolean library, tech glossary, screening rubric use, funnel conversion and stage aging |
+| Delivery Manager | Run TA delivery like a service: cadences, measurement, cross-team alignment, and playbooks | Operating cadence + SLA design, dashboard definition, coaching system, quality assurance, enablement plan | Weekly metrics dashboard; playbook completion; manager check-in completion; improvement experiments |
+| Assistant Manager – Healthcare | Coach Healthcare TA, enforce process quality, improve outcomes, maintain stakeholder trust | Coaching, prioritization/capacity, compliance/inclusion in healthcare hiring, quality-of-hire proxy measurement | Team check-in cadence; team skill heatmap; QA audits; calibration notes |
+| Assistant Manager – IT | Coach IT TA, scale sourcing & assessment quality, reduce funnel friction | Coaching, technical recruiting playbook stewardship, sourcing excellence, data-driven funnel improvement | Team sourcing playbook; quality audits of screening notes; stage aging dashboard |
+
+## SMART goals and development plan templates  
+CIPD notes objectives are most effective when they focus on **specific outcomes** and are “SMART,” but for complex work it can be better to focus on **learning outcomes** rather than rigid targets. citeturn3view1  In a startup TA environment, many “outcomes” (fills) may be volume-dependent, so each role gets (a) outcome goals when there is hiring volume, and (b) learning/outcome surrogates (playbooks, simulations, conversion metrics) when volume is low. Where collaboration is critical, CIPD also notes team-based goals can make sense. citeturn3view1turn1view0  
+
+### Development plan template for Hire’in  
+Implement as a reusable form + workflow (employee + manager co-own). Keep it lightweight: one screen for “Plan,” one for “Check-in updates.”
+
+**Development Plan fields (minimum):**  
+- Role, Team (Healthcare / IT), Manager  
+- Target track (from questionnaire) + secondary track  
+- Competency targets (pick 3–5 competencies; current level and target level)  
+- Goals (SMART + learning outcome) with due date and success metric  
+- Learning activities (microlearning modules, shadowing, project, certification) with effort estimate  
+- Evidence artifacts (links, notes, uploads)  
+- Check-in cadence + next review date  
+- Manager commitments (what support the manager will provide)
+
+**Progress review form (monthly):**  
+- Progress status (On track / At risk / Blocked)  
+- New evidence added (auto-list)  
+- Metric deltas (auto from dashboard)  
+- What was learned (employee text)  
+- What will change next month (employee + manager agreement)  
+- Updated next actions and dates
+
+### Role-specific SMART goals library  
+Each role below includes goals for **30/60/90 days** and **6/12 months**. In Hire’in, store these as “Goal Templates” that can be copied into personal plans and auto-tagged to competencies.
+
+#### Healthcare TA (IC) goals  
+| Horizon | SMART / learning-outcome goal | Metric and evidence (tracked in Hire’in) |
+|---|---|---|
+| 30 days | Complete medical-role literacy baseline: create a one-page “Healthcare Role Cheat Sheet” covering at least 8 roles (RN, LPN, CNA, MA, NP/PA, Rad Tech, Lab Tech, Care Coordinator) including licensure/credential cues and interview red flags. | Uploaded cheat sheet + manager approval; quiz score ≥80% (internal). Use RN licensure understanding as a model (RNs must be licensed). citeturn24view0 |
+| 30 days | Run 3 structured intake meetings using the portal template and produce written “success criteria” (must-haves + nice-to-haves + interview loop + timeline). | 3 intake forms complete; hiring manager satisfaction ≥4/5 (survey). |
+| 60 days | For each active requisition (or simulation if volume is low), deliver a qualified slate of ≥3 candidates within 10 business days of intake. | Timestamped “intake date” → “slate shared date”; slate quality score by manager ≥4/5. |
+| 60 days | Improve process compliance: achieve ≥95% completion of required screening fields (credential checks, shift availability, location, comp expectations). | Screen form completeness report; audit sample of 10 screens. |
+| 90 days | Establish a sourcing “channel map” with 10 channels and track channel quality (candidates reaching interview stage). | Channel map stored; “source quality” dashboard in use (source → interview conversion). citeturn17view1 |
+| 90 days | Implement 30/60/90-day post-hire check-in collection for hires you supported (or pilot on 1 hire), to feed quality-of-hire proxy data. | Check-in completion ≥80%; data captured aligns to “quality of hire” measurement practice. citeturn17view0turn17view2 |
+| 6 months | Complete an inclusive recruitment micro-project: update job advert and screening template to be clear, specific, behavior-based; add candidate timeline microcopy; and add structured interview prompts per role. | Updated templates; process audit shows adoption ≥80%. Inclusive recruitment actions align with CIPD’s evidence-based guidance (clear requirements, structured interviews, monitoring data for bias). citeturn13view2 |
+| 12 months | Become the team “Healthcare TA playbook owner”: publish and maintain a lightweight playbook (intake checklist, sourcing pack, screening rubric, onboarding handoff). | Playbook versioned; team adoption ≥80%; quarterly review completed. |
+
+#### IT TA (IC) goals  
+| Horizon | SMART / learning-outcome goal | Metric and evidence (tracked in Hire’in) |
+|---|---|---|
+| 30 days | Build a “Tech Roles & Stack Glossary” covering at least 20 key terms (frontend/backend, API, SQL, CI/CD, cloud, Kubernetes basics), and complete one cloud fundamentals learning path. | Glossary uploaded + manager approval; completion of a cloud fundamentals module with assessment pass. citeturn23view1turn23view0 |
+| 30 days | Create a reusable Boolean/X-ray search library: 10 search strings each for 3 roles (e.g., frontend, backend, DevOps). | Boolean library stored; peer-reviewed by assistant manager. |
+| 60 days | For each active requisition (or simulation), decrease “time to first qualified screen” to ≤7 calendar days after intake. | Intake date → first qualified screen timestamp; tracked weekly. |
+| 60 days | Start source-quality tracking: measure how far candidates from each source progress in the funnel (source → interview). | Source-to-interview conversion report; aligns with SHRM guidance that source quality matters beyond volume. citeturn17view1turn7view4 |
+| 90 days | Improve funnel health: identify one bottleneck (e.g., interview scheduling delay) and run 1 improvement experiment that reduces stage aging by ≥20%. | Before/after stage aging; experiment notes posted; “health indicator” thinking for cycle metrics. citeturn17view0 |
+| 90 days | Add quality-of-hire proxy collection via 30/60/90 check-ins for at least 1 hire or pilot group. | Check-in completion and summary; supports holistic quality-of-hire measurement. citeturn17view0turn17view2 |
+| 6 months | Produce a standardized technical intake template (stack, must-have signals, evaluation plan, compensation band assumptions) and get ≥80% manager adoption. | Template usage analytics; manager satisfaction ≥4/5. |
+| 12 months | Mentor one recruiter (shadowing + feedback) to elevate sourcing and structured screening quality. | Shadow plan completed; audit shows improvement in screening rubric adherence ≥20%. |
+
+#### Delivery Manager goals  
+| Horizon | SMART / learning-outcome goal | Metric and evidence (tracked in Hire’in) |
+|---|---|---|
+| 30 days | Define the TA operating system: weekly cadence, SLAs, dashboard spec, and role ownership (RACI) for Healthcare + IT TA. | Published “TA Ops” page; weekly dashboard demo running. |
+| 60 days | Implement a minimal recruiting metrics suite that balances efficiency and quality (time-to-hire, source-of-hire, quality-of-hire proxy, funnel conversion). | Dashboard live; definitions documented (time-to-hire is candidate identification → offer acceptance). citeturn17view0turn7view4 |
+| 90 days | Implement manager coaching enablement: 3 prompts per role + monthly review ritual + 1 peer mentoring loop. | Check-in completion ≥85%; coaching assets used. Coaching can be embedded into one-to-ones and performance conversations. citeturn3view0 |
+| 6 months | Run a cross-team improvement initiative: reduce one major bottleneck (e.g., interview scheduling) and improve one quality outcome (e.g., 30-day new-hire satisfaction). | Stage aging reduction ≥20%; documented root cause; outcome tracked. citeturn17view0turn17view2 |
+| 12 months | Publish and maintain a “TA Learning Catalog + Tracks” in Hire’in and prove usage (learning completion + performance metric movement). | Learning completion ≥70% per quarter; show at least 1 metric improvement tied to learning. CIPD links performance management to learning and development and regular discussions. citeturn1view0turn3view1 |
+
+#### Assistant Manager – Healthcare goals  
+| Horizon | SMART / learning-outcome goal | Metric and evidence (tracked in Hire’in) |
+|---|---|---|
+| 30 days | Establish cadence: weekly 1:1 check-ins for each Healthcare TA recruiter; review goals and blockers; log notes in Hire’in. | ≥90% check-in completion; action items captured. Regular supportive discussions are central to good performance management. citeturn1view0 |
+| 60 days | Implement a Healthcare TA quality checklist and conduct 10 screening audits, giving actionable coaching. | Audit scores recorded; ≥20% improvement in screen completeness. |
+| 90 days | Implement inclusive recruitment monitoring: add at least 2 inclusion KPIs (e.g., diverse slate rate, stage conversion parity) and review monthly. | Dashboard live; action log maintained. CIPD stresses monitoring processes/outcomes using high-quality data to evaluate potential bias. citeturn13view2 |
+| 6 months | Develop one internal “Healthcare sourcing play” (channels, messaging templates, outreach sequences) and train the team. | Training completion ≥80%; source-quality improvement vs baseline. citeturn17view1 |
+| 12 months | Deliver measurable team results: improve one efficiency metric (cycle time) without harming quality-of-hire proxy. | Cycle time tracked as health indicator; quality-of-hire proxy maintained/improved. citeturn17view0turn17view2 |
+
+#### Assistant Manager – IT goals  
+| Horizon | SMART / learning-outcome goal | Metric and evidence (tracked in Hire’in) |
+|---|---|---|
+| 30 days | Establish cadence: weekly 1:1 check-ins per recruiter; maintain “tech glossary adoption” and “Boolean library usage.” | ≥90% check-in completion; 3 shared templates used weekly. citeturn1view0 |
+| 60 days | Publish an IT intake + evaluation playbook for 5 critical roles (SWE, QA, DevOps, Data, PM) and get 80% adoption. | Playbook usage metrics; manager satisfaction survey ≥4/5. |
+| 90 days | Implement funnel analysis: measure conversion and stage drop-offs; run at least one improvement experiment. | Funnel dashboard used weekly; stage aging reduced ≥20%. SHRM highlights funnel effectiveness metrics for understanding candidate flow. citeturn17view0 |
+| 6 months | Improve source quality program: track and shift effort toward sources that produce interview-stage candidates (not just volume). | Source-to-interview conversion improves; aligns with SHRM guidance on source quality. citeturn17view1 |
+| 12 months | Build a coaching bench: run 2 peer-learning sessions and mentor a recruiter into “playbook contributor” status. | Session attendance ≥80%; peer feedback recorded; screening audit scores improve. |
+
+## Curriculum, tracks, and questionnaire mapping  
+CIPD’s performance-management framing explicitly connects objectives, feedback, learning and development, and regular discussions, which supports a “professional-development–focused” review experience inside Hire’in. citeturn1view0turn3view1  For delivery, CIPD research on digital learning highlights the value of **bite-sized, modular learning** (including micro-qualifications/credits) and skills frameworks that can stack into recognized journeys—helpful for cost control and incremental capability building. citeturn7view2  A lightweight portal implementation should therefore support: (a) microlearning links, (b) practice tasks, (c) evidence capture, and (d) manager coaching rituals.
+
+### Recommended development tracks  
+Implement tracks as tags used by: questionnaire results, resource recommendations, and development plan templates.
+
+- **Track A: Healthcare Domain & Compliance** (Healthcare TA, Asst. Manager Healthcare)  
+- **Track B: IT/Tech Domain Literacy** (IT TA, Asst. Manager IT)  
+- **Track C: Sourcing Mastery (Boolean/OSINT + channel quality)** (Both TA teams) citeturn17view1turn20view0  
+- **Track D: Stakeholder Partnering & Candidate Experience** (Both TA teams + leaders)  
+- **Track E: Recruiting Analytics & Funnel Optimization** (Both TA + Delivery Manager) citeturn17view0turn7view4  
+- **Track F: Coaching & TA Leadership** (Assistant Managers + Delivery Manager) citeturn3view0turn1view2  
+
+### Questionnaire-to-track mapping rules (simple, explainable, cheap to run)  
+Use a transparent scoring system (avoid “black box” in MVP). Store results: `primary_track`, `secondary_track`, `recommended_resources[]`.
+
+**Inputs (examples):** strengths (multi-select), interests (single-select), industry affinity (multi-select), learning style (single-select).  
+**Rules (example mapping):**  
+- If “Healthcare / mission-driven” interest selected → +3 Track A.  
+- If “Technical recruiting / fast-paced tech projects” selected → +3 Track B and +2 Track C.  
+- If “Analytical / attention to detail” selected → +2 Track E.  
+- If “Communication / empathy” selected → +2 Track D and +1 Track F.  
+- Learning style affects delivery:  
+  - Visual → recommend short videos + diagrams;  
+  - Kinesthetic → recommend Replit demos + on-the-job projects;  
+  - Reading/Writing → recommend playbooks and templates.
+
+**Output in Hire’in (MVP):** “Primary track,” “Secondary track,” and “Next 2 micro-lessons,” plus “Suggested on-the-job project.”
+
+### Low-cost certification providers and course options  
+These tables emphasize cost visibility for a pre-revenue startup; treat certifications as **optional** after the free/low-cost foundation is complete.
+
+#### Healthcare recruiting certifications and low-cost options  
+| Option | Best for | Typical cost (from provider) | Notes for a cost-sensitive startup |
+|---|---|---:|---|
+| entity["organization","National Association for Health Care Recruitment","healthcare recruiting org"] CHCR (Certified Health Care Recruiter) | Healthcare TA specializing in broad healthcare hiring | Exam fees listed as $475 (members) / $670 (non-members) citeturn13view3 | Requires 2 years’ experience and is exam-based; exam covers recruiting process, law, selection, strategy, and metrics. citeturn21view0 |
+| entity["organization","Association for Advancing Physician and Provider Recruitment","provider recruitment org"] CPRP (Physician/Provider Recruitment Professional) | Physician/provider recruiting specialization | Online course & exam pricing shows $900 (member) / $1,100 (non-member) citeturn22view0 | Strong for provider recruiting; includes data use and the full continuum through onboarding/retention. Consider only for the assistant manager lead when volume justifies it. citeturn22view0 |
+| SHRM Talent Acquisition Specialty Credential | General TA upskilling (not healthcare-specific) | Program cost starting at $1,830 (member) / $2,105 (non-member) citeturn13view6 | Likely too expensive early; use internal microlearning + tracking first. |
+| entity["organization","Des Moines University","iowa, us"] free Medical Terminology modules | Healthcare domain literacy for TA | “Access to all 15 modules at no cost;” certificate option $99 citeturn14view3 | Use free modules for baseline; pay $99 only for one “reference” person if proof is needed. |
+| entity["organization","U.S. Bureau of Labor Statistics","washington, dc, us"] Occupational Outlook Handbook (health roles reference) | Role requirements literacy (RN, etc.) | Free public reference | Example: RN pathways and licensure requirements are clearly described; recruiters can use this as a baseline validation checklist. citeturn24view0 |
+| entity["company","edX","online learning platform"] audit track | Low-cost learning access | Auditing means reviewing course material for free citeturn14view4 | Use audited courses for healthcare communication basics and stakeholder skills without certificate fees. citeturn14view4 |
+
+#### IT recruiting certifications and low-cost options  
+| Option | Best for | Typical cost (from provider) | Notes for a cost-sensitive startup |
+|---|---|---:|---|
+| entity["company","AIRS Training","recruiting certification provider"] Certified Technical Recruiter (CTR) | IT TA role literacy + sourcing methodologies | Regular price shown as $895 citeturn19view0 | Useful but pricey; consider only after MVP maturity or for the Asst. Manager IT as a multiplier. |
+| AIRS SearchLab (CIR & ACIR) | Advanced sourcing (Boolean/OSINT/X-ray) | Regular price shown as $895 citeturn20view0 | Strong sourcing toolkit; can be partially replicated via internal practice labs + peer review (cheaper). citeturn20view0 |
+| SHRM Talent Acquisition Specialty Credential | TA leadership + broader TA strategy | Program cost starting at $1,830 (member) / $2,105 (non-member) citeturn13view6 | High cost for pre-revenue stage; defer unless investor/enterprise clients require. |
+| entity["company","Amazon Web Services","cloud platform"] digital training | Tech literacy for cloud roles | AWS states access to “over 900 free self-paced digital courses” citeturn13view8 | Use for role literacy (cloud concepts) to improve intake and screening signals. |
+| entity["company","Microsoft","software company"] Learn cloud fundamentals path | Tech literacy + structured assessments | Microsoft Learn path includes hands-on exercises “to deploy your first services for free” citeturn23view0 | Use for baseline cloud vocab; track completions as evidence in Hire’in. |
+| entity["company","freeCodeCamp","nonprofit coding education"] curriculum | Tech basics and recruiting empathy for engineers | It states an “open source curriculum” and “learn to code for free” citeturn14view2 | Use selectively: “just enough” coding context for TA; don’t turn recruiters into engineers. |
+| entity["company","Google Cloud","cloud platform"] certificates | Structured lab-based tech exposure | Google Cloud certificates list cost as $29/month subscription on Google Skills citeturn14view0 | If budget allows, this is a comparatively low monthly cost; prioritize for IT TA leads. |
+
+### Microlearning modules and assessment methods  
+Design microlearning as “bite-sized” modules that stack into journeys; this aligns with CIPD’s digital learning findings around modular, bite-sized learning journeys and skills frameworks. citeturn7view2  Keep modules 8–15 minutes and require a “work artifact” to reduce wasted training. Each module should end with (a) a quiz question set and (b) a practical artifact stored in the Hire’in plan.
+
+**MVP microlearning set (12 modules):**  
+- TA Foundations: intake excellence, structured screening notes, candidate messaging, offer closing basics, inclusion basics.  
+- Healthcare TA: medical terminology, licensure/credentialing cues, shift/role realities.  
+- IT TA: software roles vocabulary, cloud fundamentals, technical sourcing basics.  
+- Analytics: time-to-hire definition and use, funnel conversion analysis, source quality tracking. citeturn17view0turn17view1  
+
+**Assessment methods (cheap, high signal):**  
+- Short quizzes (5–8 questions), pass threshold ≥80%  
+- Artifact reviews (manager rubric score)  
+- Shadowing + debrief checklist  
+- “Simulated requisition” case exercises (especially when hiring volume is low)
+
+## KPIs, dashboards, and evaluation rubrics  
+CIPD notes performance can be assessed through results and behaviors, and objectives should reflect clear definitions of good performance; it also highlights cascading organizational KPIs to employees as vital. citeturn1view0turn3view1  SHRM recommends balancing metrics that cover efficiency and quality, including time-to-hire, source-of-hire, quality-of-hire, and funnel effectiveness (conversion metrics). citeturn17view0  SHRM also explains that quality-of-hire commonly incorporates turnover, job performance, engagement, and cultural fit indicators—useful “proxy” components for dashboards. citeturn17view2  
+
+### KPI set by role (trackable in Hire’in with minimal integration)  
+**Cross-role “always-on” KPIs (weekly/monthly):**  
+- Check-in completion rate (per employee, per manager)  
+- Development plan progress (goals on-track rate; activities completed)  
+- Learning completion rate (microlearning modules finished)
+
+**Healthcare TA (IC):**  
+- Time-to-first-qualified-screen; time-to-slate; candidate response time  
+- Source quality (source → interview conversion) citeturn17view1  
+- Screening compliance completeness rate  
+- Candidate experience proxy (drop-off rate; response SLA adherence)
+
+**IT TA (IC):**  
+- Time-to-first-qualified-screen; time-to-hire (candidate identification → offer acceptance) citeturn17view0  
+- Funnel conversion by stage; stage aging; source quality citeturn17view0turn17view1  
+- Hiring manager satisfaction (simple quarterly pulse)
+
+**Delivery Manager:**  
+- Team dashboard health (data freshness, weekly review cadence)  
+- SLA adherence by stage  
+- Improvement experiment throughput (1 experiment/month)  
+- Quality-of-hire proxy completion (30/60/90 check-ins collected) citeturn17view0turn17view2  
+
+**Assistant Managers:**  
+- Coaching coverage (1:1 completion)  
+- Screening audit scores trend  
+- Source quality trend  
+- Inclusion KPIs (diverse slate rate; stage parity checks) aligned to CIPD’s monitoring guidance. citeturn13view2  
+
+### Dashboards to implement in Hire’in  
+Use a simple dashboard list (cards + trend lines). SHRM notes dashboards can measure funnel parts and that commonly tracked recruiting metrics include time-to-hire and cost-per-hire, with retention also tracked. citeturn7view4  In a pre-revenue startup, omit cost-per-hire initially if costs are not tracked per source; start with measurable funnel and quality proxies.
+
+- **Personal Growth Dashboard (employee):** goals due soon, learning completion, next check-in, evidence added.  
+- **Manager Team Dashboard:** check-in compliance, open development actions, audit scores, team competency heatmap.  
+- **TA Funnel Dashboard (team):** stage aging, conversion, source quality, time-to-hire. citeturn17view0turn17view1  
+- **Quality-of-hire Proxy Dashboard:** 30/60/90 post-hire check-ins; indicators like early performance and manager satisfaction. citeturn17view0turn17view2  
+
+### Sample evaluation rubrics (manager-friendly, low overhead)  
+CIPD’s people-performance evidence review highlights that both subjective and objective measures have limitations and that using both helps achieve a fuller assessment. citeturn13view1  Implement rubrics as structured subjective measures, alongside your objective funnel metrics.
+
+**Rubric: Intake meeting quality (scale 1–4)**  
+| Level | Observable behaviors (evidence) |
+|---|---|
+| 1 – Needs support | Intake notes incomplete; success criteria unclear; timelines not agreed; repeated rework. |
+| 2 – Working | Captures must-haves; some ambiguity remains; interview plan partially defined. |
+| 3 – Proficient | Clear must/nice; evaluation plan and timeline aligned; risk areas identified. |
+| 4 – Expert | Adds market insights; proposes trade-offs; aligns stakeholders; anticipates blockers. |
+
+**Rubric: Structured screening note quality (scale 1–4)**  
+- Evidence includes: credential/tech signals captured; motivation/constraints recorded; risk flags; next-step recommendation and rationale.  
+
+## Delivery options, coaching prompts, and in-app microcopy  
+CIPD defines coaching and mentoring as one-to-one development approaches that enhance skills, knowledge, or performance; coaching is a non-directive practice focused on specific skills and goals, and is often embedded into one-to-ones and performance conversations. citeturn3view0  CIPD also notes external mentors can be expensive and that line managers are often expected to coach internally—ideal for a cash-constrained startup. citeturn3view0  SHRM similarly supports continuous feedback, coaching/mentoring, and development plans aligned to company and individual goals. citeturn1view2  
+
+### Low-cost delivery options aligned to your context  
+- **Rayo-Academy microlearning:** short modules + quizzes + artifacts (MVP).  
+- **Replit-hosted demos:** interactive exercises (Boolean practice, funnel analysis case).  
+- **Peer coaching circles:** 30 minutes biweekly, rotating facilitator.  
+- **Shadowing:** intake meeting shadowing; screening shadowing; offer call shadowing with a debrief rubric.  
+- **On-the-job projects:** playbook building, dashboard improvements, inclusive recruitment template updates aligned to CIPD guidance. citeturn13view2  
+
+### Sample manager coaching prompts (for 1:1s)  
+Use these as dropdown prompts in Hire’in check-ins.
+
+**For Healthcare TA / IT TA (weekly):**  
+- “What’s one bottleneck in your funnel this week, and what data shows it?” citeturn17view0  
+- “Which source produced the most interview-ready candidates, and what will you do more/less of?” citeturn17view1  
+- “What did you learn about this role that should be added to the team playbook?”  
+- “What support do you need from me to remove a blocker before Friday?”
+
+**For Assistant Managers / Delivery Manager (weekly):**  
+- “Where are we trading speed for quality, and what do we need to protect?” citeturn17view0turn17view2  
+- “Which recruiter needs coaching this week, and what is the specific behavior we’re improving?” citeturn3view0  
+- “What is one experiment we’ll run next week to reduce friction in the funnel?” citeturn17view0  
+
+### Example in-app microcopy (prompts + notifications)  
+Keep messages short and supportive; align to the “regular discussion” model. citeturn1view0  
+
+- **Goal creation hint:** “Make this goal measurable. If the work is complex, you can set a learning outcome (what you will learn and how you’ll demonstrate it).” citeturn3view1  
+- **Weekly check-in reminder:** “Your growth check-in is due today. Add 1 win, 1 blocker, and 1 next step.”  
+- **Manager notification:** “A development action is blocked. Please review and add support or adjust scope.”  
+- **Quality-of-hire reminder:** “Please complete the 30-day post-hire check-in. This helps us improve quality-of-hire indicators.” citeturn17view2turn17view0  
+
+## Implementation roadmap for portal and adoption in a cash-constrained startup  
+CIPD notes performance management should be approached holistically and centered on regular discussions, while also being backed up by formal processes such as recording objectives and periodic reviews; a lightweight portal can implement this without heavy enterprise complexity. citeturn1view0  For learning delivery, CIPD’s digital learning research supports modular, bite-sized learning that can stack into recognized journeys, helping control cost and effort. citeturn7view2  SHRM also emphasizes continuous feedback and coaching/mentoring, and the value of analytics to validate assumptions and guide improvement. citeturn1view2  
+
+### Phased roadmap with T-shirt sizing  
+| Phase | What ships (portal + process) | Effort |
+|---|---|---|
+| MVP | Role templates + competency library; development plan form; goal library (30/60/90 + 6/12); questionnaire scoring → track; basic dashboards (funnel + learning completion); check-in prompts | M–L |
+| Phase after MVP | Resource catalog with tagging + “recommended next lessons”; screening audit workflow; playbook repository; team competency heatmap; automated reminders (check-ins, post-hire 30/60/90) | M |
+| Phase after that | Quality-of-hire index builder (configurable); deeper inclusion monitoring; experiment tracker; optional certification tracking; advanced analytics & exports | M–L |
+
+### Quick-win implementation tasks  
+- Load the five role templates + goal templates as JSON seeded data (no UI builder needed initially).  
+- Add “Copy from template” on Development Plan creation.  
+- Implement “evidence attachments” as URL links first (avoid file-storage cost).  
+- Start with a single dashboard that shows: check-in completion, stage aging, source quality, and 30/60/90 follow-ups.
+
+### Training rollout timeline diagram  
+```mermaid
+gantt
+    title Training and Development Rollout
+    dateFormat  YYYY-MM-DD
+    section Design
+    Role/competency library finalization :a1, 2026-04-08, 7d
+    Goal templates + questionnaires       :a2, after a1, 5d
+    section Build
+    MVP portal forms + dashboards         :b1, after a2, 14d
+    Seed data + pilot cohort              :b2, after b1, 7d
+    section Pilot and iterate
+    Pilot (Healthcare + IT + leaders)     :c1, after b2, 7d
+    Adjust templates and microcopy        :c2, after c1, 5d
+    section Rollout
+    Company rollout + manager enablement  :d1, after c2, 14d
+```
+
+### Manager coaching flow diagram  
+```mermaid
+flowchart TD
+    A[Employee completes weekly check-in] --> B[Manager reviews: wins, blockers, metrics]
+    B --> C{Any blocked development action?}
+    C -->|Yes| D[Manager removes blocker or rescopes goal]
+    C -->|No| E[Proceed to coaching conversation]
+    E --> F[Discuss: behavior + evidence + next step]
+    F --> G[Update development plan: next actions + due dates]
+    G --> H[Log coaching notes + commitments in Hire'in]
+    H --> I[Optional: assign microlearning + on-the-job project]
+```
+
+### Risks, mitigation, and adoption tactics for a cash-constrained startup  
+- **Risk: “Training is extra work” → low adoption.** Mitigate by using bite-sized modules and tying learning to real work artifacts and check-ins. citeturn7view2turn1view0  
+- **Risk: Metrics create fear or gaming.** Mitigate by framing metrics as health indicators and improvement signals, consistent with data-driven recruiting guidance. citeturn17view0  
+- **Risk: Over-investing in expensive certifications early.** Mitigate by sequencing: free/low-cost learning first; paid certifications only for role multipliers (assistant managers) when impact is clear. citeturn13view8turn14view3turn14view4turn13view6  
+- **Risk: Bias and inclusion regress under speed pressure.** Mitigate by embedding inclusive recruitment templates and monitoring data for bias sources, aligned with CIPD evidence-based guidance. citeturn13view2  
+- **Risk: Coaching quality varies by manager.** Mitigate with standardized prompts, rubrics, and lightweight QA audits; coaching is a skilled activity and should be supported. citeturn3view0  
+
+## Assumptions  
+- Hiring volume exists but may be inconsistent; when there are not enough live requisitions, teams will use “simulated requisitions” for skill practice without harming real candidate experience.  
+- The Hire’in portal already has users and manager relationships (org chart / manager_id) available for permissions and dashboards.  
+- Rating scales for competencies are simple (4 levels) and are used for development, not for compensation decisions in the near term.  
+- Candidate and hiring data is either available from an ATS integration or will be captured minimally in Hire’in for funnel metrics; cost-per-hire may not be available initially.  
+- The company wants development plans that emphasize growth and capability building over punitive performance management; coaching is positioned as supportive and regular. citeturn1view0turn3view0turn1view2
