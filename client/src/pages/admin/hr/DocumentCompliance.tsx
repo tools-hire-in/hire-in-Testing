@@ -198,8 +198,8 @@ export function DocumentComplianceContent() {
       const res = await apiRequest("POST", `/api/hr/employee-documents/send-reminder/${userId}`);
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Reminder sent", description: "Document reminder email has been sent." });
+    onSuccess: (data) => {
+      toast({ title: "Reminder sent", description: data.message || "Document reminder has been sent." });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to send reminder.", variant: "destructive" });

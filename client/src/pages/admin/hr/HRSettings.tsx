@@ -290,6 +290,74 @@ function RayoAcademySettingsSection() {
   );
 }
 
+function FeatureFlagsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+
+  const { data: flags, isLoading } = useQuery<Record<string, boolean>>({
+    queryKey: ["/api/system/feature-flags"],
+    enabled: isAdmin,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (update: Record<string, boolean>) => {
+      const res = await apiRequest("PATCH", "/api/system/feature-flags", update);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system/feature-flags"] });
+      toast({ title: "Feature flag updated" });
+    },
+    onError: () => toast({ title: "Failed to update feature flag", variant: "destructive" }),
+  });
+
+  if (!isAdmin) return null;
+
+  const flagDefs = [
+    {
+      key: "notifications_enabled",
+      label: "In-App Notifications",
+      description: "When enabled, employees see a notification bell in the header and receive in-app notifications for reminders and alerts.",
+    },
+    {
+      key: "document_reminder_email_enabled",
+      label: "Document Reminder Emails",
+      description: "When enabled, the Remind button on Document Compliance sends an email to employees with pending documents.",
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Feature Flags
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {flagDefs.map((def) => {
+          const enabled = flags?.[def.key] === true;
+          return (
+            <div key={def.key} className="flex items-center justify-between gap-4 py-1">
+              <div>
+                <p className="font-medium text-sm" data-testid={`text-flag-${def.key}`}>{def.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+              </div>
+              <Switch
+                checked={enabled}
+                onCheckedChange={(v) => toggleMutation.mutate({ [def.key]: v })}
+                disabled={isLoading || toggleMutation.isPending}
+                data-testid={`switch-flag-${def.key}`}
+              />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -989,6 +1057,8 @@ export default function HRSettings() {
             </CardContent>
           </Card>
         )}
+
+        <FeatureFlagsSection />
 
         <TrainingSettingsSection />
 

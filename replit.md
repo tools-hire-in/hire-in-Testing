@@ -51,6 +51,9 @@ An integrated internal employee management system within the admin panel:
     - **Leave tracking**: Leave balances, accrual history, leave request history, apply leave on behalf for past dates (auto-approved)
     - **Audit trail**: All edits require a mandatory note/reason. Change History tab shows who changed what, before/after diff, when, and why.
 - **Post-Onboarding Documents**: Management of employee documents, bank details, and emergency contacts.
+- **Feature Flags System**: Centralized feature flag management stored in `system_settings` table under `feature_flags` key as a JSON object. Togglable from HR Settings page (admin/super_admin only). Available flags: `notifications_enabled`, `document_reminder_email_enabled`. Frontend hook: `useFeatureFlags()` with `isEnabled(flagName)` check. API: `GET/PATCH /api/system/feature-flags`.
+- **In-App Notifications**: Notification system with `notifications` table. Bell icon in admin header with unread count badge (gated behind `notifications_enabled` flag). Endpoints: `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `POST /api/notifications/mark-all-read`. Document reminders create in-app notifications when flag is enabled.
+- **Document Reminder Fix**: The Remind button now properly checks the email send result and returns errors. Email sending is gated behind `document_reminder_email_enabled` flag. When `notifications_enabled` is on, an in-app notification is also created.
 - **Security**: Mandatory TOTP 2FA, 30-minute auto session timeout with warning, rolling sessions.
 - **Onboarding Training & SOPs System**: Structured learning tracks with sections, markdown content, quizzes, and acknowledgements.
     - **HR Admin — Training Management**: Authors tracks, assigns to employees, publishes/unpublishes, and can seed pre-built SOP tracks. When Rayo Academy is enabled, assignments go through Rayo API.

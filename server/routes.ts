@@ -2947,14 +2947,44 @@ export async function registerRoutes(
       const docs = await storage.getEmployeeDocuments(req.params.userId);
       const pendingDocs = docs.filter(d => d.isRequired && d.status === "pending");
 
-      await sendDocumentReminderEmail({
-        to: user.email,
-        firstName: user.firstName,
-        pendingDocuments: pendingDocs.map(d => d.documentType),
-      });
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const emailEnabled = featureFlags.document_reminder_email_enabled === true;
 
-      res.json({ success: true, message: "Reminder sent" });
+      if (emailEnabled) {
+        const emailResult = await sendDocumentReminderEmail({
+          to: user.email,
+          firstName: user.firstName,
+          pendingDocuments: pendingDocs.map(d => d.documentType),
+        });
+
+        if (!emailResult.success) {
+          console.error(`Document reminder email failed for user ${req.params.userId}:`, emailResult.error);
+          return res.status(500).json({ error: "Failed to send reminder email" });
+        }
+      }
+
+      const notificationsEnabled = featureFlags.notifications_enabled === true;
+      if (notificationsEnabled && emailEnabled) {
+        await storage.createNotification({
+          userId: req.params.userId,
+          type: "document_reminder",
+          title: "Document Reminder",
+          message: `You have ${pendingDocs.length} pending document(s) to upload.`,
+          isRead: false,
+          metadata: { pendingDocuments: pendingDocs.map(d => d.documentType) },
+        });
+      }
+
+      const actions = [];
+      if (emailEnabled) actions.push("email sent");
+      if (notificationsEnabled && emailEnabled) actions.push("notification created");
+      const message = actions.length > 0
+        ? `Reminder sent (${actions.join(", ")})`
+        : "Reminder acknowledged (no delivery channels enabled)";
+      res.json({ success: true, message });
     } catch (error) {
+      console.error("Send reminder error:", error);
       res.status(500).json({ error: "Failed to send reminder" });
     }
   });
@@ -4247,6 +4277,94 @@ export async function registerRoutes(
     } catch (error) {
       console.error("My team members error:", error);
       res.status(500).json({ error: "Failed to fetch team members" });
+    }
+  });
+
+  app.get("/api/system/feature-flags", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const setting = await storage.getSystemSetting("feature_flags");
+      const flags = (setting?.value as Record<string, boolean>) || {
+        notifications_enabled: false,
+        document_reminder_email_enabled: false,
+      };
+      res.json(flags);
+    } catch (error) {
+      console.error("Get feature flags error:", error);
+      res.status(500).json({ error: "Failed to fetch feature flags" });
+    }
+  });
+
+  app.patch("/api/system/feature-flags", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+    try {
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled"];
+      const updates = req.body as Record<string, unknown>;
+      const validated: Record<string, boolean> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        if (!ALLOWED_FLAGS.includes(key)) continue;
+        if (typeof value !== "boolean") continue;
+        validated[key] = value;
+      }
+      const existing = await storage.getSystemSetting("feature_flags");
+      const currentFlags = (existing?.value as Record<string, boolean>) || {
+        notifications_enabled: false,
+        document_reminder_email_enabled: false,
+      };
+      const merged = { ...currentFlags, ...validated };
+      await storage.upsertSystemSetting("feature_flags", merged, req.session.userId);
+      res.json(merged);
+    } catch (error) {
+      console.error("Update feature flags error:", error);
+      res.status(500).json({ error: "Failed to update feature flags" });
+    }
+  });
+
+  app.get("/api/notifications", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const flagSetting = await storage.getSystemSetting("feature_flags");
+      const flags = (flagSetting?.value as Record<string, boolean>) || {};
+      if (!flags.notifications_enabled) {
+        return res.json([]);
+      }
+      const userNotifications = await storage.getNotificationsByUser(req.session.userId!);
+      res.json(userNotifications);
+    } catch (error) {
+      console.error("Get notifications error:", error);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const flagSetting = await storage.getSystemSetting("feature_flags");
+      const flags = (flagSetting?.value as Record<string, boolean>) || {};
+      if (!flags.notifications_enabled) {
+        return res.status(404).json({ error: "Notifications not enabled" });
+      }
+      const userNotifications = await storage.getNotificationsByUser(req.session.userId!);
+      const owns = userNotifications.some(n => n.id === req.params.id);
+      if (!owns) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      const updated = await storage.markNotificationRead(req.params.id);
+      res.json(updated);
+    } catch (error) {
+      console.error("Mark notification read error:", error);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/mark-all-read", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const flagSetting = await storage.getSystemSetting("feature_flags");
+      const flags = (flagSetting?.value as Record<string, boolean>) || {};
+      if (!flags.notifications_enabled) {
+        return res.status(404).json({ error: "Notifications not enabled" });
+      }
+      await storage.markAllNotificationsRead(req.session.userId!);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark all notifications read error:", error);
+      res.status(500).json({ error: "Failed to mark notifications as read" });
     }
   });
 

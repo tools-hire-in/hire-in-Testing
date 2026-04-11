@@ -63,6 +63,9 @@ import {
   type OfferLetter,
   type InsertOfferLetter,
   type SystemSetting,
+  notifications,
+  type Notification,
+  type InsertNotification,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -210,6 +213,11 @@ export interface IStorage {
   // System Settings
   getSystemSetting(key: string): Promise<SystemSetting | undefined>;
   upsertSystemSetting(key: string, value: any, updatedBy?: string): Promise<SystemSetting>;
+
+  createNotification(data: InsertNotification): Promise<Notification>;
+  getNotificationsByUser(userId: string): Promise<Notification[]>;
+  markNotificationRead(id: string): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: string): Promise<void>;
 
   // Offer Letters
   createOfferLetter(data: InsertOfferLetter): Promise<OfferLetter>;
@@ -1272,6 +1280,31 @@ export class DatabaseStorage implements IStorage {
   async getOfferLetters(): Promise<OfferLetter[]> {
     return db.select().from(offerLetters)
       .orderBy(desc(offerLetters.createdAt));
+  }
+
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [notification] = await db.insert(notifications).values(data).returning();
+    return notification;
+  }
+
+  async getNotificationsByUser(userId: string): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(id: string): Promise<Notification | undefined> {
+    const [updated] = await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
   }
 }
 

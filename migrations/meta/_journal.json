@@ -8,6 +8,13 @@
       "when": 1775945700033,
       "tag": "0000_mixed_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775948089616,
+      "tag": "0001_normal_stature",
+      "breakpoints": true
     }
   ]
 }
