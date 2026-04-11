@@ -500,12 +500,13 @@ export default function HRSettings() {
 
   const isHrOrAbove = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
 
-  const { data: allUsers } = useQuery<AdminUser[]>({
+  const { data: allUsersResponse } = useQuery<{ users: AdminUser[]; counts: { active: number; disabled: number; deleted: number } }>({
     queryKey: ["/api/admin/users"],
     enabled: isAuthenticated && isHrOrAbove,
     retry: 2,
     staleTime: 30000,
   });
+  const allUsers = allUsersResponse?.users;
 
   const { data: adjustmentHistory, isLoading: adjHistLoading } = useQuery<LeaveAdjustment[]>({
     queryKey: ["/api/hr/leave-adjustments", adjHistoryYear],

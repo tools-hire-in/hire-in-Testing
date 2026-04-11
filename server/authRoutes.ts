@@ -35,6 +35,10 @@ export function registerAuthRoutes(app: Express) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
+      if (user.deletedAt) {
+        return res.status(403).json({ message: "Account has been deleted. Contact your administrator." });
+      }
+
       if (!user.isActive) {
         return res.status(403).json({ message: "Account is deactivated. Contact your administrator." });
       }

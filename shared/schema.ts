@@ -43,6 +43,7 @@ export const adminUsers = pgTable("admin_users", {
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   passwordResetToken: varchar("password_reset_token"),
   passwordResetExpiry: timestamp("password_reset_expiry"),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -465,6 +466,7 @@ export const insertDepartmentSchema = createInsertSchema(departments).omit({
 
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
   id: true,
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -918,6 +920,10 @@ export type Department = typeof departments.$inferSelect;
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
+export interface AdminUsersResponse {
+  users: AdminUser[];
+  counts: { active: number; disabled: number; deleted: number };
+}
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
 export type Application = typeof applications.$inferSelect;

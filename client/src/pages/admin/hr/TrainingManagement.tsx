@@ -86,7 +86,8 @@ export default function TrainingManagement() {
     queryKey: ["/api/onboarding/tracks", selectedTrackId, "sections"],
     enabled: !!selectedTrackId,
   });
-  const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/admin/users"] });
+  const { data: usersResponse } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean }[]; counts: { active: number; disabled: number; deleted: number } }>({ queryKey: ["/api/admin/users"] });
+  const users = usersResponse?.users ?? [];
   const { data: trackAssignments = [] } = useQuery<any[]>({
     queryKey: ["/api/onboarding/tracks", assignTrackId, "assignments"],
     enabled: !!assignTrackId,

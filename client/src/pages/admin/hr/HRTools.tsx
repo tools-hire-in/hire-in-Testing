@@ -306,9 +306,10 @@ function SalarySlipGenerator() {
   const [showPreview, setShowPreview] = useState(false);
   const [loadingSlip, setLoadingSlip] = useState(false);
 
-  const { data: users } = useQuery<any[]>({
+  const { data: usersResponse } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; employeeId: string | null; departmentId: string | null; salary: string | null; designation: string | null; joiningDate: string | null; role: string }[]; counts: { active: number; disabled: number; deleted: number } }>({
     queryKey: ["/api/admin/users"],
   });
+  const users = usersResponse?.users;
 
   const { data: departments } = useQuery<any[]>({
     queryKey: ["/api/admin/departments"],
@@ -316,7 +317,7 @@ function SalarySlipGenerator() {
 
   const activeUsers = useMemo(() => {
     if (!users) return [];
-    return users.filter((u: any) => u.isActive);
+    return users.filter(u => u.isActive);
   }, [users]);
 
   const updateField = (field: keyof SlipFormData, value: any) => {
@@ -681,13 +682,14 @@ function OfferLetterGenerator() {
   const [generating, setGenerating] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
 
-  const { data: users } = useQuery<any[]>({
+  const { data: usersResp } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; designation: string | null; departmentId: string | null; salary: string | null; joiningDate: string | null }[]; counts: { active: number; disabled: number; deleted: number } }>({
     queryKey: ["/api/admin/users"],
   });
+  const users = usersResp?.users;
 
   const activeUsers = useMemo(() => {
     if (!users) return [];
-    return users.filter((u: any) => u.isActive);
+    return users.filter(u => u.isActive);
   }, [users]);
 
   const updateField = (field: keyof OfferFormData, value: any) => {

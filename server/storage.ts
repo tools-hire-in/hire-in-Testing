@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull } from "drizzle-orm";
 import {
   jobs,
   applications,
@@ -93,11 +93,14 @@ export interface IStorage {
 
   // Admin Users
   getAdminUsers(): Promise<AdminUser[]>;
+  getAllAdminUsersIncludingDeleted(): Promise<AdminUser[]>;
   getAdminUser(id: string): Promise<AdminUser | undefined>;
   getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   updateAdminUser(id: string, user: Partial<AdminUser>): Promise<AdminUser | undefined>;
   deleteAdminUser(id: string): Promise<boolean>;
+  softDeleteAdminUser(id: string): Promise<boolean>;
+  restoreAdminUser(id: string): Promise<AdminUser | undefined>;
 
   // Departments
   getDepartments(): Promise<Department[]>;
@@ -417,6 +420,10 @@ export class DatabaseStorage implements IStorage {
 
   // Admin Users
   async getAdminUsers(): Promise<AdminUser[]> {
+    return db.select().from(adminUsers).where(isNull(adminUsers.deletedAt)).orderBy(adminUsers.email);
+  }
+
+  async getAllAdminUsersIncludingDeleted(): Promise<AdminUser[]> {
     return db.select().from(adminUsers).orderBy(adminUsers.email);
   }
 
@@ -446,6 +453,21 @@ export class DatabaseStorage implements IStorage {
   async deleteAdminUser(id: string): Promise<boolean> {
     await db.delete(adminUsers).where(eq(adminUsers.id, id));
     return true;
+  }
+
+  async softDeleteAdminUser(id: string): Promise<boolean> {
+    await db.update(adminUsers)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(adminUsers.id, id));
+    return true;
+  }
+
+  async restoreAdminUser(id: string): Promise<AdminUser | undefined> {
+    const [restored] = await db.update(adminUsers)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(adminUsers.id, id))
+      .returning();
+    return restored;
   }
 
   // ==========================================
@@ -484,13 +506,13 @@ export class DatabaseStorage implements IStorage {
   // ==========================================
 
   async getOrgTree(): Promise<{ users: AdminUser[]; departments: Department[] }> {
-    const allUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true)).orderBy(adminUsers.firstName);
+    const allUsers = await db.select().from(adminUsers).where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt))).orderBy(adminUsers.firstName);
     const allDepts = await db.select().from(departments).where(eq(departments.isActive, true)).orderBy(departments.name);
     return { users: allUsers, departments: allDepts };
   }
 
   async getTeamMembers(managerId: string): Promise<AdminUser[]> {
-    return db.select().from(adminUsers).where(eq(adminUsers.managerId, managerId)).orderBy(adminUsers.firstName);
+    return db.select().from(adminUsers).where(and(eq(adminUsers.managerId, managerId), isNull(adminUsers.deletedAt))).orderBy(adminUsers.firstName);
   }
 
   // ==========================================

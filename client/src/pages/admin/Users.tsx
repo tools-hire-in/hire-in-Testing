@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { AdminUser } from "@shared/schema";
+import type { AdminUser, AdminUsersResponse } from "@shared/schema";
 
 interface Department {
   id: string;
@@ -127,11 +127,20 @@ export default function AdminUsers() {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable"; user: AdminUser } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | "deleted">("active");
 
-  const { data: users, isLoading } = useQuery<AdminUser[]>({
-    queryKey: ["/api/admin/users"],
+  const { data: usersResponse, isLoading } = useQuery<AdminUsersResponse>({
+    queryKey: ["/api/admin/users", statusFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/users?status=${statusFilter}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
     enabled: isAuthenticated,
   });
+
+  const users = usersResponse?.users;
+  const counts = usersResponse?.counts;
 
   const { data: deptList } = useQuery<Department[]>({
     queryKey: ["/api/departments"],
@@ -263,12 +272,25 @@ export default function AdminUsers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "User removed permanently" });
+      toast({ title: "User deleted", description: "The user has been soft-deleted and can be restored later." });
       setConfirmOpen(false);
       setConfirmAction(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to remove user", description: error?.message || "Something went wrong", variant: "destructive" });
+      toast({ title: "Failed to delete user", description: error?.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/admin/users/${id}/restore`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "User restored", description: "The user has been restored successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to restore user", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -436,6 +458,20 @@ export default function AdminUsers() {
           />
         </div>
 
+        <div className="flex gap-2" data-testid="status-filter-tabs">
+          {(["active", "disabled", "deleted"] as const).map((tab) => (
+            <Button
+              key={tab}
+              variant={statusFilter === tab ? "default" : "outline"}
+              size="sm"
+              onClick={() => setStatusFilter(tab)}
+              data-testid={`tab-${tab}`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)} ({counts?.[tab] ?? 0})
+            </Button>
+          ))}
+        </div>
+
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -467,7 +503,7 @@ export default function AdminUsers() {
                     ))
                   ) : filteredUsers && filteredUsers.length > 0 ? (
                     filteredUsers.map((adminUser) => (
-                      <TableRow key={adminUser.id} data-testid={`user-row-${adminUser.id}`}>
+                      <TableRow key={adminUser.id} data-testid={`user-row-${adminUser.id}`} className={statusFilter === "deleted" ? "opacity-60" : ""}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {adminUser.firstName} {adminUser.lastName}
@@ -493,9 +529,15 @@ export default function AdminUsers() {
                           {adminUser.joiningDate ? format(new Date(adminUser.joiningDate + "T00:00:00"), "dd MMM yyyy") : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
-                            {adminUser.isActive ? "Active" : "Disabled"}
-                          </Badge>
+                          {adminUser.deletedAt ? (
+                            <Badge variant="destructive" data-testid={`badge-status-${adminUser.id}`}>
+                              Deleted
+                            </Badge>
+                          ) : (
+                            <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
+                              {adminUser.isActive ? "Active" : "Disabled"}
+                            </Badge>
+                          )}
                         </TableCell>
                         {isSuperAdmin && (
                           <TableCell>
@@ -509,7 +551,20 @@ export default function AdminUsers() {
                           </TableCell>
                         )}
                         <TableCell className="text-right">
-                          {(canEditUser(adminUser) || canEditHierarchy || canResetPassword(adminUser)) && (
+                          {statusFilter === "deleted" ? (
+                            canEditUser(adminUser) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => restoreMutation.mutate(adminUser.id)}
+                                disabled={restoreMutation.isPending}
+                                data-testid={`button-restore-${adminUser.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                                Restore
+                              </Button>
+                            )
+                          ) : (canEditUser(adminUser) || canEditHierarchy || canResetPassword(adminUser)) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
@@ -939,7 +994,7 @@ export default function AdminUsers() {
               </DialogTitle>
               <DialogDescription>
                 {confirmAction?.type === "delete" && (
-                  <>Are you sure you want to permanently delete <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong> ({confirmAction.user.email})? This action cannot be undone.</>
+                  <>Are you sure you want to delete <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong> ({confirmAction.user.email})? The user will be moved to the Deleted tab and can be restored later.</>
                 )}
                 {confirmAction?.type === "disable" && (
                   <>Are you sure you want to disable <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong>? They will no longer be able to log in.</>
@@ -958,7 +1013,7 @@ export default function AdminUsers() {
                   disabled={deleteMutation.isPending}
                   data-testid="button-confirm-delete"
                 >
-                  {deleteMutation.isPending ? "Deleting..." : "Delete Permanently"}
+                  {deleteMutation.isPending ? "Deleting..." : "Delete User"}
                 </Button>
               )}
               {confirmAction?.type === "disable" && (

@@ -576,8 +576,29 @@ export async function registerRoutes(
   // Admin Users - only Super Admin can view/manage team
   app.get("/api/admin/users", requireAuth, async (req, res) => {
     try {
-      const users = await storage.getAdminUsers();
-      res.json(users);
+      const allUsers = await storage.getAllAdminUsersIncludingDeleted();
+      const status = (req.query.status as string) || "active";
+
+      const activeUsers = allUsers.filter(u => u.isActive && !u.deletedAt);
+      const disabledUsers = allUsers.filter(u => !u.isActive && !u.deletedAt);
+      const deletedUsers = allUsers.filter(u => u.deletedAt);
+
+      const counts = {
+        active: activeUsers.length,
+        disabled: disabledUsers.length,
+        deleted: deletedUsers.length,
+      };
+
+      let filtered: typeof allUsers;
+      if (status === "disabled") {
+        filtered = disabledUsers;
+      } else if (status === "deleted") {
+        filtered = deletedUsers;
+      } else {
+        filtered = activeUsers;
+      }
+
+      res.json({ users: filtered, counts });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch users" });
     }
@@ -1040,7 +1061,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteAdminUser(userId);
+      await storage.softDeleteAdminUser(userId);
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
@@ -1052,6 +1073,36 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/restore", requireRole("super_admin", "admin"), async (req, res) => {
+    try {
+      const userId = req.params.id as string;
+      const targetUser = await storage.getAdminUser(userId);
+
+      if (!targetUser || !targetUser.deletedAt) {
+        return res.status(404).json({ error: "Deleted user not found" });
+      }
+
+      const actorRank = ROLE_RANK[req.session.role!] ?? 0;
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+      if (actorRank <= targetRank && req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "You cannot restore a user with an equal or higher role" });
+      }
+
+      const restored = await storage.restoreAdminUser(userId);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "restore_user",
+        changes: { email: targetUser.email, role: targetUser.role, name: `${targetUser.firstName} ${targetUser.lastName}` },
+      });
+
+      res.json(restored);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore user" });
     }
   });
 
