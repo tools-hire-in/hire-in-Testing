@@ -102,21 +102,20 @@ export function Header({ onOpenConsultation, transparent = false }: HeaderProps)
           </div>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-7">
           {NAV_LINKS.map((link) =>
             "children" in link ? (
               <DropdownMenu key={link.label}>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className={`flex items-center gap-1 ${
-                      isTransparent ? "text-white/90 hover:text-white hover:bg-white/10" : ""
+                  <button
+                    className={`flex items-center gap-1 text-[13px] font-semibold uppercase tracking-wider transition-opacity duration-300 hover:opacity-100 cursor-pointer ${
+                      isTransparent ? "text-white/85 hover:text-white" : "text-foreground/80 hover:text-foreground"
                     }`}
                     data-testid={`nav-${link.label.toLowerCase()}`}
                   >
                     {link.label}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="center" className="w-56">
                   {link.children.map((child) => (
@@ -133,18 +132,17 @@ export function Header({ onOpenConsultation, transparent = false }: HeaderProps)
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Link key={link.href} href={link.href}>
-                <Button
-                  variant="ghost"
-                  className={`${
-                    isTransparent
-                      ? `text-white/90 hover:text-white hover:bg-white/10 ${isActive(link.href) ? "bg-white/15" : ""}`
-                      : isActive(link.href) ? "bg-accent" : ""
-                  }`}
-                  data-testid={`nav-${link.label.toLowerCase()}`}
-                >
-                  {link.label}
-                </Button>
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`text-[13px] font-semibold uppercase tracking-wider transition-opacity duration-300 hover:opacity-100 ${
+                  isTransparent
+                    ? `text-white/85 hover:text-white ${isActive(link.href) ? "text-white" : ""}`
+                    : `text-foreground/80 hover:text-foreground ${isActive(link.href) ? "text-foreground" : ""}`
+                }`}
+                data-testid={`nav-${link.label.toLowerCase()}`}
+              >
+                {link.label}
               </Link>
             )
           )}

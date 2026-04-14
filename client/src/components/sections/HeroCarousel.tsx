@@ -108,7 +108,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   return (
     <section
       ref={sectionRef}
-      className="relative h-screen w-full overflow-hidden group/hero"
+      className="relative h-[88vh] w-full overflow-hidden group/hero"
       data-testid="section-hero"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
