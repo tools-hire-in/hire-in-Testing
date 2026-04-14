@@ -130,15 +130,15 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
     throw new Error("CEIPAL_JOBS_ENDPOINT not configured");
   }
 
+  const PAGE_LIMIT = 50;
   const token = await authenticate();
   const allJobs: CeipalJob[] = [];
   const seenIds = new Set<string>();
   let page = 1;
-  let offset = 0;
 
   while (page <= MAX_PAGES) {
     const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedUrl = `${endpoint}${separator}page=${page}&offset=${offset}&limit=50`;
+    const pagedUrl = `${endpoint}${separator}page=${page}&limit=${PAGE_LIMIT}`;
 
     const res = await fetch(pagedUrl, {
       method: "GET",
@@ -175,12 +175,11 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
 
     console.log(`[ceipal] Fetched page ${page}: ${pageJobs.length} jobs (${newCount} new)`);
 
-    if (newCount === 0) {
-      console.log(`[ceipal] No new jobs on page ${page}, stopping pagination`);
+    if (pageJobs.length < PAGE_LIMIT) {
+      console.log(`[ceipal] Page ${page} returned ${pageJobs.length} < ${PAGE_LIMIT}, reached last page`);
       break;
     }
 
-    offset += pageJobs.length;
     page++;
   }
 
@@ -188,7 +187,7 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
     console.warn(`[ceipal] Reached max page limit (${MAX_PAGES}), stopping pagination`);
   }
 
-  console.log(`[ceipal] Total jobs fetched across ${page <= MAX_PAGES ? page : MAX_PAGES} page(s): ${allJobs.length}`);
+  console.log(`[ceipal] Total jobs fetched across ${page} page(s): ${allJobs.length}`);
   return allJobs;
 }
 
