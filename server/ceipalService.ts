@@ -187,7 +187,8 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
     console.warn(`[ceipal] Reached max page limit (${MAX_PAGES}), stopping pagination`);
   }
 
-  console.log(`[ceipal] Total jobs fetched across ${page} page(s): ${allJobs.length}`);
+  const totalPages = Math.min(page, MAX_PAGES);
+  console.log(`[ceipal] Total jobs fetched across ${totalPages} page(s): ${allJobs.length}`);
   return allJobs;
 }
 
