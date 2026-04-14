@@ -26,31 +26,29 @@ function useMotionVariants() {
 
   return {
     headline: {
-      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 30, scale: 0.97 },
-      animate: { opacity: 1, y: 0, scale: 1 },
-      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -20, scale: 0.97 },
-      transition: reduced ? instant : { type: "spring" as const, stiffness: 80, damping: 20, mass: 0.8 },
+      initial: reduced ? { opacity: 1 } : { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: reduced ? instant : { duration: 1.5, ease: [0.4, 0, 0.2, 1] },
     },
     subheadline: {
-      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 25 },
-      animate: { opacity: 1, y: 0 },
-      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -15 },
-      transition: reduced ? instant : { type: "spring" as const, stiffness: 70, damping: 22, mass: 0.8, delay: 0.15 },
+      initial: reduced ? { opacity: 1 } : { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: reduced ? instant : { duration: 1.5, ease: [0.4, 0, 0.2, 1], delay: 0.15 },
     },
     buttons: {
-      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 20 },
-      animate: { opacity: 1, y: 0 },
-      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -10 },
-      transition: reduced ? instant : { type: "spring" as const, stiffness: 60, damping: 20, mass: 0.8, delay: 0.3 },
+      initial: reduced ? { opacity: 1 } : { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: reduced ? instant : { duration: 1.5, ease: [0.4, 0, 0.2, 1], delay: 0.3 },
     },
   };
 }
 
 export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const progressRef = useRef<number | null>(null);
-  const startTimeRef = useRef(Date.now());
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const prefersReducedMotion = useReducedMotion();
@@ -58,37 +56,22 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
 
   const nextSlide = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % HERO_SLIDES.length);
-    setProgress(0);
-    startTimeRef.current = Date.now();
   }, []);
 
   const prevSlide = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
-    setProgress(0);
-    startTimeRef.current = Date.now();
   }, []);
 
   const goToSlide = useCallback((index: number) => {
     setCurrentIndex(index);
-    setProgress(0);
-    startTimeRef.current = Date.now();
   }, []);
 
   useEffect(() => {
-    startTimeRef.current = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - startTimeRef.current;
-      const pct = Math.min(elapsed / SLIDE_DURATION, 1);
-      setProgress(pct);
-      if (pct >= 1) {
-        nextSlide();
-      } else {
-        progressRef.current = requestAnimationFrame(tick);
-      }
-    };
-    progressRef.current = requestAnimationFrame(tick);
+    autoAdvanceRef.current = setTimeout(() => {
+      nextSlide();
+    }, SLIDE_DURATION);
     return () => {
-      if (progressRef.current) cancelAnimationFrame(progressRef.current);
+      if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
     };
   }, [currentIndex, nextSlide]);
 
@@ -133,14 +116,10 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
       {HERO_SLIDES.map((slide, index) => (
         <div
           key={index}
-          className={`absolute inset-0 ${
-            prefersReducedMotion
-              ? `transition-opacity duration-300 ${index === currentIndex ? "opacity-100" : "opacity-0"}`
-              : `transition-all duration-[1200ms] ease-in-out ${
-                  index === currentIndex ? "opacity-100 scale-100" : "opacity-0 scale-105"
-                }`
-          }`}
-          style={{ willChange: "opacity, transform" }}
+          className={`absolute inset-0 transition-opacity ease-in-out ${
+            prefersReducedMotion ? "duration-300" : "duration-[2000ms]"
+          } ${index === currentIndex ? "opacity-100" : "opacity-0"}`}
+          style={{ willChange: "opacity" }}
         >
           <div
             className={`h-full w-full ${prefersReducedMotion ? "" : kenBurnsVariants[index % kenBurnsVariants.length]}`}
@@ -151,7 +130,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
               className="h-full w-full object-cover"
             />
           </div>
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/40 to-black/30" />
         </div>
       ))}
 
@@ -159,13 +138,13 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
         <div className="absolute inset-0 z-[1] pointer-events-none hero-ambient-overlay" />
       )}
 
-      <div className="relative z-10 flex h-full items-center justify-center px-4">
-        <div className="max-w-4xl text-center">
+      <div className="relative z-10 flex h-full items-end px-6 sm:px-10 md:px-16 lg:px-20 pb-24 md:pb-28 lg:pb-32">
+        <div className="max-w-2xl">
           <AnimatePresence mode="wait">
             <motion.h1
               key={`headline-${currentIndex}`}
               {...motionVariants.headline}
-              className="mb-6 text-4xl font-bold text-white md:text-5xl lg:text-6xl xl:text-7xl"
+              className="mb-4 text-3xl font-bold text-white sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl"
               style={{ lineHeight: 1.1 }}
               data-testid="text-hero-headline"
             >
@@ -176,7 +155,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
             <motion.p
               key={`subheadline-${currentIndex}`}
               {...motionVariants.subheadline}
-              className="mb-8 text-lg text-white/90 md:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed"
+              className="mb-8 text-base text-white/85 md:text-lg lg:text-xl max-w-xl leading-relaxed"
               data-testid="text-hero-subheadline"
             >
               {currentSlide.subheadline}
@@ -186,7 +165,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
             <motion.div
               key={`buttons-${currentIndex}`}
               {...motionVariants.buttons}
-              className="flex flex-col sm:flex-row items-center justify-center gap-4"
+              className="flex flex-col sm:flex-row items-start gap-4"
             >
               <Button
                 size="lg"
@@ -225,27 +204,18 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
         <ChevronRight className="h-6 w-6" />
       </button>
 
-      <div className="absolute bottom-0 left-0 right-0 z-20 flex h-1 gap-1 px-8 pb-6">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
         {HERO_SLIDES.map((_, index) => (
           <button
             key={index}
             onClick={() => goToSlide(index)}
-            className="relative h-1 flex-1 rounded-full overflow-hidden bg-white/20 cursor-pointer"
-            data-testid={`button-progress-${index}`}
-          >
-            <div
-              className="absolute inset-0 bg-primary rounded-full transition-none origin-left"
-              style={{
-                transform: `scaleX(${
-                  index === currentIndex
-                    ? progress
-                    : index < currentIndex
-                      ? 1
-                      : 0
-                })`,
-              }}
-            />
-          </button>
+            className={`rounded-full transition-all duration-500 ease-in-out cursor-pointer ${
+              index === currentIndex
+                ? "w-[8px] h-[8px] bg-white/90"
+                : "w-[6px] h-[6px] bg-white/40 hover:bg-white/60"
+            }`}
+            data-testid={`button-indicator-${index}`}
+          />
         ))}
       </div>
     </section>
