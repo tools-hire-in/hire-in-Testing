@@ -138,13 +138,13 @@ function Slide1Cover() {
           </div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(244,124,32,0.18)", border: "1px solid rgba(244,124,32,0.35)", borderRadius: 20, padding: "4px 14px", marginBottom: 18, width: "fit-content" }}>
             <Brain size={12} color={ORANGE} />
-            <span style={{ color: ORANGE, fontSize: 11, fontWeight: 600, letterSpacing: 1.2, fontFamily: "'Segoe UI', Arial, sans-serif", textTransform: "uppercase" }}>AI-Enhanced Recruiting</span>
+            <span style={{ color: ORANGE, fontSize: 11, fontWeight: 600, letterSpacing: 1.2, fontFamily: "'Segoe UI', Arial, sans-serif", textTransform: "uppercase" }}>AI-Powered Tools. Recruiter-Led Delivery</span>
           </div>
           <h1 style={{ fontSize: 48, fontWeight: 900, color: WHITE, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.08, letterSpacing: -1, marginBottom: 6 }}>Hire&apos;in Solutions</h1>
           <h2 style={{ fontSize: 26, fontWeight: 600, color: ORANGE, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.4, marginBottom: 20 }}>US IT Staffing · Powered by AI</h2>
           <p style={{ fontSize: 16, color: "rgba(255,255,255,0.72)", fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic", letterSpacing: 0.3 }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
           <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 0", width: "fit-content" }}>
-            {["500+ IT Placements", "24-Hour First Submissions", "95% Client Retention"].map((stat, i) => (
+            {["100+ Successful IT Talent Engagements", "24-Hour First Submissions", "95% Client Retention"].map((stat, i) => (
               <Fragment key={i}>
                 {i > 0 && <div style={{ width: 1, height: 20, background: "rgba(244,124,32,0.4)", flexShrink: 0 }} />}
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.3, padding: "0 16px", whiteSpace: "nowrap" }}>{stat}</span>
@@ -191,7 +191,7 @@ function Slide1Cover() {
 
 function Slide2ByTheNumbers() {
   const metrics = [
-    { value: "500+", label: "IT Placements", sub: "Across all technology verticals" },
+    { value: "100+", label: "Successful IT Talent Engagements", sub: "Across all technology verticals" },
     { value: "< 5 Days", label: "Avg Fill Time", sub: "From intake to qualified submission" },
     { value: "95%+", label: "Client Retention", sub: "Year-over-year partnership renewals" },
     { value: "50", label: "US States Covered", sub: "True coast-to-coast reach" },
@@ -232,13 +232,13 @@ function Slide3About() {
         <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: WHITE, borderRadius: 10, padding: "16px 20px", borderLeft: `4px solid ${ORANGE}`, boxShadow: "0 2px 12px rgba(31,58,110,0.08)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Mission</p>
-            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 · 60+ recruiters nationwide. We connect US enterprises with elite IT talent — faster, smarter, and more precisely than any traditional staffing firm. Headquartered in San Jose, CA, serving clients coast to coast.</p>
+            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 — IT staffing is our core DNA. From day one, we&apos;ve built our business around connecting US enterprises with elite technology talent. Today we serve IT, Healthcare, Engineering &amp; Professional Services nationwide.</p>
           </div>
           <div style={{ background: NAVY, borderRadius: 10, padding: "16px 20px", boxShadow: "0 2px 12px rgba(31,58,110,0.12)" }}>
-            <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>The Rayomind Family</p>
+            <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Edge</p>
             <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, lineHeight: 1.55, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. We leverage best-in-class AI tools including <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening — ensuring every submission is a strong fit.
-              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>A subsidiary of Rayomind Inc.</span>
+              A lean team of <strong style={{ color: ORANGE }}>20+ domain-specialist recruiters</strong> — every one an IT expert. We combine AI-powered tools like <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening with hands-on recruiter expertise. Direct access, no layers, every submission a strong fit.
+              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>San Jose, CA · Serving all 50 US states</span>
             </p>
           </div>
         </div>
@@ -246,7 +246,7 @@ function Slide3About() {
           {[
             { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology staffing" },
             { icon: Brain, label: "AI-Powered Matching", desc: "92% match accuracy via Kleriq AI" },
-            { icon: Users, label: "60+ Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
+            { icon: Users, label: "20+ Domain-Specialist Recruiters", desc: "Direct access, no layers" },
             { icon: Globe, label: "All 50 US States", desc: "True coast-to-coast talent coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div key={i} style={{ background: WHITE, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 6px rgba(31,58,110,0.07)" }}>
@@ -402,7 +402,7 @@ function Slide6KleriqAI() {
 function Slide7Advantage() {
   const advantages = [
     { icon: Brain, title: "AI-Assisted Matching", desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.", highlight: "70% Faster Shortlisting" },
-    { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "60+ IT-Only Recruiters" },
+    { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "20+ Domain-Specialist Recruiters" },
     { icon: ShieldCheck, title: "Compliance-First", desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.", highlight: "Zero-Risk: I-9 + E-Verify" },
     { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 24 hours for most IT roles.", highlight: "First Profiles in 24 Hours" },
   ];

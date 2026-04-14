@@ -308,7 +308,7 @@ function Slide1Cover() {
                 textTransform: "uppercase",
               }}
             >
-              AI-Enhanced Recruiting
+              AI-Powered Tools. Recruiter-Led Delivery
             </span>
           </div>
 
@@ -363,7 +363,7 @@ function Slide1Cover() {
             }}
           >
             {[
-              "500+ IT Placements",
+              "100+ Successful IT Talent Engagements",
               "24-Hour First Submissions",
               "95% Client Retention",
             ].map((stat, i) => (
@@ -531,7 +531,7 @@ function Slide1Cover() {
 /* ── SLIDE 2: BY THE NUMBERS ── */
 function Slide2ByTheNumbers() {
   const metrics = [
-    { value: "500+", label: "IT Placements", sub: "Across all technology verticals" },
+    { value: "100+", label: "Successful IT Talent Engagements", sub: "Across all technology verticals" },
     { value: "< 5 Days", label: "Avg Fill Time", sub: "From intake to qualified submission" },
     { value: "95%+", label: "Client Retention", sub: "Year-over-year partnership renewals" },
     { value: "50", label: "US States Covered", sub: "True coast-to-coast reach" },
@@ -715,7 +715,7 @@ function Slide3About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Est. 2014 · 60+ recruiters nationwide. We connect US enterprises with elite IT talent — faster, smarter, and more precisely than any traditional staffing firm. Headquartered in San Jose, CA, serving clients coast to coast.
+              Est. 2014 — IT staffing is our core DNA. From day one, we&apos;ve built our business around connecting US enterprises with elite technology talent. Today we serve IT, Healthcare, Engineering &amp; Professional Services nationwide.
             </p>
           </div>
 
@@ -738,7 +738,7 @@ function Slide3About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              The Rayomind Family
+              Our Edge
             </p>
             <p
               style={{
@@ -748,8 +748,8 @@ function Slide3About() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group — a technology-driven ecosystem building next-generation workforce solutions. We leverage best-in-class AI tools including <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening — ensuring every submission is a strong fit.
-              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>A subsidiary of Rayomind Inc.</span>
+              A lean team of <strong style={{ color: ORANGE }}>20+ domain-specialist recruiters</strong> — every one an IT expert. We combine AI-powered tools like <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening with hands-on recruiter expertise. Direct access, no layers, every submission a strong fit.
+              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>San Jose, CA · Serving all 50 US states</span>
             </p>
           </div>
         </div>
@@ -766,7 +766,7 @@ function Slide3About() {
           {[
             { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology staffing" },
             { icon: Brain, label: "AI-Powered Matching", desc: "92% match accuracy via Kleriq AI" },
-            { icon: Users, label: "60+ Expert Recruiters", desc: "Domain-specialist IT recruitment teams" },
+            { icon: Users, label: "20+ Domain-Specialist Recruiters", desc: "Direct access, no layers" },
             { icon: Globe, label: "All 50 US States", desc: "True coast-to-coast talent coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div
@@ -1397,7 +1397,7 @@ function Slide7Advantage() {
       icon: Code2,
       title: "IT Domain Experts",
       desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.",
-      highlight: "60+ IT-Only Recruiters",
+      highlight: "20+ Domain-Specialist Recruiters",
     },
     {
       icon: ShieldCheck,
