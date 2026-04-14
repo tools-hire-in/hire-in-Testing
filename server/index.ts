@@ -186,14 +186,6 @@ async function ensurePerformanceTables() {
   }
 
   try {
-    await db.execute(sql`
-      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP
-    `);
-  } catch (err) {
-    console.error("admin_users deleted_at migration error:", err);
-  }
-
-  try {
     const extResult = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name = 'training_extension_requests'
@@ -326,6 +318,13 @@ async function backfillHolidayAttendance() {
 }
 
 (async () => {
+  try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
+    log("Ensured deleted_at column exists on admin_users");
+  } catch (err) {
+    console.error("admin_users deleted_at migration error:", err);
+  }
+
   await ensurePerformanceTables();
   await backfillEmployeeIds();
   await backfillHolidayAttendance();
