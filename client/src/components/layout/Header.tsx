@@ -20,14 +20,32 @@ interface HeaderProps {
 export function Header({ onOpenConsultation, transparent = false }: HeaderProps) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [heroVisible, setHeroVisible] = useState(true);
 
   useEffect(() => {
     if (!transparent) return;
-    const onScroll = () => setScrolled(window.scrollY > 50);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+
+    const check = () => {
+      const val = document.documentElement.getAttribute("data-hero-visible");
+      setHeroVisible(val === "true");
+    };
+
+    check();
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "data-hero-visible") {
+          check();
+        }
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-hero-visible"],
+    });
+
+    return () => observer.disconnect();
   }, [transparent]);
 
   const isActive = (href: string) => location === href;
@@ -38,7 +56,7 @@ export function Header({ onOpenConsultation, transparent = false }: HeaderProps)
     }
   };
 
-  const isTransparent = transparent && !scrolled;
+  const isTransparent = transparent && heroVisible;
 
   return (
     <header

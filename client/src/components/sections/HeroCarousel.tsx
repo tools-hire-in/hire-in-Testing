@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HERO_SLIDES } from "@/lib/constants";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 const SLIDE_DURATION = 6000;
+const SWIPE_THRESHOLD = 50;
 
 const kenBurnsVariants = [
   "hero-kb-zoom-in-left",
@@ -18,26 +19,32 @@ interface HeroCarouselProps {
   onApplyNow: () => void;
 }
 
-const headlineMotion = {
-  initial: { opacity: 0, y: 30, scale: 0.97 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -20, scale: 0.97 },
-  transition: { type: "spring", stiffness: 80, damping: 20, mass: 0.8 },
-};
+function useMotionVariants() {
+  const reduced = useReducedMotion();
 
-const subheadlineMotion = {
-  initial: { opacity: 0, y: 25 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -15 },
-  transition: { type: "spring", stiffness: 70, damping: 22, mass: 0.8, delay: 0.15 },
-};
+  const instant = { duration: 0 };
 
-const buttonsMotion = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -10 },
-  transition: { type: "spring", stiffness: 60, damping: 20, mass: 0.8, delay: 0.3 },
-};
+  return {
+    headline: {
+      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 30, scale: 0.97 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -20, scale: 0.97 },
+      transition: reduced ? instant : { type: "spring" as const, stiffness: 80, damping: 20, mass: 0.8 },
+    },
+    subheadline: {
+      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 25 },
+      animate: { opacity: 1, y: 0 },
+      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -15 },
+      transition: reduced ? instant : { type: "spring" as const, stiffness: 70, damping: 22, mass: 0.8, delay: 0.15 },
+    },
+    buttons: {
+      initial: reduced ? { opacity: 1 } : { opacity: 0, y: 20 },
+      animate: { opacity: 1, y: 0 },
+      exit: reduced ? { opacity: 0 } : { opacity: 0, y: -10 },
+      transition: reduced ? instant : { type: "spring" as const, stiffness: 60, damping: 20, mass: 0.8, delay: 0.3 },
+    },
+  };
+}
 
 export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -45,6 +52,9 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   const progressRef = useRef<number | null>(null);
   const startTimeRef = useRef(Date.now());
   const sectionRef = useRef<HTMLElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const prefersReducedMotion = useReducedMotion();
+  const motionVariants = useMotionVariants();
 
   const nextSlide = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % HERO_SLIDES.length);
@@ -83,14 +93,11 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   }, [currentIndex, nextSlide]);
 
   useEffect(() => {
-    if (sectionRef.current) {
-      sectionRef.current.setAttribute("data-hero-visible", "true");
-    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         document.documentElement.setAttribute("data-hero-visible", entry.isIntersecting ? "true" : "false");
       },
-      { threshold: 0.1 }
+      { threshold: 0.15 }
     );
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => {
@@ -99,18 +106,39 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
     };
   }, []);
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < 0) nextSlide();
+    else prevSlide();
+  }, [nextSlide, prevSlide]);
+
   const currentSlide = HERO_SLIDES[currentIndex];
-  const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   return (
-    <section ref={sectionRef} className="relative h-screen w-full overflow-hidden group/hero" data-testid="section-hero">
+    <section
+      ref={sectionRef}
+      className="relative h-screen w-full overflow-hidden group/hero"
+      data-testid="section-hero"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {HERO_SLIDES.map((slide, index) => (
         <div
           key={index}
-          className={`absolute inset-0 transition-all duration-[1200ms] ease-in-out ${
-            index === currentIndex
-              ? "opacity-100 scale-100"
-              : "opacity-0 scale-105"
+          className={`absolute inset-0 ${
+            prefersReducedMotion
+              ? `transition-opacity duration-300 ${index === currentIndex ? "opacity-100" : "opacity-0"}`
+              : `transition-all duration-[1200ms] ease-in-out ${
+                  index === currentIndex ? "opacity-100 scale-100" : "opacity-0 scale-105"
+                }`
           }`}
           style={{ willChange: "opacity, transform" }}
         >
@@ -127,14 +155,16 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
         </div>
       ))}
 
-      <div className="absolute inset-0 z-[1] pointer-events-none hero-ambient-overlay" />
+      {!prefersReducedMotion && (
+        <div className="absolute inset-0 z-[1] pointer-events-none hero-ambient-overlay" />
+      )}
 
       <div className="relative z-10 flex h-full items-center justify-center px-4">
         <div className="max-w-4xl text-center">
           <AnimatePresence mode="wait">
             <motion.h1
               key={`headline-${currentIndex}`}
-              {...headlineMotion}
+              {...motionVariants.headline}
               className="mb-6 text-4xl font-bold text-white md:text-5xl lg:text-6xl xl:text-7xl"
               style={{ lineHeight: 1.1 }}
               data-testid="text-hero-headline"
@@ -145,7 +175,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
           <AnimatePresence mode="wait">
             <motion.p
               key={`subheadline-${currentIndex}`}
-              {...subheadlineMotion}
+              {...motionVariants.subheadline}
               className="mb-8 text-lg text-white/90 md:text-xl lg:text-2xl max-w-3xl mx-auto leading-relaxed"
               data-testid="text-hero-subheadline"
             >
@@ -155,7 +185,7 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
           <AnimatePresence mode="wait">
             <motion.div
               key={`buttons-${currentIndex}`}
-              {...buttonsMotion}
+              {...motionVariants.buttons}
               className="flex flex-col sm:flex-row items-center justify-center gap-4"
             >
               <Button
