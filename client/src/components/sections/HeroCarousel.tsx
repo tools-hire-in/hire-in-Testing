@@ -14,6 +14,27 @@ const kenBurnsVariants = [
   "hero-kb-zoom-in-top",
 ];
 
+function usePreloadImages(urls: string[]) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const promises = urls.map(
+      (url) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          img.src = url;
+        })
+    );
+    Promise.all(promises).then(() => {
+      if (!cancelled) setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return loaded;
+}
+
 interface HeroCarouselProps {
   onStartHiring: () => void;
   onApplyNow: () => void;
@@ -53,27 +74,32 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const motionVariants = useMotionVariants();
+  const imagesLoaded = usePreloadImages(HERO_SLIDES.map((s) => s.url));
 
   const nextSlide = useCallback(() => {
+    if (!imagesLoaded) return;
     setCurrentIndex((prev) => (prev + 1) % HERO_SLIDES.length);
-  }, []);
+  }, [imagesLoaded]);
 
   const prevSlide = useCallback(() => {
+    if (!imagesLoaded) return;
     setCurrentIndex((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
-  }, []);
+  }, [imagesLoaded]);
 
   const goToSlide = useCallback((index: number) => {
+    if (!imagesLoaded) return;
     setCurrentIndex(index);
-  }, []);
+  }, [imagesLoaded]);
 
   useEffect(() => {
+    if (!imagesLoaded) return;
     autoAdvanceRef.current = setTimeout(() => {
       nextSlide();
     }, SLIDE_DURATION);
     return () => {
       if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
     };
-  }, [currentIndex, nextSlide]);
+  }, [currentIndex, nextSlide, imagesLoaded]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -113,26 +139,33 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {HERO_SLIDES.map((slide, index) => (
-        <div
-          key={index}
-          className={`absolute inset-0 transition-opacity ease-in-out ${
-            prefersReducedMotion ? "duration-300" : "duration-[2000ms]"
-          } ${index === currentIndex ? "opacity-100" : "opacity-0"}`}
-          style={{ willChange: "opacity" }}
-        >
+      {HERO_SLIDES.map((slide, index) => {
+        const isActive = index === currentIndex;
+        return (
           <div
-            className={`h-full w-full ${prefersReducedMotion ? "" : kenBurnsVariants[index % kenBurnsVariants.length]}`}
+            key={index}
+            aria-hidden={!isActive}
+            className={`absolute inset-0 transition-opacity ease-in-out ${
+              prefersReducedMotion ? "duration-300" : "duration-[2000ms]"
+            } ${isActive ? "opacity-100 z-[1]" : "opacity-0 z-0"}`}
+            style={{ willChange: "opacity", backfaceVisibility: "hidden" }}
           >
-            <img
-              src={slide.url}
-              alt={slide.alt}
-              className="h-full w-full object-cover"
-            />
+            <div
+              key={isActive ? `kb-active-${currentIndex}` : `kb-idle-${index}`}
+              className={`h-full w-full ${isActive && !prefersReducedMotion ? kenBurnsVariants[index % kenBurnsVariants.length] : ""}`}
+              style={{ backfaceVisibility: "hidden" }}
+            >
+              <img
+                src={slide.url}
+                alt={slide.alt}
+                className="h-full w-full object-cover"
+                loading="eager"
+              />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/40 to-black/30" />
           </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/40 to-black/30" />
-        </div>
-      ))}
+        );
+      })}
 
       {!prefersReducedMotion && (
         <div className="absolute inset-0 z-[1] pointer-events-none hero-ambient-overlay" />
@@ -140,52 +173,58 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
 
       <div className="relative z-10 flex h-full items-end px-6 sm:px-10 md:px-16 lg:px-20 pb-24 md:pb-28 lg:pb-32">
         <div className="max-w-2xl">
-          <AnimatePresence mode="wait">
-            <motion.h1
-              key={`headline-${currentIndex}`}
-              {...motionVariants.headline}
-              className="mb-4 text-3xl font-bold text-white sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl"
-              style={{ lineHeight: 1.1 }}
-              data-testid="text-hero-headline"
-            >
-              {currentSlide.headline}
-            </motion.h1>
-          </AnimatePresence>
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={`subheadline-${currentIndex}`}
-              {...motionVariants.subheadline}
-              className="mb-8 text-base text-white/85 md:text-lg lg:text-xl max-w-xl leading-relaxed"
-              data-testid="text-hero-subheadline"
-            >
-              {currentSlide.subheadline}
-            </motion.p>
-          </AnimatePresence>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`buttons-${currentIndex}`}
-              {...motionVariants.buttons}
-              className="flex flex-col sm:flex-row items-start gap-4"
-            >
-              <Button
-                size="lg"
-                onClick={onStartHiring}
-                className="min-w-[200px] text-lg h-12"
-                data-testid="button-hero-start-hiring"
+          <div className="relative">
+            <AnimatePresence mode="popLayout">
+              <motion.h1
+                key={`headline-${currentIndex}`}
+                {...motionVariants.headline}
+                className="mb-4 text-3xl font-bold text-white sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl"
+                style={{ lineHeight: 1.1 }}
+                data-testid="text-hero-headline"
               >
-                Start Hiring Today
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onApplyNow}
-                className="min-w-[200px] text-lg h-12 bg-white/10 border-white/30 text-white hover:bg-white/20"
-                data-testid="button-hero-apply"
+                {currentSlide.headline}
+              </motion.h1>
+            </AnimatePresence>
+          </div>
+          <div className="relative">
+            <AnimatePresence mode="popLayout">
+              <motion.p
+                key={`subheadline-${currentIndex}`}
+                {...motionVariants.subheadline}
+                className="mb-8 text-base text-white/85 md:text-lg lg:text-xl max-w-xl leading-relaxed"
+                data-testid="text-hero-subheadline"
               >
-                Apply for Opportunities
-              </Button>
-            </motion.div>
-          </AnimatePresence>
+                {currentSlide.subheadline}
+              </motion.p>
+            </AnimatePresence>
+          </div>
+          <div className="relative">
+            <AnimatePresence mode="popLayout">
+              <motion.div
+                key={`buttons-${currentIndex}`}
+                {...motionVariants.buttons}
+                className="flex flex-col sm:flex-row items-start gap-4"
+              >
+                <Button
+                  size="lg"
+                  onClick={onStartHiring}
+                  className="min-w-[200px] text-lg h-12"
+                  data-testid="button-hero-start-hiring"
+                >
+                  Start Hiring Today
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={onApplyNow}
+                  className="min-w-[200px] text-lg h-12 bg-white/10 border-white/30 text-white hover:bg-white/20"
+                  data-testid="button-hero-apply"
+                >
+                  Apply for Opportunities
+                </Button>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

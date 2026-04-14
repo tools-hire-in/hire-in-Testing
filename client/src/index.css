@@ -306,15 +306,23 @@
 
 .hero-kb-zoom-in-left {
   animation: hero-kb-zoom-in-left 7s ease-out forwards;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .hero-kb-zoom-in-right {
   animation: hero-kb-zoom-in-right 7s ease-out forwards;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .hero-kb-zoom-out-center {
   animation: hero-kb-zoom-out-center 7s ease-out forwards;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .hero-kb-zoom-in-top {
   animation: hero-kb-zoom-in-top 7s ease-out forwards;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
