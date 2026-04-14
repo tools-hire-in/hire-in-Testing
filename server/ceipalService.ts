@@ -138,7 +138,7 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
 
   while (page <= MAX_PAGES) {
     const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedUrl = `${endpoint}${separator}page=${page}&offset=${offset}&limit=100`;
+    const pagedUrl = `${endpoint}${separator}page=${page}&offset=${offset}&limit=50`;
 
     const res = await fetch(pagedUrl, {
       method: "GET",
