@@ -108,6 +108,7 @@ export function Header({ onOpenConsultation, transparent = false }: HeaderProps)
               <DropdownMenu key={link.label}>
                 <DropdownMenuTrigger asChild>
                   <button
+                    type="button"
                     className={`flex items-center gap-1 text-[13px] font-semibold uppercase tracking-wider transition-opacity duration-300 hover:opacity-100 cursor-pointer ${
                       isTransparent ? "text-white/85 hover:text-white" : "text-foreground/80 hover:text-foreground"
                     }`}
