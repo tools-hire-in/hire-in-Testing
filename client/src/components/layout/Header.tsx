@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,19 +12,23 @@ import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/s
 import { NAV_LINKS, COMPANY } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
-interface ConsultationModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  ctaType: string;
-}
-
 interface HeaderProps {
   onOpenConsultation?: (ctaType: string) => void;
+  transparent?: boolean;
 }
 
-export function Header({ onOpenConsultation }: HeaderProps) {
+export function Header({ onOpenConsultation, transparent = false }: HeaderProps) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    if (!transparent) return;
+    const onScroll = () => setScrolled(window.scrollY > 50);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [transparent]);
 
   const isActive = (href: string) => location === href;
 
@@ -34,10 +38,17 @@ export function Header({ onOpenConsultation }: HeaderProps) {
     }
   };
 
+  const isTransparent = transparent && !scrolled;
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header
+      className={`fixed top-0 z-50 w-full transition-all duration-500 ${
+        isTransparent
+          ? "bg-transparent border-transparent backdrop-blur-sm"
+          : "bg-background/95 border-b backdrop-blur supports-[backdrop-filter]:bg-background/60"
+      }`}
+    >
       <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-6">
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <img
             src={logoImage}
@@ -47,16 +58,32 @@ export function Header({ onOpenConsultation }: HeaderProps) {
           />
           <div className="flex flex-col">
             <div className="flex items-center gap-1">
-              <span className="text-xl font-bold text-primary" data-testid="text-company-name">
+              <span
+                className={`text-xl font-bold transition-colors duration-500 ${
+                  isTransparent ? "text-white" : "text-primary"
+                }`}
+                data-testid="text-company-name"
+              >
                 Hire'in
               </span>
-              <span className="text-xl font-medium text-muted-foreground">Solutions</span>
+              <span
+                className={`text-xl font-medium transition-colors duration-500 ${
+                  isTransparent ? "text-white/80" : "text-muted-foreground"
+                }`}
+              >
+                Solutions
+              </span>
             </div>
-            <span className="text-[10px] text-muted-foreground tracking-wide">{COMPANY.brandLine}</span>
+            <span
+              className={`text-[10px] tracking-wide transition-colors duration-500 ${
+                isTransparent ? "text-white/60" : "text-muted-foreground"
+              }`}
+            >
+              {COMPANY.brandLine}
+            </span>
           </div>
         </Link>
 
-        {/* Desktop Navigation */}
         <nav className="hidden lg:flex items-center gap-1">
           {NAV_LINKS.map((link) =>
             "children" in link ? (
@@ -64,7 +91,9 @@ export function Header({ onOpenConsultation }: HeaderProps) {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="flex items-center gap-1"
+                    className={`flex items-center gap-1 ${
+                      isTransparent ? "text-white/90 hover:text-white hover:bg-white/10" : ""
+                    }`}
                     data-testid={`nav-${link.label.toLowerCase()}`}
                   >
                     {link.label}
@@ -89,7 +118,11 @@ export function Header({ onOpenConsultation }: HeaderProps) {
               <Link key={link.href} href={link.href}>
                 <Button
                   variant="ghost"
-                  className={isActive(link.href) ? "bg-accent" : ""}
+                  className={`${
+                    isTransparent
+                      ? `text-white/90 hover:text-white hover:bg-white/10 ${isActive(link.href) ? "bg-white/15" : ""}`
+                      : isActive(link.href) ? "bg-accent" : ""
+                  }`}
                   data-testid={`nav-${link.label.toLowerCase()}`}
                 >
                   {link.label}
@@ -101,10 +134,14 @@ export function Header({ onOpenConsultation }: HeaderProps) {
 
         <div className="hidden lg:flex items-center gap-3" />
 
-        {/* Mobile Menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild className="lg:hidden">
-            <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={isTransparent ? "text-white hover:bg-white/10" : ""}
+              data-testid="button-mobile-menu"
+            >
               <Menu className="h-6 w-6" />
             </Button>
           </SheetTrigger>

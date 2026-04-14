@@ -18,7 +18,7 @@ export default function Home() {
   };
 
   return (
-    <Layout>
+    <Layout transparentHeader>
       <HeroCarousel
         onStartHiring={() => openConsultation("hero-start-hiring")}
         onApplyNow={() => openConsultation("hero-apply-now")}

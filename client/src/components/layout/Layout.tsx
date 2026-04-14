@@ -7,9 +7,10 @@ import type { CTAType } from "@/lib/constants";
 interface LayoutProps {
   children: React.ReactNode;
   hideFooter?: boolean;
+  transparentHeader?: boolean;
 }
 
-export function Layout({ children, hideFooter = false }: LayoutProps) {
+export function Layout({ children, hideFooter = false, transparentHeader = false }: LayoutProps) {
   const [consultationOpen, setConsultationOpen] = useState(false);
   const [ctaType, setCtaType] = useState<CTAType>("header-start-hiring");
 
@@ -20,8 +21,8 @@ export function Layout({ children, hideFooter = false }: LayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header onOpenConsultation={handleOpenConsultation} />
-      <main className="flex-1">{children}</main>
+      <Header onOpenConsultation={handleOpenConsultation} transparent={transparentHeader} />
+      <main className={`flex-1 ${transparentHeader ? "" : "pt-16"}`}>{children}</main>
       {!hideFooter && <Footer />}
       <ConsultationModal
         open={consultationOpen}
