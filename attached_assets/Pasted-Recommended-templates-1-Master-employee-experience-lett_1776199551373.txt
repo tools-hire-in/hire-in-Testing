@@ -1,0 +1,169 @@
+Recommended templates
+1) Master employee experience letter template
+[COMPANY LETTERHEAD]
+
+Ref No.: [REFERENCE_NUMBER]
+Date: [DD/MM/YYYY]
+
+TO WHOM IT MAY CONCERN
+
+Subject: Experience Letter
+
+This is to certify that Mr./Ms. [FULL_LEGAL_NAME], Employee ID [EMPLOYEE_ID], was employed with [COMPANY_NAME] as [DESIGNATION] in the [DEPARTMENT] department from [START_DATE] to [END_DATE].
+
+During the above tenure, [he/she/they] was/were responsible for [RESPONSIBILITY_1], [RESPONSIBILITY_2], and [RESPONSIBILITY_3].
+
+During [his/her/their] association with the company, [FULL_LEGAL_NAME] demonstrated [KEY_STRENGTH_1], [KEY_STRENGTH_2], and maintained [satisfactory/good/very good] professional conduct.
+
+This letter is being issued upon request for employment and record purposes.
+
+We wish [him/her/them] success in future endeavors.
+
+For [COMPANY_NAME]
+
+[AUTHORIZED_SIGNATURE]
+
+[AUTHORIZED_SIGNATORY_NAME]
+[AUTHORIZED_SIGNATORY_DESIGNATION]
+Email: [VERIFICATION_EMAIL]
+Phone: [VERIFICATION_PHONE]
+
+[COMPANY_SEAL]
+2) Master internship completion / experience letter template
+[COMPANY LETTERHEAD]
+
+Ref No.: [REFERENCE_NUMBER]
+Date: [DD/MM/YYYY]
+
+TO WHOM IT MAY CONCERN
+
+Subject: Internship Completion Letter
+
+This is to certify that Mr./Ms. [FULL_LEGAL_NAME], Intern ID [INTERN_ID], successfully completed [his/her/their] internship with [COMPANY_NAME] in the [DEPARTMENT] department from [START_DATE] to [END_DATE].
+
+During the internship period, [he/she/they] worked on [PROJECT_NAME / ASSIGNMENT_AREA] and was involved in [RESPONSIBILITY_1], [RESPONSIBILITY_2], and [RESPONSIBILITY_3].
+
+During the course of the internship, [FIRST_NAME] demonstrated [SKILL_1], [SKILL_2], and [SKILL_3]. [His/Her/Their] overall performance and conduct were [satisfactory/good/very good/excellent].
+
+This letter is being issued on request for academic, employment, and record purposes.
+
+For [COMPANY_NAME]
+
+[AUTHORIZED_SIGNATURE]
+
+[AUTHORIZED_SIGNATORY_NAME]
+[AUTHORIZED_SIGNATORY_DESIGNATION]
+Email: [VERIFICATION_EMAIL]
+Phone: [VERIFICATION_PHONE]
+
+[COMPANY_SEAL]
+3) Short internship certificate template
+[COMPANY LETTERHEAD]
+
+Ref No.: [REFERENCE_NUMBER]
+Date: [DD/MM/YYYY]
+
+INTERNSHIP CERTIFICATE
+
+This is to certify that Mr./Ms. [FULL_LEGAL_NAME] successfully completed an internship with [COMPANY_NAME] in the [DEPARTMENT] department from [START_DATE] to [END_DATE] as [ROLE_TITLE].
+
+During this period, [he/she/they] completed assigned responsibilities satisfactorily.
+
+For [COMPANY_NAME]
+
+[AUTHORIZED_SIGNATURE]
+[AUTHORIZED_SIGNATORY_NAME]
+[AUTHORIZED_SIGNATORY_DESIGNATION]
+[COMPANY_SEAL]
+Standard text blocks for automation
+Conduct options
+conduct was satisfactory
+conduct was professional and satisfactory
+conduct and commitment to assigned responsibilities were satisfactory
+Performance options
+demonstrated diligence and responsibility in assigned work
+showed good learning ability, initiative, and professionalism
+contributed effectively to assigned team objectives
+Closing options
+We wish him all the best for the future.
+We wish her all the best for the future.
+We wish them continued success in future endeavors.
+Validation rules
+use full legal name exactly as in records
+use dates in DD/MM/YYYY
+document must be on official letterhead
+signatory required before issue
+seal/stamp optional but recommended
+PDF should be immutable after issue
+QR or verification ID strongly recommended
+no blank placeholders allowed at issuance
+no salary field in experience letter output
+Best default UI form
+Step 1
+
+Choose document type:
+
+employee experience letter
+internship completion letter
+internship certificate
+Step 2
+
+Search employee/intern:
+
+name
+ID
+department
+role
+Step 3
+
+Auto-filled data:
+
+dates
+role
+department
+manager
+location
+Step 4
+
+Editable content:
+
+responsibilities
+project
+skills
+conduct rating
+performance rating
+custom line
+Step 5
+
+Approval:
+
+approver
+signatory
+seal on/off
+Step 6
+
+Output:
+
+preview
+download PDF
+send by email
+save to employee file
+My recommendation for your product
+
+Use this default policy:
+
+Employees
+
+one-page experience letter
+neutral-positive
+factual
+no salary
+no exit reason unless needed
+
+Interns
+
+issue both:
+internship completion letter
+short internship certificate
+
+That gives better usefulness for college, jobs, and BGV while staying simple and professional for India.

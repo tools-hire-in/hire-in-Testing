@@ -1,0 +1,157 @@
+Based on current India-focused HR guidance, the strongest default is:
+
+official company letterhead
+issue date
+full legal name
+designation / role
+exact start and end dates
+brief factual responsibilities
+conduct/performance line
+authorized signatory + seal/stamp
+verification contact
+
+For interns in India, the more useful document is usually an internship completion letter / internship experience letter, which is more detailed than a short internship certificate. A short certificate can still be offered as an optional second output.
+
+Also, keep salary/CTC out of the experience letter. Standard practice is to handle compensation proof separately through salary slips, Form 16, or a salary certificate.
+
+What to build
+
+Create one feature called Experience Letter Generator with 3 document outputs:
+
+Employee Experience Letter
+Internship Completion / Experience Letter
+Internship Certificate (short version)
+
+Keep Relieving Letter as a separate feature, because it serves a different purpose from an experience letter.
+
+Product requirements
+User roles
+HR Admin
+Super Admin
+Reporting Manager
+Read-only verifier
+Core actions
+create draft
+auto-fill employee/intern data
+edit allowed sections
+preview on company letterhead
+approve
+e-sign / upload signature
+generate PDF
+email to employee/intern
+reissue with version history
+verify by document ID or QR code
+Document statuses
+Draft
+Pending Approval
+Approved
+Issued
+Reissued
+Revoked
+Data fields
+Common fields
+document_id
+reference_number
+issue_date
+company_name
+company_logo
+company_address
+company_email
+company_phone
+verification_email
+verification_phone
+signatory_name
+signatory_designation
+company_seal_enabled
+qr_verification_url
+Person fields
+full_legal_name
+employee_or_intern_id
+employment_type
+department
+role_title
+location
+reporting_manager
+Tenure fields
+start_date
+end_date
+last_working_date
+duration_text
+Content fields
+subject_line
+responsibility_summary
+project_name
+key_skills
+conduct_rating
+performance_rating
+custom_paragraph
+closing_line
+Audit fields
+created_by
+approved_by
+issued_by
+issued_at
+reissue_reason
+previous_document_id
+Business rules
+Employee experience letter
+
+Must include:
+
+legal name
+employee ID
+designation
+department
+tenure
+brief factual responsibilities
+conduct/performance statement
+signatory
+
+Do not include:
+
+salary
+disciplinary details
+resignation reason unless company policy explicitly requires it
+exaggerated praise
+unverifiable claims
+
+This matches current best-practice guidance to keep experience letters factual and avoid subjective or unverifiable statements.
+
+Intern completion letter
+
+Must include:
+
+legal name
+internship title
+department
+exact internship dates
+project / assignment
+2–3 concrete responsibilities
+skills demonstrated
+performance remark
+signatory
+
+This is the most useful format for job applications, background verification, and academic records.
+
+Internship certificate
+
+Short format only:
+
+name
+internship title
+department
+dates
+successful completion statement
+signatory
+Recommended workflow
+Flow 1: Employee letter
+
+Select employee → fetch HRIS data → choose template → add responsibility summary → preview → approve → issue PDF
+
+Flow 2: Intern letter
+
+Select intern → fetch internship record → add project + skills + performance level → preview → approve → issue PDF
+
+Flow 3: Reissue
+
+Open old document → clone → edit issue date / signatory / minor text → generate new version → mark old version superseded

@@ -1,0 +1,67 @@
+For product design in India, I recommend supporting three document types:
+
+Employee Experience Certificate / Experience Letter
+Internship Completion / Experience Letter
+Relieving Letter as a separate document, not merged by default.
+Best structure for the feature
+Document types
+Employee experience letter
+Internship completion letter
+Internship certificate (short version, optional)
+Relieving letter (separate, optional)
+Required fields
+Company legal name
+Company letterhead assets or logo
+Company registered address
+Issue date
+Document reference number
+Full legal name of employee/intern
+Employee ID / Intern ID
+Role / designation
+Department
+Employment type: intern / full-time / contract / trainee
+Start date
+End date / last working date
+Reporting manager or department head
+Authorized signatory name
+Authorized signatory designation
+Verification email
+Verification phone
+Recommended optional fields
+Work location
+Project name
+Promotion history
+Key responsibilities
+Skills demonstrated
+Performance rating bucket: standard / strong / outstanding
+Conduct remark
+Company seal/stamp image
+QR code or verification URL
+Notes for internal HR only
+Issued by / approved by / issue timestamp
+Reissue reason and version number
+Business rules I would build into the product
+Employee letters should mention role, tenure, brief responsibilities, and a neutral-positive conduct line.
+Intern letters should mention department, duration, project or assignment, skills learned, and whether the internship was successfully completed.
+Salary, disciplinary history, and resignation reason should stay out of the experience letter unless your company has a deliberate policy to include something specific.
+Use full legal names exactly as in records.
+Use exact dates in DD/MM/YYYY.
+Keep the standard template to one page.
+Put the letter on official letterhead, with authorized signature and preferably a seal/stamp for India-style verification comfort.
+Best default wording style for India
+
+Use a tone that is:
+
+formal
+factual
+positive but not overhyped
+easy for HR verification teams to read
+
+Avoid:
+
+long praise paragraphs
+vague dates
+salary/CTC
+personal opinions
+reasons for leaving
+anything that sounds like a recommendation unless you intentionally want that

@@ -1,0 +1,93 @@
+Fields to store in your database
+Core entities
+
+Person
+
+person_id
+full_name
+employee_or_intern_code
+person_type
+department
+designation
+manager_name
+
+Tenure
+
+start_date
+end_date
+last_working_date
+employment_type
+location
+
+Letter
+
+letter_id
+document_type
+reference_number
+issue_date
+language
+template_version
+status: draft / approved / issued / revoked / reissued
+signatory_name
+signatory_designation
+signatory_email
+signatory_phone
+seal_enabled
+verification_url
+pdf_path / file_id
+
+Content blocks
+
+responsibility_summary
+project_name
+skills_list
+conduct_line
+performance_line
+custom_paragraph
+future_wishes_line
+
+Audit
+
+created_by
+approved_by
+issued_by
+issued_at
+reissued_from_letter_id
+reissue_reason
+Recommended UI flow
+Select document type
+Select employee/intern from records
+Auto-fill tenure and designation
+Choose tone: Standard / Strong / Outstanding
+Enter responsibilities, project, skills
+Preview PDF on letterhead
+Approve
+E-sign / signatory stamp
+Issue and email/download
+Store immutable audit copy
+Best default text blocks for automation
+Conduct line options
+“His conduct during employment was satisfactory.”
+“Her conduct during employment was professional and satisfactory.”
+“Their conduct and commitment to assigned responsibilities were satisfactory.”
+Performance line options
+“During the tenure, the employee demonstrated diligence and responsibility in assigned work.”
+“The intern showed good learning ability, initiative, and professionalism.”
+“The employee contributed effectively to team objectives and day-to-day responsibilities.”
+Future line options
+“We wish him success in future endeavors.”
+“We wish her all the best for the future.”
+“We wish them continued success in their future pursuits.”
+My recommendation for the best India-ready version
+
+For your system, make the default output:
+
+one page
+letterhead based
+exact dates
+neutral-positive wording
+verification email and phone
+signatory block
+QR verification or reference number
+
+That will look professional to Indian employers, universities, and background verification teams, while staying clean and scalable.

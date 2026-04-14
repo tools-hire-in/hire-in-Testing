@@ -1,0 +1,38 @@
+enerated document. Authenticity can be verified using reference number RL/EXP/2026/0047 and auth code A7F3-B92E."
+
+This is the strongest approach because:
+
+No need for scanned signatures (which can be copied/forged anyway)
+The auth code is cryptographically tied to the document content
+It matches modern Indian enterprise practice — many large companies have moved to system-generated letters
+Background verification teams can verify using the reference + auth code
+I'll update the task plan to include this.
+
+Now, here's your canvas mockup prompt to paste in Build mode:
+
+Design canvas mockups of 3 Rayomind Solutions LLP experience letter templates on branded letterhead. Use the Rayomind logo from client/public/rayomind-logo.png and the brand orange color (HSL 15 94% 61%). Company details: Rayomind Software Solutions LLC, addresses from client/src/lib/constants.ts (San Jose + New Delhi).
+
+Create 3 separate mockup panels on the canvas:
+
+1. Employee Experience Letter — Full one-page letterhead with: Rayomind logo top-left, company name and address in header, reference number, date (DD/MM/YYYY), "TO WHOM IT MAY CONCERN", subject line, body with employee name/ID/designation/department/tenure/responsibilities/conduct/performance, closing wish, signatory block (name + designation), verification line: "This is a system-generated document. Verify using Ref: RL/EXP/2026/0047 | Auth: A7F3-B92E", company seal area, and footer with verification email/phone.
+
+2. Internship Completion Letter — Same letterhead, but body covers intern name/ID, department, internship dates, project/assignment area, responsibilities, skills demonstrated, performance remark, and "issued for academic, employment, and record purposes" line.
+
+3. Short Internship Certificate — Same letterhead but shorter — just heading "INTERNSHIP CERTIFICATE", name, department, dates, role, "completed assigned responsibilities satisfactorily", signatory block and seal.
+
+Style: formal, clean, single-page A4 proportion, white background, orange accent line under header, professional serif or clean sans-serif body text. Include the system-generated auth code line at the bottom of each letter. Show sample placeholder data (not blank fields).
+
+Copy-paste that into Build mode and it'll create the mockups on your canvas.
+
+Now let me update the task plan with the cryptographic auth code approach:
+
+
+2 actions
+Now let me update the task with the revised plan:
+
+
+Proposed 1 task
+
+Worked for 59 seconds
+
+Scro
