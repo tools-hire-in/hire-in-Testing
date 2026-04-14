@@ -234,13 +234,15 @@ export function HeroCarousel({ onStartHiring, onApplyNow }: HeroCarouselProps) {
             data-testid={`button-progress-${index}`}
           >
             <div
-              className="absolute inset-y-0 left-0 bg-primary rounded-full transition-none"
+              className="absolute inset-0 bg-primary rounded-full transition-none origin-left"
               style={{
-                width: index === currentIndex
-                  ? `${progress * 100}%`
-                  : index < currentIndex
-                    ? "100%"
-                    : "0%",
+                transform: `scaleX(${
+                  index === currentIndex
+                    ? progress
+                    : index < currentIndex
+                      ? 1
+                      : 0
+                })`,
               }}
             />
           </button>
