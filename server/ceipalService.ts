@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { jobs, applications } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 const CEIPAL_AUTH_URL = "https://api.ceipal.com/v1/createAuthtoken";
 const CEIPAL_REFRESH_URL = "https://api.ceipal.com/v1/refreshToken/";
@@ -115,6 +115,15 @@ export interface CeipalJob {
   [key: string]: any;
 }
 
+const ACTIVE_STATUSES = new Set(["active", "open"]);
+
+function isCeipalJobActive(status: string | undefined): boolean {
+  if (!status) return false;
+  return ACTIVE_STATUSES.has(status.trim().toLowerCase());
+}
+
+const MAX_PAGES = 500;
+
 export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   const endpoint = process.env.CEIPAL_JOBS_ENDPOINT;
   if (!endpoint) {
@@ -122,31 +131,65 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   }
 
   const token = await authenticate();
+  const allJobs: CeipalJob[] = [];
+  const seenIds = new Set<string>();
+  let page = 1;
+  let offset = 0;
 
-  const res = await fetch(endpoint, {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
+  while (page <= MAX_PAGES) {
+    const separator = endpoint.includes("?") ? "&" : "?";
+    const pagedUrl = `${endpoint}${separator}page=${page}&offset=${offset}&limit=100`;
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Ceipal jobs fetch failed: ${res.status} - ${errText}`);
+    const res = await fetch(pagedUrl, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Ceipal jobs fetch failed: ${res.status} - ${errText}`);
+    }
+
+    const data = await res.json();
+
+    let pageJobs: CeipalJob[] = [];
+    if (Array.isArray(data)) {
+      pageJobs = data;
+    } else if (data && Array.isArray(data.results)) {
+      pageJobs = data.results;
+    }
+
+    if (pageJobs.length === 0) break;
+
+    let newCount = 0;
+    for (const job of pageJobs) {
+      const key = job.id || job.job_code;
+      if (key && seenIds.has(key)) continue;
+      if (key) seenIds.add(key);
+      allJobs.push(job);
+      newCount++;
+    }
+
+    console.log(`[ceipal] Fetched page ${page}: ${pageJobs.length} jobs (${newCount} new)`);
+
+    if (newCount === 0) {
+      console.log(`[ceipal] No new jobs on page ${page}, stopping pagination`);
+      break;
+    }
+
+    offset += pageJobs.length;
+    page++;
   }
 
-  const data = await res.json();
-
-  if (Array.isArray(data)) {
-    return data;
+  if (page > MAX_PAGES) {
+    console.warn(`[ceipal] Reached max page limit (${MAX_PAGES}), stopping pagination`);
   }
 
-  if (data && Array.isArray(data.results)) {
-    return data.results;
-  }
-
-  return [];
+  console.log(`[ceipal] Total jobs fetched across ${page <= MAX_PAGES ? page : MAX_PAGES} page(s): ${allJobs.length}`);
+  return allJobs;
 }
 
 function stripHtml(html: string): string {
@@ -216,7 +259,7 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
     startDate: ceipalJob.job_start_date || null,
     description: description,
     requirements: skills || null,
-    isActive: true,
+    isActive: isCeipalJobActive(ceipalJob.job_status),
     isHot: false,
     rawData: ceipalJob,
     source: "ceipal" as const,
@@ -225,7 +268,7 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
   };
 }
 
-export async function syncCeipalJobs(): Promise<{ created: number; updated: number; total: number }> {
+export async function syncCeipalJobs(): Promise<{ created: number; updated: number; deactivated: number; total: number }> {
   if (isSyncing) {
     throw new Error("A Ceipal sync is already in progress");
   }
@@ -236,8 +279,11 @@ export async function syncCeipalJobs(): Promise<{ created: number; updated: numb
     let created = 0;
     let updated = 0;
 
+    const seenJobCodes = new Set<string>();
+
     for (const cJob of ceipalJobs) {
       if (!cJob.job_code) continue;
+      seenJobCodes.add(cJob.job_code);
       const mapped = mapCeipalJobToLocal(cJob);
 
       const existing = await db.select()
@@ -259,7 +305,22 @@ export async function syncCeipalJobs(): Promise<{ created: number; updated: numb
       }
     }
 
-    return { created, updated, total: ceipalJobs.length };
+    let deactivated = 0;
+    const localCeipalJobs = await db.select()
+      .from(jobs)
+      .where(and(eq(jobs.source, "ceipal"), eq(jobs.isActive, true)));
+
+    for (const localJob of localCeipalJobs) {
+      if (localJob.ceipalJobCode && !seenJobCodes.has(localJob.ceipalJobCode)) {
+        await db.update(jobs)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(jobs.id, localJob.id));
+        deactivated++;
+      }
+    }
+
+    console.log(`[ceipal] Sync complete: ${created} created, ${updated} updated, ${deactivated} deactivated out of ${ceipalJobs.length} total`);
+    return { created, updated, deactivated, total: ceipalJobs.length };
   } finally {
     isSyncing = false;
   }

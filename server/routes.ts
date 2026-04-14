@@ -422,7 +422,7 @@ export async function registerRoutes(
     try {
       const result = await syncCeipalJobs();
       res.json({
-        message: `Ceipal sync complete: ${result.created} new, ${result.updated} updated out of ${result.total} total`,
+        message: `Ceipal sync complete: ${result.created} new, ${result.updated} updated, ${result.deactivated} deactivated out of ${result.total} total`,
         ...result,
       });
     } catch (error: any) {

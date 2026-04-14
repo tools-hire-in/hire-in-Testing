@@ -187,12 +187,12 @@ export function AdminJobsContent() {
       const res = await apiRequest("POST", "/api/admin/jobs/sync-ceipal");
       return await res.json();
     },
-    onSuccess: (data: { message?: string; created?: number; updated?: number; total?: number }) => {
+    onSuccess: (data: { message?: string; created?: number; updated?: number; deactivated?: number; total?: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/jobs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({
         title: "Ceipal Sync Complete",
-        description: data.message || `${data.created || 0} new, ${data.updated || 0} updated`,
+        description: data.message || `${data.created || 0} new, ${data.updated || 0} updated, ${data.deactivated || 0} deactivated`,
       });
     },
     onError: (err: any) => {
