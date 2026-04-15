@@ -22,7 +22,7 @@ export default function Privacy() {
           </p>
           <p>
             <strong>Document Version</strong><br />
-            Last Updated: August 23, 2025
+            Last Updated: April 15, 2026
           </p>
 
           <p>
@@ -156,24 +156,35 @@ export default function Privacy() {
           <p>
             No mobile opt-in or text message consent will be shared with third parties or affiliates. SMS-related 
             data is used exclusively for the purpose you consented to and is never sold or disclosed for marketing 
-            by third parties.
+            by third parties. For full SMS policy details, see Section 5 (SMS & Mobile Communications Policy).
           </p>
 
-          <h3>SMS Policy:</h3>
+          <h2 id="sms-policy">5. SMS & Mobile Communications Policy</h2>
           <p>
             No mobile information will be shared with third parties/affiliates for marketing/promotional purposes. 
             All other categories exclude text messaging originator opt-in data and consent; this information will 
             not be shared with any third parties.
           </p>
-
-          <h4>Complete SMS Terms & Conditions:</h4>
           <p>
-            For comprehensive information about SMS messaging terms, opt-out procedures, message frequency, and 
-            your rights, please review our complete <Link href="/terms" className="text-primary hover:underline">SMS Terms of Service</Link> located 
-            in Section 6 of our Terms & Conditions page.
+            If you opt in to SMS text messaging, we process your mobile number to send the types of messages you 
+            consented to receive (conversational, informational, or recruitment-related). We also log your consent 
+            and preferences for compliance purposes.
+          </p>
+          <p>
+            <strong>Opt-Out:</strong> You may withdraw SMS consent at any time by replying <strong>STOP</strong> to 
+            any message. Opt-out requests are processed immediately. After opting out, you will receive no further 
+            SMS messages from us.
+          </p>
+          <p>
+            <strong>Message Frequency & Rates:</strong> Message frequency varies based on your engagement with us. 
+            Standard message and data rates may apply per your carrier.
+          </p>
+          <p>
+            For complete SMS terms including opt-in, HELP, and STOP instructions, see Section 6 (SMS and 
+            Communication Compliance) of our <Link href="/terms" className="text-primary hover:underline">Terms &amp; Conditions</Link>.
           </p>
 
-          <h2>5. Digital Communication & Messaging Policy</h2>
+          <h2>6. Digital Communication & Messaging Policy</h2>
           <p>
             {COMPANY.name} uses approved digital communication and messaging platforms exclusively for professional 
             engagement and networking purposes.
@@ -185,14 +196,14 @@ export default function Privacy() {
             <li><strong>Data Protection:</strong> Contact details collected for campaigns are processed in compliance with applicable privacy regulations (e.g., CCPA/CPRA, TCPA). Personal data is never shared, sold, or used outside of authorized recruitment or professional engagement purposes.</li>
           </ul>
 
-          <h2>6. Data Retention</h2>
+          <h2>7. Data Retention</h2>
           <p>
             Personal information is retained only as long as necessary to fulfill recruitment services, comply with 
             legal requirements, or maintain business records. Candidates may request deletion of their data, subject 
             to applicable retention obligations.
           </p>
 
-          <h2>7. Data Security</h2>
+          <h2>8. Data Security</h2>
           <p>
             We employ reasonable administrative, technical, and physical safeguards to protect personal information 
             from unauthorized access, disclosure, alteration, or misuse. Safeguards include:
@@ -204,7 +215,7 @@ export default function Privacy() {
             <li>Regular audits of systems and security controls.</li>
           </ul>
 
-          <h2>8. Candidate Consent and Acknowledgment</h2>
+          <h2>9. Candidate Consent and Acknowledgment</h2>
           <p>
             By submitting your professional information (such as qualifications, career history, or contact details) 
             to the Company, you are hereby:
@@ -213,15 +224,15 @@ export default function Privacy() {
             <li>Consent to the collection, storage, processing, and disclosure of your personal information as outlined in this Privacy Policy.</li>
             <li>Acknowledge that your information may be shared with prospective employers only with your prior knowledge and authorization.</li>
             <li>Authorize communications (including phone calls, emails, and text messages) relating to recruitment and placement activities, which may be recorded and retained for compliance and quality assurance purposes.</li>
-            <li>Agree that any disputes shall be resolved exclusively in accordance with Sections 13 (Governing Law & Jurisdiction), 14 (Arbitration Agreement), 15 (Severability), and 16 (Limitation of Liability).</li>
+            <li>Agree that any disputes shall be resolved exclusively in accordance with Sections 14 (Governing Law & Jurisdiction), 15 (Arbitration Agreement), 16 (Severability), and 17 (Limitation of Liability).</li>
           </ul>
           <p>
             By providing your mobile number and consenting, you acknowledge and agree to receive SMS messages as 
-            outlined in Section 4 (SMS Policy). You may withdraw consent at any time by following the opt-out 
-            instructions provided in each SMS.
+            outlined in Section 5 (SMS & Mobile Communications Policy). You may withdraw consent at any time by 
+            following the opt-out instructions provided in each SMS.
           </p>
 
-          <h2>9. Individual Privacy Rights</h2>
+          <h2>10. Individual Privacy Rights</h2>
           <p>
             Depending on applicable state laws (e.g., California, Virginia, Colorado), individuals may have the right to:
           </p>
@@ -233,33 +244,32 @@ export default function Privacy() {
             <li>Opt out of data sharing or "sale" (we do not sell data).</li>
             <li>Non-discrimination for exercising privacy rights.</li>
           </ul>
-          <p>Requests can be submitted by contacting us (see Section 11).</p>
+          <p>Requests can be submitted by contacting us (see Section 12).</p>
 
-          <h2>10. Children's Privacy</h2>
+          <h2>11. Children's Privacy</h2>
           <p>
             We do not knowingly collect or process personal information of individuals under the age of 18 for 
             recruitment purposes.
           </p>
 
-          <h2>11. Contact Information</h2>
+          <h2>12. Contact Information</h2>
           <p>
             For inquiries, requests, or complaints regarding this Privacy Policy or our data practices, please contact:
           </p>
           <address>
-            <strong>Rayomind Software Solutions LLC</strong><br />
-            DBA {COMPANY.name}<br /><br />
+            <strong>Hire'in Solutions</strong> (A Rayomind Company)<br /><br />
             <strong>Email:</strong> {CONTACT.emails.general}<br />
             <strong>Phone:</strong> {CONTACT.phones.main}<br />
             <strong>Mailing Address:</strong> {CONTACT.address.full}
           </address>
 
-          <h2>12. Updates to This Policy</h2>
+          <h2>13. Updates to This Policy</h2>
           <p>
             We may update this Privacy Policy periodically to reflect legal, regulatory, or business practice changes. 
             Updates will be published on our website with the revised "Effective Date."
           </p>
 
-          <h2>13. Governing Law & Jurisdiction</h2>
+          <h2>14. Governing Law & Jurisdiction</h2>
           <p>
             This Privacy Policy shall be governed by and construed in accordance with the laws of the State of 
             California, United States of America, without regard to conflict-of-law principles.
@@ -267,10 +277,10 @@ export default function Privacy() {
           <p>
             Any dispute, claim, or controversy arising out of or relating to this Policy, our data practices, or 
             the services provided by the Company shall be subject to the exclusive jurisdiction of the state and 
-            federal courts located in Santa Clara County, California, except as provided in Section 14 (Arbitration Agreement).
+            federal courts located in Santa Clara County, California, except as provided in Section 15 (Arbitration Agreement).
           </p>
 
-          <h2>14. Arbitration Agreement</h2>
+          <h2>15. Arbitration Agreement</h2>
           <p>To the fullest extent permitted by applicable law, you and the Company agree that:</p>
           <ul>
             <li><strong>Binding Arbitration:</strong> Any dispute, claim, or controversy arising out of or relating to this Privacy Policy, the collection or use of personal information, or our recruitment and staffing services, shall be resolved exclusively through final and binding arbitration administered by the American Arbitration Association (AAA) in accordance with its Commercial Arbitration Rules then in effect.</li>
@@ -281,10 +291,10 @@ export default function Privacy() {
             <li><strong>Exceptions:</strong> Either party may seek injunctive or equitable relief in court for matters relating to intellectual property rights, data security breaches, or unauthorized use of personal information.</li>
           </ul>
 
-          <h2>15. Severability</h2>
+          <h2>16. Severability</h2>
           <p>
-            If any provision of this Privacy Policy, including but not limited to Sections 13 (Governing Law & 
-            Jurisdiction) or 14 (Arbitration Agreement), is found to be invalid, illegal, or unenforceable by a 
+            If any provision of this Privacy Policy, including but not limited to Sections 14 (Governing Law & 
+            Jurisdiction) or 15 (Arbitration Agreement), is found to be invalid, illegal, or unenforceable by a 
             court or arbitrator of competent jurisdiction, such provision shall be deemed severed to the minimum 
             extent necessary.
           </p>
@@ -293,7 +303,7 @@ export default function Privacy() {
             of any single provision shall not affect the validity or enforceability of the remainder.
           </p>
 
-          <h2>16. Limitation of Liability</h2>
+          <h2>17. Limitation of Liability</h2>
           <p>To the maximum extent permitted by applicable law:</p>
           <p>
             The Company, its affiliates, officers, directors, employees, and agents shall not be liable for any 
