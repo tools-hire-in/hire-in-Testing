@@ -646,6 +646,116 @@ export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
 });
 
 // ==========================================
+// HR LETTERS (Experience, Internship, Certificate, Relieving)
+// ==========================================
+
+export const hrLetterTemplateTypeEnum = pgEnum("hr_letter_template_type", [
+  "experience",
+  "internship_completion",
+  "internship_certificate",
+  "relieving",
+]);
+
+export const hrLetterStatusEnum = pgEnum("hr_letter_status", [
+  "draft",
+  "pending_approval",
+  "approved",
+  "issued",
+  "reissued",
+  "revoked",
+]);
+
+export const hrLetterPerformanceBandEnum = pgEnum("hr_letter_performance_band", [
+  "factual_only",
+  "standard",
+  "good",
+  "very_good",
+  "excellent",
+]);
+
+export const hrLetterConductBandEnum = pgEnum("hr_letter_conduct_band", [
+  "standard",
+  "good",
+  "very_good",
+]);
+
+export const hrLetterCompletionBandEnum = pgEnum("hr_letter_completion_band", [
+  "successfully_completed",
+  "completed",
+  "served_during_period",
+]);
+
+export const hrLetters = pgTable("hr_letters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateType: hrLetterTemplateTypeEnum("template_type").notNull(),
+  status: hrLetterStatusEnum("status").notNull().default("draft"),
+
+  employeeId: varchar("employee_id").references(() => adminUsers.id),
+  employeeName: varchar("employee_name").notNull(),
+  employeeCode: varchar("employee_code"),
+  designation: varchar("designation").notNull(),
+  department: varchar("department"),
+  employmentType: varchar("employment_type"),
+  location: varchar("location"),
+  reportingManager: varchar("reporting_manager"),
+  startDate: varchar("start_date").notNull(),
+  endDate: varchar("end_date"),
+  lastWorkingDay: varchar("last_working_day"),
+
+  performanceBand: hrLetterPerformanceBandEnum("performance_band"),
+  conductBand: hrLetterConductBandEnum("conduct_band"),
+  completionBand: hrLetterCompletionBandEnum("completion_band"),
+  closingLine: varchar("closing_line"),
+
+  includeResponsibilities: boolean("include_responsibilities").default(false),
+  responsibilitiesSummary: text("responsibilities_summary"),
+  includeProject: boolean("include_project").default(false),
+  projectName: varchar("project_name"),
+  includeSeal: boolean("include_seal").default(false),
+
+  signatoryId: varchar("signatory_id").references(() => adminUsers.id),
+  signatoryName: varchar("signatory_name"),
+  signatoryDesignation: varchar("signatory_designation"),
+  issueDate: varchar("issue_date"),
+
+  referenceNumber: varchar("reference_number").unique(),
+  authCode: varchar("auth_code"),
+  documentHash: varchar("document_hash"),
+
+  customOverrideText: text("custom_override_text"),
+  customOverrideBy: varchar("custom_override_by").references(() => adminUsers.id),
+  customOverrideAt: timestamp("custom_override_at"),
+
+  reissuedFromLetterId: varchar("reissued_from_letter_id"),
+  reissueReason: text("reissue_reason"),
+  pdfPath: varchar("pdf_path"),
+
+  createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedBy: varchar("approved_by").references(() => adminUsers.id),
+  approvedAt: timestamp("approved_at"),
+  issuedBy: varchar("issued_by").references(() => adminUsers.id),
+  issuedAt: timestamp("issued_at"),
+  revokedBy: varchar("revoked_by").references(() => adminUsers.id),
+  revokedAt: timestamp("revoked_at"),
+  revokeReason: text("revoke_reason"),
+});
+
+export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({
+  id: true,
+  createdAt: true,
+  approvedBy: true,
+  approvedAt: true,
+  issuedBy: true,
+  issuedAt: true,
+  revokedBy: true,
+  revokedAt: true,
+  referenceNumber: true,
+  authCode: true,
+  documentHash: true,
+});
+
+// ==========================================
 // PERFORMANCE MANAGEMENT SYSTEM
 // ==========================================
 
@@ -1005,3 +1115,5 @@ export type Review = typeof reviews.$inferSelect;
 export type InsertReview = z.infer<typeof insertReviewSchema>;
 export type PerformanceFeedback = typeof performanceFeedback.$inferSelect;
 export type InsertPerformanceFeedback = z.infer<typeof insertPerformanceFeedbackSchema>;
+export type HrLetter = typeof hrLetters.$inferSelect;
+export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;

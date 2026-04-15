@@ -21,6 +21,7 @@ import {
   employeeBankDetails,
   employeeEmergencyContacts,
   offerLetters,
+  hrLetters,
   systemSettings,
   type Job,
   type InsertJob,
@@ -62,6 +63,8 @@ import {
   type InsertEmployeeEmergencyContact,
   type OfferLetter,
   type InsertOfferLetter,
+  type HrLetter,
+  type InsertHrLetter,
   type SystemSetting,
   notifications,
   type Notification,
@@ -225,6 +228,15 @@ export interface IStorage {
   getOfferLetter(id: string): Promise<OfferLetter | undefined>;
   updateOfferLetter(id: string, updates: Partial<OfferLetter>): Promise<OfferLetter | undefined>;
   getOfferLetters(): Promise<OfferLetter[]>;
+
+  // HR Letters
+  createHrLetter(data: InsertHrLetter): Promise<HrLetter>;
+  getHrLetter(id: string): Promise<HrLetter | undefined>;
+  updateHrLetter(id: string, updates: Partial<HrLetter>): Promise<HrLetter | undefined>;
+  getHrLetters(filters?: { templateType?: string; status?: string; search?: string }): Promise<HrLetter[]>;
+  getHrLetterByRef(referenceNumber: string): Promise<HrLetter | undefined>;
+  getHrLetterByRefAndAuth(referenceNumber: string, authCode: string): Promise<HrLetter | undefined>;
+  getHrLetterCountByPrefix(prefix: string): Promise<number>;
 
   // Stats
   getStats(): Promise<{
@@ -1305,6 +1317,64 @@ export class DatabaseStorage implements IStorage {
     await db.update(notifications)
       .set({ isRead: true })
       .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+  }
+
+  async createHrLetter(data: InsertHrLetter): Promise<HrLetter> {
+    const [created] = await db.insert(hrLetters).values(data).returning();
+    return created;
+  }
+
+  async getHrLetter(id: string): Promise<HrLetter | undefined> {
+    const [letter] = await db.select().from(hrLetters).where(eq(hrLetters.id, id));
+    return letter;
+  }
+
+  async updateHrLetter(id: string, updates: Partial<HrLetter>): Promise<HrLetter | undefined> {
+    const [updated] = await db.update(hrLetters)
+      .set(updates)
+      .where(eq(hrLetters.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getHrLetters(filters?: { templateType?: string; status?: string; search?: string }): Promise<HrLetter[]> {
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (filters?.templateType) {
+      conditions.push(sql`${hrLetters.templateType} = ${filters.templateType}`);
+    }
+    if (filters?.status) {
+      conditions.push(sql`${hrLetters.status} = ${filters.status}`);
+    }
+    let results = conditions.length > 0
+      ? await db.select().from(hrLetters).where(and(...conditions)).orderBy(desc(hrLetters.createdAt))
+      : await db.select().from(hrLetters).orderBy(desc(hrLetters.createdAt));
+    if (filters?.search) {
+      const s = filters.search.toLowerCase();
+      results = results.filter(l =>
+        l.employeeName.toLowerCase().includes(s) ||
+        l.employeeCode?.toLowerCase().includes(s) ||
+        l.referenceNumber?.toLowerCase().includes(s)
+      );
+    }
+    return results;
+  }
+
+  async getHrLetterByRef(referenceNumber: string): Promise<HrLetter | undefined> {
+    const [letter] = await db.select().from(hrLetters)
+      .where(eq(hrLetters.referenceNumber, referenceNumber));
+    return letter;
+  }
+
+  async getHrLetterByRefAndAuth(referenceNumber: string, authCode: string): Promise<HrLetter | undefined> {
+    const [letter] = await db.select().from(hrLetters)
+      .where(and(eq(hrLetters.referenceNumber, referenceNumber), eq(hrLetters.authCode, authCode)));
+    return letter;
+  }
+
+  async getHrLetterCountByPrefix(prefix: string): Promise<number> {
+    const results = await db.select({ refNum: hrLetters.referenceNumber }).from(hrLetters)
+      .where(sql`${hrLetters.referenceNumber} LIKE ${prefix + '%'}`);
+    return results.length;
   }
 }
 

@@ -482,6 +482,81 @@ export async function sendOfferLetterEmail(options: {
   }
 }
 
+export async function sendHrLetterEmail(options: {
+  to: string;
+  employeeName: string;
+  letterType: string;
+  referenceNumber: string;
+  authCode: string;
+  verifyUrl: string;
+  pdfBuffer?: Buffer;
+  pdfFilename?: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const letterTypeLabel: Record<string, string> = {
+      experience: "Experience Letter",
+      internship_completion: "Internship Completion Letter",
+      internship_certificate: "Internship Certificate",
+      relieving: "Relieving Letter",
+    };
+    const typeLabel = letterTypeLabel[options.letterType] || "HR Letter";
+
+    const attachments = options.pdfBuffer && options.pdfFilename ? [{
+      content: options.pdfBuffer.toString("base64"),
+      filename: options.pdfFilename,
+      type: "application/pdf",
+      disposition: "attachment" as const,
+    }] : undefined;
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Your ${typeLabel} — Rayomind Solutions LLP (Ref: ${options.referenceNumber})`,
+      attachments,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #F96D3E 0%, #ff8c5a 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #fff3e0; margin: 8px 0 0; font-size: 14px;">Official Document</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Dear ${options.employeeName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please find attached your <strong>${typeLabel}</strong> issued by Rayomind Solutions LLP.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+              <p style="color: #475569; margin: 0 0 8px; font-size: 14px;"><strong>Reference Number:</strong> ${options.referenceNumber}</p>
+              <p style="color: #475569; margin: 0; font-size: 14px;"><strong>Verification Code:</strong> ${options.authCode}</p>
+            </div>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">
+              You can verify the authenticity of this document anytime using the reference number and verification code above.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.verifyUrl}" style="display: inline-block; background-color: #F96D3E; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                Verify Document
+              </a>
+            </div>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.employeeName},\n\nPlease find attached your ${typeLabel} issued by Rayomind Solutions LLP.\n\nReference Number: ${options.referenceNumber}\nVerification Code: ${options.authCode}\n\nVerify at: ${options.verifyUrl}\n\nBest regards,\nRayomind Solutions LLP`,
+    };
+    await client.send(msg);
+    console.log(`HR letter email sent to ${options.to} (${options.referenceNumber})`);
+    return { success: true };
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Failed to send HR letter email:", errMsg);
+    return { success: false, error: errMsg };
+  }
+}
+
 export async function sendOnboardingWelcomeEmail(options: {
   to: string;
   firstName: string;

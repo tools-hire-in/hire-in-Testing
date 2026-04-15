@@ -5,17 +5,21 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
+import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
+import path from "path";
+import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
+import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
@@ -4365,6 +4369,529 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Mark all notifications read error:", error);
       res.status(500).json({ error: "Failed to mark notifications as read" });
+    }
+  });
+
+  // ==========================================
+  // HR LETTERS (Experience, Internship, Certificate, Relieving)
+  // ==========================================
+
+  const LETTER_HMAC_SECRET = process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY;
+  if (!LETTER_HMAC_SECRET) {
+    console.warn("[hr-letters] WARNING: LETTER_HMAC_SECRET / OFFER_SIGNING_KEY not set. Letter issuance will fail.");
+  }
+
+  const TEMPLATE_PREFIX_MAP = SHARED_TEMPLATE_PREFIX_MAP;
+
+
+  function generateRefNumber(prefix: string, year: number, count: number): string {
+    return `RL/${prefix}/${year}/${String(count + 1).padStart(4, "0")}`;
+  }
+
+  function computeLetterAuthCode(letter: {
+    id: string; templateType: string; employeeName: string; designation: string;
+    startDate: string; endDate?: string | null; performanceBand?: string | null;
+    conductBand?: string | null; completionBand?: string | null;
+    department?: string | null; location?: string | null; employeeCode?: string | null;
+    signatoryName?: string | null; signatoryDesignation?: string | null;
+    closingLine?: string | null; responsibilitiesSummary?: string | null;
+    projectName?: string | null; customOverrideText?: string | null;
+    issueDate?: string | null;
+  }): { authCode: string; documentHash: string } {
+    if (!LETTER_HMAC_SECRET) {
+      throw new Error("LETTER_HMAC_SECRET or OFFER_SIGNING_KEY environment variable is required to issue letters");
+    }
+    const payload = [
+      letter.id, letter.templateType, letter.employeeName,
+      letter.designation, letter.department || "", letter.location || "",
+      letter.employeeCode || "", letter.startDate, letter.endDate || "",
+      letter.performanceBand || "", letter.conductBand || "", letter.completionBand || "",
+      letter.closingLine || "", letter.signatoryName || "", letter.signatoryDesignation || "",
+      letter.responsibilitiesSummary || "", letter.projectName || "",
+      letter.customOverrideText || "", letter.issueDate || "",
+    ].join("|");
+    const documentHash = crypto.createHash("sha256").update(payload).digest("hex");
+    const hmac = crypto.createHmac("sha256", LETTER_HMAC_SECRET).update(documentHash).digest("hex");
+    const authCode = hmac.substring(0, 4).toUpperCase() + "-" + hmac.substring(4, 8).toUpperCase();
+    return { authCode, documentHash };
+  }
+
+  app.get("/api/hr/letters/wording-matrix", requireRole("hr"), async (_req, res) => {
+    res.json({
+      performanceBand: PERFORMANCE_BAND_SENTENCES,
+      conductBand: CONDUCT_BAND_SENTENCES,
+      completionBand: COMPLETION_BAND_SENTENCES,
+    });
+  });
+
+  app.get("/api/hr/letters", requireRole("hr"), async (req, res) => {
+    try {
+      const { templateType, status, search } = req.query;
+      const letters = await storage.getHrLetters({
+        templateType: templateType as string,
+        status: status as string,
+        search: search as string,
+      });
+      res.json(letters);
+    } catch (error) {
+      console.error("Get HR letters error:", error);
+      res.status(500).json({ error: "Failed to fetch letters" });
+    }
+  });
+
+  app.get("/api/hr/letters/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      res.json(letter);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch letter" });
+    }
+  });
+
+  app.post("/api/hr/letters", requireRole("hr"), async (req, res) => {
+    try {
+      if (!req.body.employeeId) {
+        return res.status(400).json({ error: "Employee must be selected from the system. Manual entry is not allowed." });
+      }
+      const employee = await storage.getAdminUser(req.body.employeeId);
+      if (!employee) {
+        return res.status(400).json({ error: "Selected employee not found in system." });
+      }
+      const templateType = req.body.templateType;
+      const validTemplates = ["experience", "internship_completion", "internship_certificate", "relieving"];
+      if (!templateType || !validTemplates.includes(templateType)) {
+        return res.status(400).json({ error: "Invalid template type" });
+      }
+      if (!req.body.startDate) {
+        return res.status(400).json({ error: "Start date is required" });
+      }
+      if (templateType !== "internship_certificate" && !req.body.endDate) {
+        return res.status(400).json({ error: "End date is required for this template type" });
+      }
+
+      const userRole = req.session.role;
+      const isOverrideAllowed = userRole === "super_admin" || userRole === "admin";
+      const body = { ...req.body };
+      const hasOverride = !!body.customOverrideText;
+      if (!isOverrideAllowed) {
+        delete body.customOverrideText;
+        delete body.customOverrideBy;
+        delete body.customOverrideAt;
+      }
+      if (isOverrideAllowed && hasOverride) {
+        body.customOverrideBy = req.session.userId!;
+        body.customOverrideAt = new Date();
+      }
+      const derivedDesignation = employee.designation || "";
+      if (!derivedDesignation) {
+        return res.status(400).json({ error: "Employee profile is missing designation. Please update the employee record first." });
+      }
+      let derivedDepartment = "";
+      if (employee.departmentId) {
+        const dept = await storage.getDepartment(employee.departmentId);
+        derivedDepartment = dept?.name || "";
+      }
+      const data = {
+        ...body,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        employeeCode: employee.employeeId || "",
+        designation: derivedDesignation,
+        department: derivedDepartment,
+        location: employee.location || "",
+        createdBy: req.session.userId!,
+        status: "draft",
+      };
+      const letter = await storage.createHrLetter(data);
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "create_hr_letter",
+        changes: { templateType: letter.templateType, employeeName: letter.employeeName },
+      });
+      if (isOverrideAllowed && hasOverride) {
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: letter.id,
+          action: "hr_letter_custom_override",
+          changes: { customOverrideText: letter.customOverrideText, source: "create" },
+        });
+      }
+      res.status(201).json(letter);
+    } catch (error) {
+      console.error("Create HR letter error:", error);
+      res.status(500).json({ error: "Failed to create letter" });
+    }
+  });
+
+  app.patch("/api/hr/letters/:id", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status === "issued" || letter.status === "reissued" || letter.status === "revoked") {
+        return res.status(400).json({ error: "Cannot edit an issued, reissued, or revoked letter" });
+      }
+      const userRole = req.session.role;
+      const isOverrideAllowed = userRole === "super_admin" || userRole === "admin";
+      const body = { ...req.body };
+      const hasOverrideChange = body.customOverrideText !== undefined && body.customOverrideText !== letter.customOverrideText;
+      if (!isOverrideAllowed) {
+        delete body.customOverrideText;
+        delete body.customOverrideBy;
+        delete body.customOverrideAt;
+      }
+      if (isOverrideAllowed && hasOverrideChange) {
+        body.customOverrideBy = req.session.userId!;
+        body.customOverrideAt = new Date();
+      }
+      const updated = await storage.updateHrLetter(req.params.id, body);
+      if (isOverrideAllowed && hasOverrideChange) {
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: letter.id,
+          action: "hr_letter_custom_override",
+          changes: { before: letter.customOverrideText || null, after: body.customOverrideText, source: "update" },
+        });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update letter" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/custom-override", requireAdminLevel, async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status === "issued" || letter.status === "reissued" || letter.status === "revoked") {
+        return res.status(400).json({ error: "Cannot modify an issued, reissued, or revoked letter. Use reissue to create a new version." });
+      }
+      const { customOverrideText } = req.body;
+      const updated = await storage.updateHrLetter(req.params.id, {
+        customOverrideText,
+        customOverrideBy: req.session.userId!,
+        customOverrideAt: new Date(),
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "hr_letter_custom_override",
+        changes: { customOverrideText },
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add custom override" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/approve", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "draft" && letter.status !== "pending_approval") {
+        return res.status(400).json({ error: "Letter must be in draft or pending approval status" });
+      }
+      const updated = await storage.updateHrLetter(req.params.id, {
+        status: "approved",
+        approvedBy: req.session.userId!,
+        approvedAt: new Date(),
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "approve_hr_letter",
+        changes: { status: "approved" },
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to approve letter" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/issue", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "approved") {
+        return res.status(400).json({ error: "Letter must be approved before issuing. Current status: " + letter.status });
+      }
+
+      const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
+      const year = new Date().getFullYear();
+      const refPrefix = `RL/${prefix}/${year}/`;
+      const count = await storage.getHrLetterCountByPrefix(refPrefix);
+      const referenceNumber = generateRefNumber(prefix, year, count);
+
+      const issueDate = letter.issueDate || new Date().toISOString().split("T")[0];
+      const tempLetter = { ...letter, issueDate };
+      const { authCode, documentHash } = computeLetterAuthCode(tempLetter);
+
+      const issuedLetter = {
+        ...letter,
+        referenceNumber,
+        authCode,
+        issueDate,
+        status: "issued" as const,
+      };
+
+      const pdfBuffer = await generateHrLetterPdf(issuedLetter);
+      const pdfDir = path.resolve("uploads/hr-letters");
+      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+      const pdfFilename = `${referenceNumber.replace(/\//g, "-")}.pdf`;
+      const pdfPath = path.join(pdfDir, pdfFilename);
+      fs.writeFileSync(pdfPath, pdfBuffer);
+
+      const updated = await storage.updateHrLetter(req.params.id, {
+        status: "issued",
+        referenceNumber,
+        authCode,
+        documentHash,
+        issuedBy: req.session.userId!,
+        issuedAt: new Date(),
+        issueDate,
+        pdfPath: `hr-letters/${pdfFilename}`,
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "issue_hr_letter",
+        changes: { referenceNumber, authCode, status: "issued", pdfPath: `hr-letters/${pdfFilename}` },
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Issue HR letter error:", error);
+      res.status(500).json({ error: "Failed to issue letter" });
+    }
+  });
+
+  app.get("/api/hr/letters/:id/download", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+
+      if (letter.pdfPath) {
+        const filePath = path.resolve("uploads", letter.pdfPath);
+        if (fs.existsSync(filePath)) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${letter.referenceNumber?.replace(/\//g, "-") || "letter"}.pdf"`);
+          return res.sendFile(filePath);
+        }
+      }
+
+      const pdfBuffer = await generateHrLetterPdf(letter);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${letter.referenceNumber?.replace(/\//g, "-") || "letter"}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Download HR letter error:", error);
+      res.status(500).json({ error: "Failed to download letter" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/email", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "issued") {
+        return res.status(400).json({ error: "Letter must be issued before sending email" });
+      }
+      if (!letter.referenceNumber || !letter.authCode) {
+        return res.status(400).json({ error: "Letter missing reference number or auth code" });
+      }
+
+      const employee = letter.employeeId ? await storage.getAdminUser(letter.employeeId) : null;
+      const recipientEmail = req.body.email || employee?.email;
+      if (!recipientEmail) {
+        return res.status(400).json({ error: "No email address found for the employee" });
+      }
+
+      let pdfBuffer: Buffer | undefined;
+      if (letter.pdfPath) {
+        const filePath = path.resolve("uploads", letter.pdfPath);
+        if (fs.existsSync(filePath)) {
+          pdfBuffer = fs.readFileSync(filePath);
+        }
+      }
+      if (!pdfBuffer) {
+        pdfBuffer = await generateHrLetterPdf(letter);
+      }
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "hire-in.com";
+      const verifyUrl = `${protocol}://${host}/verify`;
+
+      const result = await sendHrLetterEmail({
+        to: recipientEmail,
+        employeeName: letter.employeeName,
+        letterType: letter.templateType,
+        referenceNumber: letter.referenceNumber,
+        authCode: letter.authCode,
+        verifyUrl,
+        pdfBuffer,
+        pdfFilename: `${letter.referenceNumber.replace(/\//g, "-")}.pdf`,
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: `Failed to send email: ${result.error}` });
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "email_hr_letter",
+        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber },
+      });
+
+      res.json({ success: true, sentTo: recipientEmail });
+    } catch (error) {
+      console.error("Email HR letter error:", error);
+      res.status(500).json({ error: "Failed to send letter email" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/reissue", requireRole("hr"), async (req, res) => {
+    try {
+      const originalLetter = await storage.getHrLetter(req.params.id);
+      if (!originalLetter) return res.status(404).json({ error: "Letter not found" });
+      if (originalLetter.status !== "issued" && originalLetter.status !== "reissued") {
+        return res.status(400).json({ error: "Can only reissue an issued letter" });
+      }
+      const { reissueReason } = req.body;
+
+      await storage.updateHrLetter(req.params.id, { status: "reissued" });
+
+      const newLetter = await storage.createHrLetter({
+        templateType: originalLetter.templateType,
+        employeeId: originalLetter.employeeId,
+        employeeName: originalLetter.employeeName,
+        employeeCode: originalLetter.employeeCode,
+        designation: originalLetter.designation,
+        department: originalLetter.department,
+        employmentType: originalLetter.employmentType,
+        location: originalLetter.location,
+        reportingManager: originalLetter.reportingManager,
+        startDate: originalLetter.startDate,
+        endDate: originalLetter.endDate,
+        lastWorkingDay: originalLetter.lastWorkingDay,
+        performanceBand: originalLetter.performanceBand,
+        conductBand: originalLetter.conductBand,
+        completionBand: originalLetter.completionBand,
+        closingLine: originalLetter.closingLine,
+        includeResponsibilities: originalLetter.includeResponsibilities,
+        responsibilitiesSummary: originalLetter.responsibilitiesSummary,
+        includeProject: originalLetter.includeProject,
+        projectName: originalLetter.projectName,
+        includeSeal: originalLetter.includeSeal,
+        signatoryId: originalLetter.signatoryId,
+        signatoryName: originalLetter.signatoryName,
+        signatoryDesignation: originalLetter.signatoryDesignation,
+        issueDate: originalLetter.issueDate,
+        customOverrideText: originalLetter.customOverrideText,
+        customOverrideBy: originalLetter.customOverrideBy,
+        customOverrideAt: originalLetter.customOverrideAt,
+        pdfPath: null,
+        status: "draft",
+        reissuedFromLetterId: originalLetter.id,
+        reissueReason: reissueReason || "Reissued",
+        createdBy: req.session.userId!,
+      });
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: newLetter.id,
+        action: "reissue_hr_letter",
+        changes: { originalId: originalLetter.id, reissueReason },
+      });
+      res.status(201).json(newLetter);
+    } catch (error) {
+      console.error("Reissue HR letter error:", error);
+      res.status(500).json({ error: "Failed to reissue letter" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/revoke", requireRole("hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status === "revoked") {
+        return res.status(400).json({ error: "Letter is already revoked" });
+      }
+      const { revokeReason } = req.body;
+      const updated = await storage.updateHrLetter(req.params.id, {
+        status: "revoked",
+        revokedBy: req.session.userId!,
+        revokedAt: new Date(),
+        revokeReason: revokeReason || "Revoked",
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "revoke_hr_letter",
+        changes: { revokeReason, status: "revoked" },
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to revoke letter" });
+    }
+  });
+
+  app.get("/api/verify-letter", async (req, res) => {
+    try {
+      const { ref, auth } = req.query;
+      if (!ref || !auth) {
+        return res.status(400).json({ error: "Reference number and auth code are required" });
+      }
+      const letter = await storage.getHrLetterByRef(ref as string);
+      if (!letter) {
+        return res.status(404).json({ error: "Document not found or auth code does not match" });
+      }
+
+      if (!LETTER_HMAC_SECRET) {
+        return res.status(500).json({ error: "Verification service unavailable" });
+      }
+      const { authCode: recomputedAuth } = computeLetterAuthCode({
+        id: letter.id,
+        templateType: letter.templateType,
+        employeeName: letter.employeeName,
+        designation: letter.designation,
+        startDate: letter.startDate,
+        endDate: letter.endDate,
+        performanceBand: letter.performanceBand,
+        conductBand: letter.conductBand,
+        completionBand: letter.completionBand,
+        department: letter.department,
+        location: letter.location,
+        employeeCode: letter.employeeCode,
+        signatoryName: letter.signatoryName,
+        signatoryDesignation: letter.signatoryDesignation,
+        closingLine: letter.closingLine,
+        responsibilitiesSummary: letter.responsibilitiesSummary,
+        projectName: letter.projectName,
+        customOverrideText: letter.customOverrideText,
+        issueDate: letter.issueDate,
+      });
+
+      if (recomputedAuth !== (auth as string).toUpperCase()) {
+        return res.status(404).json({ error: "Document not found or auth code does not match" });
+      }
+
+      const tamperDetected = letter.authCode !== recomputedAuth;
+
+      res.json({
+        employeeName: letter.employeeName,
+        templateType: letter.templateType,
+        designation: letter.designation,
+        department: letter.department,
+        startDate: letter.startDate,
+        endDate: letter.endDate,
+        issueDate: letter.issueDate,
+        referenceNumber: letter.referenceNumber,
+        status: letter.status,
+        verified: !tamperDetected,
+        ...(tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Verification failed" });
     }
   });
 

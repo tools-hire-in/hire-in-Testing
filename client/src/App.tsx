@@ -51,6 +51,7 @@ import PerformanceReviewCycles from "@/pages/admin/performance/ReviewCycles";
 import PerformanceFeedback from "@/pages/admin/performance/Feedback";
 import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
 import ReportsCompliance from "@/pages/admin/hr/ReportsCompliance";
+import VerifyLetter from "@/pages/VerifyLetter";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -93,6 +94,7 @@ function PublicRouter() {
       <Route path="/it-staffing" component={ITStaffing} />
       <Route path="/ehealthcare-staffing" component={EHealthcareStaffing} />
       <Route path="/onboard/:token" component={OnboardAccept} />
+      <Route path="/verify" component={VerifyLetter} />
 
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/forgot-password" component={ForgotPassword} />
@@ -150,6 +152,7 @@ function EmployeeRouter() {
       <Route path="/">{() => <Redirect to="/admin/login" />}</Route>
       <Route path="/login">{() => <Redirect to="/admin/login" />}</Route>
       <Route path="/onboard/:token" component={OnboardAccept} />
+      <Route path="/verify" component={VerifyLetter} />
 
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/forgot-password" component={ForgotPassword} />

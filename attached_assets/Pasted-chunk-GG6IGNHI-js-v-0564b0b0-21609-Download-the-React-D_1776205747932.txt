@@ -1,0 +1,67 @@
+chunk-GG6IGNHI.js?v=0564b0b0:21609 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+LetterGenerator.tsx:130 Uncaught TypeError: employees.slice is not a function
+    at LetterGenerator.tsx:130:43
+    at mountMemo (chunk-GG6IGNHI.js?v=0564b0b0:12242:27)
+    at Object.useMemo (chunk-GG6IGNHI.js?v=0564b0b0:12566:24)
+    at useMemo (chunk-PWPD3MW7.js?v=0564b0b0:1094:29)
+    at LetterGenerator (LetterGenerator.tsx:129:29)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=0564b0b0:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=0564b0b0:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=0564b0b0:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=0564b0b0:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=0564b0b0:3705:24)
+LetterGenerator.tsx:130 Uncaught TypeError: employees.slice is not a function
+    at LetterGenerator.tsx:130:43
+    at mountMemo (chunk-GG6IGNHI.js?v=0564b0b0:12242:27)
+    at Object.useMemo (chunk-GG6IGNHI.js?v=0564b0b0:12566:24)
+    at useMemo (chunk-PWPD3MW7.js?v=0564b0b0:1094:29)
+    at LetterGenerator (LetterGenerator.tsx:129:29)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=0564b0b0:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=0564b0b0:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=0564b0b0:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=0564b0b0:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=0564b0b0:3705:24)
+chunk-GG6IGNHI.js?v=0564b0b0:14080 The above error occurred in the <LetterGenerator> component:
+
+    at LetterGenerator (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/src/components/hr/LetterGenerator.tsx:99:20)
+    at div
+    at https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-LB6ITG5J.js?v=0564b0b0:42:13
+    at Presence (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-EQ5YOPG6.js?v=0564b0b0:24:11)
+    at https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=0564b0b0:174:13
+    at _c5 (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/src/components/ui/tabs.tsx:72:12)
+    at div
+    at https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-LB6ITG5J.js?v=0564b0b0:42:13
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=0564b0b0:37:15)
+    at https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=0564b0b0:52:7
+    at div
+    at main
+    at div
+    at div
+    at div
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=0564b0b0:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=0564b0b0:62:5)
+    at SidebarProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/src/components/ui/sidebar.tsx:59:3)
+    at AdminLayout (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/src/components/admin/AdminLayout.tsx:266:31)
+    at HRTools (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/src/pages/admin/hr/HRTools.tsx:3194:27)
+    at Route (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=0564b0b0:264:16)
+    at Switch (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=0564b0b0:320:17)
+    at PublicRouter
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=0564b0b0:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=0564b0b0:62:5)
+    at QueryClientProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc-7fbd6nxy.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=0564b0b0:2747:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-GG6IGNHI.js?v=0564b0b0:14080
+chunk-GG6IGNHI.js?v=0564b0b0:9176 Uncaught TypeError: employees.slice is not a function
+    at LetterGenerator.tsx:130:43
+    at mountMemo (chunk-GG6IGNHI.js?v=0564b0b0:12242:27)
+    at Object.useMemo (chunk-GG6IGNHI.js?v=0564b0b0:12566:24)
+    at useMemo (chunk-PWPD3MW7.js?v=0564b0b0:1094:29)
+    at LetterGenerator (LetterGenerator.tsx:129:29)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=0564b0b0:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=0564b0b0:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=0564b0b0:15962:22)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=0564b0b0:19806:22)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=0564b0b0:19251:20)

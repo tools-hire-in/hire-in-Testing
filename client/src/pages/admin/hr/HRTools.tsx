@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Wrench, FileText, Receipt, Download, Loader2, User, Building, Search,
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
-  FileSearch, Printer, ShieldCheck,
+  FileSearch, Printer, ShieldCheck, ScrollText, FileStack,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
+import { LetterGenerator } from "@/components/hr/LetterGenerator";
+import { LettersDashboard } from "@/components/hr/LettersDashboard";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
@@ -1677,7 +1679,7 @@ export default function HRTools() {
         </div>
 
         <Tabs defaultValue="salary-slip" className="space-y-6">
-          <TabsList data-testid="tabs-hr-tools">
+          <TabsList data-testid="tabs-hr-tools" className="flex-wrap h-auto gap-1">
             <TabsTrigger value="salary-slip" data-testid="tab-salary-slip">
               <Receipt className="h-4 w-4 mr-2" />
               Salary Slip
@@ -1689,6 +1691,14 @@ export default function HRTools() {
             <TabsTrigger value="offer-letters" data-testid="tab-offer-letters">
               <Mail className="h-4 w-4 mr-2" />
               Offer Letters
+            </TabsTrigger>
+            <TabsTrigger value="letter-generator" data-testid="tab-letter-generator">
+              <ScrollText className="h-4 w-4 mr-2" />
+              Letter Generator
+            </TabsTrigger>
+            <TabsTrigger value="letters" data-testid="tab-letters">
+              <FileStack className="h-4 w-4 mr-2" />
+              Letters
             </TabsTrigger>
           </TabsList>
 
@@ -1702,6 +1712,14 @@ export default function HRTools() {
 
           <TabsContent value="offer-letters">
             <OfferLettersDashboard />
+          </TabsContent>
+
+          <TabsContent value="letter-generator">
+            <LetterGenerator />
+          </TabsContent>
+
+          <TabsContent value="letters">
+            <LettersDashboard />
           </TabsContent>
         </Tabs>
       </div>

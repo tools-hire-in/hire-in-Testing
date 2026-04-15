@@ -41,6 +41,10 @@ An integrated internal employee management system within the admin panel:
     - **Salary Slip Generator**: Generates payslips matching company template, auto-calculates LOP deductions, provides inline preview and PDF download.
     - **Offer Letter Generator**: Produces DOCX offer letters (Rayomind Solutions branded) with auto-fill from employee records, server-side DOCX generation, and email functionality for digital acceptance.
     - **Offer Letters Dashboard**: Tracks offer letter statuses (sent, viewed, accepted, countersigned, onboarded, expired, cancelled) with actions for status updates and onboarding initiation.
+    - **Letter Generator**: Template-based HR letter engine supporting 4 document types (Employee Experience Letter, Internship Completion Letter, Internship Certificate, Relieving Letter). Controlled wording via performance/conduct/completion band dropdowns with deterministic sentence mapping. Multi-step wizard with employee auto-fill, signatory selection, and live letterhead preview.
+    - **Letters Dashboard**: Lists all HR letters with status badges (Draft/Pending Approval/Approved/Issued/Reissued/Revoked), template type filter, search. Actions: approve, issue (generates reference number + HMAC auth code), reissue, revoke with audit trail.
+- **Public Document Verification**: `/verify` page (no auth required) — enter reference number + auth code to verify any issued HR letter. Shows employee name, document type, designation, tenure dates, status. Branded with Rayomind logo.
+- **HR Letters Schema**: `hr_letters` table with template_type enum, person fields, band selections, signatory, cryptographic verification (HMAC-SHA256 truncated to 8-char auth code), full audit trail, custom override support (admin-only with audit logging), reissue chain.
 - **Offer Acceptance Flow**: Public page for candidates to view, verify name, and accept offers, generating cryptographic document hashes.
 - **Counter-Signature Flow**: HR/Admin counter-signs accepted offers, generating additional cryptographic codes.
 - **Manual Adjustments**: HR can manually adjust leave balances with audit trails.
