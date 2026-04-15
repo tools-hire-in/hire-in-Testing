@@ -1,0 +1,271 @@
+My strong recommendation
+
+Do not allow open free-text by default.
+
+Instead use:
+
+1. Standard template library
+
+Pre-approved templates:
+
+Employee Experience Letter
+Internship Completion Letter
+Internship Certificate
+Relieving Letter
+2. Controlled wording engine
+
+Each template should have sentence blocks mapped to dropdown selections.
+
+Example:
+
+Performance band
+Standard
+Good
+Very Good
+Excellent
+Conduct band
+Satisfactory
+Good
+Very Good
+Completion status
+Successfully completed
+Completed
+Served during the period
+
+Then the system inserts the correct line.
+
+Important caution
+
+I would not include:
+
+Bad
+Poor
+Weak
+Unsatisfactory
+
+in outward-facing experience letters.
+
+That is the wrong design.
+
+Better rule
+
+For people with poor performance, the system should still generate:
+
+a neutral factual letter
+with no praise beyond minimum professional wording
+
+So instead of “bad,” use:
+
+Basic / Standard / Factual only
+Why
+
+Experience letters in India are usually used for:
+
+next employer
+background verification
+visa/university/admin use
+
+Negative wording creates unnecessary dispute and HR risk. For difficult exits, issue a factual version, not a negative version.
+
+Best structure for your feature
+Mode A: Factual only
+
+For sensitive or poor-performance exits
+
+Generated line example:
+
+“During the above tenure, the employee was associated with the organization in the role of [Designation].”
+“This letter is issued upon request for record purposes.”
+Mode B: Standard positive
+
+For normal exits
+
+Generated line example:
+
+“During the tenure, the employee carried out assigned responsibilities in the [Department] function and maintained satisfactory professional conduct.”
+Mode C: Strong positive
+
+For good performers
+
+Generated line example:
+
+“During the tenure, the employee demonstrated diligence, professionalism, and a positive contribution to assigned responsibilities.”
+Mode D: Excellent
+
+For top performers
+
+Generated line example:
+
+“During the tenure, the employee demonstrated a high level of professionalism, ownership, and effectiveness in assigned responsibilities.”
+What HR should enter
+
+Very little.
+
+Required inputs
+employee/intern name or ID
+document type
+issue date
+signatory
+performance mode
+conduct mode
+last working date if needed
+Auto-pulled from system
+full legal name
+employee ID
+designation
+department
+employment type
+start date
+end date
+location
+reporting manager if needed
+Optional toggle
+include responsibilities: yes/no
+include internship project: yes/no
+include QR verification: yes/no
+include company seal: yes/no
+Best architecture decision
+Default
+
+No free text
+
+Optional admin override
+
+Allow only:
+
+HR Admin or Super Admin
+“Custom paragraph override”
+with audit logging
+
+That way:
+
+95% of letters stay standardized
+exceptional cases can still be handled
+every manual change is traceable
+
+That is the right enterprise design.
+
+Product rules I would set
+Employee experience letter
+
+Fields:
+
+name
+employee ID
+designation
+department
+start date
+end date
+conduct band
+performance band
+signatory
+Intern certificate / internship letter
+
+Fields:
+
+name
+intern ID
+internship role
+department
+start date
+end date
+project/assignment from internship record
+completion band
+performance band
+signatory
+Output policy
+one page only
+fixed format
+no salary
+no reason for leaving
+no manual custom praise by default
+no negative language in issued letters
+immutable final PDF
+version history on reissue
+Suggested wording matrix
+Performance mapping
+Factual only
+
+“During the above period, [Name] was associated with [Company Name] as [Role].”
+
+Standard
+
+“During the tenure, [Name] carried out assigned responsibilities in the [Department] function.”
+
+Good
+
+“During the tenure, [Name] demonstrated diligence and responsibility in assigned work.”
+
+Very Good
+
+“During the tenure, [Name] demonstrated professionalism, commitment, and good execution of assigned responsibilities.”
+
+Excellent
+
+“During the tenure, [Name] demonstrated a high level of professionalism, ownership, and effectiveness in assigned responsibilities.”
+
+Conduct mapping
+Standard
+
+“Professional conduct was satisfactory.”
+
+Good
+
+“Professional conduct was good.”
+
+Very Good
+
+“Professional conduct was very good.”
+
+My BA recommendation
+
+Build this in Phase 1 or early Phase 2 of the HR module, because:
+
+very visible HR value
+low development cost
+easy adoption
+easy demo value
+helps standardize company process quickly
+
+Compared to many other HR features, this one has a very good effort-to-value ratio.
+
+My architect recommendation
+
+Build it as:
+
+Backend
+document_templates
+document_generation_rules
+experience_letters
+letter_versions
+signatories
+verification_tokens
+Frontend pages
+Template Settings
+Generate Letter
+Preview Letter
+Issued Documents
+Reissue / Revoke
+Engine
+template + rule mapper
+no AI needed for generation
+deterministic text blocks
+HTML-to-PDF renderer
+
+That is cleaner than using dynamic text writing.
+
+Final recommendation
+
+Yes, build it.
+
+But build it as a standardized certificate engine, not a custom writing workflow.
+
+Best model
+HR enters only core person data and dropdown selections
+wording is fully controlled by policy
+bad/poor wording should not be exposed
+poor performers get factual-only letters
+strong performers get stronger approved wording
+admin override exists only for rare cases with audit trail
+
+That is the most professional, scalable, and legally safer design.
