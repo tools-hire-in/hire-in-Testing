@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { AdminUsersResponse } from "@shared/schema";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -308,8 +309,13 @@ function SalarySlipGenerator() {
   const [showPreview, setShowPreview] = useState(false);
   const [loadingSlip, setLoadingSlip] = useState(false);
 
-  const { data: usersResponse } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; employeeId: string | null; departmentId: string | null; salary: string | null; designation: string | null; joiningDate: string | null; role: string }[]; counts: { active: number; disabled: number; deleted: number } }>({
-    queryKey: ["/api/admin/users"],
+  const { data: usersResponse } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; employeeId: string | null; departmentId: string | null; salary: string | null; designation: string | null; joiningDate: string | null; role: string }[]; counts: AdminUsersResponse["counts"] }>({
+    queryKey: ["/api/admin/users", "all_non_deleted"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=all_non_deleted", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
   });
   const users = usersResponse?.users;
 
@@ -319,7 +325,7 @@ function SalarySlipGenerator() {
 
   const activeUsers = useMemo(() => {
     if (!users) return [];
-    return users.filter(u => u.isActive);
+    return users;
   }, [users]);
 
   const updateField = (field: keyof SlipFormData, value: any) => {
@@ -684,14 +690,19 @@ function OfferLetterGenerator() {
   const [generating, setGenerating] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
 
-  const { data: usersResp } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; designation: string | null; departmentId: string | null; salary: string | null; joiningDate: string | null }[]; counts: { active: number; disabled: number; deleted: number } }>({
-    queryKey: ["/api/admin/users"],
+  const { data: usersResp } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; designation: string | null; departmentId: string | null; salary: string | null; joiningDate: string | null }[]; counts: AdminUsersResponse["counts"] }>({
+    queryKey: ["/api/admin/users", "all_non_deleted"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=all_non_deleted", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
   });
   const users = usersResp?.users;
 
   const activeUsers = useMemo(() => {
     if (!users) return [];
-    return users.filter(u => u.isActive);
+    return users;
   }, [users]);
 
   const updateField = (field: keyof OfferFormData, value: any) => {

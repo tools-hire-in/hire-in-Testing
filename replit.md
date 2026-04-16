@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 An integrated internal employee management system within the admin panel:
 - **Employee Features**: Dashboard, attendance, leave management, holiday calendar, profile, tickets, org chart.
 - **Manager Features**: Team attendance viewing, leave request approvals with escalation, configurable attendance thresholds. Proactive training extension requests (before and after due date) with direct manager approval for direct reports.
-- **HR/Admin Features**: Comprehensive HR settings for leave types, holidays, departments, and user management.
+- **HR/Admin Features**: Comprehensive HR settings for leave types, holidays, departments, and user management. User exit statuses: **Relieved** (involuntary) and **Left Company** (voluntary resignation) tracked via `employmentStatus` enum. Team Management page has 5 tabs: Active, Disabled, Relieved, Left Company, Deleted. Super Admin-only soft-delete. All non-deleted users (active, disabled, relieved, left-company) are searchable for HR document generation.
 - **Leave Accrual**: Hours-based, monthly leave earning system.
 - **Holiday Management**: Support for regional and mandatory holidays with automated attendance stamping.
 - **Salary Processing**: Automated monthly salary reports with CSV attachments and individual PDF salary slip generation. Configurable report recipients.

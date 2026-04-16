@@ -419,6 +419,24 @@ async function backfillHolidayAttendance() {
     console.error("admin_users deleted_at migration error:", err);
   }
 
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE employment_status AS ENUM ('active', 'relieved', 'left_company');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await db.execute(sql`
+      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS employment_status employment_status DEFAULT 'active'
+    `);
+    await db.execute(sql`
+      UPDATE admin_users SET employment_status = 'active' WHERE employment_status IS NULL
+    `);
+    log("Ensured employment_status column exists on admin_users");
+  } catch (err) {
+    console.error("admin_users employment_status migration error:", err);
+  }
+
   await ensurePerformanceTables();
   await ensureHrLettersTables();
   await backfillEmployeeIds();

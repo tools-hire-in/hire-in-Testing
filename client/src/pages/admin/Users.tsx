@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +86,33 @@ const roleRank: Record<string, number> = {
   super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
 };
 
+const DESIGNATIONS = [
+  "Recruiter",
+  "Senior Recruiter",
+  "Lead Recruiter",
+  "Talent Acquisition Manager",
+  "HR Executive",
+  "HR Manager",
+  "HR Business Partner",
+  "Business Development Executive",
+  "Business Development Manager",
+  "Account Manager",
+  "Client Partner",
+  "Operations Executive",
+  "Operations Manager",
+  "Software Engineer",
+  "Senior Software Engineer",
+  "Tech Lead",
+  "Architect",
+  "Business Analyst (BA)",
+  "Project Manager",
+  "Product Manager",
+  "Finance Executive",
+  "Finance Manager",
+  "Director",
+  "Vice President",
+];
+
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -126,8 +153,8 @@ export default function AdminUsers() {
   });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable"; user: AdminUser } | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | "deleted">("active");
+  const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable" | "relieve" | "left_company_exit"; user: AdminUser } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | "relieved" | "left_company" | "deleted">("active");
 
   const { data: usersResponse, isLoading } = useQuery<AdminUsersResponse>({
     queryKey: ["/api/admin/users", statusFilter],
@@ -309,6 +336,22 @@ export default function AdminUsers() {
     },
   });
 
+  const employmentStatusMutation = useMutation({
+    mutationFn: async ({ id, employmentStatus }: { id: string; employmentStatus: "relieved" | "left_company" | "active" }) => {
+      return apiRequest("PATCH", `/api/admin/users/${id}/employment-status`, { employmentStatus });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      const label = variables.employmentStatus === "relieved" ? "relieved" : "marked as left company";
+      toast({ title: `User ${label}`, description: "The user has been updated and can no longer log in." });
+      setConfirmOpen(false);
+      setConfirmAction(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update employment status", description: error?.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ id, newPassword }: { id: string; newPassword: string }) => {
       return apiRequest("POST", `/api/admin/users/${id}/reset-password`, { newPassword });
@@ -358,9 +401,7 @@ export default function AdminUsers() {
 
   const canDeleteUser = (targetUser: AdminUser) => {
     if (targetUser.id === user?.id) return false;
-    if (isSuperAdmin) return true;
-    if (isAdmin) return currentUserRank > (roleRank[targetUser.role] ?? 0);
-    return false;
+    return isSuperAdmin;
   };
 
   const openEditDialog = (adminUser: AdminUser) => {
@@ -458,16 +499,22 @@ export default function AdminUsers() {
           />
         </div>
 
-        <div className="flex gap-2" data-testid="status-filter-tabs">
-          {(["active", "disabled", "deleted"] as const).map((tab) => (
+        <div className="flex flex-wrap gap-2" data-testid="status-filter-tabs">
+          {([
+            { key: "active", label: "Active" },
+            { key: "disabled", label: "Disabled" },
+            { key: "relieved", label: "Relieved" },
+            { key: "left_company", label: "Left Company" },
+            { key: "deleted", label: "Deleted" },
+          ] as const).map(({ key, label }) => (
             <Button
-              key={tab}
-              variant={statusFilter === tab ? "default" : "outline"}
+              key={key}
+              variant={statusFilter === key ? "default" : "outline"}
               size="sm"
-              onClick={() => setStatusFilter(tab)}
-              data-testid={`tab-${tab}`}
+              onClick={() => setStatusFilter(key)}
+              data-testid={`tab-${key}`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)} ({counts?.[tab] ?? 0})
+              {label} ({counts?.[key] ?? 0})
             </Button>
           ))}
         </div>
@@ -530,9 +577,11 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell>
                           {adminUser.deletedAt ? (
-                            <Badge variant="destructive" data-testid={`badge-status-${adminUser.id}`}>
-                              Deleted
-                            </Badge>
+                            <Badge variant="destructive" data-testid={`badge-status-${adminUser.id}`}>Deleted</Badge>
+                          ) : adminUser.employmentStatus === "relieved" ? (
+                            <Badge className="bg-orange-100 text-orange-800" data-testid={`badge-status-${adminUser.id}`}>Relieved</Badge>
+                          ) : adminUser.employmentStatus === "left_company" ? (
+                            <Badge className="bg-rose-100 text-rose-800" data-testid={`badge-status-${adminUser.id}`}>Left Company</Badge>
                           ) : (
                             <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
                               {adminUser.isActive ? "Active" : "Disabled"}
@@ -644,24 +693,47 @@ export default function AdminUsers() {
                                 {canEditUser(adminUser) && adminUser.id !== user?.id && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => { setConfirmAction({ type: adminUser.isActive ? "disable" : "enable", user: adminUser }); setConfirmOpen(true); }}
-                                      data-testid={`menu-toggle-active-${adminUser.id}`}
-                                    >
-                                      {adminUser.isActive ? (
-                                        <><UserX className="h-4 w-4 mr-2 text-amber-600" /><span className="text-amber-600">Disable</span></>
-                                      ) : (
-                                        <><UserCheck className="h-4 w-4 mr-2 text-green-600" /><span className="text-green-600">Enable</span></>
-                                      )}
-                                    </DropdownMenuItem>
-                                    {canDeleteUser(adminUser) && (
+                                    {(!adminUser.employmentStatus || adminUser.employmentStatus === "active") && (
                                       <DropdownMenuItem
-                                        onClick={() => { setConfirmAction({ type: "delete", user: adminUser }); setConfirmOpen(true); }}
-                                        data-testid={`menu-delete-${adminUser.id}`}
+                                        onClick={() => { setConfirmAction({ type: adminUser.isActive ? "disable" : "enable", user: adminUser }); setConfirmOpen(true); }}
+                                        data-testid={`menu-toggle-active-${adminUser.id}`}
                                       >
-                                        <Trash2 className="h-4 w-4 mr-2 text-destructive" />
-                                        <span className="text-destructive">Delete</span>
+                                        {adminUser.isActive ? (
+                                          <><UserX className="h-4 w-4 mr-2 text-amber-600" /><span className="text-amber-600">Disable</span></>
+                                        ) : (
+                                          <><UserCheck className="h-4 w-4 mr-2 text-green-600" /><span className="text-green-600">Enable</span></>
+                                        )}
                                       </DropdownMenuItem>
+                                    )}
+                                    {adminUser.employmentStatus !== "relieved" && adminUser.employmentStatus !== "left_company" && (
+                                      <DropdownMenuItem
+                                        onClick={() => { setConfirmAction({ type: "relieve", user: adminUser }); setConfirmOpen(true); }}
+                                        data-testid={`menu-relieve-${adminUser.id}`}
+                                      >
+                                        <Briefcase className="h-4 w-4 mr-2 text-orange-600" />
+                                        <span className="text-orange-600">Mark as Relieved</span>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {adminUser.employmentStatus !== "left_company" && adminUser.employmentStatus !== "relieved" && (
+                                      <DropdownMenuItem
+                                        onClick={() => { setConfirmAction({ type: "left_company_exit", user: adminUser }); setConfirmOpen(true); }}
+                                        data-testid={`menu-left-company-${adminUser.id}`}
+                                      >
+                                        <LogOut className="h-4 w-4 mr-2 text-rose-600" />
+                                        <span className="text-rose-600">Mark as Left Company</span>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canDeleteUser(adminUser) && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => { setConfirmAction({ type: "delete", user: adminUser }); setConfirmOpen(true); }}
+                                          data-testid={`menu-delete-${adminUser.id}`}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                                          <span className="text-destructive">Delete</span>
+                                        </DropdownMenuItem>
+                                      </>
                                     )}
                                   </>
                                 )}
@@ -743,7 +815,12 @@ export default function AdminUsers() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="designation">Designation</Label>
-                  <Input id="designation" placeholder="e.g. Software Engineer" value={newDesignation} onChange={(e) => setNewDesignation(e.target.value)} data-testid="input-invite-designation" />
+                  <Select value={newDesignation} onValueChange={setNewDesignation}>
+                    <SelectTrigger data-testid="select-invite-designation"><SelectValue placeholder="Select designation" /></SelectTrigger>
+                    <SelectContent>
+                      {DESIGNATIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -817,7 +894,12 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-2">
                 <Label>Designation</Label>
-                <Input value={editForm.designation} onChange={(e) => setEditForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Senior Software Engineer" data-testid="input-edit-designation" />
+                <Select value={editForm.designation || ""} onValueChange={(v) => setEditForm(prev => ({ ...prev, designation: v }))}>
+                  <SelectTrigger data-testid="select-edit-designation"><SelectValue placeholder="Select designation" /></SelectTrigger>
+                  <SelectContent>
+                    {DESIGNATIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Salary</Label>
@@ -890,7 +972,12 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-2">
                 <Label>Designation / Title</Label>
-                <Input value={hForm.designation} onChange={(e) => setHForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Senior Software Engineer, HR Manager" data-testid="input-hierarchy-designation" />
+                <Select value={hForm.designation || ""} onValueChange={(v) => setHForm(prev => ({ ...prev, designation: v }))}>
+                  <SelectTrigger data-testid="select-hierarchy-designation"><SelectValue placeholder="Select designation" /></SelectTrigger>
+                  <SelectContent>
+                    {DESIGNATIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Hierarchy Level</Label>
@@ -982,15 +1069,17 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
 
-        {/* Confirm Action Dialog (Disable/Enable/Delete) */}
+        {/* Confirm Action Dialog (Disable/Enable/Delete/Relieve/Left Company) */}
         <Dialog open={confirmOpen} onOpenChange={(open) => { setConfirmOpen(open); if (!open) setConfirmAction(null); }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className={`h-5 w-5 ${confirmAction?.type === "delete" ? "text-destructive" : "text-amber-500"}`} />
+                <AlertTriangle className={`h-5 w-5 ${confirmAction?.type === "delete" ? "text-destructive" : confirmAction?.type === "relieve" ? "text-orange-500" : confirmAction?.type === "left_company_exit" ? "text-rose-500" : "text-amber-500"}`} />
                 {confirmAction?.type === "delete" && "Delete User"}
                 {confirmAction?.type === "disable" && "Disable User"}
                 {confirmAction?.type === "enable" && "Enable User"}
+                {confirmAction?.type === "relieve" && "Mark as Relieved"}
+                {confirmAction?.type === "left_company_exit" && "Mark as Left Company"}
               </DialogTitle>
               <DialogDescription>
                 {confirmAction?.type === "delete" && (
@@ -1001,6 +1090,12 @@ export default function AdminUsers() {
                 )}
                 {confirmAction?.type === "enable" && (
                   <>Re-enable <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong>? They will be able to log in again.</>
+                )}
+                {confirmAction?.type === "relieve" && (
+                  <>Mark <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong> as Relieved (involuntary exit)? They will be moved to the Relieved tab and can no longer log in.</>
+                )}
+                {confirmAction?.type === "left_company_exit" && (
+                  <>Mark <strong>{confirmAction.user.firstName} {confirmAction.user.lastName}</strong> as Left Company (voluntary resignation)? They will be moved to the Left Company tab and can no longer log in.</>
                 )}
               </DialogDescription>
             </DialogHeader>
@@ -1034,6 +1129,28 @@ export default function AdminUsers() {
                   data-testid="button-confirm-enable"
                 >
                   {toggleActiveMutation.isPending ? "Enabling..." : "Enable User"}
+                </Button>
+              )}
+              {confirmAction?.type === "relieve" && (
+                <Button
+                  variant="default"
+                  className="bg-orange-600 hover:bg-orange-700"
+                  onClick={() => employmentStatusMutation.mutate({ id: confirmAction.user.id, employmentStatus: "relieved" })}
+                  disabled={employmentStatusMutation.isPending}
+                  data-testid="button-confirm-relieve"
+                >
+                  {employmentStatusMutation.isPending ? "Updating..." : "Mark as Relieved"}
+                </Button>
+              )}
+              {confirmAction?.type === "left_company_exit" && (
+                <Button
+                  variant="default"
+                  className="bg-rose-600 hover:bg-rose-700"
+                  onClick={() => employmentStatusMutation.mutate({ id: confirmAction.user.id, employmentStatus: "left_company" })}
+                  disabled={employmentStatusMutation.isPending}
+                  data-testid="button-confirm-left-company"
+                >
+                  {employmentStatusMutation.isPending ? "Updating..." : "Mark as Left Company"}
                 </Button>
               )}
             </DialogFooter>

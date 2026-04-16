@@ -100,7 +100,12 @@ export function LetterGenerator() {
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
   const { data: usersData } = useQuery<{ users: AdminUser[]; counts?: Record<string, number> } | AdminUser[]>({
-    queryKey: ["/api/admin/users"],
+    queryKey: ["/api/admin/users", "all_non_deleted"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=all_non_deleted", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
   });
   const employees: AdminUser[] = Array.isArray(usersData) ? usersData : (usersData?.users ?? []);
 

@@ -12,6 +12,9 @@ export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "
 // Hierarchy level enum
 export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "vp", "director", "manager", "team_lead", "delivery_manager", "team_member"]);
 
+// Employment status enum
+export const employmentStatusEnum = pgEnum("employment_status", ["active", "relieved", "left_company"]);
+
 // Departments table
 export const departments = pgTable("departments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -41,6 +44,7 @@ export const adminUsers = pgTable("admin_users", {
   joiningDate: date("joining_date"),
   totpSecret: varchar("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
+  employmentStatus: employmentStatusEnum("employment_status").default("active"),
   passwordResetToken: varchar("password_reset_token"),
   passwordResetExpiry: timestamp("password_reset_expiry"),
   deletedAt: timestamp("deleted_at"),
@@ -1047,7 +1051,7 @@ export type AdminUser = typeof adminUsers.$inferSelect;
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export interface AdminUsersResponse {
   users: AdminUser[];
-  counts: { active: number; disabled: number; deleted: number };
+  counts: { active: number; disabled: number; relieved: number; left_company: number; deleted: number };
 }
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;

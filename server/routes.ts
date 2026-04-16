@@ -583,21 +583,32 @@ export async function registerRoutes(
       const allUsers = await storage.getAllAdminUsersIncludingDeleted();
       const status = (req.query.status as string) || "active";
 
-      const activeUsers = allUsers.filter(u => u.isActive && !u.deletedAt);
-      const disabledUsers = allUsers.filter(u => !u.isActive && !u.deletedAt);
+      const activeUsers = allUsers.filter(u => u.isActive && !u.deletedAt && (!u.employmentStatus || u.employmentStatus === "active"));
+      const disabledUsers = allUsers.filter(u => !u.isActive && !u.deletedAt && (!u.employmentStatus || u.employmentStatus === "active"));
+      const relievedUsers = allUsers.filter(u => !u.deletedAt && u.employmentStatus === "relieved");
+      const leftCompanyUsers = allUsers.filter(u => !u.deletedAt && u.employmentStatus === "left_company");
       const deletedUsers = allUsers.filter(u => u.deletedAt);
+      const allNonDeleted = allUsers.filter(u => !u.deletedAt);
 
       const counts = {
         active: activeUsers.length,
         disabled: disabledUsers.length,
+        relieved: relievedUsers.length,
+        left_company: leftCompanyUsers.length,
         deleted: deletedUsers.length,
       };
 
       let filtered: typeof allUsers;
       if (status === "disabled") {
         filtered = disabledUsers;
+      } else if (status === "relieved") {
+        filtered = relievedUsers;
+      } else if (status === "left_company") {
+        filtered = leftCompanyUsers;
       } else if (status === "deleted") {
         filtered = deletedUsers;
+      } else if (status === "all_non_deleted") {
+        filtered = allNonDeleted;
       } else {
         filtered = activeUsers;
       }
@@ -910,6 +921,12 @@ export async function registerRoutes(
       }
 
       const { password, role, ...updateData } = req.body;
+
+      const exitStatuses = ["relieved", "left_company"];
+      const effectiveEmploymentStatus = updateData.employmentStatus ?? targetUser.employmentStatus;
+      if (exitStatuses.includes(effectiveEmploymentStatus) && updateData.isActive === true) {
+        return res.status(400).json({ error: "Cannot set isActive=true for a user with an exit employment status (relieved/left_company). Use the employment-status endpoint to reinstate." });
+      }
       
       if (role) {
         const newRoleRank = ROLE_RANK[role] ?? 0;
@@ -1049,17 +1066,12 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/users/:id", requireRole("super_admin", "admin"), async (req, res) => {
+  app.delete("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
 
       if (targetUser) {
-        const actorRank = ROLE_RANK[req.session.role!] ?? 0;
-        const targetRank = ROLE_RANK[targetUser.role] ?? 0;
-        if (actorRank <= targetRank && req.session.role !== "super_admin") {
-          return res.status(403).json({ error: "You cannot delete a user with an equal or higher role" });
-        }
         if (userId === req.session.userId) {
           return res.status(400).json({ error: "You cannot delete your own account" });
         }
@@ -1077,6 +1089,49 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/employment-status", requireRole("super_admin", "admin", "manager"), async (req, res) => {
+    try {
+      const actorRole = req.session.role!;
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
+      const userId = req.params.id as string;
+
+      const validStatuses = ["active", "relieved", "left_company"] as const;
+      const { employmentStatus } = req.body as { employmentStatus: typeof validStatuses[number] };
+
+      if (!validStatuses.includes(employmentStatus)) {
+        return res.status(400).json({ error: "Invalid employment status. Must be one of: active, relieved, left_company" });
+      }
+
+      const targetUser = await storage.getAdminUser(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (userId === req.session.userId) {
+        return res.status(400).json({ error: "You cannot change your own employment status" });
+      }
+
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+      if (actorRank <= targetRank && actorRole !== "super_admin") {
+        return res.status(403).json({ error: "You cannot change the employment status of a user with an equal or higher role" });
+      }
+
+      const isActive = employmentStatus === "active";
+      const updated = await storage.updateAdminUser(userId, { employmentStatus, isActive });
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: userId,
+        action: "update_employment_status",
+        changes: { employmentStatus, isActive, previousStatus: targetUser.employmentStatus },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update employment status" });
     }
   });
 
