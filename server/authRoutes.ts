@@ -386,18 +386,22 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/totp/admin-reset/:userId", requireRole("super_admin"), async (req, res) => {
+  app.post("/api/auth/totp/admin-reset/:userId", requireRole("super_admin", "admin"), async (req, res) => {
     try {
       const { userId } = req.params;
 
       const [targetUser] = await db
-        .select({ id: adminUsers.id, email: adminUsers.email, totpEnabled: adminUsers.totpEnabled })
+        .select({ id: adminUsers.id, email: adminUsers.email, totpEnabled: adminUsers.totpEnabled, role: adminUsers.role })
         .from(adminUsers)
         .where(eq(adminUsers.id, userId))
         .limit(1);
 
       if (!targetUser) {
         return res.status(404).json({ message: "User not found" });
+      }
+
+      if (req.session.role === "admin" && (targetUser.role === "super_admin" || targetUser.role === "admin")) {
+        return res.status(403).json({ message: "Forbidden - cannot reset 2FA for users at the same or higher role level" });
       }
 
       await db

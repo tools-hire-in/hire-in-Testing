@@ -535,7 +535,7 @@ export default function AdminUsers() {
                     <TableHead>Manager</TableHead>
                     <TableHead>Joining Date</TableHead>
                     <TableHead>Status</TableHead>
-                    {isSuperAdmin && <TableHead>2FA</TableHead>}
+                    {(isSuperAdmin || isAdmin) && <TableHead>2FA</TableHead>}
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -543,7 +543,7 @@ export default function AdminUsers() {
                   {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: isSuperAdmin ? 12 : 11 }).map((_, j) => (
+                        {Array.from({ length: (isSuperAdmin || isAdmin) ? 12 : 11 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
                         ))}
                       </TableRow>
@@ -588,7 +588,7 @@ export default function AdminUsers() {
                             </Badge>
                           )}
                         </TableCell>
-                        {isSuperAdmin && (
+                        {(isSuperAdmin || isAdmin) && (
                           <TableCell>
                             <Badge
                               variant={(adminUser as any).totpEnabled ? "default" : "outline"}
@@ -651,7 +651,7 @@ export default function AdminUsers() {
                                     Resend Invitation
                                   </DropdownMenuItem>
                                 )}
-                                {isSuperAdmin && adminUser.id !== user?.id && (adminUser as any).totpEnabled && (
+                                {(isSuperAdmin || isAdmin) && adminUser.id !== user?.id && (adminUser as any).totpEnabled && (isSuperAdmin || (adminUser.role !== "super_admin" && adminUser.role !== "admin")) && (
                                   <DropdownMenuItem
                                     onClick={() => reset2FAMutation.mutate(adminUser.id)}
                                     data-testid={`menu-reset-2fa-${adminUser.id}`}
