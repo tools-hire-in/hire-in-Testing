@@ -628,7 +628,7 @@ export function LetterGenerator() {
           ) : (
             <Button onClick={handleSubmit} disabled={!canNext() || createMutation.isPending} data-testid="btn-create-letter">
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Draft Letter
+              Create Letter
             </Button>
           )}
         </div>

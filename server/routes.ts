@@ -4613,7 +4613,51 @@ export async function registerRoutes(
           changes: { customOverrideText: letter.customOverrideText, source: "create", letterId: letter.id },
         });
       }
-      res.status(201).json(letter);
+
+      // Auto-issue on creation
+      const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
+      const year = new Date().getFullYear();
+      const refPrefix = `RL/${prefix}/${year}/`;
+      const count = await storage.getHrLetterCountByPrefix(refPrefix);
+      const referenceNumber = generateRefNumber(prefix, year, count);
+      const issueDate = letter.issueDate || new Date().toISOString().split("T")[0];
+      const tempLetter = { ...letter, issueDate };
+      const { authCode, documentHash } = computeLetterAuthCode(tempLetter);
+      const issuedLetter = { ...letter, referenceNumber, authCode, issueDate, status: "issued" as const };
+      const dbSentences = await storage.getLetterTemplateSentences();
+      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+        if (!acc[s.category]) acc[s.category] = {};
+        acc[s.category][s.key] = s.sentence;
+        return acc;
+      }, {});
+      const pdfBuffer = await generateHrLetterPdf(issuedLetter, {
+        performance_band: customSentences["performance_band"],
+        conduct_band: customSentences["conduct_band"],
+        completion_band: customSentences["completion_band"],
+        closing_line: customSentences["closing_line"],
+      });
+      const pdfDir = path.resolve("uploads/hr-letters");
+      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+      const pdfFilename = `${referenceNumber.replace(/\//g, "-")}.pdf`;
+      const pdfPath = path.join(pdfDir, pdfFilename);
+      fs.writeFileSync(pdfPath, pdfBuffer);
+      const issuedRecord = await storage.updateHrLetter(letter.id, {
+        status: "issued",
+        referenceNumber,
+        authCode,
+        documentHash,
+        issuedBy: req.session.userId!,
+        issuedAt: new Date(),
+        issueDate,
+        pdfPath: `hr-letters/${pdfFilename}`,
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: req.body.employeeId,
+        action: "issue_hr_letter",
+        changes: { referenceNumber, authCode, status: "issued", pdfPath: `hr-letters/${pdfFilename}` },
+      });
+      res.status(201).json(issuedRecord);
     } catch (error) {
       console.error("Create HR letter error:", error);
       res.status(500).json({ error: "Failed to create letter" });
@@ -4776,18 +4820,24 @@ export async function registerRoutes(
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
 
+      const inline = req.query.inline === "1";
+      const last4 = (letter.employeeCode || "").slice(-4) || "XXXX";
+      const safeName = (letter.employeeName || "letter").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+      const downloadFilename = `${safeName}_${last4}.pdf`;
+      const disposition = inline ? `inline; filename="${downloadFilename}"` : `attachment; filename="${downloadFilename}"`;
+
       if (letter.pdfPath) {
         const filePath = path.resolve("uploads", letter.pdfPath);
         if (fs.existsSync(filePath)) {
           res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", `attachment; filename="${letter.referenceNumber?.replace(/\//g, "-") || "letter"}.pdf"`);
+          res.setHeader("Content-Disposition", disposition);
           return res.sendFile(filePath);
         }
       }
 
       const pdfBuffer = await generateHrLetterPdf(letter);
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${letter.referenceNumber?.replace(/\//g, "-") || "letter"}.pdf"`);
+      res.setHeader("Content-Disposition", disposition);
       res.send(pdfBuffer);
     } catch (error) {
       console.error("Download HR letter error:", error);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  FileText, Loader2, Search, Eye, Download, RotateCcw, XCircle, CheckCircle, Clock, Shield, Mail,
+  FileText, Loader2, Search, Eye, Download, RotateCcw, XCircle, CheckCircle, Clock, Shield, Mail, Printer,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,29 +42,6 @@ export function LettersDashboard() {
 
   const { data: letters = [], isLoading } = useQuery<HrLetter[]>({
     queryKey: ["/api/hr/letters", { templateType: templateFilter !== "all" ? templateFilter : undefined, status: statusFilter !== "all" ? statusFilter : undefined, search: search || undefined }],
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("POST", `/api/hr/letters/${id}/approve`);
-    },
-    onSuccess: () => {
-      toast({ title: "Letter approved" });
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const issueMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/hr/letters/${id}/issue`);
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({ title: "Letter issued", description: `Reference: ${data.referenceNumber}` });
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const revokeMutation = useMutation({
@@ -178,34 +155,25 @@ export function LettersDashboard() {
                         <Button variant="ghost" size="sm" onClick={() => viewLetter(letter)} data-testid={`btn-view-letter-${letter.id}`}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {(letter.status === "draft" || letter.status === "pending_approval") && (
-                          <Button variant="ghost" size="sm" onClick={() => approveMutation.mutate(letter.id)} disabled={approveMutation.isPending} data-testid={`btn-approve-letter-${letter.id}`}>
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          </Button>
-                        )}
-                        {(letter.status === "approved") && (
-                          <Button variant="ghost" size="sm" onClick={() => issueMutation.mutate(letter.id)} disabled={issueMutation.isPending} data-testid={`btn-issue-letter-${letter.id}`}>
-                            <Shield className="h-4 w-4 text-blue-600" />
-                          </Button>
-                        )}
-                        {(letter.status === "issued") && (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              window.open(`/api/hr/letters/${letter.id}/download`, "_blank");
-                            }} data-testid={`btn-download-letter-${letter.id}`}>
-                              <Download className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => emailMutation.mutate(letter.id)} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
-                              <Mail className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setReissueDialog(letter)} data-testid={`btn-reissue-letter-${letter.id}`}>
-                              <RotateCcw className="h-4 w-4 text-amber-600" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setRevokeDialog(letter)} data-testid={`btn-revoke-letter-${letter.id}`}>
-                              <XCircle className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </>
-                        )}
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          window.open(`/api/hr/letters/${letter.id}/download`, "_blank");
+                        }} data-testid={`btn-download-letter-${letter.id}`}>
+                          <Download className="h-4 w-4 text-green-600" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          window.open(`/api/hr/letters/${letter.id}/download?inline=1`, "_blank");
+                        }} data-testid={`btn-print-letter-${letter.id}`}>
+                          <Printer className="h-4 w-4 text-slate-600" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => emailMutation.mutate(letter.id)} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
+                          <Mail className="h-4 w-4 text-blue-600" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setReissueDialog(letter)} data-testid={`btn-reissue-letter-${letter.id}`}>
+                          <RotateCcw className="h-4 w-4 text-amber-600" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setRevokeDialog(letter)} data-testid={`btn-revoke-letter-${letter.id}`}>
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -219,11 +187,29 @@ export function LettersDashboard() {
       <Sheet open={showPreview} onOpenChange={setShowPreview}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Letter Details</SheetTitle>
-            <SheetDescription>
-              {selectedLetter?.referenceNumber ? `Ref: ${selectedLetter.referenceNumber}` : "Draft"}
-              {selectedLetter?.authCode ? ` | Auth: ${selectedLetter.authCode}` : ""}
-            </SheetDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <SheetTitle>Letter Details</SheetTitle>
+                <SheetDescription>
+                  {selectedLetter?.referenceNumber ? `Ref: ${selectedLetter.referenceNumber}` : "Draft"}
+                  {selectedLetter?.authCode ? ` | Auth: ${selectedLetter.authCode}` : ""}
+                </SheetDescription>
+              </div>
+              {selectedLetter && (
+                <div className="flex gap-1 shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => {
+                    window.open(`/api/hr/letters/${selectedLetter.id}/download`, "_blank");
+                  }} data-testid="btn-preview-download">
+                    <Download className="h-4 w-4 mr-1" /> Download
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    window.open(`/api/hr/letters/${selectedLetter.id}/download?inline=1`, "_blank");
+                  }} data-testid="btn-preview-print">
+                    <Printer className="h-4 w-4 mr-1" /> Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </SheetHeader>
           {selectedLetter && (
             <div className="mt-4">
