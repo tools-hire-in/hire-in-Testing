@@ -307,20 +307,20 @@ export function LetterGenerator() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Full Name *</Label>
-                <Input value={form.employeeName} readOnly={!!form.employeeId} className={form.employeeId ? "bg-muted" : ""} onChange={e => { if (!form.employeeId) setForm(prev => ({ ...prev, employeeName: e.target.value })); }} data-testid="input-employee-name" />
-                {form.employeeId && <p className="text-xs text-muted-foreground mt-1">Auto-filled from employee record</p>}
+                <Input value={form.employeeName} onChange={e => setForm(prev => ({ ...prev, employeeName: e.target.value }))} data-testid="input-employee-name" />
+                {form.employeeId && <p className="text-xs text-muted-foreground mt-1">Auto-filled — edit if needed</p>}
               </div>
               <div>
                 <Label>{isIntern ? "Intern" : "Employee"} ID</Label>
-                <Input value={form.employeeCode} readOnly={!!form.employeeId} className={form.employeeId ? "bg-muted" : ""} onChange={e => { if (!form.employeeId) setForm(prev => ({ ...prev, employeeCode: e.target.value })); }} data-testid="input-employee-code" />
+                <Input value={form.employeeCode} readOnly className="bg-muted" data-testid="input-employee-code" />
               </div>
               <div>
                 <Label>Designation *</Label>
-                <Input value={form.designation} readOnly={!!form.employeeId} className={form.employeeId ? "bg-muted" : ""} onChange={e => { if (!form.employeeId) setForm(prev => ({ ...prev, designation: e.target.value })); }} data-testid="input-designation" />
+                <Input value={form.designation} onChange={e => setForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Software Engineer" data-testid="input-designation" />
               </div>
               <div>
                 <Label>Department</Label>
-                <Input value={form.department} readOnly={!!form.employeeId} className={form.employeeId ? "bg-muted" : ""} onChange={e => { if (!form.employeeId) setForm(prev => ({ ...prev, department: e.target.value })); }} data-testid="input-department" />
+                <Input value={form.department} onChange={e => setForm(prev => ({ ...prev, department: e.target.value }))} placeholder="e.g. Engineering" data-testid="input-department" />
               </div>
               <div>
                 <Label>Start Date *</Label>
@@ -338,7 +338,7 @@ export function LetterGenerator() {
               )}
               <div>
                 <Label>Location</Label>
-                <Input value={form.location} readOnly={!!form.employeeId} disabled={!!form.employeeId} className={form.employeeId ? "bg-muted" : ""} data-testid="input-location" />
+                <Input value={form.location} onChange={e => setForm(prev => ({ ...prev, location: e.target.value }))} placeholder="e.g. New Delhi" data-testid="input-location" />
               </div>
             </div>
           </div>
