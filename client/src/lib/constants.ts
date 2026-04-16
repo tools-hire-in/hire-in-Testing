@@ -88,18 +88,6 @@ export const HERO_IMAGES = HERO_SLIDES;
 export const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
-  {
-    label: "Services",
-    children: [
-      { href: "/services/healthcare-recruitment", label: "Healthcare Recruitment" },
-      { href: "/services/it-software", label: "IT & Software Development" },
-      { href: "/services/engineering-technical", label: "Engineering & Technical" },
-      { href: "/services/non-it-professional", label: "Professional Services" },
-      { href: "/services/contract-staffing", label: "Contract Staffing" },
-      { href: "/it-staffing", label: "IT Staffing Deck" },
-      { href: "/ehealthcare-staffing", label: "eHealthcare Staffing Deck" },
-    ],
-  },
   { href: "/jobs", label: "Jobs" },
   { href: "/contact", label: "Contact" },
 ] as const;
