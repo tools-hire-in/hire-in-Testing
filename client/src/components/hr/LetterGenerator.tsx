@@ -281,7 +281,10 @@ export function LetterGenerator() {
 
   function canNext() {
     if (step === 0) return !!form.templateType;
-    if (step === 1) return !!form.employeeId && !!form.employeeName && !!form.designation && !!form.startDate;
+    if (step === 1) {
+      const endDateRequired = ["experience", "internship_completion", "relieving"].includes(form.templateType);
+      return !!form.employeeId && !!form.employeeName && !!form.designation && !!form.startDate && (!endDateRequired || !!form.endDate);
+    }
     if (step === 2) return true;
     return !!form.signatoryName;
   }
@@ -391,7 +394,7 @@ export function LetterGenerator() {
                 <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} data-testid="input-start-date" />
               </div>
               <div>
-                <Label>End Date</Label>
+                <Label>End Date {["experience", "internship_completion", "relieving"].includes(form.templateType) && <span className="text-destructive">*</span>}</Label>
                 <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} data-testid="input-end-date" />
               </div>
               {showLastWorkingDay && (
@@ -516,6 +519,9 @@ export function LetterGenerator() {
                               ))}
                         </SelectContent>
                       </Select>
+                      {form.responsibilitiesSummary && (
+                        <p className="text-sm text-muted-foreground bg-muted rounded-md p-3 mt-2">{form.responsibilitiesSummary}</p>
+                      )}
                     </div>
                   )}
                 </div>

@@ -4600,16 +4600,16 @@ export async function registerRoutes(
       const letter = await storage.createHrLetter(data);
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: letter.id,
+        targetId: req.body.employeeId,
         action: "create_hr_letter",
-        changes: { templateType: letter.templateType, employeeName: letter.employeeName },
+        changes: { templateType: letter.templateType, employeeName: letter.employeeName, letterId: letter.id },
       });
       if (isOverrideAllowed && hasOverride) {
         await storage.createAuditLog({
           actorId: req.session.userId!,
-          targetId: letter.id,
+          targetId: req.body.employeeId,
           action: "hr_letter_custom_override",
-          changes: { customOverrideText: letter.customOverrideText, source: "create" },
+          changes: { customOverrideText: letter.customOverrideText, source: "create", letterId: letter.id },
         });
       }
       res.status(201).json(letter);
