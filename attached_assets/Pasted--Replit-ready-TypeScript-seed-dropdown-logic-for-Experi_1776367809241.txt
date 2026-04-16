@@ -1,0 +1,809 @@
+// Replit-ready TypeScript seed + dropdown logic for Experience Letter Generator
+
+export type Vertical = 'healthcare' | 'it' | 'cross_functional';
+export type Level =
+  | 'intern'
+  | 'associate'
+  | 'senior'
+  | 'lead'
+  | 'manager'
+  | 'director'
+  | 'vp'
+  | 'coordinator'
+  | 'recruiter';
+
+export interface RoleSummaryItem {
+  roleKey: string;
+  roleFamily: string;
+  vertical: Vertical;
+  level: Level;
+  roleLabel: string;
+  defaultSummary: string;
+  alternateSummary?: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface PerformanceBand {
+  key: string;
+  label: string;
+  line: string;
+  isDefault?: boolean;
+}
+
+export interface ConductBand {
+  key: string;
+  label: string;
+  line: string;
+  isDefault?: boolean;
+}
+
+export interface DocumentTypeOption {
+  key: string;
+  label: string;
+  isActive: boolean;
+}
+
+export const roleSummaryLibrary: RoleSummaryItem[] = [
+  {
+    roleKey: 'healthcare_sourcer_intern',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'intern',
+    roleLabel: 'Healthcare Sourcer - Intern',
+    defaultSummary:
+      'Supported sourcing activities for healthcare positions by identifying potential candidates, screening basic profile fit, maintaining candidate records, and assisting the recruitment team with pipeline updates and follow-ups.',
+    alternateSummary:
+      'Assisted in talent sourcing for healthcare roles through profile review, candidate outreach support, database maintenance, and coordination of candidate information for the recruiting team.',
+    isActive: true,
+    sortOrder: 10,
+  },
+  {
+    roleKey: 'healthcare_sourcer_senior',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'senior',
+    roleLabel: 'Healthcare Sourcer - Senior',
+    defaultSummary:
+      'Handled sourcing for healthcare positions by building candidate pipelines, identifying qualified professionals, conducting initial profile assessments, maintaining sourcing trackers, and supporting timely submission readiness.',
+    alternateSummary:
+      'Managed targeted sourcing for healthcare requirements through market mapping, resume screening, candidate outreach, database organization, and ongoing pipeline support aligned with business priorities.',
+    isActive: true,
+    sortOrder: 20,
+  },
+  {
+    roleKey: 'healthcare_sourcer_lead',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'lead',
+    roleLabel: 'Healthcare Sourcer - Lead',
+    defaultSummary:
+      'Led healthcare sourcing activities by driving candidate pipeline generation, guiding sourcing priorities, supporting team coordination, maintaining sourcing quality standards, and enabling recruiters with qualified candidate flow.',
+    alternateSummary:
+      'Oversaw sourcing execution for healthcare roles through pipeline planning, profile quality checks, team guidance, sourcing process improvement, and support for timely recruitment delivery.',
+    isActive: true,
+    sortOrder: 30,
+  },
+  {
+    roleKey: 'healthcare_sourcer_manager',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'manager',
+    roleLabel: 'Healthcare Sourcer - Manager',
+    defaultSummary:
+      'Managed healthcare sourcing operations by overseeing sourcing workflows, monitoring pipeline quality, guiding team members, aligning sourcing priorities, and supporting timely recruiter delivery across open requirements.',
+    alternateSummary:
+      'Led healthcare sourcing management through pipeline oversight, team coordination, sourcing quality review, and process alignment in support of recruitment delivery goals.',
+    isActive: true,
+    sortOrder: 40,
+  },
+  {
+    roleKey: 'healthcare_sourcer_director',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'director',
+    roleLabel: 'Healthcare Sourcer - Director',
+    defaultSummary:
+      'Directed healthcare sourcing strategy and team execution by establishing sourcing priorities, driving pipeline generation standards, optimizing sourcing processes, and supporting delivery performance across business requirements.',
+    alternateSummary:
+      'Oversaw healthcare sourcing direction through team leadership, process governance, pipeline strategy, and sourcing performance alignment with organizational hiring needs.',
+    isActive: true,
+    sortOrder: 50,
+  },
+  {
+    roleKey: 'healthcare_sourcer_vp',
+    roleFamily: 'healthcare_sourcer',
+    vertical: 'healthcare',
+    level: 'vp',
+    roleLabel: 'Healthcare Sourcer - VP',
+    defaultSummary:
+      'Provided executive leadership for healthcare sourcing operations through sourcing strategy oversight, team capability development, delivery alignment, process governance, and support for organizational hiring and revenue objectives.',
+    alternateSummary:
+      'Led healthcare sourcing at an executive level through strategic planning, capability building, performance governance, and alignment of sourcing operations with business priorities.',
+    isActive: true,
+    sortOrder: 60,
+  },
+  {
+    roleKey: 'healthcare_recruiter_intern',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'intern',
+    roleLabel: 'Healthcare Recruiter - Intern',
+    defaultSummary:
+      'Supported healthcare recruitment activities by assisting with candidate sourcing, screening coordination, interview scheduling, database updates, and follow-up communication throughout the hiring process.',
+    alternateSummary:
+      'Assisted the recruitment team in handling healthcare hiring tasks including candidate coordination, basic profile review, scheduling support, and maintaining recruitment records and status updates.',
+    isActive: true,
+    sortOrder: 110,
+  },
+  {
+    roleKey: 'healthcare_recruiter_senior',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'senior',
+    roleLabel: 'Healthcare Recruiter - Senior',
+    defaultSummary:
+      'Managed end-to-end recruitment for healthcare positions including candidate sourcing, screening, interview coordination, submission management, offer follow-up, and stakeholder communication.',
+    alternateSummary:
+      'Handled full-cycle healthcare recruitment by identifying suitable candidates, evaluating profile fit, coordinating interviews, maintaining candidate engagement, and supporting closure of open requirements.',
+    isActive: true,
+    sortOrder: 120,
+  },
+  {
+    roleKey: 'healthcare_recruiter_lead',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'lead',
+    roleLabel: 'Healthcare Recruiter - Lead',
+    defaultSummary:
+      'Led healthcare recruitment delivery by managing critical requirements, supporting team members, driving submission quality, coordinating hiring activities, and ensuring timely follow-up across the recruitment lifecycle.',
+    alternateSummary:
+      'Oversaw recruitment execution for healthcare roles through candidate pipeline management, screening oversight, recruiter guidance, process coordination, and focus on quality and turnaround timelines.',
+    isActive: true,
+    sortOrder: 130,
+  },
+  {
+    roleKey: 'healthcare_recruiter_manager',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'manager',
+    roleLabel: 'Healthcare Recruiter - Manager',
+    defaultSummary:
+      'Managed healthcare recruitment operations by overseeing team performance, monitoring hiring pipelines, supporting delivery planning, coordinating with stakeholders, and ensuring process discipline, quality, and target achievement.',
+    alternateSummary:
+      'Led the healthcare recruitment function through team supervision, workload planning, escalation handling, performance monitoring, and alignment of hiring delivery with business and client requirements.',
+    isActive: true,
+    sortOrder: 140,
+  },
+  {
+    roleKey: 'healthcare_recruiter_director',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'director',
+    roleLabel: 'Healthcare Recruiter - Director',
+    defaultSummary:
+      'Directed healthcare recruitment delivery by overseeing team performance, driving process discipline, strengthening submission quality, managing stakeholder alignment, and ensuring recruitment outcomes supported business and client priorities.',
+    alternateSummary:
+      'Led healthcare recruitment strategy and operations through governance of delivery quality, team performance, process improvement, and business alignment across hiring programs.',
+    isActive: true,
+    sortOrder: 150,
+  },
+  {
+    roleKey: 'healthcare_recruiter_vp',
+    roleFamily: 'healthcare_recruiter',
+    vertical: 'healthcare',
+    level: 'vp',
+    roleLabel: 'Healthcare Recruiter - VP',
+    defaultSummary:
+      'Provided executive leadership for the healthcare recruitment function through strategic oversight, delivery governance, team development, operational alignment, and support for organizational growth and client success.',
+    alternateSummary:
+      'Led the healthcare recruitment organization at an executive level through strategic planning, leadership development, process governance, and alignment of recruitment outcomes with business objectives.',
+    isActive: true,
+    sortOrder: 160,
+  },
+  {
+    roleKey: 'it_recruiter_intern',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'intern',
+    roleLabel: 'IT Recruiter - Intern',
+    defaultSummary:
+      'Supported IT recruitment activities by assisting with candidate sourcing, basic profile screening, interview coordination, applicant tracking updates, and follow-up communication during the hiring process.',
+    alternateSummary:
+      'Assisted the recruitment team in IT hiring operations through profile review support, candidate coordination, scheduling assistance, tracker maintenance, and timely status updates.',
+    isActive: true,
+    sortOrder: 210,
+  },
+  {
+    roleKey: 'it_recruiter_senior',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'senior',
+    roleLabel: 'IT Recruiter - Senior',
+    defaultSummary:
+      'Managed end-to-end recruitment for IT positions including sourcing, screening, candidate evaluation, interview coordination, submission handling, and offer-stage follow-up.',
+    alternateSummary:
+      'Handled full-cycle IT recruitment by identifying qualified candidates, assessing technical profile alignment, coordinating interviews, maintaining candidate engagement, and supporting hiring closures.',
+    isActive: true,
+    sortOrder: 220,
+  },
+  {
+    roleKey: 'it_recruiter_lead',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'lead',
+    roleLabel: 'IT Recruiter - Lead',
+    defaultSummary:
+      'Led IT recruitment delivery by managing priority requirements, guiding recruiters, improving submission quality, coordinating hiring workflows, and ensuring timely progress across open positions.',
+    alternateSummary:
+      'Oversaw recruitment execution for IT roles through team support, candidate pipeline management, screening oversight, process improvement, and delivery alignment with hiring goals.',
+    isActive: true,
+    sortOrder: 230,
+  },
+  {
+    roleKey: 'it_recruiter_manager',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'manager',
+    roleLabel: 'IT Recruiter - Manager',
+    defaultSummary:
+      'Managed IT recruitment operations by supervising team performance, planning hiring delivery, monitoring open positions, supporting stakeholder communication, and ensuring quality, compliance, and target achievement.',
+    alternateSummary:
+      'Led the IT recruitment function through team management, process oversight, escalation resolution, hiring pipeline monitoring, and alignment of recruitment outcomes with business needs.',
+    isActive: true,
+    sortOrder: 240,
+  },
+  {
+    roleKey: 'it_recruiter_director',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'director',
+    roleLabel: 'IT Recruiter - Director',
+    defaultSummary:
+      'Directed IT recruitment delivery by overseeing hiring teams, strengthening recruitment processes, improving submission quality, aligning stakeholder expectations, and ensuring delivery performance across business requirements.',
+    alternateSummary:
+      'Led IT recruitment strategy and execution through team oversight, process governance, quality improvement, and alignment of hiring outcomes with organizational priorities.',
+    isActive: true,
+    sortOrder: 250,
+  },
+  {
+    roleKey: 'it_recruiter_vp',
+    roleFamily: 'it_recruiter',
+    vertical: 'it',
+    level: 'vp',
+    roleLabel: 'IT Recruiter - VP',
+    defaultSummary:
+      'Provided executive leadership for the IT recruitment function through strategic planning, delivery oversight, process governance, team development, and alignment of hiring outcomes with business growth objectives.',
+    alternateSummary:
+      'Led the IT recruitment organization at an executive level through long-range planning, leadership governance, operational alignment, and support for business expansion goals.',
+    isActive: true,
+    sortOrder: 260,
+  },
+  {
+    roleKey: 'account_manager',
+    roleFamily: 'account_management',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'Account Manager',
+    defaultSummary:
+      'Managed client accounts by coordinating hiring requirements, maintaining client communication, tracking delivery progress, supporting issue resolution, and helping ensure service quality and relationship continuity.',
+    alternateSummary:
+      'Handled account management responsibilities through requirement coordination, stakeholder communication, delivery tracking, escalation support, and client relationship maintenance.',
+    isActive: false,
+    sortOrder: 310,
+  },
+  {
+    roleKey: 'senior_account_manager',
+    roleFamily: 'account_management',
+    vertical: 'cross_functional',
+    level: 'senior',
+    roleLabel: 'Senior Account Manager',
+    defaultSummary:
+      'Handled strategic client accounts by managing requirement flow, supporting delivery coordination, maintaining stakeholder relationships, resolving escalations, and contributing to client retention and account growth.',
+    alternateSummary:
+      'Managed senior account responsibilities through client coordination, delivery follow-through, issue resolution, relationship strengthening, and support for account continuity and growth.',
+    isActive: false,
+    sortOrder: 320,
+  },
+  {
+    roleKey: 'account_director',
+    roleFamily: 'account_management',
+    vertical: 'cross_functional',
+    level: 'director',
+    roleLabel: 'Account Director',
+    defaultSummary:
+      'Directed account management activities by overseeing client relationships, delivery alignment, escalation handling, service quality, and account-level planning in support of business growth and client satisfaction.',
+    alternateSummary:
+      'Led account management strategy through stakeholder oversight, delivery coordination, escalation governance, service quality monitoring, and support for client success objectives.',
+    isActive: false,
+    sortOrder: 330,
+  },
+  {
+    roleKey: 'vp_client_services',
+    roleFamily: 'client_services',
+    vertical: 'cross_functional',
+    level: 'vp',
+    roleLabel: 'VP - Client Services',
+    defaultSummary:
+      'Provided executive leadership for client services through oversight of account strategy, service delivery alignment, stakeholder engagement, escalation governance, and client success initiatives.',
+    alternateSummary:
+      'Led client services at an executive level through strategic oversight of relationships, delivery quality, escalations, and service effectiveness across business accounts.',
+    isActive: false,
+    sortOrder: 340,
+  },
+  {
+    roleKey: 'business_development_manager',
+    roleFamily: 'business_development',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'Business Development Manager',
+    defaultSummary:
+      'Managed business development activities by identifying growth opportunities, developing client relationships, supporting proposal discussions, coordinating follow-ups, and contributing to revenue generation efforts.',
+    alternateSummary:
+      'Handled business development responsibilities through opportunity identification, relationship building, follow-up coordination, commercial discussions, and support for revenue growth initiatives.',
+    isActive: false,
+    sortOrder: 410,
+  },
+  {
+    roleKey: 'director_business_development',
+    roleFamily: 'business_development',
+    vertical: 'cross_functional',
+    level: 'director',
+    roleLabel: 'Director - Business Development',
+    defaultSummary:
+      'Directed business development initiatives through opportunity pipeline management, relationship building, partnership development, commercial planning, and alignment of growth efforts with business objectives.',
+    alternateSummary:
+      'Led business development strategy through market opportunity oversight, partnership expansion, commercial coordination, and support for business growth priorities.',
+    isActive: false,
+    sortOrder: 420,
+  },
+  {
+    roleKey: 'vp_business_development',
+    roleFamily: 'business_development',
+    vertical: 'cross_functional',
+    level: 'vp',
+    roleLabel: 'VP - Business Development',
+    defaultSummary:
+      'Provided executive leadership for business development through growth strategy oversight, key relationship management, market expansion planning, and support for revenue and partnership objectives.',
+    alternateSummary:
+      'Led business development at an executive level through strategic expansion planning, key stakeholder engagement, partnership development, and revenue-focused leadership.',
+    isActive: false,
+    sortOrder: 430,
+  },
+  {
+    roleKey: 'delivery_manager',
+    roleFamily: 'delivery',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'Delivery Manager',
+    defaultSummary:
+      'Managed recruitment delivery operations by coordinating team output, monitoring open requirements, improving process adherence, supporting escalations, and ensuring timely and quality delivery across accounts.',
+    alternateSummary:
+      'Handled delivery management responsibilities through workflow coordination, team oversight, process monitoring, escalation support, and focus on quality and turnaround.',
+    isActive: false,
+    sortOrder: 510,
+  },
+  {
+    roleKey: 'director_delivery',
+    roleFamily: 'delivery',
+    vertical: 'cross_functional',
+    level: 'director',
+    roleLabel: 'Director - Delivery',
+    defaultSummary:
+      'Directed delivery operations by overseeing delivery teams, strengthening process governance, improving output quality, aligning resources, and supporting business performance across recruitment programs.',
+    alternateSummary:
+      'Led delivery operations through team oversight, process governance, quality improvement, resource alignment, and support for delivery effectiveness across accounts.',
+    isActive: false,
+    sortOrder: 520,
+  },
+  {
+    roleKey: 'vp_delivery',
+    roleFamily: 'delivery',
+    vertical: 'cross_functional',
+    level: 'vp',
+    roleLabel: 'VP - Delivery',
+    defaultSummary:
+      'Provided executive leadership for delivery operations through strategic planning, team oversight, performance governance, resource alignment, and support for operational and revenue goals.',
+    alternateSummary:
+      'Led delivery at an executive level through operational strategy, governance of performance, leadership oversight, and alignment of delivery outcomes with business goals.',
+    isActive: false,
+    sortOrder: 530,
+  },
+  {
+    roleKey: 'credentialing_coordinator',
+    roleFamily: 'credentialing',
+    vertical: 'healthcare',
+    level: 'coordinator',
+    roleLabel: 'Credentialing Coordinator',
+    defaultSummary:
+      'Supported credentialing activities by collecting required documents, tracking compliance items, maintaining credential records, coordinating follow-ups, and assisting with readiness for onboarding and submission.',
+    alternateSummary:
+      'Assisted credentialing operations through document collection, compliance tracking, record maintenance, candidate follow-ups, and support for onboarding readiness.',
+    isActive: false,
+    sortOrder: 610,
+  },
+  {
+    roleKey: 'senior_credentialing_specialist',
+    roleFamily: 'credentialing',
+    vertical: 'healthcare',
+    level: 'senior',
+    roleLabel: 'Senior Credentialing Specialist',
+    defaultSummary:
+      'Handled credentialing workflows by reviewing document completeness, tracking compliance requirements, managing follow-ups, maintaining credential records, and supporting timely onboarding readiness.',
+    alternateSummary:
+      'Managed advanced credentialing responsibilities through compliance review, documentation quality checks, follow-up coordination, and support for onboarding completion.',
+    isActive: false,
+    sortOrder: 620,
+  },
+  {
+    roleKey: 'credentialing_manager',
+    roleFamily: 'credentialing',
+    vertical: 'healthcare',
+    level: 'manager',
+    roleLabel: 'Credentialing Manager',
+    defaultSummary:
+      'Managed credentialing operations by overseeing compliance workflows, guiding team members, monitoring documentation quality, resolving process bottlenecks, and supporting timely candidate onboarding and submission readiness.',
+    alternateSummary:
+      'Led credentialing operations through workflow oversight, quality review, team coordination, process improvement, and support for compliant onboarding execution.',
+    isActive: false,
+    sortOrder: 630,
+  },
+  {
+    roleKey: 'onboarding_coordinator',
+    roleFamily: 'onboarding',
+    vertical: 'cross_functional',
+    level: 'coordinator',
+    roleLabel: 'Onboarding Coordinator',
+    defaultSummary:
+      'Supported onboarding activities by coordinating pre-joining requirements, tracking document completion, communicating with candidates, maintaining onboarding records, and assisting with start-date readiness.',
+    alternateSummary:
+      'Assisted onboarding operations through candidate coordination, document tracking, communication follow-ups, record maintenance, and support for smooth joining readiness.',
+    isActive: false,
+    sortOrder: 710,
+  },
+  {
+    roleKey: 'senior_onboarding_coordinator',
+    roleFamily: 'onboarding',
+    vertical: 'cross_functional',
+    level: 'senior',
+    roleLabel: 'Senior Onboarding Coordinator',
+    defaultSummary:
+      'Handled onboarding workflows by managing document tracking, coordinating candidate communication, monitoring progress toward joining requirements, and supporting timely and organized onboarding completion.',
+    alternateSummary:
+      'Managed onboarding responsibilities through workflow coordination, communication management, document completion tracking, and support for timely joining readiness.',
+    isActive: false,
+    sortOrder: 720,
+  },
+  {
+    roleKey: 'msp_vms_coordinator',
+    roleFamily: 'msp_vms',
+    vertical: 'cross_functional',
+    level: 'coordinator',
+    roleLabel: 'MSP / VMS Coordinator',
+    defaultSummary:
+      'Supported MSP and VMS operations by managing portal-related activities, tracking submissions and status updates, maintaining documentation accuracy, and coordinating follow-ups aligned with client program requirements.',
+    alternateSummary:
+      'Handled MSP and VMS coordination through portal updates, submission tracking, documentation review, status management, and support for program compliance requirements.',
+    isActive: false,
+    sortOrder: 810,
+  },
+  {
+    roleKey: 'msp_vms_manager',
+    roleFamily: 'msp_vms',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'MSP / VMS Manager',
+    defaultSummary:
+      'Managed MSP and VMS delivery operations by overseeing portal workflows, monitoring submission quality, coordinating stakeholder communication, resolving escalations, and supporting compliance with program requirements.',
+    alternateSummary:
+      'Led MSP and VMS management through workflow oversight, quality monitoring, escalation handling, stakeholder coordination, and support for successful program execution.',
+    isActive: false,
+    sortOrder: 820,
+  },
+  {
+    roleKey: 'operations_manager',
+    roleFamily: 'operations',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'Operations Manager',
+    defaultSummary:
+      'Managed operational processes by overseeing workflow execution, improving process discipline, supporting cross-functional coordination, monitoring productivity, and helping ensure business continuity and team effectiveness.',
+    alternateSummary:
+      'Handled operations management responsibilities through workflow oversight, process improvement, coordination support, productivity monitoring, and operational continuity efforts.',
+    isActive: false,
+    sortOrder: 910,
+  },
+  {
+    roleKey: 'director_operations',
+    roleFamily: 'operations',
+    vertical: 'cross_functional',
+    level: 'director',
+    roleLabel: 'Director - Operations',
+    defaultSummary:
+      'Directed business operations by overseeing process governance, team coordination, performance monitoring, operational planning, and support for delivery, compliance, and organizational objectives.',
+    alternateSummary:
+      'Led operations through governance of processes, team coordination, performance alignment, operational planning, and support for business execution priorities.',
+    isActive: false,
+    sortOrder: 920,
+  },
+  {
+    roleKey: 'vp_operations',
+    roleFamily: 'operations',
+    vertical: 'cross_functional',
+    level: 'vp',
+    roleLabel: 'VP - Operations',
+    defaultSummary:
+      'Provided executive leadership for operations through strategic oversight, process governance, cross-functional alignment, performance planning, and support for organizational scalability and execution.',
+    alternateSummary:
+      'Led operations at an executive level through strategic planning, governance of execution, cross-functional alignment, and support for scalable business performance.',
+    isActive: false,
+    sortOrder: 930,
+  },
+  {
+    roleKey: 'internal_talent_acquisition_recruiter',
+    roleFamily: 'internal_talent_acquisition',
+    vertical: 'cross_functional',
+    level: 'recruiter',
+    roleLabel: 'Talent Acquisition Recruiter - Internal Hiring',
+    defaultSummary:
+      'Handled internal hiring activities by sourcing candidates, screening profiles, coordinating interviews, maintaining applicant records, supporting candidate communication, and assisting with closure of internal positions.',
+    alternateSummary:
+      'Managed internal recruitment support through sourcing, screening coordination, applicant tracking, candidate communication, and hiring process follow-through for internal roles.',
+    isActive: false,
+    sortOrder: 1010,
+  },
+  {
+    roleKey: 'hr_people_ops_manager',
+    roleFamily: 'people_operations',
+    vertical: 'cross_functional',
+    level: 'manager',
+    roleLabel: 'HR / People Operations Manager',
+    defaultSummary:
+      'Managed people operations by supporting employee records, policy execution, coordination of HR processes, employee communication, and operational support across the employee lifecycle.',
+    alternateSummary:
+      'Handled people operations responsibilities through employee record management, policy coordination, HR process support, employee communication, and lifecycle administration.',
+    isActive: false,
+    sortOrder: 1020,
+  },
+  {
+    roleKey: 'payroll_timesheet_coordinator',
+    roleFamily: 'payroll_timesheet',
+    vertical: 'cross_functional',
+    level: 'coordinator',
+    roleLabel: 'Payroll / Timesheet Coordinator',
+    defaultSummary:
+      'Supported payroll and timesheet operations by tracking attendance and timesheets, coordinating data accuracy, maintaining records, following up on discrepancies, and assisting with timely payroll processing.',
+    alternateSummary:
+      'Handled payroll and timesheet coordination through attendance tracking, record maintenance, discrepancy follow-up, data review, and support for payroll readiness.',
+    isActive: false,
+    sortOrder: 1030,
+  },
+];
+
+export const performanceBands: PerformanceBand[] = [
+  {
+    key: 'factual_only',
+    label: 'Factual Only',
+    line: 'During the above tenure, the employee was associated with the organization in the stated role and department.',
+  },
+  {
+    key: 'standard',
+    label: 'Standard',
+    line: 'During the tenure, the employee carried out assigned responsibilities in a satisfactory manner.',
+    isDefault: true,
+  },
+  {
+    key: 'good',
+    label: 'Good',
+    line: 'During the tenure, the employee demonstrated diligence and responsibility in assigned work.',
+  },
+  {
+    key: 'very_good',
+    label: 'Very Good',
+    line: 'During the tenure, the employee demonstrated professionalism, commitment, and good execution of assigned responsibilities.',
+  },
+  {
+    key: 'excellent',
+    label: 'Excellent',
+    line: 'During the tenure, the employee demonstrated a high level of professionalism, ownership, and effectiveness in assigned responsibilities.',
+  },
+];
+
+export const conductBands: ConductBand[] = [
+  {
+    key: 'satisfactory',
+    label: 'Satisfactory',
+    line: 'Professional conduct during the tenure was satisfactory.',
+    isDefault: true,
+  },
+  {
+    key: 'good',
+    label: 'Good',
+    line: 'Professional conduct during the tenure was good.',
+  },
+  {
+    key: 'very_good',
+    label: 'Very Good',
+    line: 'Professional conduct during the tenure was very good.',
+  },
+];
+
+export const documentTypes: DocumentTypeOption[] = [
+  {
+    key: 'employee_experience_letter',
+    label: 'Employee Experience Letter',
+    isActive: true,
+  },
+  {
+    key: 'internship_completion_letter',
+    label: 'Internship Completion Letter',
+    isActive: true,
+  },
+  {
+    key: 'internship_certificate',
+    label: 'Internship Certificate',
+    isActive: true,
+  },
+];
+
+export interface ExperienceLetterFormState {
+  documentType: string;
+  roleKey: string;
+  performanceBandKey: string;
+  conductBandKey: string;
+  includeResponsibilitiesSummary: boolean;
+  summaryVariant: 'default' | 'alternate';
+}
+
+export const defaultExperienceLetterFormState: ExperienceLetterFormState = {
+  documentType: 'employee_experience_letter',
+  roleKey: '',
+  performanceBandKey: 'standard',
+  conductBandKey: 'satisfactory',
+  includeResponsibilitiesSummary: true,
+  summaryVariant: 'default',
+};
+
+export function getActiveDocumentTypes() {
+  return documentTypes.filter((item) => item.isActive);
+}
+
+export function getActiveRoleSummaries() {
+  return roleSummaryLibrary
+    .filter((item) => item.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export function getRoleSummaryByKey(roleKey: string) {
+  return roleSummaryLibrary.find((item) => item.roleKey === roleKey) ?? null;
+}
+
+export function getPerformanceBandByKey(key: string) {
+  return performanceBands.find((item) => item.key === key) ?? null;
+}
+
+export function getConductBandByKey(key: string) {
+  return conductBands.find((item) => item.key === key) ?? null;
+}
+
+export function getRoleOptionsForDropdown() {
+  return getActiveRoleSummaries().map((item) => ({
+    label: item.roleLabel,
+    value: item.roleKey,
+  }));
+}
+
+export function getResponsibilityOptionsForRole(roleKey: string) {
+  const role = getRoleSummaryByKey(roleKey);
+  if (!role) return [];
+
+  const options = [
+    { label: 'Default Summary', value: 'default', text: role.defaultSummary },
+  ];
+
+  if (role.alternateSummary) {
+    options.push({
+      label: 'Alternate Summary',
+      value: 'alternate',
+      text: role.alternateSummary,
+    });
+  }
+
+  return options;
+}
+
+export function getSelectedResponsibilityText(
+  roleKey: string,
+  variant: 'default' | 'alternate' = 'default',
+) {
+  const role = getRoleSummaryByKey(roleKey);
+  if (!role) return '';
+
+  if (variant === 'alternate' && role.alternateSummary) {
+    return role.alternateSummary;
+  }
+
+  return role.defaultSummary;
+}
+
+export function buildExperienceLetterParagraphs(params: {
+  fullName: string;
+  employeeId?: string;
+  companyName: string;
+  designation: string;
+  department: string;
+  startDate: string;
+  endDate: string;
+  roleKey: string;
+  summaryVariant?: 'default' | 'alternate';
+  includeResponsibilitiesSummary?: boolean;
+  performanceBandKey: string;
+  conductBandKey: string;
+}) {
+  const {
+    fullName,
+    employeeId,
+    companyName,
+    designation,
+    department,
+    startDate,
+    endDate,
+    roleKey,
+    summaryVariant = 'default',
+    includeResponsibilitiesSummary = true,
+    performanceBandKey,
+    conductBandKey,
+  } = params;
+
+  const responsibilities = includeResponsibilitiesSummary
+    ? getSelectedResponsibilityText(roleKey, summaryVariant)
+    : '';
+
+  const performanceLine = getPerformanceBandByKey(performanceBandKey)?.line ??
+    getPerformanceBandByKey('standard')?.line ?? '';
+
+  const conductLine = getConductBandByKey(conductBandKey)?.line ??
+    getConductBandByKey('satisfactory')?.line ?? '';
+
+  const intro = `This is to certify that ${fullName}${employeeId ? `, Employee ID ${employeeId},` : ''} was employed with ${companyName} as ${designation} in the ${department} department from ${startDate} to ${endDate}.`;
+
+  const responsibilitiesLine = includeResponsibilitiesSummary && responsibilities
+    ? responsibilities
+    : '';
+
+  return {
+    intro,
+    responsibilitiesLine,
+    performanceLine,
+    conductLine,
+    closingLine: 'We wish the individual success in future endeavors.',
+  };
+}
+
+// Example UI usage in React
+// -------------------------------------------------
+// const roleOptions = getRoleOptionsForDropdown();
+// const responsibilityOptions = getResponsibilityOptionsForRole(form.roleKey);
+// const preview = buildExperienceLetterParagraphs({
+//   fullName: employee.fullName,
+//   employeeId: employee.employeeId,
+//   companyName: 'Hire\'in Solutions',
+//   designation: employee.designation,
+//   department: employee.department,
+//   startDate: employee.startDate,
+//   endDate: employee.endDate,
+//   roleKey: form.roleKey,
+//   summaryVariant: form.summaryVariant,
+//   includeResponsibilitiesSummary: form.includeResponsibilitiesSummary,
+//   performanceBandKey: form.performanceBandKey,
+//   conductBandKey: form.conductBandKey,
+// });
+
+// Suggested UI behavior
+// -------------------------------------------------
+// 1. HR selects role/designation.
+// 2. System auto-selects that role's default summary.
+// 3. If Include Responsibilities Summary is OFF, hide the summary dropdown.
+// 4. Performance and Conduct stay separate dropdowns.
+// 5. Preview updates immediately.
+// 6. Only admins can switch to alternate summary or activate inactive roles.
