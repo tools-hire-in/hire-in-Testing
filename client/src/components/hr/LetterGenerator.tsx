@@ -113,6 +113,7 @@ export function LetterGenerator() {
   const [form, setForm] = useState<FormData>({ ...defaultForm });
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
@@ -232,7 +233,17 @@ export function LetterGenerator() {
       setStep(0);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      const msg = err.message.toLowerCase();
+      if (msg.includes("designation")) {
+        setStep(1);
+        setFieldErrors({ designation: err.message });
+      } else if (msg.includes("start date") || msg.includes("end date")) {
+        setStep(1);
+        const key = msg.includes("start date") ? "startDate" : "endDate";
+        setFieldErrors({ [key]: err.message });
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
     },
   });
 
@@ -383,7 +394,8 @@ export function LetterGenerator() {
               </div>
               <div>
                 <Label>Designation *</Label>
-                <Input value={form.designation} onChange={e => setForm(prev => ({ ...prev, designation: e.target.value }))} placeholder="e.g. Software Engineer" data-testid="input-designation" />
+                <Input value={form.designation} onChange={e => { setForm(prev => ({ ...prev, designation: e.target.value })); setFieldErrors(prev => ({ ...prev, designation: "" })); }} placeholder="e.g. Software Engineer" data-testid="input-designation" className={fieldErrors.designation ? "border-destructive" : ""} />
+                {fieldErrors.designation && <p className="text-xs text-destructive mt-1" data-testid="error-designation">{fieldErrors.designation}</p>}
               </div>
               <div>
                 <Label>Department</Label>
@@ -391,11 +403,13 @@ export function LetterGenerator() {
               </div>
               <div>
                 <Label>Start Date *</Label>
-                <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} data-testid="input-start-date" />
+                <Input type="date" value={form.startDate} onChange={e => { setForm(prev => ({ ...prev, startDate: e.target.value })); setFieldErrors(prev => ({ ...prev, startDate: "" })); }} data-testid="input-start-date" className={fieldErrors.startDate ? "border-destructive" : ""} />
+                {fieldErrors.startDate && <p className="text-xs text-destructive mt-1" data-testid="error-start-date">{fieldErrors.startDate}</p>}
               </div>
               <div>
                 <Label>End Date {["experience", "internship_completion", "relieving"].includes(form.templateType) && <span className="text-destructive">*</span>}</Label>
-                <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} data-testid="input-end-date" />
+                <Input type="date" value={form.endDate} onChange={e => { setForm(prev => ({ ...prev, endDate: e.target.value })); setFieldErrors(prev => ({ ...prev, endDate: "" })); }} data-testid="input-end-date" className={fieldErrors.endDate ? "border-destructive" : ""} />
+                {fieldErrors.endDate && <p className="text-xs text-destructive mt-1" data-testid="error-end-date">{fieldErrors.endDate}</p>}
               </div>
               {showLastWorkingDay && (
                 <div>
@@ -604,11 +618,11 @@ export function LetterGenerator() {
         )}
 
         <div className="flex justify-between mt-6">
-          <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={step === 0} data-testid="btn-prev-step">
+          <Button variant="outline" onClick={() => { setStep(s => s - 1); setFieldErrors({}); }} disabled={step === 0} data-testid="btn-prev-step">
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           {step < steps.length - 1 ? (
-            <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} data-testid="btn-next-step">
+            <Button onClick={() => { setStep(s => s + 1); setFieldErrors({}); }} disabled={!canNext()} data-testid="btn-next-step">
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (

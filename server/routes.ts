@@ -4578,22 +4578,23 @@ export async function registerRoutes(
         body.customOverrideBy = req.session.userId!;
         body.customOverrideAt = new Date();
       }
-      const derivedDesignation = employee.designation || "";
-      if (!derivedDesignation) {
-        return res.status(400).json({ error: "Employee profile is missing designation. Please update the employee record first." });
+      const resolvedDesignation = req.body.designation || employee.designation || "";
+      if (!resolvedDesignation) {
+        return res.status(400).json({ error: "Designation is required. Please enter a designation for this employee." });
       }
       let derivedDepartment = "";
       if (employee.departmentId) {
         const dept = await storage.getDepartment(employee.departmentId);
         derivedDepartment = dept?.name || "";
       }
+      const fullName = `${employee.firstName} ${employee.lastName}`;
       const data = {
         ...body,
-        employeeName: `${employee.firstName} ${employee.lastName}`,
+        employeeName: req.body.employeeName || fullName,
         employeeCode: employee.employeeId || "",
-        designation: derivedDesignation,
-        department: derivedDepartment,
-        location: employee.location || "",
+        designation: resolvedDesignation,
+        department: derivedDepartment || req.body.department || "",
+        location: req.body.location || employee.location || "",
         createdBy: req.session.userId!,
         status: "draft",
       };
