@@ -271,7 +271,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const { showWarning, remainingSeconds, dismissWarning } = useIdleTimeout(handleIdleTimeout);
 
-  const needs2FA = user && !user.totpEnabled && !location.startsWith("/admin/hr/profile");
+  const isProduction = import.meta.env.PROD;
+  const needs2FA = isProduction && user && !user.totpEnabled && !location.startsWith("/admin/hr/profile");
 
   const EXEMPT_LOCK_ROLES = ["super_admin", "admin"];
   const isLockExempt = user?.role ? EXEMPT_LOCK_ROLES.includes(user.role) : true;
