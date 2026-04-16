@@ -1,0 +1,266 @@
+Best design:
+
+Responsibilities summary = based on role + level
+Performance wording = separate dropdown
+Conduct wording = separate dropdown
+
+That keeps the letter clean and consistent.
+
+For experience letters, the responsibilities block should stay factual and role-based, not emotional. Then performance can add one controlled sentence like “performance was good” or “demonstrated strong professionalism.”
+
+Recommended UI setup
+
+For the field in your screenshot:
+
+Dropdown label: Select responsibilities description
+
+Best options source: auto-filter by selected designation
+So if HR selects Healthcare Recruiter - Sr, the dropdown should only show summaries for that role.
+
+Also, I would keep:
+
+1 default summary per role-level
+1 alternate summary per role-level only if you want variation
+Copy-ready responsibility summaries
+1) Healthcare Sourcer – Intern
+
+Option A
+Supported sourcing activities for healthcare positions by identifying potential candidates, screening basic profile fit, maintaining candidate records, and assisting the recruitment team with pipeline updates and follow-ups.
+
+Option B
+Assisted in talent sourcing for healthcare roles through profile review, candidate outreach support, database maintenance, and coordination of candidate information for the recruiting team.
+
+2) Healthcare Sourcer – Senior
+
+Option A
+Handled sourcing for healthcare positions by building candidate pipelines, identifying qualified professionals, conducting initial profile assessments, maintaining sourcing trackers, and supporting timely submission readiness.
+
+Option B
+Managed targeted sourcing for healthcare requirements through market mapping, resume screening, candidate outreach, database organization, and ongoing pipeline support aligned with business priorities.
+
+3) Healthcare Sourcer – Lead
+
+Option A
+Led healthcare sourcing activities by driving candidate pipeline generation, guiding sourcing priorities, supporting team coordination, maintaining sourcing quality standards, and enabling recruiters with qualified candidate flow.
+
+Option B
+Oversaw sourcing execution for healthcare roles through pipeline planning, profile quality checks, team guidance, sourcing process improvement, and support for timely recruitment delivery.
+
+4) Healthcare Recruiter – Intern
+
+Option A
+Supported healthcare recruitment activities by assisting with candidate sourcing, screening coordination, interview scheduling, database updates, and follow-up communication throughout the hiring process.
+
+Option B
+Assisted the recruitment team in handling healthcare hiring tasks including candidate coordination, basic profile review, scheduling support, and maintaining recruitment records and status updates.
+
+5) Healthcare Recruiter – Senior
+
+Option A
+Managed end-to-end recruitment for healthcare positions including candidate sourcing, screening, interview coordination, submission management, offer follow-up, and stakeholder communication.
+
+Option B
+Handled full-cycle healthcare recruitment by identifying suitable candidates, evaluating profile fit, coordinating interviews, maintaining candidate engagement, and supporting closure of open requirements.
+
+6) Healthcare Recruiter – Lead
+
+Option A
+Led healthcare recruitment delivery by managing critical requirements, supporting team members, driving submission quality, coordinating hiring activities, and ensuring timely follow-up across the recruitment lifecycle.
+
+Option B
+Oversaw recruitment execution for healthcare roles through candidate pipeline management, screening oversight, recruiter guidance, process coordination, and focus on quality and turnaround timelines.
+
+7) Healthcare Recruiter – Manager
+
+Option A
+Managed healthcare recruitment operations by overseeing team performance, monitoring hiring pipelines, supporting delivery planning, coordinating with stakeholders, and ensuring process discipline, quality, and target achievement.
+
+Option B
+Led the healthcare recruitment function through team supervision, workload planning, escalation handling, performance monitoring, and alignment of hiring delivery with business and client requirements.
+
+8) IT Recruiter – Intern
+
+Option A
+Supported IT recruitment activities by assisting with candidate sourcing, basic profile screening, interview coordination, applicant tracking updates, and follow-up communication during the hiring process.
+
+Option B
+Assisted the recruitment team in IT hiring operations through profile review support, candidate coordination, scheduling assistance, tracker maintenance, and timely status updates.
+
+9) IT Recruiter – Senior
+
+Option A
+Managed end-to-end recruitment for IT positions including sourcing, screening, candidate evaluation, interview coordination, submission handling, and offer-stage follow-up.
+
+Option B
+Handled full-cycle IT recruitment by identifying qualified candidates, assessing technical profile alignment, coordinating interviews, maintaining candidate engagement, and supporting hiring closures.
+
+10) IT Recruiter – Lead
+
+Option A
+Led IT recruitment delivery by managing priority requirements, guiding recruiters, improving submission quality, coordinating hiring workflows, and ensuring timely progress across open positions.
+
+Option B
+Oversaw recruitment execution for IT roles through team support, candidate pipeline management, screening oversight, process improvement, and delivery alignment with hiring goals.
+
+11) IT Recruiter – Manager
+
+Option A
+Managed IT recruitment operations by supervising team performance, planning hiring delivery, monitoring open positions, supporting stakeholder communication, and ensuring quality, compliance, and target achievement.
+
+Option B
+Led the IT recruitment function through team management, process oversight, escalation resolution, hiring pipeline monitoring, and alignment of recruitment outcomes with business needs.
+
+Best performance band mapping
+
+Do this as a separate dropdown, not inside the responsibilities text.
+
+Recommended performance values
+Factual Only
+Standard
+Good
+Very Good
+Excellent
+Copy-ready performance lines
+
+Factual Only
+During the above tenure, the employee was associated with the organization in the stated role and department.
+
+Standard
+During the tenure, the employee carried out assigned responsibilities in a satisfactory manner.
+
+Good
+During the tenure, the employee demonstrated diligence and responsibility in assigned work.
+
+Very Good
+During the tenure, the employee demonstrated professionalism, commitment, and good execution of assigned responsibilities.
+
+Excellent
+During the tenure, the employee demonstrated a high level of professionalism, ownership, and effectiveness in assigned responsibilities.
+
+Best conduct band mapping
+Satisfactory
+Good
+Very Good
+Copy-ready conduct lines
+
+Satisfactory
+Professional conduct during the tenure was satisfactory.
+
+Good
+Professional conduct during the tenure was good.
+
+Very Good
+Professional conduct during the tenure was very good.
+
+My BA recommendation
+
+For this feature, do not ask HR to type responsibility text.
+
+Instead:
+
+auto-load these based on designation
+allow HR to pick Option A or Option B
+then select performance band
+then generate PDF
+
+That is cleaner, faster, and much more scalable.
+
+Best backend structure
+[
+  {
+    "role_key": "healthcare_sourcer_intern",
+    "role_label": "Healthcare Sourcer - Intern",
+    "options": [
+      "Supported sourcing activities for healthcare positions by identifying potential candidates, screening basic profile fit, maintaining candidate records, and assisting the recruitment team with pipeline updates and follow-ups.",
+      "Assisted in talent sourcing for healthcare roles through profile review, candidate outreach support, database maintenance, and coordination of candidate information for the recruiting team."
+    ]
+  },
+  {
+    "role_key": "healthcare_sourcer_senior",
+    "role_label": "Healthcare Sourcer - Senior",
+    "options": [
+      "Handled sourcing for healthcare positions by building candidate pipelines, identifying qualified professionals, conducting initial profile assessments, maintaining sourcing trackers, and supporting timely submission readiness.",
+      "Managed targeted sourcing for healthcare requirements through market mapping, resume screening, candidate outreach, database organization, and ongoing pipeline support aligned with business priorities."
+    ]
+  },
+  {
+    "role_key": "healthcare_sourcer_lead",
+    "role_label": "Healthcare Sourcer - Lead",
+    "options": [
+      "Led healthcare sourcing activities by driving candidate pipeline generation, guiding sourcing priorities, supporting team coordination, maintaining sourcing quality standards, and enabling recruiters with qualified candidate flow.",
+      "Oversaw sourcing execution for healthcare roles through pipeline planning, profile quality checks, team guidance, sourcing process improvement, and support for timely recruitment delivery."
+    ]
+  },
+  {
+    "role_key": "healthcare_recruiter_intern",
+    "role_label": "Healthcare Recruiter - Intern",
+    "options": [
+      "Supported healthcare recruitment activities by assisting with candidate sourcing, screening coordination, interview scheduling, database updates, and follow-up communication throughout the hiring process.",
+      "Assisted the recruitment team in handling healthcare hiring tasks including candidate coordination, basic profile review, scheduling support, and maintaining recruitment records and status updates."
+    ]
+  },
+  {
+    "role_key": "healthcare_recruiter_senior",
+    "role_label": "Healthcare Recruiter - Senior",
+    "options": [
+      "Managed end-to-end recruitment for healthcare positions including candidate sourcing, screening, interview coordination, submission management, offer follow-up, and stakeholder communication.",
+      "Handled full-cycle healthcare recruitment by identifying suitable candidates, evaluating profile fit, coordinating interviews, maintaining candidate engagement, and supporting closure of open requirements."
+    ]
+  },
+  {
+    "role_key": "healthcare_recruiter_lead",
+    "role_label": "Healthcare Recruiter - Lead",
+    "options": [
+      "Led healthcare recruitment delivery by managing critical requirements, supporting team members, driving submission quality, coordinating hiring activities, and ensuring timely follow-up across the recruitment lifecycle.",
+      "Oversaw recruitment execution for healthcare roles through candidate pipeline management, screening oversight, recruiter guidance, process coordination, and focus on quality and turnaround timelines."
+    ]
+  },
+  {
+    "role_key": "healthcare_recruiter_manager",
+    "role_label": "Healthcare Recruiter - Manager",
+    "options": [
+      "Managed healthcare recruitment operations by overseeing team performance, monitoring hiring pipelines, supporting delivery planning, coordinating with stakeholders, and ensuring process discipline, quality, and target achievement.",
+      "Led the healthcare recruitment function through team supervision, workload planning, escalation handling, performance monitoring, and alignment of hiring delivery with business and client requirements."
+    ]
+  },
+  {
+    "role_key": "it_recruiter_intern",
+    "role_label": "IT Recruiter - Intern",
+    "options": [
+      "Supported IT recruitment activities by assisting with candidate sourcing, basic profile screening, interview coordination, applicant tracking updates, and follow-up communication during the hiring process.",
+      "Assisted the recruitment team in IT hiring operations through profile review support, candidate coordination, scheduling assistance, tracker maintenance, and timely status updates."
+    ]
+  },
+  {
+    "role_key": "it_recruiter_senior",
+    "role_label": "IT Recruiter - Senior",
+    "options": [
+      "Managed end-to-end recruitment for IT positions including sourcing, screening, candidate evaluation, interview coordination, submission handling, and offer-stage follow-up.",
+      "Handled full-cycle IT recruitment by identifying qualified candidates, assessing technical profile alignment, coordinating interviews, maintaining candidate engagement, and supporting hiring closures."
+    ]
+  },
+  {
+    "role_key": "it_recruiter_lead",
+    "role_label": "IT Recruiter - Lead",
+    "options": [
+      "Led IT recruitment delivery by managing priority requirements, guiding recruiters, improving submission quality, coordinating hiring workflows, and ensuring timely progress across open positions.",
+      "Oversaw recruitment execution for IT roles through team support, candidate pipeline management, screening oversight, process improvement, and delivery alignment with hiring goals."
+    ]
+  },
+  {
+    "role_key": "it_recruiter_manager",
+    "role_label": "IT Recruiter - Manager",
+    "options": [
+      "Managed IT recruitment operations by supervising team performance, planning hiring delivery, monitoring open positions, supporting stakeholder communication, and ensuring quality, compliance, and target achievement.",
+      "Led the IT recruitment function through team management, process oversight, escalation resolution, hiring pipeline monitoring, and alignment of recruitment outcomes with business needs."
+    ]
+  }
+]
+My direct recommendation
+
+For version 1:
+
+use Option A as default
+keep Option B as backup
+separate performance and conduct into their own dropdowns
+do not allow open text for normal HR users
