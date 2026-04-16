@@ -6,11 +6,18 @@ import type { HrLetter } from "@shared/schema";
 const DANCING_SCRIPT_PATH = path.resolve("server/fonts/DancingScript.ttf");
 const hasCursiveFont = fs.existsSync(DANCING_SCRIPT_PATH);
 import {
-  PERFORMANCE_BAND_SENTENCES as PERFORMANCE_SENTENCES,
-  CONDUCT_BAND_SENTENCES as CONDUCT_SENTENCES,
-  COMPLETION_BAND_SENTENCES as COMPLETION_PHRASES,
-  CLOSING_LINE_SENTENCES as CLOSING_SENTENCES,
+  PERFORMANCE_BAND_SENTENCES as DEFAULT_PERFORMANCE_SENTENCES,
+  CONDUCT_BAND_SENTENCES as DEFAULT_CONDUCT_SENTENCES,
+  COMPLETION_BAND_SENTENCES as DEFAULT_COMPLETION_PHRASES,
+  CLOSING_LINE_SENTENCES as DEFAULT_CLOSING_SENTENCES,
 } from "@shared/hrLetterConstants";
+
+export interface HrLetterSentences {
+  performance_band?: Record<string, string>;
+  conduct_band?: Record<string, string>;
+  completion_band?: Record<string, string>;
+  closing_line?: Record<string, string>;
+}
 
 const TEMPLATE_TITLES: Record<string, string> = {
   experience: "EXPERIENCE LETTER",
@@ -33,7 +40,11 @@ function interpolate(sentence: string, letter: HrLetter): string {
     .replace(/\[Department\]/g, letter.department || "the assigned");
 }
 
-export async function generateHrLetterPdf(letter: HrLetter): Promise<Buffer> {
+export async function generateHrLetterPdf(letter: HrLetter, customSentences?: HrLetterSentences): Promise<Buffer> {
+  const PERFORMANCE_SENTENCES = { ...DEFAULT_PERFORMANCE_SENTENCES, ...(customSentences?.performance_band || {}) };
+  const CONDUCT_SENTENCES = { ...DEFAULT_CONDUCT_SENTENCES, ...(customSentences?.conduct_band || {}) };
+  const COMPLETION_PHRASES = { ...DEFAULT_COMPLETION_PHRASES, ...(customSentences?.completion_band || {}) };
+  const CLOSING_SENTENCES = { ...DEFAULT_CLOSING_SENTENCES, ...(customSentences?.closing_line || {}) };
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",

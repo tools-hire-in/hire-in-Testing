@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye,
+  FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { LetterPreview } from "./LetterPreview";
-import type { AdminUser } from "@shared/schema";
+import { LetterPreview, type LetterSentencesOverride } from "./LetterPreview";
+import type { AdminUser, RoleSummaryTemplate, LetterTemplateSentence } from "@shared/schema";
 import {
   PERFORMANCE_BANDS,
   CONDUCT_BANDS,
@@ -90,6 +90,22 @@ const defaultForm: FormData = {
   customOverrideText: "",
 };
 
+function buildSentencesOverride(sentences: LetterTemplateSentence[]): LetterSentencesOverride {
+  const override: LetterSentencesOverride = {
+    performance_band: {},
+    conduct_band: {},
+    completion_band: {},
+    closing_line: {},
+  };
+  for (const s of sentences) {
+    if (s.category === "performance_band") override.performance_band![s.key] = s.sentence;
+    else if (s.category === "conduct_band") override.conduct_band![s.key] = s.sentence;
+    else if (s.category === "completion_band") override.completion_band![s.key] = s.sentence;
+    else if (s.category === "closing_line") override.closing_line![s.key] = s.sentence;
+  }
+  return override;
+}
+
 export function LetterGenerator() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -97,7 +113,6 @@ export function LetterGenerator() {
   const [form, setForm] = useState<FormData>({ ...defaultForm });
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
-  const [showBrowseTemplates, setShowBrowseTemplates] = useState(false);
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
@@ -116,6 +131,33 @@ export function LetterGenerator() {
   });
   const departments = Array.isArray(departmentsData) ? departmentsData : [];
 
+  const { data: dbSentences = [] } = useQuery<LetterTemplateSentence[]>({
+    queryKey: ["/api/hr/letter-templates/sentences"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/letter-templates/sentences", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
+  const sentencesOverride = useMemo(() => buildSentencesOverride(dbSentences), [dbSentences]);
+
+  const closingSentences = useMemo(() => {
+    const merged = { ...CLOSING_LINE_SENTENCES, ...(sentencesOverride.closing_line || {}) };
+    return merged;
+  }, [sentencesOverride]);
+
+  const { data: allDbRoles = [] } = useQuery<RoleSummaryTemplate[]>({
+    queryKey: ["/api/hr/letter-templates/roles"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/letter-templates/roles", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
   const filteredEmployees = useMemo(() => {
     if (!employeeSearch) return employees.slice(0, 20);
     const s = employeeSearch.toLowerCase();
@@ -126,23 +168,45 @@ export function LetterGenerator() {
     ).slice(0, 20);
   }, [employees, employeeSearch]);
 
+  const normalizeDesignation = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+  const matchedDbRoles = useMemo(() => {
+    const designation = normalizeDesignation(form.designation);
+    if (!designation) return [] as RoleSummaryTemplate[];
+    return allDbRoles.filter(r => normalizeDesignation(r.roleLabel) === designation);
+  }, [allDbRoles, form.designation]);
+
   const filteredResponsibilityOptions = useMemo(() => {
-    const designation = form.designation.trim().toLowerCase();
+    const designation = normalizeDesignation(form.designation);
     if (!designation) return [] as typeof ROLE_RESPONSIBILITY_SUMMARIES;
     return ROLE_RESPONSIBILITY_SUMMARIES.filter(
-      (r) => r.designation.toLowerCase() === designation
+      (r) => normalizeDesignation(r.designation) === designation
     );
   }, [form.designation]);
 
+  const hasDbMatch = matchedDbRoles.length > 0;
+
   useEffect(() => {
-    setShowBrowseTemplates(false);
     if (!form.responsibilitiesSummary) return;
-    if (filteredResponsibilityOptions.length === 0) return;
-    const allTexts = filteredResponsibilityOptions.flatMap((r) => r.options.map((o) => o.text));
-    if (!allTexts.includes(form.responsibilitiesSummary)) {
-      setForm((prev) => ({ ...prev, responsibilitiesSummary: "" }));
+
+    if (hasDbMatch) {
+      const allTexts = matchedDbRoles.flatMap(r => [r.defaultSummary, r.alternateSummary]);
+      if (!allTexts.includes(form.responsibilitiesSummary)) {
+        setForm((prev) => ({ ...prev, responsibilitiesSummary: "" }));
+      }
+    } else if (filteredResponsibilityOptions.length > 0) {
+      const allTexts = filteredResponsibilityOptions.flatMap((r) => r.options.map((o) => o.text));
+      if (!allTexts.includes(form.responsibilitiesSummary)) {
+        setForm((prev) => ({ ...prev, responsibilitiesSummary: "" }));
+      }
     }
   }, [form.designation]);
+
+  useEffect(() => {
+    if (hasDbMatch && matchedDbRoles.length > 0 && !form.responsibilitiesSummary && form.includeResponsibilities) {
+      setForm(prev => ({ ...prev, responsibilitiesSummary: matchedDbRoles[0].defaultSummary }));
+    }
+  }, [hasDbMatch, matchedDbRoles, form.includeResponsibilities]);
 
   const signatoryOptions = useMemo(() => {
     return employees.filter((e) =>
@@ -384,7 +448,11 @@ export function LetterGenerator() {
               <Select value={form.closingLine} onValueChange={v => setForm(prev => ({ ...prev, closingLine: v }))}>
                 <SelectTrigger data-testid="select-closing-line"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {CLOSING_LINES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  {CLOSING_LINES.map(c => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {closingSentences[c.value] || c.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -396,84 +464,59 @@ export function LetterGenerator() {
               </div>
               {form.includeResponsibilities && (
                 <div className="space-y-2">
-                  {filteredResponsibilityOptions.length > 0 ? (
-                    <>
+                  {hasDbMatch ? (
+                    <ResponsibilityCardSelector
+                      role={matchedDbRoles[0]}
+                      selected={form.responsibilitiesSummary}
+                      onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                    />
+                  ) : filteredResponsibilityOptions.length > 0 ? (
+                    <ResponsibilityCardSelector
+                      optionA={filteredResponsibilityOptions[0].options[0].text}
+                      optionB={filteredResponsibilityOptions[0].options[1].text}
+                      selected={form.responsibilitiesSummary}
+                      onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {form.designation.trim() && (
+                        <p className="text-xs text-muted-foreground">
+                          No template found for &quot;{form.designation}&quot;. Select from all available role templates:
+                        </p>
+                      )}
                       <Select
                         value={form.responsibilitiesSummary}
                         onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
                       >
-                        <SelectTrigger data-testid="select-responsibilities">
-                          <SelectValue placeholder="Select an option" />
+                        <SelectTrigger data-testid="select-all-roles-fallback">
+                          <SelectValue placeholder="Select a role template..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {filteredResponsibilityOptions.flatMap((role) =>
-                            role.options.map((opt, idx) => (
-                              <SelectItem
-                                key={`${role.designation}-${idx}`}
-                                value={opt.text}
-                                data-testid={`responsibilities-option-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
-                              >
-                                {filteredResponsibilityOptions.length === 1
-                                  ? opt.label
-                                  : `${role.designation} — ${opt.label}`}
-                              </SelectItem>
-                            ))
-                          )}
+                          {allDbRoles.length > 0
+                            ? allDbRoles.filter(r => r.isActive).map((role) => (
+                                <SelectGroup key={role.id}>
+                                  <SelectLabel>{role.roleLabel}</SelectLabel>
+                                  <SelectItem value={role.defaultSummary} data-testid={`fallback-role-${role.roleKey}-a`}>Option A</SelectItem>
+                                  <SelectItem value={role.alternateSummary} data-testid={`fallback-role-${role.roleKey}-b`}>Option B</SelectItem>
+                                </SelectGroup>
+                              ))
+                            : ROLE_RESPONSIBILITY_SUMMARIES.map((role) => (
+                                <SelectGroup key={role.designation}>
+                                  <SelectLabel>{role.designation}</SelectLabel>
+                                  {role.options.map((opt, idx) => (
+                                    <SelectItem
+                                      key={`${role.designation}-${idx}`}
+                                      value={opt.text}
+                                      data-testid={`fallback-role-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
+                                    >
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ))}
                         </SelectContent>
                       </Select>
-                      {form.responsibilitiesSummary && (
-                        <p className="text-xs text-muted-foreground bg-muted rounded p-2 leading-relaxed">
-                          {form.responsibilitiesSummary}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <Textarea
-                        placeholder="Describe the employee's responsibilities..."
-                        value={form.responsibilitiesSummary}
-                        onChange={e => setForm(prev => ({ ...prev, responsibilitiesSummary: e.target.value }))}
-                        data-testid="textarea-responsibilities"
-                        rows={4}
-                      />
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowBrowseTemplates(prev => !prev)}
-                          data-testid="button-browse-templates"
-                        >
-                          {showBrowseTemplates ? "Hide templates" : "Browse all templates"}
-                        </Button>
-                      </div>
-                      {showBrowseTemplates && (
-                        <Select
-                          value={form.responsibilitiesSummary}
-                          onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
-                        >
-                          <SelectTrigger data-testid="select-responsibilities-browse">
-                            <SelectValue placeholder="Pick from templates" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ROLE_RESPONSIBILITY_SUMMARIES.map((role) => (
-                              <SelectGroup key={role.designation}>
-                                <SelectLabel>{role.designation}</SelectLabel>
-                                {role.options.map((opt, idx) => (
-                                  <SelectItem
-                                    key={`${role.designation}-${idx}`}
-                                    value={opt.text}
-                                    data-testid={`responsibilities-browse-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
-                                  >
-                                    {opt.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -577,11 +620,64 @@ export function LetterGenerator() {
               <SheetDescription>Preview of the letter before creation</SheetDescription>
             </SheetHeader>
             <div className="mt-4">
-              <LetterPreview letter={form} />
+              <LetterPreview letter={form} sentencesOverride={sentencesOverride} />
             </div>
           </SheetContent>
         </Sheet>
       </CardContent>
     </Card>
+  );
+}
+
+interface ResponsibilityCardSelectorProps {
+  role?: RoleSummaryTemplate;
+  optionA?: string;
+  optionB?: string;
+  selected: string;
+  onSelect: (text: string) => void;
+}
+
+function ResponsibilityCardSelector({ role, optionA, optionB, selected, onSelect }: ResponsibilityCardSelectorProps) {
+  const textA = role ? role.defaultSummary : optionA || "";
+  const textB = role ? role.alternateSummary : optionB || "";
+
+  return (
+    <div className="space-y-3" data-testid="responsibility-card-selector">
+      <p className="text-xs text-muted-foreground">Select a responsibilities summary for the letter:</p>
+      <div className="grid grid-cols-1 gap-3">
+        <button
+          type="button"
+          onClick={() => onSelect(textA)}
+          data-testid="card-responsibility-option-a"
+          className={`text-left p-4 rounded-lg border-2 transition-all ${selected === textA ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+        >
+          <div className="flex items-start gap-2">
+            <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selected === textA ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+              {selected === textA && <CheckCircle className="h-3 w-3 text-primary-foreground" />}
+            </div>
+            <div>
+              <p className="font-semibold text-sm mb-1">Option A</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{textA}</p>
+            </div>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect(textB)}
+          data-testid="card-responsibility-option-b"
+          className={`text-left p-4 rounded-lg border-2 transition-all ${selected === textB ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+        >
+          <div className="flex items-start gap-2">
+            <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selected === textB ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+              {selected === textB && <CheckCircle className="h-3 w-3 text-primary-foreground" />}
+            </div>
+            <div>
+              <p className="font-semibold text-sm mb-1">Option B</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{textB}</p>
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
   );
 }

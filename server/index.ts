@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
-import { db } from "./db";
+import { db, runMigrations } from "./db";
 import { adminUsers, holidays, attendance, regionalHolidaySelections } from "@shared/schema";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
@@ -437,6 +437,7 @@ async function backfillHolidayAttendance() {
     console.error("admin_users employment_status migration error:", err);
   }
 
+  await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();
   await backfillEmployeeIds();

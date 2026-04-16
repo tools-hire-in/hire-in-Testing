@@ -23,6 +23,8 @@ import {
   offerLetters,
   hrLetters,
   systemSettings,
+  letterTemplateSentences,
+  roleSummaryTemplates,
   type Job,
   type InsertJob,
   type Application,
@@ -66,6 +68,8 @@ import {
   type HrLetter,
   type InsertHrLetter,
   type SystemSetting,
+  type LetterTemplateSentence,
+  type RoleSummaryTemplate,
   notifications,
   type Notification,
   type InsertNotification,
@@ -237,6 +241,13 @@ export interface IStorage {
   getHrLetterByRef(referenceNumber: string): Promise<HrLetter | undefined>;
   getHrLetterByRefAndAuth(referenceNumber: string, authCode: string): Promise<HrLetter | undefined>;
   getHrLetterCountByPrefix(prefix: string): Promise<number>;
+
+  // Letter Template Sentences
+  getLetterTemplateSentences(category?: string): Promise<LetterTemplateSentence[]>;
+  updateLetterTemplateSentence(id: string, updates: { sentence: string }): Promise<LetterTemplateSentence | undefined>;
+
+  // Role Summary Templates
+  getRoleSummaryTemplates(filters?: { vertical?: string; designation?: string }): Promise<RoleSummaryTemplate[]>;
 
   // Stats
   getStats(): Promise<{
@@ -1375,6 +1386,40 @@ export class DatabaseStorage implements IStorage {
     const results = await db.select({ refNum: hrLetters.referenceNumber }).from(hrLetters)
       .where(sql`${hrLetters.referenceNumber} LIKE ${prefix + '%'}`);
     return results.length;
+  }
+
+  async getLetterTemplateSentences(category?: string): Promise<LetterTemplateSentence[]> {
+    if (category) {
+      return db.select().from(letterTemplateSentences)
+        .where(eq(letterTemplateSentences.category, category))
+        .orderBy(asc(letterTemplateSentences.sortOrder));
+    }
+    return db.select().from(letterTemplateSentences)
+      .orderBy(asc(letterTemplateSentences.category), asc(letterTemplateSentences.sortOrder));
+  }
+
+  async updateLetterTemplateSentence(id: string, updates: { sentence: string }): Promise<LetterTemplateSentence | undefined> {
+    const [updated] = await db.update(letterTemplateSentences)
+      .set({ sentence: updates.sentence, updatedAt: new Date() })
+      .where(eq(letterTemplateSentences.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getRoleSummaryTemplates(filters?: { vertical?: string; designation?: string }): Promise<RoleSummaryTemplate[]> {
+    let results = await db.select().from(roleSummaryTemplates)
+      .where(eq(roleSummaryTemplates.isActive, true))
+      .orderBy(asc(roleSummaryTemplates.sortOrder));
+
+    if (filters?.designation) {
+      const designation = filters.designation.toLowerCase();
+      const matched = results.filter(r => r.roleLabel.toLowerCase() === designation);
+      if (matched.length > 0) return matched;
+    }
+    if (filters?.vertical) {
+      return results.filter(r => r.vertical === filters.vertical);
+    }
+    return results;
   }
 }
 

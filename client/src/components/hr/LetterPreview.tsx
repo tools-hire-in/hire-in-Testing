@@ -1,9 +1,8 @@
-import { Separator } from "@/components/ui/separator";
 import {
-  PERFORMANCE_BAND_SENTENCES as PERFORMANCE_SENTENCES,
-  CONDUCT_BAND_SENTENCES as CONDUCT_SENTENCES,
-  COMPLETION_BAND_SENTENCES as COMPLETION_PHRASES,
-  CLOSING_LINE_SENTENCES as CLOSING_SENTENCES,
+  PERFORMANCE_BAND_SENTENCES as DEFAULT_PERFORMANCE_SENTENCES,
+  CONDUCT_BAND_SENTENCES as DEFAULT_CONDUCT_SENTENCES,
+  COMPLETION_BAND_SENTENCES as DEFAULT_COMPLETION_PHRASES,
+  CLOSING_LINE_SENTENCES as DEFAULT_CLOSING_SENTENCES,
 } from "@shared/hrLetterConstants";
 
 const rayomindLogoPath = "/rayomind-logo.png";
@@ -27,6 +26,13 @@ function interpolate(sentence: string, data: { employeeName?: string; designatio
     .replace(/\[Company\]/g, "Rayomind Solutions LLP")
     .replace(/\[Role\]/g, data.designation || "—")
     .replace(/\[Department\]/g, data.department || "the assigned");
+}
+
+export interface LetterSentencesOverride {
+  performance_band?: Record<string, string>;
+  conduct_band?: Record<string, string>;
+  completion_band?: Record<string, string>;
+  closing_line?: Record<string, string>;
 }
 
 interface LetterPreviewProps {
@@ -58,10 +64,16 @@ interface LetterPreviewProps {
     customOverrideText?: string | null;
     status?: string | null;
   };
+  sentencesOverride?: LetterSentencesOverride;
 }
 
-export function LetterPreview({ letter }: LetterPreviewProps) {
+export function LetterPreview({ letter, sentencesOverride }: LetterPreviewProps) {
   const title = TEMPLATE_TITLES[letter.templateType] || "HR LETTER";
+
+  const PERFORMANCE_SENTENCES = { ...DEFAULT_PERFORMANCE_SENTENCES, ...(sentencesOverride?.performance_band || {}) };
+  const CONDUCT_SENTENCES = { ...DEFAULT_CONDUCT_SENTENCES, ...(sentencesOverride?.conduct_band || {}) };
+  const COMPLETION_PHRASES = { ...DEFAULT_COMPLETION_PHRASES, ...(sentencesOverride?.completion_band || {}) };
+  const CLOSING_SENTENCES = { ...DEFAULT_CLOSING_SENTENCES, ...(sentencesOverride?.closing_line || {}) };
 
   return (
     <div className="bg-white text-black rounded-lg border shadow-sm print:shadow-none" data-testid="letter-preview">

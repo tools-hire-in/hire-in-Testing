@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, type AdminUser, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -4479,6 +4479,46 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/hr/letter-templates/sentences", requireRole("hr"), async (req, res) => {
+    try {
+      const { category } = req.query;
+      const sentences = await storage.getLetterTemplateSentences(category as string | undefined);
+      res.json(sentences);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch letter template sentences" });
+    }
+  });
+
+  app.patch("/api/hr/letter-templates/sentences/:id", requireAdminLevel, async (req, res) => {
+    try {
+      const patchSchema = insertLetterTemplateSentenceSchema.pick({ sentence: true });
+      const result = patchSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Validation failed", details: result.error.flatten() });
+      }
+      const updated = await storage.updateLetterTemplateSentence(req.params.id, { sentence: result.data.sentence.trim() });
+      if (!updated) {
+        return res.status(404).json({ error: "Template sentence not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update letter template sentence" });
+    }
+  });
+
+  app.get("/api/hr/letter-templates/roles", requireRole("hr"), async (req, res) => {
+    try {
+      const { designation, vertical } = req.query;
+      const roles = await storage.getRoleSummaryTemplates({
+        designation: designation as string | undefined,
+        vertical: vertical as string | undefined,
+      });
+      res.json(roles);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch role summary templates" });
+    }
+  });
+
   app.get("/api/hr/letters", requireRole("hr"), async (req, res) => {
     try {
       const { templateType, status, search } = req.query;
@@ -4689,7 +4729,18 @@ export async function registerRoutes(
         status: "issued" as const,
       };
 
-      const pdfBuffer = await generateHrLetterPdf(issuedLetter);
+      const dbSentences = await storage.getLetterTemplateSentences();
+      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+        if (!acc[s.category]) acc[s.category] = {};
+        acc[s.category][s.key] = s.sentence;
+        return acc;
+      }, {});
+      const pdfBuffer = await generateHrLetterPdf(issuedLetter, {
+        performance_band: customSentences["performance_band"],
+        conduct_band: customSentences["conduct_band"],
+        completion_band: customSentences["completion_band"],
+        closing_line: customSentences["closing_line"],
+      });
       const pdfDir = path.resolve("uploads/hr-letters");
       if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
       const pdfFilename = `${referenceNumber.replace(/\//g, "-")}.pdf`;

@@ -1121,3 +1121,53 @@ export type PerformanceFeedback = typeof performanceFeedback.$inferSelect;
 export type InsertPerformanceFeedback = z.infer<typeof insertPerformanceFeedbackSchema>;
 export type HrLetter = typeof hrLetters.$inferSelect;
 export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
+
+// ==========================================
+// LETTER TEMPLATE SENTENCES (configurable via admin)
+// ==========================================
+
+export const letterTemplateSentences = pgTable("letter_template_sentences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: varchar("key").notNull(),
+  category: varchar("category").notNull(),
+  label: varchar("label").notNull(),
+  sentence: text("sentence").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  uniqueIndex("uq_letter_template_key_category").on(t.key, t.category),
+]);
+
+export const insertLetterTemplateSentenceSchema = createInsertSchema(letterTemplateSentences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type LetterTemplateSentence = typeof letterTemplateSentences.$inferSelect;
+export type InsertLetterTemplateSentence = z.infer<typeof insertLetterTemplateSentenceSchema>;
+
+// ==========================================
+// ROLE SUMMARY TEMPLATES (configurable role library)
+// ==========================================
+
+export const roleSummaryTemplates = pgTable("role_summary_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleKey: varchar("role_key").notNull().unique(),
+  roleFamily: varchar("role_family").notNull(),
+  vertical: varchar("vertical").notNull(),
+  level: varchar("level").notNull(),
+  roleLabel: varchar("role_label").notNull(),
+  defaultSummary: text("default_summary").notNull(),
+  alternateSummary: text("alternate_summary").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRoleSummaryTemplateSchema = createInsertSchema(roleSummaryTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+export type RoleSummaryTemplate = typeof roleSummaryTemplates.$inferSelect;
+export type InsertRoleSummaryTemplate = z.infer<typeof insertRoleSummaryTemplateSchema>;
