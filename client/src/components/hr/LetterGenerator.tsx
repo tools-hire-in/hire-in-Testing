@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,6 +97,7 @@ export function LetterGenerator() {
   const [form, setForm] = useState<FormData>({ ...defaultForm });
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [showBrowseTemplates, setShowBrowseTemplates] = useState(false);
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
@@ -127,15 +128,16 @@ export function LetterGenerator() {
 
   const filteredResponsibilityOptions = useMemo(() => {
     const designation = form.designation.trim().toLowerCase();
-    if (!designation) return ROLE_RESPONSIBILITY_SUMMARIES;
-    const matched = ROLE_RESPONSIBILITY_SUMMARIES.filter(
+    if (!designation) return [] as typeof ROLE_RESPONSIBILITY_SUMMARIES;
+    return ROLE_RESPONSIBILITY_SUMMARIES.filter(
       (r) => r.designation.toLowerCase() === designation
     );
-    return matched.length > 0 ? matched : ROLE_RESPONSIBILITY_SUMMARIES;
   }, [form.designation]);
 
   useEffect(() => {
+    setShowBrowseTemplates(false);
     if (!form.responsibilitiesSummary) return;
+    if (filteredResponsibilityOptions.length === 0) return;
     const allTexts = filteredResponsibilityOptions.flatMap((r) => r.options.map((o) => o.text));
     if (!allTexts.includes(form.responsibilitiesSummary)) {
       setForm((prev) => ({ ...prev, responsibilitiesSummary: "" }));
@@ -394,33 +396,84 @@ export function LetterGenerator() {
               </div>
               {form.includeResponsibilities && (
                 <div className="space-y-2">
-                  <Select
-                    value={form.responsibilitiesSummary}
-                    onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
-                  >
-                    <SelectTrigger data-testid="select-responsibilities">
-                      <SelectValue placeholder="Select role and option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredResponsibilityOptions.map((role) =>
-                        role.options.map((opt, idx) => (
-                          <SelectItem
-                            key={`${role.designation}-${idx}`}
-                            value={opt.text}
-                            data-testid={`responsibilities-option-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
-                          >
-                            {filteredResponsibilityOptions.length > 1
-                              ? `${role.designation} — ${opt.label}`
-                              : opt.label}
-                          </SelectItem>
-                        ))
+                  {filteredResponsibilityOptions.length > 0 ? (
+                    <>
+                      <Select
+                        value={form.responsibilitiesSummary}
+                        onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                      >
+                        <SelectTrigger data-testid="select-responsibilities">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredResponsibilityOptions.flatMap((role) =>
+                            role.options.map((opt, idx) => (
+                              <SelectItem
+                                key={`${role.designation}-${idx}`}
+                                value={opt.text}
+                                data-testid={`responsibilities-option-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
+                              >
+                                {filteredResponsibilityOptions.length === 1
+                                  ? opt.label
+                                  : `${role.designation} — ${opt.label}`}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {form.responsibilitiesSummary && (
+                        <p className="text-xs text-muted-foreground bg-muted rounded p-2 leading-relaxed">
+                          {form.responsibilitiesSummary}
+                        </p>
                       )}
-                    </SelectContent>
-                  </Select>
-                  {form.responsibilitiesSummary && (
-                    <p className="text-xs text-muted-foreground bg-muted rounded p-2 leading-relaxed">
-                      {form.responsibilitiesSummary}
-                    </p>
+                    </>
+                  ) : (
+                    <>
+                      <Textarea
+                        placeholder="Describe the employee's responsibilities..."
+                        value={form.responsibilitiesSummary}
+                        onChange={e => setForm(prev => ({ ...prev, responsibilitiesSummary: e.target.value }))}
+                        data-testid="textarea-responsibilities"
+                        rows={4}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowBrowseTemplates(prev => !prev)}
+                          data-testid="button-browse-templates"
+                        >
+                          {showBrowseTemplates ? "Hide templates" : "Browse all templates"}
+                        </Button>
+                      </div>
+                      {showBrowseTemplates && (
+                        <Select
+                          value={form.responsibilitiesSummary}
+                          onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                        >
+                          <SelectTrigger data-testid="select-responsibilities-browse">
+                            <SelectValue placeholder="Pick from templates" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLE_RESPONSIBILITY_SUMMARIES.map((role) => (
+                              <SelectGroup key={role.designation}>
+                                <SelectLabel>{role.designation}</SelectLabel>
+                                {role.options.map((opt, idx) => (
+                                  <SelectItem
+                                    key={`${role.designation}-${idx}`}
+                                    value={opt.text}
+                                    data-testid={`responsibilities-browse-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
+                                  >
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </>
                   )}
                 </div>
               )}
