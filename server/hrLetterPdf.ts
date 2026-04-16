@@ -138,7 +138,7 @@ export async function generateHrLetterPdf(letter: HrLetter): Promise<Buffer> {
     }
 
     if (letter.includeResponsibilities && letter.responsibilitiesSummary) {
-      addParagraph(`Key Responsibilities: ${letter.responsibilitiesSummary}`);
+      addParagraph(letter.responsibilitiesSummary);
     }
 
     if (letter.customOverrideText) {

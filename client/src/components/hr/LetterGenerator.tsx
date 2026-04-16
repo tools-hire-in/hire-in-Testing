@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye,
@@ -27,6 +27,7 @@ import {
   COMPLETION_BAND_SENTENCES,
   CLOSING_LINE_SENTENCES,
   TEMPLATE_LABELS,
+  ROLE_RESPONSIBILITY_SUMMARIES,
 } from "@shared/hrLetterConstants";
 
 const TEMPLATE_OPTIONS = Object.entries(TEMPLATE_LABELS).map(([value, label]) => ({ value, label }));
@@ -123,6 +124,23 @@ export function LetterGenerator() {
       e.email?.toLowerCase().includes(s)
     ).slice(0, 20);
   }, [employees, employeeSearch]);
+
+  const filteredResponsibilityOptions = useMemo(() => {
+    const designation = form.designation.trim().toLowerCase();
+    if (!designation) return ROLE_RESPONSIBILITY_SUMMARIES;
+    const matched = ROLE_RESPONSIBILITY_SUMMARIES.filter(
+      (r) => r.designation.toLowerCase() === designation
+    );
+    return matched.length > 0 ? matched : ROLE_RESPONSIBILITY_SUMMARIES;
+  }, [form.designation]);
+
+  useEffect(() => {
+    if (!form.responsibilitiesSummary) return;
+    const allTexts = filteredResponsibilityOptions.flatMap((r) => r.options.map((o) => o.text));
+    if (!allTexts.includes(form.responsibilitiesSummary)) {
+      setForm((prev) => ({ ...prev, responsibilitiesSummary: "" }));
+    }
+  }, [form.designation]);
 
   const signatoryOptions = useMemo(() => {
     return employees.filter((e) =>
@@ -375,19 +393,36 @@ export function LetterGenerator() {
                 <Switch checked={form.includeResponsibilities} onCheckedChange={v => setForm(prev => ({ ...prev, includeResponsibilities: v }))} data-testid="switch-responsibilities" />
               </div>
               {form.includeResponsibilities && (
-                <Select value={form.responsibilitiesSummary} onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}>
-                  <SelectTrigger data-testid="select-responsibilities"><SelectValue placeholder="Select responsibilities description" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="software development, testing, and deployment activities">Software Development & Testing</SelectItem>
-                    <SelectItem value="project coordination, stakeholder communication, and delivery management">Project Management & Coordination</SelectItem>
-                    <SelectItem value="data analysis, reporting, and business intelligence activities">Data Analysis & Reporting</SelectItem>
-                    <SelectItem value="UI/UX design, prototyping, and front-end development">Design & Front-end Development</SelectItem>
-                    <SelectItem value="system administration, infrastructure management, and DevOps activities">System Administration & DevOps</SelectItem>
-                    <SelectItem value="quality assurance, test automation, and release validation">Quality Assurance & Testing</SelectItem>
-                    <SelectItem value="human resources operations, recruitment, and employee engagement">HR Operations & Recruitment</SelectItem>
-                    <SelectItem value="administrative support, documentation, and operational coordination">Administrative & Operations Support</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Select
+                    value={form.responsibilitiesSummary}
+                    onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                  >
+                    <SelectTrigger data-testid="select-responsibilities">
+                      <SelectValue placeholder="Select role and option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredResponsibilityOptions.map((role) =>
+                        role.options.map((opt, idx) => (
+                          <SelectItem
+                            key={`${role.designation}-${idx}`}
+                            value={opt.text}
+                            data-testid={`responsibilities-option-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
+                          >
+                            {filteredResponsibilityOptions.length > 1
+                              ? `${role.designation} — ${opt.label}`
+                              : opt.label}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {form.responsibilitiesSummary && (
+                    <p className="text-xs text-muted-foreground bg-muted rounded p-2 leading-relaxed">
+                      {form.responsibilitiesSummary}
+                    </p>
+                  )}
+                </div>
               )}
               {showProject && (
                 <>

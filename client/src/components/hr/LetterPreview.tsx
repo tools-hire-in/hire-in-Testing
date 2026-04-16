@@ -161,7 +161,7 @@ export function LetterPreview({ letter }: LetterPreviewProps) {
         )}
 
         {letter.includeResponsibilities && letter.responsibilitiesSummary && (
-          <p><strong>Key Responsibilities:</strong> {letter.responsibilitiesSummary}</p>
+          <p>{letter.responsibilitiesSummary}</p>
         )}
 
         {letter.customOverrideText && (
