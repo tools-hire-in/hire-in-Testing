@@ -259,24 +259,19 @@ function generatePayslipHTML(data: SlipFormData): string {
     </div>
 
     <!-- NET PAY -->
-    <div style="margin:16px 28px 0;background:#FFF7F0;border:1px solid #FDBA8C;border-radius:6px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <div style="color:${NAVY};font-weight:700;font-size:13px;letter-spacing:0.3px;">Total Net Payable</div>
-        <div style="margin-top:10px;display:flex;gap:24px;">
-          <div style="font-size:10.5px;">
-            <span style="color:#6B7280;">Pay Days: </span>
-            <span style="font-weight:700;color:${NAVY};">${data.paidDays}</span>
-          </div>
-          <div style="font-size:10.5px;">
-            <span style="color:#6B7280;">LOP Days: </span>
-            <span style="font-weight:700;color:${data.lopDays > 0 ? "#DC2626" : NAVY};">${data.lopDays}</span>
+    <div style="margin:12px 28px 0;">
+      <div style="background:${NAVY};padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:3px;">
+        <div>
+          <div style="color:#fff;font-size:10.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;">Net Salary Payable</div>
+          <div style="margin-top:5px;display:flex;gap:18px;">
+            <span style="color:rgba(255,255,255,0.65);font-size:9px;">Pay Days: <strong style="color:#fff;">${data.paidDays}</strong></span>
+            <span style="color:rgba(255,255,255,0.65);font-size:9px;">LOP Days: <strong style="color:${data.lopDays > 0 ? "#FCA5A5" : "#fff"};">${data.lopDays}</strong></span>
           </div>
         </div>
-      </div>
-      <div style="text-align:right;">
-        <div style="color:${ORANGE};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;">AMOUNT CREDITED</div>
-        <div style="color:${NAVY};font-size:24px;font-weight:800;letter-spacing:-0.5px;">₹${fmt(netPay)}</div>
-        <div style="color:#6B7280;font-size:9.5px;margin-top:4px;font-style:italic;">Rupees ${netPayWords} Only</div>
+        <div style="text-align:right;">
+          <div style="color:${ORANGE};font-size:19px;font-weight:800;letter-spacing:-0.3px;">₹${fmt(netPay)}</div>
+          <div style="color:rgba(255,255,255,0.55);font-size:8.5px;margin-top:2px;font-style:italic;">Rupees ${netPayWords} Only</div>
+        </div>
       </div>
     </div>
 
@@ -285,7 +280,7 @@ function generatePayslipHTML(data: SlipFormData): string {
       <div style="display:flex;justify-content:space-between;align-items:flex-end;">
         <div>
           <div style="font-size:9.5px;color:#6B7280;line-height:1.6;">This is a system-generated payslip and does not require a physical signature.</div>
-          <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">alina.carter@hire-in.com</span></div>
+          <div style="font-size:9.5px;color:#6B7280;">For queries contact: <span style="color:${NAVY};font-weight:600;">jaspreet.singh@rayomind.com</span></div>
         </div>
         <div style="text-align:right;">
           <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.5px;">© ${data.year} Rayomind Solutions LLP</div>
