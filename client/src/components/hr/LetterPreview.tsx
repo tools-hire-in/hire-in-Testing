@@ -154,20 +154,25 @@ export function LetterPreview({ letter, sentencesOverride }: LetterPreviewProps)
         {letter.templateType === "relieving" && (
           <>
             <p>
-              This is to certify that <strong>{letter.employeeName}</strong>
+              This is to confirm that <strong>{letter.employeeName}</strong>
               {letter.employeeCode ? ` (Employee ID: ${letter.employeeCode})` : ""} was employed with
               <strong> Rayomind Solutions LLP</strong> as <strong>{letter.designation}</strong>
               {letter.department ? ` in the ${letter.department} department` : ""} from{" "}
               <strong>{formatDate(letter.startDate)}</strong>.
             </p>
             <p>
-              The resignation submitted has been accepted and <strong>{letter.employeeName}</strong> has been
-              relieved from duties effective <strong>{formatDate(letter.lastWorkingDay || letter.endDate)}</strong>.
+              The resignation submitted has been accepted and <strong>{letter.employeeName}</strong> has duly
+              served the notice period and has been relieved from duties effective{" "}
+              <strong>{formatDate(letter.lastWorkingDay || letter.endDate)}</strong>.
             </p>
             <p>All company dues have been settled and all company property has been returned.</p>
             <p>
               The company has no objection to <strong>{letter.employeeName}</strong> seeking employment
               elsewhere.
+            </p>
+            <p>
+              This letter is issued at the request of the employee for record and employment/background
+              verification purposes.
             </p>
           </>
         )}

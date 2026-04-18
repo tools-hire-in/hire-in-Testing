@@ -139,13 +139,14 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
       );
     } else if (letter.templateType === "relieving") {
       addParagraph(
-        `This is to certify that ${letter.employeeName}${letter.employeeCode ? ` (Employee ID: ${letter.employeeCode})` : ""} was employed with Rayomind Solutions LLP as ${letter.designation}${letter.department ? ` in the ${letter.department} department` : ""} from ${formatDate(letter.startDate)}.`
+        `This is to confirm that ${letter.employeeName}${letter.employeeCode ? ` (Employee ID: ${letter.employeeCode})` : ""} was employed with Rayomind Solutions LLP as ${letter.designation}${letter.department ? ` in the ${letter.department} department` : ""} from ${formatDate(letter.startDate)}.`
       );
       addParagraph(
-        `The resignation submitted has been accepted and ${letter.employeeName} has been relieved from duties effective ${formatDate(letter.lastWorkingDay || letter.endDate)}.`
+        `The resignation submitted has been accepted and ${letter.employeeName} has duly served the notice period and has been relieved from duties effective ${formatDate(letter.lastWorkingDay || letter.endDate)}.`
       );
       addParagraph("All company dues have been settled and all company property has been returned.");
       addParagraph(`The company has no objection to ${letter.employeeName} seeking employment elsewhere.`);
+      addParagraph("This letter is issued at the request of the employee for record and employment/background verification purposes.");
     }
 
     if (letter.includeResponsibilities && letter.responsibilitiesSummary) {
