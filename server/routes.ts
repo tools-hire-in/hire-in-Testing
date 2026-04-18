@@ -4587,10 +4587,14 @@ export async function registerRoutes(
         const dept = await storage.getDepartment(employee.departmentId);
         derivedDepartment = dept?.name || "";
       }
-      const fullName = `${employee.firstName} ${employee.lastName}`;
+      const fullName = `${employee.firstName} ${employee.lastName}`.trim();
+      const resolvedEmployeeName = (req.body.employeeName || fullName).trim();
+      if (!resolvedEmployeeName) {
+        return res.status(400).json({ error: "Employee name could not be determined. Please ensure the employee record has a first and last name." });
+      }
       const data = {
         ...body,
-        employeeName: req.body.employeeName || fullName,
+        employeeName: resolvedEmployeeName,
         employeeCode: employee.employeeId || "",
         designation: resolvedDesignation,
         department: derivedDepartment || req.body.department || "",
@@ -4835,7 +4839,26 @@ export async function registerRoutes(
         }
       }
 
-      const pdfBuffer = await generateHrLetterPdf(letter);
+      const dbSentences = await storage.getLetterTemplateSentences();
+      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+        if (!acc[s.category]) acc[s.category] = {};
+        acc[s.category][s.key] = s.sentence;
+        return acc;
+      }, {});
+      const pdfBuffer = await generateHrLetterPdf(letter, {
+        performance_band: customSentences["performance_band"],
+        conduct_band: customSentences["conduct_band"],
+        completion_band: customSentences["completion_band"],
+        closing_line: customSentences["closing_line"],
+      });
+      if (letter.pdfPath) {
+        try {
+          const filePath = path.resolve("uploads", letter.pdfPath);
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, pdfBuffer);
+        } catch {}
+      }
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", disposition);
       res.send(pdfBuffer);
@@ -4870,7 +4893,26 @@ export async function registerRoutes(
         }
       }
       if (!pdfBuffer) {
-        pdfBuffer = await generateHrLetterPdf(letter);
+        const dbSentences = await storage.getLetterTemplateSentences();
+        const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+          if (!acc[s.category]) acc[s.category] = {};
+          acc[s.category][s.key] = s.sentence;
+          return acc;
+        }, {});
+        pdfBuffer = await generateHrLetterPdf(letter, {
+          performance_band: customSentences["performance_band"],
+          conduct_band: customSentences["conduct_band"],
+          completion_band: customSentences["completion_band"],
+          closing_line: customSentences["closing_line"],
+        });
+        if (letter.pdfPath) {
+          try {
+            const filePath = path.resolve("uploads", letter.pdfPath);
+            const dir = path.dirname(filePath);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(filePath, pdfBuffer);
+          } catch {}
+        }
       }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";

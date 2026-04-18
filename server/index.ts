@@ -4,7 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { db, runMigrations } from "./db";
-import { adminUsers, holidays, attendance, regionalHolidaySelections } from "@shared/schema";
+import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 const app = express();
@@ -338,6 +338,36 @@ async function backfillEmployeeIds() {
   }
 }
 
+async function backfillHrLetterNames() {
+  try {
+    const blankNameLetters = await db
+      .select({ id: hrLetters.id, employeeId: hrLetters.employeeId })
+      .from(hrLetters)
+      .where(or(isNull(hrLetters.employeeName), sql`trim(${hrLetters.employeeName}) = ''`));
+
+    if (blankNameLetters.length === 0) return;
+
+    let fixed = 0;
+    for (const letter of blankNameLetters) {
+      if (!letter.employeeId) continue;
+      const [employee] = await db
+        .select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+        .from(adminUsers)
+        .where(eq(adminUsers.id, letter.employeeId));
+      if (!employee) continue;
+      const fullName = `${employee.firstName} ${employee.lastName}`.trim();
+      if (!fullName) continue;
+      await db.update(hrLetters).set({ employeeName: fullName }).where(eq(hrLetters.id, letter.id));
+      fixed++;
+    }
+    if (fixed > 0) {
+      log(`Backfilled employee names for ${fixed} HR letter(s) with blank names`);
+    }
+  } catch (err) {
+    console.error("HR letter name backfill error:", err);
+  }
+}
+
 async function backfillHolidayAttendance() {
   try {
     const currentYear = new Date().getFullYear();
@@ -441,6 +471,7 @@ async function backfillHolidayAttendance() {
   await ensurePerformanceTables();
   await ensureHrLettersTables();
   await backfillEmployeeIds();
+  await backfillHrLetterNames();
   await backfillHolidayAttendance();
   await registerRoutes(httpServer, app);
 

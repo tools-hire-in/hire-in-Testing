@@ -113,7 +113,7 @@ export function LetterPreview({ letter, sentencesOverride }: LetterPreviewProps)
               <p>{interpolate(PERFORMANCE_SENTENCES[letter.performanceBand], letter)}</p>
             )}
             {letter.conductBand && CONDUCT_SENTENCES[letter.conductBand] && (
-              <p>{CONDUCT_SENTENCES[letter.conductBand]}</p>
+              <p>{interpolate(CONDUCT_SENTENCES[letter.conductBand], letter)}</p>
             )}
           </>
         )}
@@ -186,7 +186,7 @@ export function LetterPreview({ letter, sentencesOverride }: LetterPreviewProps)
         )}
 
         {letter.closingLine && CLOSING_SENTENCES[letter.closingLine] && (
-          <p>{CLOSING_SENTENCES[letter.closingLine]}</p>
+          <p>{interpolate(CLOSING_SENTENCES[letter.closingLine], letter)}</p>
         )}
 
         <div className="mt-10 pt-4 flex justify-between items-end">

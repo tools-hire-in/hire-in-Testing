@@ -118,7 +118,7 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
         addParagraph(interpolate(PERFORMANCE_SENTENCES[letter.performanceBand], letter));
       }
       if (letter.conductBand && CONDUCT_SENTENCES[letter.conductBand]) {
-        addParagraph(CONDUCT_SENTENCES[letter.conductBand]);
+        addParagraph(interpolate(CONDUCT_SENTENCES[letter.conductBand], letter));
       }
     } else if (letter.templateType === "internship_completion") {
       const completionPhrase = letter.completionBand ? COMPLETION_PHRASES[letter.completionBand] || "completed" : "completed";
@@ -159,7 +159,7 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
 
     if (letter.closingLine && CLOSING_SENTENCES[letter.closingLine]) {
       y += 10;
-      addParagraph(CLOSING_SENTENCES[letter.closingLine]);
+      addParagraph(interpolate(CLOSING_SENTENCES[letter.closingLine], letter));
     }
 
     y += 30;
