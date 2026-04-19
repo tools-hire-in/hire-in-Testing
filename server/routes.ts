@@ -4957,51 +4957,146 @@ export async function registerRoutes(
       }
       const { reissueReason } = req.body;
 
+      // Fetch current employee data to capture any name/designation/department changes
+      const currentEmployee = await storage.getAdminUser(originalLetter.employeeId);
+      if (!currentEmployee) {
+        return res.status(400).json({ error: "Employee record not found. Cannot reissue letter." });
+      }
+
+      const currentFullName = `${currentEmployee.firstName} ${currentEmployee.lastName}`.trim();
+      const currentDesignation = currentEmployee.designation || originalLetter.designation || "";
+      let currentDepartment = originalLetter.department || "";
+      if (currentEmployee.departmentId) {
+        const dept = await storage.getDepartment(currentEmployee.departmentId);
+        if (dept?.name) currentDepartment = dept.name;
+      }
+
+      // Track what changed between the original letter and the current employee data
+      // Always record a field if the old and new values differ — including removals (empty/null)
+      const dataChanges: Record<string, { old: string | null; new: string | null }> = {};
+      const oldName = originalLetter.employeeName ?? null;
+      const newName = currentFullName || null;
+      if (oldName !== newName) {
+        dataChanges.employeeName = { old: oldName, new: newName };
+      }
+      const oldDesignation = originalLetter.designation ?? null;
+      const newDesignation = currentDesignation || null;
+      if (oldDesignation !== newDesignation) {
+        dataChanges.designation = { old: oldDesignation, new: newDesignation };
+      }
+      const oldDepartment = originalLetter.department || null;
+      const newDepartment = currentDepartment || null;
+      if (oldDepartment !== newDepartment) {
+        dataChanges.department = { old: oldDepartment, new: newDepartment };
+      }
+
+      // Mark original as reissued; restore on failure (compensating update)
       await storage.updateHrLetter(req.params.id, { status: "reissued" });
+      let draftLetter: Awaited<ReturnType<typeof storage.createHrLetter>> | null = null;
 
-      const newLetter = await storage.createHrLetter({
-        templateType: originalLetter.templateType,
-        employeeId: originalLetter.employeeId,
-        employeeName: originalLetter.employeeName,
-        employeeCode: originalLetter.employeeCode,
-        designation: originalLetter.designation,
-        department: originalLetter.department,
-        employmentType: originalLetter.employmentType,
-        location: originalLetter.location,
-        reportingManager: originalLetter.reportingManager,
-        startDate: originalLetter.startDate,
-        endDate: originalLetter.endDate,
-        lastWorkingDay: originalLetter.lastWorkingDay,
-        performanceBand: originalLetter.performanceBand,
-        conductBand: originalLetter.conductBand,
-        completionBand: originalLetter.completionBand,
-        closingLine: originalLetter.closingLine,
-        includeResponsibilities: originalLetter.includeResponsibilities,
-        responsibilitiesSummary: originalLetter.responsibilitiesSummary,
-        includeProject: originalLetter.includeProject,
-        projectName: originalLetter.projectName,
-        includeSeal: originalLetter.includeSeal,
-        signatoryId: originalLetter.signatoryId,
-        signatoryName: originalLetter.signatoryName,
-        signatoryDesignation: originalLetter.signatoryDesignation,
-        issueDate: originalLetter.issueDate,
-        customOverrideText: originalLetter.customOverrideText,
-        customOverrideBy: originalLetter.customOverrideBy,
-        customOverrideAt: originalLetter.customOverrideAt,
-        pdfPath: null,
-        status: "draft",
-        reissuedFromLetterId: originalLetter.id,
-        reissueReason: reissueReason || "Reissued",
-        createdBy: req.session.userId!,
-      });
+      try {
+        const newIssueDate = new Date().toISOString().split("T")[0];
+        draftLetter = await storage.createHrLetter({
+          templateType: originalLetter.templateType,
+          employeeId: originalLetter.employeeId,
+          employeeName: currentFullName || originalLetter.employeeName,
+          employeeCode: currentEmployee.employeeId || originalLetter.employeeCode,
+          designation: currentDesignation || originalLetter.designation,
+          department: currentDepartment,
+          employmentType: originalLetter.employmentType,
+          location: currentEmployee.location || originalLetter.location,
+          reportingManager: originalLetter.reportingManager,
+          startDate: originalLetter.startDate,
+          endDate: originalLetter.endDate,
+          lastWorkingDay: originalLetter.lastWorkingDay,
+          performanceBand: originalLetter.performanceBand,
+          conductBand: originalLetter.conductBand,
+          completionBand: originalLetter.completionBand,
+          closingLine: originalLetter.closingLine,
+          includeResponsibilities: originalLetter.includeResponsibilities,
+          responsibilitiesSummary: originalLetter.responsibilitiesSummary,
+          includeProject: originalLetter.includeProject,
+          projectName: originalLetter.projectName,
+          includeSeal: originalLetter.includeSeal,
+          signatoryId: originalLetter.signatoryId,
+          signatoryName: originalLetter.signatoryName,
+          signatoryDesignation: originalLetter.signatoryDesignation,
+          issueDate: newIssueDate,
+          customOverrideText: originalLetter.customOverrideText,
+          customOverrideBy: originalLetter.customOverrideBy,
+          customOverrideAt: originalLetter.customOverrideAt,
+          pdfPath: null,
+          status: "draft",
+          reissuedFromLetterId: originalLetter.id,
+          reissueReason: reissueReason || "Reissued with updated data",
+          createdBy: req.session.userId!,
+        });
 
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: newLetter.id,
-        action: "reissue_hr_letter",
-        changes: { originalId: originalLetter.id, reissueReason },
-      });
-      res.status(201).json(newLetter);
+        // Auto-issue the new letter
+        const reissuePrefix = TEMPLATE_PREFIX_MAP[draftLetter.templateType] || "GEN";
+        const reissueYear = new Date().getFullYear();
+        const reissueRefPrefix = `RL/${reissuePrefix}/${reissueYear}/`;
+        const reissueCount = await storage.getHrLetterCountByPrefix(reissueRefPrefix);
+        const newReferenceNumber = generateRefNumber(reissuePrefix, reissueYear, reissueCount);
+        const tempNewLetter = { ...draftLetter, issueDate: newIssueDate };
+        const { authCode: newAuthCode, documentHash: newDocumentHash } = computeLetterAuthCode(tempNewLetter);
+        const issuedNewLetter = { ...draftLetter, referenceNumber: newReferenceNumber, authCode: newAuthCode, issueDate: newIssueDate, status: "issued" as const };
+
+        const reissueDbSentences = await storage.getLetterTemplateSentences();
+        const reissueCustomSentences = reissueDbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+          if (!acc[s.category]) acc[s.category] = {};
+          acc[s.category][s.key] = s.sentence;
+          return acc;
+        }, {});
+        const newPdfBuffer = await generateHrLetterPdf(issuedNewLetter, {
+          performance_band: reissueCustomSentences["performance_band"],
+          conduct_band: reissueCustomSentences["conduct_band"],
+          completion_band: reissueCustomSentences["completion_band"],
+          closing_line: reissueCustomSentences["closing_line"],
+        });
+        const newPdfDir = path.resolve("uploads/hr-letters");
+        if (!fs.existsSync(newPdfDir)) fs.mkdirSync(newPdfDir, { recursive: true });
+        const newPdfFilename = `${newReferenceNumber.replace(/\//g, "-")}.pdf`;
+        const newPdfPath = path.join(newPdfDir, newPdfFilename);
+        fs.writeFileSync(newPdfPath, newPdfBuffer);
+
+        const newLetter = await storage.updateHrLetter(draftLetter.id, {
+          status: "issued",
+          referenceNumber: newReferenceNumber,
+          authCode: newAuthCode,
+          documentHash: newDocumentHash,
+          issuedBy: req.session.userId!,
+          issuedAt: new Date(),
+          issueDate: newIssueDate,
+          pdfPath: `hr-letters/${newPdfFilename}`,
+        });
+
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: newLetter!.id,
+          action: "reissue_hr_letter",
+          changes: {
+            originalId: originalLetter.id,
+            originalReference: originalLetter.referenceNumber,
+            newReference: newReferenceNumber,
+            reissueReason,
+            dataChanges: Object.keys(dataChanges).length > 0 ? dataChanges : null,
+          },
+        });
+
+        res.status(201).json(newLetter);
+      } catch (issuanceError) {
+        // Compensating update: restore the original letter's status so it is not left orphaned
+        try {
+          await storage.updateHrLetter(req.params.id, { status: originalLetter.status });
+          if (draftLetter) {
+            await storage.updateHrLetter(draftLetter.id, { status: "revoked" });
+          }
+        } catch (rollbackError) {
+          console.error("Reissue rollback failed:", rollbackError);
+        }
+        throw issuanceError;
+      }
     } catch (error) {
       console.error("Reissue HR letter error:", error);
       res.status(500).json({ error: "Failed to reissue letter" });

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  FileText, Loader2, Search, Eye, Download, RotateCcw, XCircle, CheckCircle, Clock, Shield, Mail, Printer,
+  FileText, Loader2, Search, Eye, Download, RotateCcw, XCircle, CheckCircle, Clock, Shield, Mail, Printer, RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function LettersDashboard() {
       await apiRequest("POST", `/api/hr/letters/${id}/reissue`, { reissueReason: reason });
     },
     onSuccess: () => {
-      toast({ title: "Letter reissued", description: "A new draft has been created." });
+      toast({ title: "Letter re-issued", description: "A corrected letter has been issued with the employee's current data." });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
       setReissueDialog(null);
       setReissueReason("");
@@ -242,18 +242,31 @@ export function LettersDashboard() {
       <Dialog open={!!reissueDialog} onOpenChange={() => { setReissueDialog(null); setReissueReason(""); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reissue Letter</DialogTitle>
-            <DialogDescription>A new draft will be created based on this letter. The original will be marked as reissued.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-amber-600" />
+              Re-issue with Updated Data
+            </DialogTitle>
+            <DialogDescription>
+              A corrected letter will be issued using the employee's current name, designation, and department from their profile.
+              The original letter will be marked as reissued.
+            </DialogDescription>
           </DialogHeader>
+          {reissueDialog && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 space-y-1" data-testid="text-reissue-info">
+              <p className="font-medium">Letter being corrected:</p>
+              <p><span className="font-semibold">{reissueDialog.employeeName}</span> — {reissueDialog.designation}{reissueDialog.department ? ` · ${reissueDialog.department}` : ""}</p>
+              <p className="text-xs text-amber-700 mt-1">The new letter will pull the latest name, designation, and department directly from the employee record and be issued immediately.</p>
+            </div>
+          )}
           <div>
-            <Label>Reason for Reissue</Label>
-            <Textarea value={reissueReason} onChange={e => setReissueReason(e.target.value)} placeholder="Enter reason..." data-testid="input-reissue-reason" />
+            <Label>Reason for Re-issue</Label>
+            <Textarea value={reissueReason} onChange={e => setReissueReason(e.target.value)} placeholder="e.g. Employee name updated after marriage..." data-testid="input-reissue-reason" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReissueDialog(null)}>Cancel</Button>
             <Button onClick={() => reissueDialog && reissueMutation.mutate({ id: reissueDialog.id, reason: reissueReason })} disabled={!reissueReason || reissueMutation.isPending} data-testid="btn-confirm-reissue">
               {reissueMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Reissue Letter
+              Re-issue with Updated Data
             </Button>
           </DialogFooter>
         </DialogContent>
