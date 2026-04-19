@@ -229,6 +229,7 @@ export function LetterGenerator() {
     onSuccess: () => {
       toast({ title: "Letter created", description: "Draft letter has been saved successfully." });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setForm({ ...defaultForm });
       setStep(0);
     },
@@ -237,10 +238,15 @@ export function LetterGenerator() {
       if (msg.includes("designation")) {
         setStep(1);
         setFieldErrors({ designation: err.message });
-      } else if (msg.includes("start date") || msg.includes("end date")) {
+      } else if (msg.includes("department")) {
         setStep(1);
-        const key = msg.includes("start date") ? "startDate" : "endDate";
-        setFieldErrors({ [key]: err.message });
+        setFieldErrors({ department: err.message });
+      } else if (msg.includes("joining date") || msg.includes("start date")) {
+        setStep(1);
+        setFieldErrors({ startDate: err.message });
+      } else if (msg.includes("end date")) {
+        setStep(1);
+        setFieldErrors({ endDate: err.message });
       } else {
         toast({ title: "Error", description: err.message, variant: "destructive" });
       }
@@ -290,12 +296,29 @@ export function LetterGenerator() {
     { title: "Signatory", subtitle: "Review & create" },
   ];
 
+  function validateStep1(): boolean {
+    const errors: Record<string, string> = {};
+    if (!form.employeeId) errors.employeeSearch = "Please search and select an employee before continuing.";
+    if (!form.employeeName) errors.employeeName = "Full name is required.";
+    if (!form.designation) errors.designation = "Designation is required.";
+    if (!form.department) errors.department = "Department is required.";
+    if (!form.startDate) errors.startDate = "Start date is required.";
+    const endDateRequired = ["experience", "internship_completion", "relieving"].includes(form.templateType);
+    if (endDateRequired && !form.endDate) errors.endDate = "End date is required for this letter type.";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function handleNext() {
+    if (step === 1) {
+      if (!validateStep1()) return;
+    }
+    setFieldErrors({});
+    setStep(s => s + 1);
+  }
+
   function canNext() {
     if (step === 0) return !!form.templateType;
-    if (step === 1) {
-      const endDateRequired = ["experience", "internship_completion", "relieving"].includes(form.templateType);
-      return !!form.employeeId && !!form.employeeName && !!form.designation && !!form.startDate && (!endDateRequired || !!form.endDate);
-    }
     if (step === 2) return true;
     return !!form.signatoryName;
   }
@@ -354,23 +377,27 @@ export function LetterGenerator() {
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <Label>Search {isIntern ? "Intern" : "Employee"}</Label>
+              <Label>Search {isIntern ? "Intern" : "Employee"} *</Label>
               <div className="relative mt-1">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name, ID, or email..."
                   value={employeeSearch}
-                  onChange={e => setEmployeeSearch(e.target.value)}
-                  className="pl-9"
+                  onChange={e => { setEmployeeSearch(e.target.value); setFieldErrors(prev => ({ ...prev, employeeSearch: "" })); }}
+                  className={`pl-9 ${fieldErrors.employeeSearch ? "border-destructive" : ""}`}
                   data-testid="input-employee-search"
                 />
               </div>
+              {form.employeeId && !fieldErrors.employeeSearch && (
+                <p className="text-xs text-muted-foreground mt-1">{form.employeeName} selected</p>
+              )}
+              {fieldErrors.employeeSearch && <p className="text-xs text-destructive mt-1" data-testid="error-employee-search">{fieldErrors.employeeSearch}</p>}
               {employeeSearch && filteredEmployees.length > 0 && (
                 <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
                   {filteredEmployees.map((emp) => (
                     <button
                       key={emp.id}
-                      onClick={() => selectEmployee(emp)}
+                      onClick={() => { selectEmployee(emp); setFieldErrors(prev => ({ ...prev, employeeSearch: "", employeeName: "" })); }}
                       className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-0"
                       data-testid={`btn-select-employee-${emp.id}`}
                     >
@@ -385,8 +412,9 @@ export function LetterGenerator() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Full Name *</Label>
-                <Input value={form.employeeName} onChange={e => setForm(prev => ({ ...prev, employeeName: e.target.value }))} data-testid="input-employee-name" />
-                {form.employeeId && <p className="text-xs text-muted-foreground mt-1">Auto-filled — edit if needed</p>}
+                <Input value={form.employeeName} onChange={e => { setForm(prev => ({ ...prev, employeeName: e.target.value })); setFieldErrors(prev => ({ ...prev, employeeName: "" })); }} data-testid="input-employee-name" className={fieldErrors.employeeName ? "border-destructive" : ""} />
+                {form.employeeId && !fieldErrors.employeeName && <p className="text-xs text-muted-foreground mt-1">Auto-filled — edit if needed</p>}
+                {fieldErrors.employeeName && <p className="text-xs text-destructive mt-1" data-testid="error-employee-name">{fieldErrors.employeeName}</p>}
               </div>
               <div>
                 <Label>{isIntern ? "Intern" : "Employee"} ID</Label>
@@ -398,8 +426,9 @@ export function LetterGenerator() {
                 {fieldErrors.designation && <p className="text-xs text-destructive mt-1" data-testid="error-designation">{fieldErrors.designation}</p>}
               </div>
               <div>
-                <Label>Department</Label>
-                <Input value={form.department} onChange={e => setForm(prev => ({ ...prev, department: e.target.value }))} placeholder="e.g. Engineering" data-testid="input-department" />
+                <Label>Department *</Label>
+                <Input value={form.department} onChange={e => { setForm(prev => ({ ...prev, department: e.target.value })); setFieldErrors(prev => ({ ...prev, department: "" })); }} placeholder="e.g. Engineering" data-testid="input-department" className={fieldErrors.department ? "border-destructive" : ""} />
+                {fieldErrors.department && <p className="text-xs text-destructive mt-1" data-testid="error-department">{fieldErrors.department}</p>}
               </div>
               <div>
                 <Label>Start Date *</Label>
@@ -622,7 +651,7 @@ export function LetterGenerator() {
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           {step < steps.length - 1 ? (
-            <Button onClick={() => { setStep(s => s + 1); setFieldErrors({}); }} disabled={!canNext()} data-testid="btn-next-step">
+            <Button onClick={handleNext} disabled={step !== 1 && !canNext()} data-testid="btn-next-step">
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (

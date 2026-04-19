@@ -4578,7 +4578,7 @@ export async function registerRoutes(
         body.customOverrideBy = req.session.userId!;
         body.customOverrideAt = new Date();
       }
-      const resolvedDesignation = req.body.designation || employee.designation || "";
+      const resolvedDesignation = (req.body.designation || employee.designation || "").trim();
       if (!resolvedDesignation) {
         return res.status(400).json({ error: "Designation is required. Please enter a designation for this employee." });
       }
@@ -4587,17 +4587,33 @@ export async function registerRoutes(
         const dept = await storage.getDepartment(employee.departmentId);
         derivedDepartment = dept?.name || "";
       }
+      const resolvedDepartment = (req.body.department || derivedDepartment || "").trim();
+      if (!resolvedDepartment) {
+        return res.status(400).json({ error: "Department is required. Please enter a department for this employee." });
+      }
       const fullName = `${employee.firstName} ${employee.lastName}`.trim();
       const resolvedEmployeeName = (req.body.employeeName || fullName).trim();
       if (!resolvedEmployeeName) {
         return res.status(400).json({ error: "Employee name could not be determined. Please ensure the employee record has a first and last name." });
+      }
+      // Write back any values HR supplied that were missing from the employee profile
+      const profileUpdates: Record<string, unknown> = {};
+      if (!employee.designation && resolvedDesignation) profileUpdates.designation = resolvedDesignation;
+      if (!employee.joiningDate && req.body.startDate) profileUpdates.joiningDate = req.body.startDate;
+      if (!employee.departmentId && resolvedDepartment) {
+        const allDepts = await storage.getDepartments();
+        const matched = allDepts.find((d: { id: string; name: string }) => d.name.toLowerCase() === resolvedDepartment.toLowerCase());
+        if (matched) profileUpdates.departmentId = matched.id;
+      }
+      if (Object.keys(profileUpdates).length > 0) {
+        await storage.updateAdminUser(req.body.employeeId, profileUpdates);
       }
       const data = {
         ...body,
         employeeName: resolvedEmployeeName,
         employeeCode: employee.employeeId || "",
         designation: resolvedDesignation,
-        department: derivedDepartment || req.body.department || "",
+        department: resolvedDepartment,
         location: req.body.location || employee.location || "",
         createdBy: req.session.userId!,
         status: "draft",
