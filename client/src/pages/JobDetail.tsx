@@ -220,13 +220,13 @@ function DescriptionRenderer({ segments }: { segments: DescriptionSegment[] }) {
   }
 
   return (
-    <div className="space-y-3 text-sm text-foreground/85 leading-relaxed" data-testid="text-job-description">
+    <div className="space-y-3 text-[15px] text-gray-700 dark:text-gray-300 leading-7" data-testid="text-job-description">
       {segments.map((seg, idx) => {
         if (seg.type === "heading") {
           return (
             <h3
               key={idx}
-              className="text-base font-semibold text-foreground border-l-4 border-primary pl-3 mt-5 first:mt-0"
+              className="text-[16px] font-semibold text-gray-900 dark:text-gray-100 border-l-4 border-primary pl-3 mt-6 first:mt-0"
             >
               {seg.content}
             </h3>
@@ -234,15 +234,15 @@ function DescriptionRenderer({ segments }: { segments: DescriptionSegment[] }) {
         }
         if (seg.type === "bullets") {
           return (
-            <ul key={idx} className="list-disc pl-5 space-y-1.5">
+            <ul key={idx} className="list-disc pl-5 space-y-2 text-gray-700 dark:text-gray-300">
               {seg.content.map((item, j) => (
-                <li key={j}>{item}</li>
+                <li key={j} className="leading-relaxed">{item}</li>
               ))}
             </ul>
           );
         }
         return (
-          <p key={idx} className="text-muted-foreground">
+          <p key={idx} className="text-gray-700 dark:text-gray-300">
             {seg.content}
           </p>
         );
@@ -563,7 +563,7 @@ export default function JobDetail() {
                 <div className="lg:col-start-1 lg:row-start-1 space-y-6 min-w-0">
                   <Card>
                     <CardContent className="pt-6">
-                      <h2 className="text-lg font-semibold mb-5">Job Description</h2>
+                      <h2 className="text-lg font-semibold pb-4 mb-5 border-b border-border">Job Description</h2>
                       <DescriptionRenderer segments={descriptionSegments} />
                     </CardContent>
                   </Card>
