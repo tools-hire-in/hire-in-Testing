@@ -39,6 +39,7 @@ import MyDocuments from "@/pages/admin/hr/MyDocuments";
 import HRTools from "@/pages/admin/hr/HRTools";
 import JobApplications from "@/pages/admin/JobApplications";
 import OnboardAccept from "@/pages/OnboardAccept";
+import AddendumAccept from "@/pages/AddendumAccept";
 import MyTraining from "@/pages/admin/hr/MyTraining";
 import TrainingManagement from "@/pages/admin/hr/TrainingManagement";
 import TeamAttendance from "@/pages/admin/hr/TeamAttendance";
@@ -94,6 +95,7 @@ function PublicRouter() {
       <Route path="/it-staffing" component={ITStaffing} />
       <Route path="/ehealthcare-staffing" component={EHealthcareStaffing} />
       <Route path="/onboard/:token" component={OnboardAccept} />
+      <Route path="/addendum/:token" component={AddendumAccept} />
       <Route path="/verify" component={VerifyLetter} />
 
       <Route path="/admin/login" component={AdminLogin} />
@@ -152,6 +154,7 @@ function EmployeeRouter() {
       <Route path="/">{() => <Redirect to="/admin/login" />}</Route>
       <Route path="/login">{() => <Redirect to="/admin/login" />}</Route>
       <Route path="/onboard/:token" component={OnboardAccept} />
+      <Route path="/addendum/:token" component={AddendumAccept} />
       <Route path="/verify" component={VerifyLetter} />
 
       <Route path="/admin/login" component={AdminLogin} />

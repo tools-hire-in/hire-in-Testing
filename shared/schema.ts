@@ -1014,6 +1014,86 @@ export const insertSectionAcknowledgementSchema = createInsertSchema(sectionAckn
 export const insertTrackCompletionSchema = createInsertSchema(trackCompletions).omit({ id: true, completedAt: true });
 export const insertOnboardingAuditEventSchema = createInsertSchema(onboardingAuditEvents).omit({ id: true, createdAt: true });
 
+// ==========================================
+// OFFER LETTER ADDENDUMS
+// ==========================================
+
+export const offerLetterAddendumTypeEnum = pgEnum("offer_letter_addendum_type", [
+  "salary_revision",
+  "role_change",
+  "probation_extension",
+  "combined",
+  "custom",
+]);
+
+export const offerLetterAddendumStatusEnum = pgEnum("offer_letter_addendum_status", [
+  "draft",
+  "sent",
+  "accepted",
+  "countersigned",
+  "cancelled",
+]);
+
+export const offerLetterAddendums = pgTable("offer_letter_addendums", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  offerLetterId: varchar("offer_letter_id").notNull().references(() => offerLetters.id),
+  token: varchar("token").notNull().unique(),
+  addendumType: offerLetterAddendumTypeEnum("addendum_type").notNull(),
+  status: offerLetterAddendumStatusEnum("status").notNull().default("draft"),
+
+  oldDesignation: varchar("old_designation"),
+  newDesignation: varchar("new_designation"),
+  oldDepartment: varchar("old_department"),
+  newDepartment: varchar("new_department"),
+  oldSalary: varchar("old_salary"),
+  newSalary: varchar("new_salary"),
+  oldSalaryInWords: varchar("old_salary_in_words"),
+  newSalaryInWords: varchar("new_salary_in_words"),
+  oldConfirmationDate: varchar("old_confirmation_date"),
+  newConfirmationDate: varchar("new_confirmation_date"),
+  customClauseTitle: varchar("custom_clause_title"),
+  customClauseText: text("custom_clause_text"),
+
+  effectiveDate: varchar("effective_date"),
+  reason: text("reason"),
+
+  hrManagerName: varchar("hr_manager_name"),
+  issuedBy: varchar("issued_by").references(() => adminUsers.id),
+  issuedAt: timestamp("issued_at"),
+  candidateName: varchar("candidate_name").notNull(),
+
+  acceptedAt: timestamp("accepted_at"),
+  acceptedIp: varchar("accepted_ip"),
+  acceptedName: varchar("accepted_name"),
+  authCode: varchar("auth_code"),
+  documentHash: varchar("document_hash"),
+
+  counterSignedBy: varchar("counter_signed_by").references(() => adminUsers.id),
+  counterSignedAt: timestamp("counter_signed_at"),
+  counterAuthCode: varchar("counter_auth_code"),
+  counterDocumentHash: varchar("counter_document_hash"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOfferLetterAddendumSchema = createInsertSchema(offerLetterAddendums).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+  acceptedIp: true,
+  acceptedName: true,
+  authCode: true,
+  documentHash: true,
+  counterSignedBy: true,
+  counterSignedAt: true,
+  counterAuthCode: true,
+  counterDocumentHash: true,
+  issuedAt: true,
+});
+
+export type OfferLetterAddendum = typeof offerLetterAddendums.$inferSelect;
+export type InsertOfferLetterAddendum = z.infer<typeof insertOfferLetterAddendumSchema>;
+
 // System settings table (key-value config store)
 export const systemSettings = pgTable("system_settings", {
   key: varchar("key").primaryKey(),

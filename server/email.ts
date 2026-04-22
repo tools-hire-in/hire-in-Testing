@@ -735,6 +735,122 @@ export async function sendSelfReviewDueReminderEmail(options: {
   }
 }
 
+export async function sendAddendumEmail(options: {
+  to: string;
+  candidateName: string;
+  addendumType: string;
+  acceptUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const typeLabels: Record<string, string> = {
+      salary_revision: "Salary Revision",
+      role_change: "Role / Title Change",
+      probation_extension: "Probation Extension",
+      combined: "Combined Role & Salary Change",
+      custom: "Custom Amendment",
+    };
+    const typeLabel = typeLabels[options.addendumType] || "Amendment";
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions" },
+      subject: `Amendment to Your Offer — ${typeLabel}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Amendment</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Dear ${options.candidateName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              An amendment (<strong>${typeLabel}</strong>) to your offer letter has been issued by Rayomind Solutions.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">
+              Please review the updated terms and provide your digital signature by clicking the button below.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.acceptUrl}" style="display: inline-block; background-color: #1e40af; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                Review & Sign Addendum
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; margin: 16px 0 0;">
+              If the button doesn't work, copy and paste this link in your browser:<br/>
+              <a href="${options.acceptUrl}" style="color: #3b82f6; word-break: break-all;">${options.acceptUrl}</a>
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.candidateName},\n\nAn amendment (${typeLabel}) to your offer letter has been issued.\n\nPlease review and sign at:\n${options.acceptUrl}\n\nBest regards,\nRayomind Solutions`,
+    };
+    await client.send(msg);
+    console.log(`Addendum email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send addendum email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendAddendumAcceptedEmail(options: {
+  to: string;
+  candidateName: string;
+  addendumType: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const typeLabels: Record<string, string> = {
+      salary_revision: "Salary Revision",
+      role_change: "Role / Title Change",
+      probation_extension: "Probation Extension",
+      combined: "Combined Role & Salary Change",
+      custom: "Custom Amendment",
+    };
+    const typeLabel = typeLabels[options.addendumType] || "Amendment";
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions" },
+      subject: `Addendum Signed — ${options.candidateName} (${typeLabel})`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions</h1>
+            <p style="color: #dcfce7; margin: 8px 0 0; font-size: 14px;">Addendum Accepted</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Addendum Signed</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              <strong>${options.candidateName}</strong> has reviewed and digitally signed the <strong>${typeLabel}</strong> addendum to their offer letter.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              You may now counter-sign the addendum from the HR Tools → Offer Letters dashboard.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `${options.candidateName} has signed the ${typeLabel} addendum. Please counter-sign from the HR Tools dashboard.`,
+    };
+    await client.send(msg);
+    console.log(`Addendum accepted notification sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send addendum accepted email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendCheckInReminderEmail(options: {
   to: string;
   firstName: string;

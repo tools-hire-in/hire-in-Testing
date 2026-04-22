@@ -12,13 +12,14 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
+import { generateAddendumDocx } from "./offerLetterAddendum";
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
@@ -3433,6 +3434,392 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Counter-sign offer letter error:", error);
       res.status(500).json({ error: "Failed to counter-sign offer" });
+    }
+  });
+
+  // ==========================================
+  // OFFER LETTER ADDENDUMS
+  // ==========================================
+
+  // List addendums for an offer letter
+  app.get("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const addendums = await storage.getAddendumsForOffer(req.params.offerId);
+      res.json(addendums);
+    } catch (error) {
+      console.error("List addendums error:", error);
+      res.status(500).json({ error: "Failed to fetch addendums" });
+    }
+  });
+
+  // Create addendum + send email
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const offerLetter = await storage.getOfferLetter(req.params.offerId);
+      if (!offerLetter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+      if (offerLetter.status !== "countersigned" && offerLetter.status !== "onboarded") {
+        return res.status(400).json({ error: "Can only create addendums for countersigned or onboarded offers" });
+      }
+
+      const {
+        addendumType, effectiveDate, reason, hrManagerName,
+        oldDesignation, newDesignation, oldDepartment, newDepartment,
+        oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
+        oldConfirmationDate, newConfirmationDate,
+        customClauseTitle, customClauseText,
+      } = req.body;
+
+      if (!addendumType || !effectiveDate) {
+        return res.status(400).json({ error: "addendumType and effectiveDate are required" });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const actorId = req.session.userId!;
+
+      const addendum = await storage.createAddendum({
+        offerLetterId: offerLetter.id,
+        token,
+        addendumType,
+        status: "sent",
+        candidateName: offerLetter.candidateName,
+        effectiveDate,
+        reason: reason || null,
+        hrManagerName: hrManagerName || offerLetter.hrManagerName || "HR Manager",
+        issuedBy: actorId,
+        oldDesignation: oldDesignation || null,
+        newDesignation: newDesignation || null,
+        oldDepartment: oldDepartment || null,
+        newDepartment: newDepartment || null,
+        oldSalary: oldSalary || null,
+        newSalary: newSalary || null,
+        oldSalaryInWords: oldSalaryInWords || null,
+        newSalaryInWords: newSalaryInWords || null,
+        oldConfirmationDate: oldConfirmationDate || null,
+        newConfirmationDate: newConfirmationDate || null,
+        customClauseTitle: customClauseTitle || null,
+        customClauseText: customClauseText || null,
+      });
+
+      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/addendum/${token}`;
+
+      const emailResult = await sendAddendumEmail({
+        to: offerLetter.candidatePersonalEmail,
+        candidateName: offerLetter.candidateName,
+        addendumType,
+        acceptUrl,
+      });
+
+      if (!emailResult.success) {
+        console.error(`[Addendum] Email delivery failed: ${emailResult.error}`);
+      }
+
+      await storage.createAuditLog({
+        action: "addendum_created",
+        actorId,
+        changes: { addendumId: addendum.id, offerId: offerLetter.id, addendumType, emailSent: emailResult.success },
+      });
+
+      res.json({ ...addendum, emailSent: emailResult.success });
+    } catch (error: any) {
+      console.error("Create addendum error:", error?.message || error);
+      res.status(500).json({ error: "Failed to create addendum", detail: error?.message });
+    }
+  });
+
+  // Download addendum DOCX
+  app.get("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/download", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum || addendum.offerLetterId !== req.params.offerId) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+      if (!offerLetter) {
+        return res.status(404).json({ error: "Parent offer letter not found" });
+      }
+
+      const buffer = await generateAddendumDocx({
+        candidateName: addendum.candidateName,
+        originalOfferDate: offerLetter.offerDate || "",
+        originalDesignation: offerLetter.designation,
+        effectiveDate: addendum.effectiveDate || "",
+        hrManagerName: addendum.hrManagerName || "HR Manager",
+        addendumType: addendum.addendumType,
+        oldDesignation: addendum.oldDesignation || undefined,
+        newDesignation: addendum.newDesignation || undefined,
+        oldDepartment: addendum.oldDepartment || undefined,
+        newDepartment: addendum.newDepartment || undefined,
+        oldSalary: addendum.oldSalary || undefined,
+        newSalary: addendum.newSalary || undefined,
+        oldSalaryInWords: addendum.oldSalaryInWords || undefined,
+        newSalaryInWords: addendum.newSalaryInWords || undefined,
+        oldConfirmationDate: addendum.oldConfirmationDate || undefined,
+        newConfirmationDate: addendum.newConfirmationDate || undefined,
+        customClauseTitle: addendum.customClauseTitle || undefined,
+        customClauseText: addendum.customClauseText || undefined,
+        reason: addendum.reason || undefined,
+      });
+
+      const fileName = `${addendum.candidateName.replace(/\s+/g, "_")}_Addendum_${addendum.addendumType}.docx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (error: any) {
+      console.error("Download addendum error:", error);
+      res.status(500).json({ error: "Failed to generate addendum document" });
+    }
+  });
+
+  // Resend addendum email
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/send", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum || addendum.offerLetterId !== req.params.offerId) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+      if (!offerLetter) return res.status(404).json({ error: "Parent offer letter not found" });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/addendum/${addendum.token}`;
+
+      const emailResult = await sendAddendumEmail({
+        to: offerLetter.candidatePersonalEmail,
+        candidateName: addendum.candidateName,
+        addendumType: addendum.addendumType,
+        acceptUrl,
+      });
+
+      if (addendum.status === "draft") {
+        await storage.updateAddendumStatus(addendum.id, { status: "sent" });
+      }
+
+      await storage.createAuditLog({
+        action: "addendum_resent",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, offerId: req.params.offerId, emailSent: emailResult.success },
+      });
+
+      res.json({ success: emailResult.success, error: emailResult.success ? undefined : emailResult.error });
+    } catch (error: any) {
+      console.error("Resend addendum error:", error);
+      res.status(500).json({ error: "Failed to resend addendum email" });
+    }
+  });
+
+  // Cancel addendum
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum || addendum.offerLetterId !== req.params.offerId) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      if (addendum.status !== "draft" && addendum.status !== "sent") {
+        return res.status(400).json({ error: "Can only cancel draft or sent addendums" });
+      }
+      await storage.updateAddendumStatus(addendum.id, { status: "cancelled" });
+      await storage.createAuditLog({
+        action: "addendum_cancelled",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, previousStatus: addendum.status },
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Cancel addendum error:", error);
+      res.status(500).json({ error: "Failed to cancel addendum" });
+    }
+  });
+
+  // Public: View addendum by token
+  app.get("/api/addendum/:token", async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendumByToken(req.params.token);
+      if (!addendum) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+      if (!offerLetter) {
+        return res.status(404).json({ error: "Parent offer letter not found" });
+      }
+
+      res.json({
+        id: addendum.id,
+        status: addendum.status,
+        addendumType: addendum.addendumType,
+        candidateName: addendum.candidateName,
+        effectiveDate: addendum.effectiveDate,
+        reason: addendum.reason,
+        hrManagerName: addendum.hrManagerName,
+        oldDesignation: addendum.oldDesignation,
+        newDesignation: addendum.newDesignation,
+        oldDepartment: addendum.oldDepartment,
+        newDepartment: addendum.newDepartment,
+        oldSalary: addendum.oldSalary,
+        newSalary: addendum.newSalary,
+        oldSalaryInWords: addendum.oldSalaryInWords,
+        newSalaryInWords: addendum.newSalaryInWords,
+        oldConfirmationDate: addendum.oldConfirmationDate,
+        newConfirmationDate: addendum.newConfirmationDate,
+        customClauseTitle: addendum.customClauseTitle,
+        customClauseText: addendum.customClauseText,
+        acceptedName: addendum.acceptedName,
+        authCode: addendum.authCode,
+        originalOfferDate: offerLetter.offerDate,
+        originalDesignation: offerLetter.designation,
+        offerDate: offerLetter.offerDate,
+      });
+    } catch (error) {
+      console.error("View addendum error:", error);
+      res.status(500).json({ error: "Failed to load addendum" });
+    }
+  });
+
+  // Public: Accept addendum
+  app.post("/api/addendum/:token/accept", async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendumByToken(req.params.token);
+      if (!addendum) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      if (addendum.status === "accepted" || addendum.status === "countersigned") {
+        return res.status(400).json({ error: "This addendum has already been signed", status: addendum.status });
+      }
+      if (addendum.status === "cancelled") {
+        return res.status(400).json({ error: "This addendum has been cancelled and is no longer available for signing" });
+      }
+      if (addendum.status !== "sent") {
+        return res.status(400).json({ error: "This addendum is not yet available for signing" });
+      }
+
+      const { acceptedName } = req.body;
+      if (!acceptedName || acceptedName.trim().toLowerCase() !== addendum.candidateName.trim().toLowerCase()) {
+        return res.status(400).json({ error: `Please type your full name exactly as: "${addendum.candidateName}"` });
+      }
+
+      const signingKey = process.env.OFFER_SIGNING_KEY;
+      if (!signingKey) {
+        return res.status(500).json({ error: "Server configuration error" });
+      }
+
+      const clientIp = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.ip || "unknown";
+      const serverTimestamp = new Date();
+
+      const docContents = JSON.stringify({
+        id: addendum.id,
+        offerLetterId: addendum.offerLetterId,
+        candidateName: addendum.candidateName,
+        addendumType: addendum.addendumType,
+        effectiveDate: addendum.effectiveDate,
+      });
+      const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
+
+      const hmacPayload = `${addendum.id}|${acceptedName.trim()}|${serverTimestamp.toISOString()}|${documentHash}`;
+      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
+      const authCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+
+      await storage.updateAddendumStatus(addendum.id, {
+        status: "accepted",
+        acceptedAt: serverTimestamp,
+        acceptedName: acceptedName.trim(),
+        acceptedIp: clientIp,
+        authCode,
+        documentHash,
+      });
+
+      // Audit trail — acceptance is audited via (a) row fields (acceptedAt/Name/Ip/authCode/documentHash)
+      // and (b) an audit_log entry attributed to the HR creator of the parent offer letter,
+      // since audit_logs requires a valid admin_users FK and this endpoint is unauthenticated.
+      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+      if (offerLetter?.createdBy) {
+        await storage.createAuditLog({
+          action: "addendum_accepted_by_candidate",
+          actorId: offerLetter.createdBy,
+          changes: {
+            addendumId: addendum.id,
+            offerLetterId: addendum.offerLetterId,
+            candidateName: addendum.candidateName,
+            addendumType: addendum.addendumType,
+            authCode,
+            documentHash,
+            acceptedIp: clientIp,
+            acceptedAt: serverTimestamp.toISOString(),
+          },
+        }).catch(e => console.error("[Addendum] Failed to create acceptance audit log:", e));
+      }
+
+      // Notify HR
+      if (offerLetter) {
+        const actor = await storage.getAdminUser(offerLetter.createdBy);
+        const hrEmail = actor?.email || "hr@hire-in.com";
+        await sendAddendumAcceptedEmail({
+          to: hrEmail,
+          candidateName: addendum.candidateName,
+          addendumType: addendum.addendumType,
+        }).catch(e => console.error("[Addendum] Failed to notify HR:", e));
+      }
+
+      res.json({ success: true, authCode, documentHash });
+    } catch (error) {
+      console.error("Accept addendum error:", error);
+      res.status(500).json({ error: "Failed to accept addendum" });
+    }
+  });
+
+  // HR: Counter-sign addendum
+  app.post("/api/hr/tools/addendums/:addendumId/countersign", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+      if (addendum.status !== "accepted") {
+        return res.status(400).json({ error: `Cannot counter-sign — addendum status is '${addendum.status}', must be 'accepted'` });
+      }
+
+      const signingKey = process.env.OFFER_SIGNING_KEY;
+      if (!signingKey) {
+        return res.status(500).json({ error: "Server configuration error" });
+      }
+
+      const now = new Date();
+      const counterDocContents = JSON.stringify({
+        id: addendum.id,
+        candidateName: addendum.candidateName,
+        acceptedName: addendum.acceptedName,
+        authCode: addendum.authCode,
+        documentHash: addendum.documentHash,
+      });
+      const counterDocumentHash = crypto.createHash("sha256").update(counterDocContents).digest("hex");
+
+      const hmacPayload = `${addendum.id}|counter|${req.session.userId}|${now.toISOString()}|${counterDocumentHash}`;
+      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
+      const counterAuthCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+
+      await storage.updateAddendumStatus(addendum.id, {
+        status: "countersigned",
+        counterSignedBy: req.session.userId,
+        counterSignedAt: now,
+        counterAuthCode,
+        counterDocumentHash,
+      });
+
+      await storage.createAuditLog({
+        action: "addendum_countersigned",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, counterAuthCode },
+      });
+
+      res.json({ success: true, counterAuthCode });
+    } catch (error) {
+      console.error("Counter-sign addendum error:", error);
+      res.status(500).json({ error: "Failed to counter-sign addendum" });
     }
   });
 

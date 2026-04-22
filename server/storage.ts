@@ -21,6 +21,7 @@ import {
   employeeBankDetails,
   employeeEmergencyContacts,
   offerLetters,
+  offerLetterAddendums,
   hrLetters,
   systemSettings,
   letterTemplateSentences,
@@ -65,6 +66,8 @@ import {
   type InsertEmployeeEmergencyContact,
   type OfferLetter,
   type InsertOfferLetter,
+  type OfferLetterAddendum,
+  type InsertOfferLetterAddendum,
   type HrLetter,
   type InsertHrLetter,
   type SystemSetting,
@@ -232,6 +235,13 @@ export interface IStorage {
   getOfferLetter(id: string): Promise<OfferLetter | undefined>;
   updateOfferLetter(id: string, updates: Partial<OfferLetter>): Promise<OfferLetter | undefined>;
   getOfferLetters(): Promise<OfferLetter[]>;
+
+  // Offer Letter Addendums
+  createAddendum(data: InsertOfferLetterAddendum): Promise<OfferLetterAddendum>;
+  getAddendumsForOffer(offerLetterId: string): Promise<OfferLetterAddendum[]>;
+  getAddendumByToken(token: string): Promise<OfferLetterAddendum | undefined>;
+  getAddendum(id: string): Promise<OfferLetterAddendum | undefined>;
+  updateAddendumStatus(id: string, updates: Partial<OfferLetterAddendum>): Promise<OfferLetterAddendum | undefined>;
 
   // HR Letters
   createHrLetter(data: InsertHrLetter): Promise<HrLetter>;
@@ -1303,6 +1313,37 @@ export class DatabaseStorage implements IStorage {
   async getOfferLetters(): Promise<OfferLetter[]> {
     return db.select().from(offerLetters)
       .orderBy(desc(offerLetters.createdAt));
+  }
+
+  async createAddendum(data: InsertOfferLetterAddendum): Promise<OfferLetterAddendum> {
+    const [created] = await db.insert(offerLetterAddendums).values(data).returning();
+    return created;
+  }
+
+  async getAddendumsForOffer(offerLetterId: string): Promise<OfferLetterAddendum[]> {
+    return db.select().from(offerLetterAddendums)
+      .where(eq(offerLetterAddendums.offerLetterId, offerLetterId))
+      .orderBy(desc(offerLetterAddendums.createdAt));
+  }
+
+  async getAddendumByToken(token: string): Promise<OfferLetterAddendum | undefined> {
+    const [addendum] = await db.select().from(offerLetterAddendums)
+      .where(eq(offerLetterAddendums.token, token));
+    return addendum;
+  }
+
+  async getAddendum(id: string): Promise<OfferLetterAddendum | undefined> {
+    const [addendum] = await db.select().from(offerLetterAddendums)
+      .where(eq(offerLetterAddendums.id, id));
+    return addendum;
+  }
+
+  async updateAddendumStatus(id: string, updates: Partial<OfferLetterAddendum>): Promise<OfferLetterAddendum | undefined> {
+    const [updated] = await db.update(offerLetterAddendums)
+      .set(updates)
+      .where(eq(offerLetterAddendums.id, id))
+      .returning();
+    return updated;
   }
 
   async createNotification(data: InsertNotification): Promise<Notification> {
