@@ -1,104 +1,46 @@
 # Hire'in Solutions - AI-Powered Recruitment Platform
 
 ## Overview
-Hire'in Solutions is an AI-powered recruitment platform serving as a professional staffing agency specializing in Healthcare, IT, Engineering, and Professional Services. The platform includes a public-facing marketing website with job listings and a comprehensive admin portal. Its core purpose is to streamline recruitment, enhance candidate matching, and provide robust internal HR management, aiming for efficient operations and significant market impact.
+Hire'in Solutions is an AI-powered recruitment platform designed to streamline recruitment, enhance candidate matching, and provide robust internal HR management for a professional staffing agency specializing in Healthcare, IT, Engineering, and Professional Services. It comprises a public-facing marketing website with job listings and a comprehensive admin portal. The platform aims to achieve efficient operations and significant market impact by leveraging AI.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend
-- **Framework**: React 18 with TypeScript
-- **Styling**: Tailwind CSS, Shadcn/ui, CSS variables for theming
-- **State Management**: TanStack Query
-- **Routing**: Wouter
-- **Forms**: React Hook Form with Zod validation
+### UI/UX Decisions
+The platform features a modern UI with React 18, TypeScript, Tailwind CSS, and Shadcn/ui for components. Styling uses CSS variables for theming. A public-facing IT Staffing Marketing Page (`/it-staffing`) includes a hero section, stats strip, interactive slide viewer, and download options, adhering to specific brand colors (Navy #1F3A6E, Orange #F47C20/#F96D3E). Mockup sandboxes exist for design artifacts like LinkedIn cover pages and payslips.
 
-### Backend
-- **Runtime**: Node.js with Express.js
-- **Language**: TypeScript
-- **API Style**: RESTful JSON APIs
-- **Authentication**: Replit Auth (OpenID Connect) and custom email/password (bcrypt)
-- **Session Management**: Express-session with PostgreSQL store
-- **File Uploads**: Multer with presigned URLs for object storage
+### Technical Implementations
+- **Frontend**: React 18, TypeScript, Tailwind CSS, Shadcn/ui, TanStack Query for state, Wouter for routing, React Hook Form with Zod for forms.
+- **Backend**: Node.js with Express.js, TypeScript, RESTful JSON APIs.
+- **Authentication**: Replit Auth (OpenID Connect) and custom email/password (bcrypt), Express-session with PostgreSQL store.
 - **Authorization**: Role-Based Access Control (RBAC) with granular roles.
+- **File Uploads**: Multer with presigned URLs for object storage.
+- **Database**: PostgreSQL with Drizzle ORM, sharing a schema for jobs, applications, contacts, admin users, and the HR portal.
 
-### Database
-- **Type**: PostgreSQL
-- **ORM**: Drizzle ORM
-- **Schema**: Shared, including tables for jobs, applications, contacts, admin_users, and a comprehensive HR portal system.
-
-### HR Portal System
-An integrated internal employee management system within the admin panel:
-- **Employee Features**: Dashboard, attendance, leave management, holiday calendar, profile, tickets, org chart.
-- **Manager Features**: Team attendance viewing, leave request approvals with escalation, configurable attendance thresholds. Proactive training extension requests (before and after due date) with direct manager approval for direct reports.
-- **HR/Admin Features**: Comprehensive HR settings for leave types, holidays, departments, and user management. User exit statuses: **Relieved** (involuntary) and **Left Company** (voluntary resignation) tracked via `employmentStatus` enum. Team Management page has 5 tabs: Active, Disabled, Relieved, Left Company, Deleted. Super Admin-only soft-delete. All non-deleted users (active, disabled, relieved, left-company) are searchable for HR document generation.
-- **Leave Accrual**: Hours-based, monthly leave earning system.
-- **Holiday Management**: Support for regional and mandatory holidays with automated attendance stamping.
-- **Salary Processing**: Automated monthly salary reports with CSV attachments and individual PDF salary slip generation. Configurable report recipients.
-- **HR Tools**:
-    - **Salary Slip Generator**: Generates payslips matching company template, auto-calculates LOP deductions, provides inline preview and PDF download.
-    - **Offer Letter Generator**: Produces DOCX offer letters (Rayomind Solutions branded) with auto-fill from employee records, server-side DOCX generation, and email functionality for digital acceptance.
-    - **Offer Letters Dashboard**: Tracks offer letter statuses (sent, viewed, accepted, countersigned, onboarded, expired, cancelled) with actions for status updates and onboarding initiation.
-    - **Offer Letter Addendum Generator**: Issues amendments to countersigned/onboarded offer letters. Supports 5 types: Salary Revision, Role/Title Change, Probation Extension, Combined Role & Salary, and Custom. Full sign/countersign flow with HMAC-SHA256 cryptographic codes, DOCX generation (Rayomind branded), and email delivery. HR dashboard shows expandable sub-rows per offer with addendum history; public `/addendum/:token` acceptance page for candidates.
-    - **Letter Generator**: Template-based HR letter engine supporting 4 document types (Employee Experience Letter, Internship Completion Letter, Internship Certificate, Relieving Letter). Controlled wording via performance/conduct/completion band dropdowns with deterministic sentence mapping. Multi-step wizard with employee auto-fill, signatory selection, and live letterhead preview.
-    - **Letters Dashboard**: Lists all HR letters with status badges (Draft/Pending Approval/Approved/Issued/Reissued/Revoked), template type filter, search. Actions: approve, issue (generates reference number + HMAC auth code), reissue, revoke with audit trail.
-- **Public Document Verification**: `/verify` page (no auth required) — enter reference number + auth code to verify any issued HR letter. Shows employee name, document type, designation, tenure dates, status. Branded with Rayomind logo.
-- **HR Letters Schema**: `hr_letters` table with template_type enum, person fields, band selections, signatory, cryptographic verification (HMAC-SHA256 truncated to 8-char auth code), full audit trail, custom override support (admin-only with audit logging), reissue chain.
-- **Offer Acceptance Flow**: Public page for candidates to view, verify name, and accept offers, generating cryptographic document hashes.
-- **Counter-Signature Flow**: HR/Admin counter-signs accepted offers, generating additional cryptographic codes.
-- **Manual Adjustments**: HR can manually adjust leave balances with audit trails.
-- **Employee ID System**: Unique ID generation (`HIS-{DEPT}-{WORD}`) with collision avoidance.
-- **My Team Management**: Comprehensive role-based employee management page (`/admin/hr/my-team`). Managers see direct + indirect reports; HR/Ops/Admin/Super Admin see all employees. Features include:
-    - **Read-only views**: Profile, salary & slip history, attendance with punch times, regional holidays, leave balances
-    - **Edit capabilities**: Punch-in/out corrections, profile updates (designation, department, hierarchy level), regional holiday selection changes, emergency contact management, ticket resolution
-    - **Leave tracking**: Leave balances, accrual history, leave request history, apply leave on behalf for past dates (auto-approved)
-    - **Audit trail**: All edits require a mandatory note/reason. Change History tab shows who changed what, before/after diff, when, and why.
+### Feature Specifications
+The platform includes a comprehensive HR Portal System with:
+- **Employee Management**: Dashboard, attendance, leave management (hours-based, monthly accrual), holiday calendar, profile, tickets, org chart. Support for employee exit statuses: Relieved (involuntary) and Left Company (voluntary).
+- **Manager Features**: Team attendance viewing, leave request approvals, configurable attendance thresholds, proactive training extension requests.
+- **HR/Admin Features**: Comprehensive settings for leave types, holidays, departments, and user management. Super Admin soft-delete functionality.
+- **HR Tools**: Salary Slip Generator (PDF, LOP deductions), Offer Letter Generator (DOCX, auto-fill, email, digital acceptance, status tracking, addendum generation with HMAC-SHA256), Template-based Letter Generator (Experience, Internship, Relieving letters with controlled wording).
+- **Public Document Verification**: A `/verify` page for HR letters using reference number and auth code.
+- **Offer Acceptance & Counter-Signature**: Candidate acceptance and HR/Admin counter-signing with cryptographic document hashing.
+- **My Team Management**: Role-based employee management page (`/admin/hr/my-team`) with read-only views, edit capabilities (e.g., punch corrections, profile updates), leave tracking, and an audit trail for all changes.
 - **Post-Onboarding Documents**: Management of employee documents, bank details, and emergency contacts.
-- **Feature Flags System**: Centralized feature flag management stored in `system_settings` table under `feature_flags` key as a JSON object. Togglable from HR Settings page (admin/super_admin only). Available flags: `notifications_enabled`, `document_reminder_email_enabled`. Frontend hook: `useFeatureFlags()` with `isEnabled(flagName)` check. API: `GET/PATCH /api/system/feature-flags`.
-- **In-App Notifications**: Notification system with `notifications` table. Bell icon in admin header with unread count badge (gated behind `notifications_enabled` flag). Endpoints: `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `POST /api/notifications/mark-all-read`. Document reminders create in-app notifications when flag is enabled.
-- **Document Reminder Fix**: The Remind button now properly checks the email send result and returns errors. Email sending is gated behind `document_reminder_email_enabled` flag. When `notifications_enabled` is on, an in-app notification is also created.
+- **Feature Flags**: Centralized management via `system_settings` table for features like notifications, document reminder emails, onboarding training, and performance management.
+- **In-App Notifications**: System with unread count badge, dependent on feature flags.
 - **Security**: Mandatory TOTP 2FA, 30-minute auto session timeout with warning, rolling sessions.
-- **Onboarding Training & SOPs System**: Structured learning tracks with sections, markdown content, quizzes, and acknowledgements.
-    - **HR Admin — Training Management**: Authors tracks, assigns to employees, publishes/unpublishes, and can seed pre-built SOP tracks. When Rayo Academy is enabled, assignments go through Rayo API.
-    - **Employee — My Training**: Displays assigned tracks, provides a player with dwell time gates, quiz logic, and sign-off. When Rayo Academy enabled, shows Rayo-sourced assignments with "Open Rayo Academy" button. Graceful fallback banner when API is unreachable.
-    - **Manager/HR — Training Progress**: Matrix view of employee training progress with drill-down details and CSV export. Uses Rayo Academy team progress API when enabled.
-    - **Feature Flag**: `onboarding_training_enabled` controls visibility for employees.
-    - **Training Compliance Lock**: Overdue training locks portal access for certain roles, blocking actions like punch-in/out. Includes an extension request endorsement workflow.
-    - **Rayo Academy Integration**: External training platform thin-client integration.
-        - **Feature Flags**: `rayo_academy_enabled`, `rayo_academy_api_url`, `rayo_academy_api_key` in `system_settings`.
-        - **API Client**: `server/rayoAcademyClient.ts` wraps all Rayo Academy API calls with graceful fallback to local DB.
-        - **API Routes**: Under `/api/rayo-academy/` namespace — status, tracks, my-assignments, assign, team-progress, compliance-status, track-progress, certificates, provision.
-        - **User Provisioning**: New employees auto-provisioned in Rayo Academy on creation (non-fatal).
-        - **Performance Goal Linking**: `rayoAcademyTrackId` column on `performance_goals` table links dev goals to Rayo tracks.
-        - **Compliance Gating**: AdminLayout compliance check uses Rayo API when enabled, falling back to local.
-        - **Fallback Banner**: "Training data may be delayed" banner shown when Rayo API is unreachable but feature is enabled.
+- **Onboarding Training & SOPs System**: Structured learning tracks with sections, content, quizzes, and acknowledgements. Includes HR Admin management, employee "My Training" views, and manager/HR progress tracking. Features a "Training Compliance Lock" for overdue training.
+- **Performance Management Module**: (Enabled by feature flag) Includes performance goals, check-ins, review cycles, reviews (self/manager), and feedback. Dedicated UI pages for 'My Goals', 'Team Goals', 'Check-Ins', 'My Reviews', 'Team Reviews', 'Review Cycles', 'Feedback', and 'Analytics'. Role-based access and audit logging for all operations.
 
-### Performance Management Module (Phase 1)
-An integrated performance management system behind the `performance_management_enabled` feature flag:
-- **Database Tables**: `performance_goals`, `check_ins`, `review_cycles`, `reviews`, `performance_feedback` with full enum types.
-- **API Routes**: All under `/api/performance/` namespace in `server/performanceRoutes.ts`. Includes Goals CRUD, Check-ins CRUD, Review Cycles management, Reviews (self/manager), Feedback (send/receive), and alerts badge endpoint.
-- **Feature Flag**: `performance_management_enabled` in system_settings, toggleable from HR Settings page. Disabled by default. Admin/HR/Manager always have access; employees see menu items only when flag is enabled.
-- **Sidebar**: Consolidated admin sidebar (~20 items) with 5 groups: Recruitment (3), My Workspace (9), Team Management (4), Performance (6), Administration (5). Combined pages use tabbed views: Goals (My+Team tabs), Reviews (My+Team tabs), Attendance (incl. Regularization Requests tab), Profile (incl. Emergency Contacts tab), Recruitment (Jobs+Applications tabs), Reports & Compliance (Salary+Compliance+Audit tabs). Old routes redirect to new tabbed equivalents via query params.
-- **Email Templates**: Review cycle opened notification, self-review due reminder, check-in reminder (24hr before) in `server/email.ts`.
-- **Role-Based Access**: All endpoints enforce role-based access. Manager endpoints validate team membership via `getTeamMembers()`. All write operations create audit logs.
-- **UI Pages**:
-  - **My Goals** (`/admin/performance/goals`): Employee goal tracking with progress bars, status badges, filters (all/active/completed), create/edit/delete with validation. Categories include professional development, project delivery, leadership, technical skills, communication, innovation.
-  - **Team Goals** (`/admin/performance/team-goals`): Manager/HR/Admin view of direct reports' goals grouped by employee in collapsible sections. Summary stats (total, % completed, % in progress). Ability to assign goals to team members.
-  - **Check-Ins** (`/admin/performance/check-ins`): 1:1 meeting management with upcoming/past tabs. Create, edit, add notes (employee & manager), action items, star ratings, and mark complete. Manager sees all direct reports; employees see their own check-ins.
-  - **My Reviews** (`/admin/performance/reviews`): Employees view active/past reviews and submit self-reviews (goals reflection, strengths, improvements, development needs, 1-5 star rating). Includes Rayo Academy CTA button.
-  - **Team Reviews** (`/admin/performance/team-reviews`): Managers see direct reports' review status and submit manager assessments with side-by-side self-review reference.
-  - **Review Cycles** (`/admin/performance/review-cycles`): HR/Admin create and manage review cycles (annual/semi-annual/quarterly) with status transitions (draft→active→in_review→closed) and participant breakdown.
-  - **Feedback** (`/admin/performance/feedback`): Send/receive feedback with type badges (praise/constructive/general), recipient search, and optional goal linking.
-  - **Analytics** (`/admin/performance/analytics`): Summary cards (active goals, completion %, review completion rate, avg rating, feedback count) with department breakdown for HR/Admin.
-- **Rayo Academy CTA**: Configurable URL (via HR Settings) that opens in new tab with pre-filled employee email. Settings stored via system_settings API.
-- **Sidebar Badge**: Performance alerts badge on "My Goals" showing count of pending self-reviews and upcoming check-ins.
-
-### UI/UX & Design Artifacts
-- **Mockup Sandbox**: Serves design-only components for LinkedIn cover pages, payslips, and a comprehensive IT Staffing Marketing Deck.
-- **IT Staffing Marketing Deck**: An 11-slide deck focusing on IT Staffing, detailing services, models, AI tools, sourcing processes, and contact information. Uses specific brand colors: Navy #1F3A6E, Orange #F47C20/#F96D3E.
-- **IT Staffing Marketing Page (`/it-staffing`)**: Public-facing page featuring a hero section, stats strip, interactive slide viewer, download options (PDF, PPT), highlights, and CTA footer. Includes SEO optimization and navigation integration.
+### System Design Choices
+- **Modular Design**: Features like the HR Portal and Performance Management are designed as integrated modules within the admin panel.
+- **Role-Based Access Control**: Granular access control applied across the system.
+- **Audit Trails**: All significant actions, especially write operations and manual adjustments, are logged.
+- **Internationalization**: Support for regional holidays and potentially other localized content.
+- **Email Integration**: Extensive use of transactional emails for various system events.
 
 ## External Dependencies
 
@@ -106,18 +48,18 @@ An integrated performance management system behind the `performance_management_e
 - **PostgreSQL**: Primary data store and session management.
 
 ### Authentication
-- **Replit Auth**: OpenID Connect provider.
+- **Replit Auth**: OpenID Connect provider for user authentication.
 
 ### File Storage
 - **Google Cloud Storage**: Object storage for file uploads.
-- **Uppy**: Client-side file upload UI.
 
 ### Email Service
-- **SendGrid**: For transactional emails (invitations, welcome, password resets, reminders).
+- **SendGrid**: For transactional emails.
 
 ### ATS Integration
-- **Ceipal ATS**: Integration for job synchronization (pull from Ceipal) and applicant data pushing (`savecustomapplicantdetails` endpoint) using JWT token-based authentication. Supports both internal `ceipalJobId` and human-readable `ceipalJobCode`.
+- **Ceipal ATS**: Integration for job synchronization and applicant data pushing using JWT.
 
 ### External Services
-- **Google Fonts**: Typography.
-- **Unsplash**: Hero carousel images.
+- **Google Fonts**: For typography.
+- **Unsplash**: For hero carousel images.
+- **Rayo Academy**: Optional external training platform integration (thin-client) with API calls and graceful fallback.
