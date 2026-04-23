@@ -220,6 +220,27 @@ export async function registerRoutes(
   // PUBLIC API ROUTES
   // ==========================================
 
+  const SAFE_RAW_DATA_KEYS = [
+    "primary_skills", "secondary_skills", "tax_terms", "work_authorization",
+    "experience", "number_of_positions", "required_hours_week", "shift",
+  ];
+
+  function sanitizePublicJob(job: any) {
+    const { rawData, billRate, facility, ...rest } = job;
+    return rest;
+  }
+
+  function sanitizePublicJobDetail(job: any) {
+    const { rawData, billRate, facility, ...rest } = job;
+    const extraFields: Record<string, any> = {};
+    if (rawData && typeof rawData === "object") {
+      for (const key of SAFE_RAW_DATA_KEYS) {
+        if (rawData[key] !== undefined) extraFields[key] = rawData[key];
+      }
+    }
+    return { ...rest, ...extraFields };
+  }
+
   // Get active jobs (public)
   app.get("/api/jobs", async (req, res) => {
     try {
@@ -230,7 +251,7 @@ export async function registerRoutes(
         state: state as string,
         jobType: jobType as string,
       });
-      res.json(jobs);
+      res.json(jobs.map(sanitizePublicJob));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch jobs" });
     }
@@ -253,7 +274,7 @@ export async function registerRoutes(
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
       }
-      res.json(job);
+      res.json(sanitizePublicJobDetail(job));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch job" });
     }

@@ -5,7 +5,6 @@ import {
   MapPin,
   DollarSign,
   Calendar,
-  Building2,
   ArrowLeft,
   Share2,
   Clock,
@@ -262,7 +261,7 @@ export default function JobDetail() {
     enabled: !!jobId,
   });
 
-  const rawData = (job?.rawData ?? {}) as Record<string, any>;
+  const jobExtra = (job ?? {}) as Record<string, any>;
 
   const { data: similarJobsRaw } = useQuery<Job[]>({
     queryKey: ["/api/jobs", { specialty: job?.specialty, limit: 4 }],
@@ -286,10 +285,10 @@ export default function JobDetail() {
 
   const descriptionSegments = job?.description ? parseJobDescription(job.description) : [];
 
-  const workAuthChips = parseWorkAuthChips(rawData.tax_terms);
+  const workAuthChips = parseWorkAuthChips(jobExtra.tax_terms);
 
-  const primarySkillsRaw: string = rawData.primary_skills ?? "";
-  const secondarySkillsRaw: string = rawData.secondary_skills ?? "";
+  const primarySkillsRaw: string = jobExtra.primary_skills ?? "";
+  const secondarySkillsRaw: string = jobExtra.secondary_skills ?? "";
   const primarySkills = parseSkills(primarySkillsRaw);
   const secondarySkills = parseSkills(secondarySkillsRaw);
   const fallbackSkills = !primarySkills.length && job?.requirements ? parseSkills(job.requirements.replace(/<[^>]*>/g, "")) : [];
@@ -297,11 +296,11 @@ export default function JobDetail() {
   const payRateDisplay = formatPayRate(job?.payRate);
   const durationDisplay = cleanDuration(job?.duration);
 
-  const shiftDisplay: string = rawData.shift ?? job?.shift ?? "";
-  const workAuth: string = rawData.work_authorization ?? "";
-  const experience: string = rawData.experience ?? "";
-  const positions: string = rawData.number_of_positions ? String(rawData.number_of_positions) : "";
-  const hoursPerWeek: string = rawData.required_hours_week ? String(rawData.required_hours_week) : "";
+  const shiftDisplay: string = jobExtra.shift ?? job?.shift ?? "";
+  const workAuth: string = jobExtra.work_authorization ?? "";
+  const experience: string = jobExtra.experience ?? "";
+  const positions: string = jobExtra.number_of_positions ? String(jobExtra.number_of_positions) : "";
+  const hoursPerWeek: string = jobExtra.required_hours_week ? String(jobExtra.required_hours_week) : "";
 
   return (
     <Layout>
@@ -348,12 +347,6 @@ export default function JobDetail() {
                     {!job.isActive && <Badge variant="secondary">Closed</Badge>}
                   </div>
 
-                  {job.facility && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Building2 className="h-4 w-4 shrink-0" />
-                      <span data-testid="text-job-facility">{job.facility}</span>
-                    </div>
-                  )}
 
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
@@ -415,7 +408,7 @@ export default function JobDetail() {
                         <DetailRow
                           icon={<Clock className="h-4 w-4" />}
                           label="Employment Type"
-                          value={job.jobType ?? rawData.tax_terms ?? ""}
+                          value={job.jobType ?? jobExtra.tax_terms ?? ""}
                           testId="text-job-type"
                         />
                         <DetailRow
