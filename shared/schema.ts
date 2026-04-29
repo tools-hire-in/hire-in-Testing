@@ -1024,6 +1024,7 @@ export const offerLetterAddendumTypeEnum = pgEnum("offer_letter_addendum_type", 
   "probation_extension",
   "combined",
   "custom",
+  "device_allocation",
 ]);
 
 export const offerLetterAddendumStatusEnum = pgEnum("offer_letter_addendum_status", [
@@ -1053,6 +1054,7 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   newConfirmationDate: varchar("new_confirmation_date"),
   customClauseTitle: varchar("custom_clause_title"),
   customClauseText: text("custom_clause_text"),
+  deviceItems: jsonb("device_items"),
 
   effectiveDate: varchar("effective_date"),
   reason: text("reason"),

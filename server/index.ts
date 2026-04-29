@@ -311,6 +311,64 @@ async function ensureHrLettersTables() {
   }
 }
 
+async function ensureOfferLetterAddendumsTable() {
+  try {
+    const result = await db.execute(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'offer_letter_addendums'
+    `);
+    if (result.rows.length > 0) {
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS device_items JSONB
+      `);
+      return;
+    }
+
+    log("Creating offer_letter_addendums table...");
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS offer_letter_addendums (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        offer_letter_id VARCHAR NOT NULL REFERENCES offer_letters(id),
+        token VARCHAR NOT NULL UNIQUE,
+        addendum_type VARCHAR NOT NULL,
+        status VARCHAR NOT NULL DEFAULT 'draft',
+        old_designation VARCHAR,
+        new_designation VARCHAR,
+        old_department VARCHAR,
+        new_department VARCHAR,
+        old_salary VARCHAR,
+        new_salary VARCHAR,
+        old_salary_in_words VARCHAR,
+        new_salary_in_words VARCHAR,
+        old_confirmation_date VARCHAR,
+        new_confirmation_date VARCHAR,
+        custom_clause_title VARCHAR,
+        custom_clause_text TEXT,
+        device_items JSONB,
+        effective_date VARCHAR,
+        reason TEXT,
+        hr_manager_name VARCHAR,
+        issued_by VARCHAR REFERENCES admin_users(id),
+        issued_at TIMESTAMP,
+        candidate_name VARCHAR NOT NULL,
+        accepted_at TIMESTAMP,
+        accepted_ip VARCHAR,
+        accepted_name VARCHAR,
+        auth_code VARCHAR,
+        document_hash VARCHAR,
+        counter_signed_by VARCHAR REFERENCES admin_users(id),
+        counter_signed_at TIMESTAMP,
+        counter_auth_code VARCHAR,
+        counter_document_hash VARCHAR,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    log("offer_letter_addendums table created successfully");
+  } catch (err) {
+    console.error("Offer letter addendums table migration error:", err);
+  }
+}
+
 async function backfillEmployeeIds() {
   try {
     const usersWithoutId = await db
@@ -470,6 +528,7 @@ async function backfillHolidayAttendance() {
   await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();
+  await ensureOfferLetterAddendumsTable();
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();

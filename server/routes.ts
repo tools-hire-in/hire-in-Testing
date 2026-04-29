@@ -3490,6 +3490,7 @@ export async function registerRoutes(
         oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
         oldConfirmationDate, newConfirmationDate,
         customClauseTitle, customClauseText,
+        deviceItems,
       } = req.body;
 
       if (!addendumType || !effectiveDate) {
@@ -3521,6 +3522,7 @@ export async function registerRoutes(
         newConfirmationDate: newConfirmationDate || null,
         customClauseTitle: customClauseTitle || null,
         customClauseText: customClauseText || null,
+        deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
       });
 
       await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
@@ -3584,6 +3586,7 @@ export async function registerRoutes(
         newConfirmationDate: addendum.newConfirmationDate || undefined,
         customClauseTitle: addendum.customClauseTitle || undefined,
         customClauseText: addendum.customClauseText || undefined,
+        deviceItems: Array.isArray(addendum.deviceItems) && addendum.deviceItems.length > 0 ? addendum.deviceItems as any[] : undefined,
         reason: addendum.reason || undefined,
       });
 
@@ -3690,6 +3693,7 @@ export async function registerRoutes(
         newConfirmationDate: addendum.newConfirmationDate,
         customClauseTitle: addendum.customClauseTitle,
         customClauseText: addendum.customClauseText,
+        deviceItems: addendum.deviceItems,
         acceptedName: addendum.acceptedName,
         authCode: addendum.authCode,
         originalOfferDate: offerLetter.offerDate,

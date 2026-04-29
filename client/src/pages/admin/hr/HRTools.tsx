@@ -6,6 +6,7 @@ import {
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
   ChevronDown, ChevronUp, RefreshCw, ArrowRight,
+  Plus, Trash2, Laptop,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -1100,6 +1101,7 @@ const ADDENDUM_TYPE_LABELS: Record<string, string> = {
   probation_extension: "Probation Extension",
   combined: "Combined Role & Salary",
   custom: "Custom Amendment",
+  device_allocation: "Company Device Allocation",
 };
 
 const ADDENDUM_STATUS_BADGES: Record<string, { label: string; className: string }> = {
@@ -1296,6 +1298,7 @@ function OfferLettersDashboard() {
     oldSalaryInWords: "", newSalaryInWords: "",
     oldConfirmationDate: "", newConfirmationDate: "",
     customClauseTitle: "", customClauseText: "",
+    deviceItems: [] as { description: string; serialNumber: string; assetTag: string; condition: string }[],
   });
   const [submittingAddendum, setSubmittingAddendum] = useState(false);
 
@@ -1319,6 +1322,7 @@ function OfferLettersDashboard() {
     oldSalaryInWords: "", newSalaryInWords: "",
     oldConfirmationDate: "", newConfirmationDate: "",
     customClauseTitle: "", customClauseText: "",
+    deviceItems: [],
   });
 
   const handleCreateAddendum = async () => {
@@ -1730,6 +1734,7 @@ function OfferLettersDashboard() {
                     <SelectItem value="probation_extension">Probation Extension</SelectItem>
                     <SelectItem value="combined">Combined Role & Salary</SelectItem>
                     <SelectItem value="custom">Custom Amendment</SelectItem>
+                    <SelectItem value="device_allocation">Company Device Allocation</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1827,6 +1832,114 @@ function OfferLettersDashboard() {
               </div>
             )}
 
+            {/* Device Allocation */}
+            {addendumForm.addendumType === "device_allocation" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold flex items-center gap-1.5">
+                    <Laptop className="h-4 w-4 text-blue-600" />
+                    Devices / Assets to Allocate
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    data-testid="button-add-device"
+                    onClick={() => setAddendumForm(f => ({
+                      ...f,
+                      deviceItems: [...f.deviceItems, { description: "", serialNumber: "", assetTag: "", condition: "Good" }],
+                    }))}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Device
+                  </Button>
+                </div>
+                {addendumForm.deviceItems.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic py-2">No devices added. Click "Add Device" to begin.</p>
+                )}
+                {addendumForm.deviceItems.map((item, idx) => (
+                  <div key={idx} className="border rounded-lg p-3 bg-gray-50 space-y-2" data-testid={`device-item-${idx}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600">Device #{idx + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                        data-testid={`button-remove-device-${idx}`}
+                        onClick={() => setAddendumForm(f => ({ ...f, deviceItems: f.deviceItems.filter((_, i) => i !== idx) }))}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Description / Item Name *</Label>
+                      <input
+                        data-testid={`input-device-desc-${idx}`}
+                        className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="e.g. Apple MacBook Pro 14-inch (M3)"
+                        value={item.description}
+                        onChange={e => setAddendumForm(f => {
+                          const items = [...f.deviceItems];
+                          items[idx] = { ...items[idx], description: e.target.value };
+                          return { ...f, deviceItems: items };
+                        })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-xs">Serial Number</Label>
+                        <input
+                          data-testid={`input-device-serial-${idx}`}
+                          className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="SN123456"
+                          value={item.serialNumber}
+                          onChange={e => setAddendumForm(f => {
+                            const items = [...f.deviceItems];
+                            items[idx] = { ...items[idx], serialNumber: e.target.value };
+                            return { ...f, deviceItems: items };
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Asset Tag</Label>
+                        <input
+                          data-testid={`input-device-asset-${idx}`}
+                          className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="HS-L-001"
+                          value={item.assetTag}
+                          onChange={e => setAddendumForm(f => {
+                            const items = [...f.deviceItems];
+                            items[idx] = { ...items[idx], assetTag: e.target.value };
+                            return { ...f, deviceItems: items };
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Condition</Label>
+                        <select
+                          data-testid={`select-device-condition-${idx}`}
+                          className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          value={item.condition}
+                          onChange={e => setAddendumForm(f => {
+                            const items = [...f.deviceItems];
+                            items[idx] = { ...items[idx], condition: e.target.value };
+                            return { ...f, deviceItems: items };
+                          })}
+                        >
+                          <option value="New">New</option>
+                          <option value="Excellent">Excellent</option>
+                          <option value="Good">Good</option>
+                          <option value="Fair">Fair</option>
+                          <option value="Refurbished">Refurbished</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Common fields */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1881,6 +1994,12 @@ function OfferLettersDashboard() {
                     <div className="flex gap-2">
                       <span className="text-muted-foreground w-28 shrink-0">Clause:</span>
                       <span className="font-semibold">{addendumForm.customClauseTitle}</span>
+                    </div>
+                  )}
+                  {addendumForm.addendumType === "device_allocation" && addendumForm.deviceItems.length > 0 && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-28 shrink-0">Devices:</span>
+                      <span className="font-semibold text-blue-700">{addendumForm.deviceItems.length} device{addendumForm.deviceItems.length !== 1 ? "s" : ""} — {addendumForm.deviceItems.map(d => d.description || "unnamed").join(", ")}</span>
                     </div>
                   )}
                   {addendumForm.reason && (

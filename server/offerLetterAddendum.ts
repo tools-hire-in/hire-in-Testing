@@ -14,13 +14,20 @@ import {
   BorderStyle,
 } from "docx";
 
+export interface DeviceItem {
+  description: string;
+  serialNumber?: string;
+  assetTag?: string;
+  condition?: string;
+}
+
 export interface AddendumData {
   candidateName: string;
   originalOfferDate: string;
   originalDesignation: string;
   effectiveDate: string;
   hrManagerName: string;
-  addendumType: "salary_revision" | "role_change" | "probation_extension" | "combined" | "custom";
+  addendumType: "salary_revision" | "role_change" | "probation_extension" | "combined" | "custom" | "device_allocation";
 
   oldDesignation?: string;
   newDesignation?: string;
@@ -34,6 +41,7 @@ export interface AddendumData {
   newConfirmationDate?: string;
   customClauseTitle?: string;
   customClauseText?: string;
+  deviceItems?: DeviceItem[];
   reason?: string;
 }
 
@@ -100,6 +108,7 @@ const ADDENDUM_TYPE_LABELS: Record<string, string> = {
   probation_extension: "Probation Extension",
   combined: "Combined Role & Salary Change",
   custom: "Custom Amendment",
+  device_allocation: "Company Device & Asset Allocation",
 };
 
 export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> {
@@ -188,8 +197,50 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     }
   }
 
+  if (data.addendumType === "device_allocation" && data.deviceItems && data.deviceItems.length > 0) {
+    const deviceHeaderRow = new TableRow({
+      children: [
+        borderedCell([new Paragraph({ children: [new TextRun({ text: "S.No", bold: true, size: 20 })] })], true),
+        borderedCell([new Paragraph({ children: [new TextRun({ text: "Description / Item", bold: true, size: 20 })] })], true),
+        borderedCell([new Paragraph({ children: [new TextRun({ text: "Asset Tag / Serial #", bold: true, size: 20 })] })], true),
+        borderedCell([new Paragraph({ children: [new TextRun({ text: "Condition", bold: true, size: 20 })] })], true),
+      ],
+    });
+
+    const deviceDataRows = data.deviceItems.map((item, idx) =>
+      new TableRow({
+        children: [
+          borderedCell([new Paragraph({ children: [new TextRun({ text: String(idx + 1), size: 20 })] })]),
+          borderedCell([new Paragraph({ children: [new TextRun({ text: item.description || "—", size: 20 })] })]),
+          borderedCell([new Paragraph({ children: [new TextRun({ text: [item.assetTag, item.serialNumber].filter(Boolean).join(" / ") || "—", size: 20 })] })]),
+          borderedCell([new Paragraph({ children: [new TextRun({ text: item.condition || "—", size: 20 })] })]),
+        ],
+      })
+    );
+
+    const deviceTable = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [deviceHeaderRow, ...deviceDataRows],
+    });
+
+    bodyParagraphs.push(deviceTable);
+    bodyParagraphs.push(new Paragraph({ spacing: { after: 200 }, children: [] }));
+
+    bodyParagraphs.push(heading("2. Conditions of Use"));
+    bodyParagraphs.push(bodyText(
+      `The above devices and assets are the sole property of Rayomind Solutions LLP / Hire'in Solutions and are provided exclusively for work purposes on behalf of Rayomind Solutions LLP and Hire'in Solutions. The employee agrees to the following conditions:`
+    ));
+    bodyParagraphs.push(bodyText("• Devices must be used solely for company-authorised work activities. Personal use is prohibited unless expressly approved in writing."));
+    bodyParagraphs.push(bodyText("• The employee is responsible for the safe custody and maintenance of all devices listed above."));
+    bodyParagraphs.push(bodyText("• Loss, damage, or theft must be reported to the IT / HR team within 24 hours."));
+    bodyParagraphs.push(bodyText("• All company data stored on or accessed via the above devices remains the exclusive intellectual property of Rayomind Solutions LLP / Hire'in Solutions."));
+    bodyParagraphs.push(bodyText("• Upon resignation, termination, or contract end, all listed devices must be returned in good working condition within 3 working days. Failure to return may result in cost recovery from final settlement."));
+    bodyParagraphs.push(bodyText("• The company reserves the right to remotely wipe company data and disable access to company systems on these devices at any time."));
+  }
+
   if (data.reason) {
-    bodyParagraphs.push(heading("2. Reason / Remarks"));
+    const reasonSectionNum = data.addendumType === "device_allocation" ? "3" : "2";
+    bodyParagraphs.push(heading(`${reasonSectionNum}. Reason / Remarks`));
     bodyParagraphs.push(bodyText(data.reason));
   }
 
