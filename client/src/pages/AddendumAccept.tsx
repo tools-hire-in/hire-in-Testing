@@ -31,6 +31,7 @@ interface AddendumData {
   originalOfferDate: string | null;
   originalDesignation: string | null;
   offerDate: string | null;
+  deviceItems: Array<{ description: string; serialNumber: string | null; assetTag: string | null; condition: string | null }> | null;
 }
 
 const ADDENDUM_TYPE_LABELS: Record<string, string> = {
@@ -39,6 +40,7 @@ const ADDENDUM_TYPE_LABELS: Record<string, string> = {
   probation_extension: "Probation Extension",
   combined: "Combined Role & Salary Change",
   custom: "Custom Amendment",
+  device_allocation: "Company Device & Asset Allocation",
 };
 
 function ChangedTermsDisplay({ addendum }: { addendum: AddendumData }) {
@@ -79,6 +81,56 @@ function ChangedTermsDisplay({ addendum }: { addendum: AddendumData }) {
         newVal: addendum.newConfirmationDate || "—",
       });
     }
+  }
+
+  if (addendum.addendumType === "device_allocation") {
+    const items = addendum.deviceItems ?? [];
+    return (
+      <div className="space-y-4">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-blue-50">
+                <th className="text-left p-3 font-semibold text-blue-900 border border-blue-100 w-10">S.No</th>
+                <th className="text-left p-3 font-semibold text-blue-900 border border-blue-100">Description / Item</th>
+                <th className="text-left p-3 font-semibold text-blue-900 border border-blue-100">Asset Tag / Serial #</th>
+                <th className="text-left p-3 font-semibold text-blue-900 border border-blue-100">Condition</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-4 text-center text-muted-foreground border border-gray-200">
+                    No devices listed
+                  </td>
+                </tr>
+              ) : (
+                items.map((item, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="p-3 border border-gray-200 text-center text-muted-foreground">{i + 1}</td>
+                    <td className="p-3 border border-gray-200 font-medium">{item.description}</td>
+                    <td className="p-3 border border-gray-200 text-gray-600 font-mono text-xs">
+                      {item.assetTag || item.serialNumber || "—"}
+                    </td>
+                    <td className="p-3 border border-gray-200 text-gray-600">{item.condition || "—"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm">
+          <p className="font-semibold text-amber-900 mb-2">Conditions of Use</p>
+          <ul className="list-disc list-inside space-y-1 text-amber-800 text-xs leading-relaxed">
+            <li>Devices are provided strictly for work-related purposes only.</li>
+            <li>You are responsible for the safe custody and proper care of all allocated devices.</li>
+            <li>Any loss, theft, or damage must be reported to the IT/HR department immediately.</li>
+            <li>All devices must be returned in good working condition upon separation from the company.</li>
+          </ul>
+        </div>
+      </div>
+    );
   }
 
   if (addendum.addendumType === "custom") {
