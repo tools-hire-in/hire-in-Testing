@@ -635,6 +635,9 @@ export const offerLetters = pgTable("offer_letters", {
   counterSignedDate: varchar("counter_signed_date"),
   counterAuthCode: varchar("counter_auth_code"),
   counterDocumentHash: varchar("counter_document_hash"),
+  approvedBy: varchar("approved_by").references(() => adminUsers.id),
+  approvedAt: timestamp("approved_at"),
+  approvalRejectionReason: text("approval_rejection_reason"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({

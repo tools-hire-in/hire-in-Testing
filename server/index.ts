@@ -311,6 +311,17 @@ async function ensureHrLettersTables() {
   }
 }
 
+async function ensureOfferLetterApprovalColumns() {
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS approved_by VARCHAR REFERENCES admin_users(id)`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS approval_rejection_reason TEXT`);
+    log("Ensured offer_letters approval columns exist");
+  } catch (err) {
+    console.error("offer_letters approval columns migration error:", err);
+  }
+}
+
 async function ensureOfferLetterAddendumsTable() {
   try {
     const result = await db.execute(sql`
@@ -528,6 +539,7 @@ async function backfillHolidayAttendance() {
   await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();
+  await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
   await backfillEmployeeIds();
   await backfillHrLetterNames();

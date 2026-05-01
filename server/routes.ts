@@ -12,7 +12,7 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -3180,10 +3180,14 @@ export async function registerRoutes(
       expiresAt.setDate(expiresAt.getDate() + 7);
 
       const actorId = req.session.userId!;
+      const actorUser = await storage.getAdminUser(actorId);
+      const isManager = actorUser?.role === "manager";
+
+      const offerStatus = isManager ? "pending_approval" : "sent";
 
       const offerLetter = await storage.createOfferLetter({
         token,
-        status: "sent",
+        status: offerStatus,
         candidateTitle: candidateTitle || "Mr.",
         candidateName,
         candidatePersonalEmail: candidatePersonalEmail.toLowerCase(),
@@ -3207,6 +3211,56 @@ export async function registerRoutes(
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
+
+      if (isManager) {
+        // Manager flow: notify HR, do not send to candidate yet
+        const reviewUrl = `${protocol}://${host}/admin/hr-tools`;
+        const managerName = actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "A manager";
+
+        // Send notification email to HR addresses
+        const hrNotifyEmails = ["hr@hire-in.com", "simranjeet@hire-in.com"];
+        await sendOfferLetterPendingApprovalEmail({
+          to: hrNotifyEmails,
+          managerName,
+          candidateName,
+          designation,
+          salary: salary || null,
+          reviewUrl,
+        });
+
+        // Create in-app notifications for all HR users
+        try {
+          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+          if (featureFlags.notifications_enabled) {
+            const allUsers = await storage.getAdminUsers();
+            const hrUsers = allUsers.filter(u => ["hr", "admin", "super_admin"].includes(u.role ?? "") && u.isActive);
+            for (const hrUser of hrUsers) {
+              await storage.createNotification({
+                userId: hrUser.id,
+                type: "offer_letter_pending_approval",
+                title: "Offer Letter Pending Approval",
+                message: `${managerName} submitted an offer letter for ${candidateName} (${designation}) — awaiting your review.`,
+                isRead: false,
+                metadata: { offerId: offerLetter.id, candidateName, designation },
+              });
+            }
+          }
+        } catch (notifErr) {
+          console.error("[OfferLetter] Notification creation error:", notifErr);
+        }
+
+        await storage.createAuditLog({
+          action: "offer_letter_pending_approval",
+          actorId,
+          changes: { offerId: offerLetter.id, candidateName, designation, email: candidatePersonalEmail },
+        });
+
+        const { token: _token, ...offerLetterWithoutToken } = offerLetter;
+        return res.json({ ...offerLetterWithoutToken, emailSent: false, pendingApproval: true });
+      }
+
+      // HR/Admin flow: send directly to candidate
       const acceptUrl = `${protocol}://${host}/onboard/${token}`;
 
       const emailResult = await sendOfferLetterEmail({
@@ -3264,12 +3318,157 @@ export async function registerRoutes(
     }
   });
 
+  // Approve a pending offer letter
+  app.patch("/api/hr/tools/offer-letters/:id/approve", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const actorId = req.session.userId!;
+      const letter = await storage.getOfferLetter(id);
+      if (!letter) return res.status(404).json({ error: "Offer letter not found" });
+      if (letter.status !== "pending_approval") return res.status(400).json({ error: "Offer letter is not pending approval" });
+
+      await storage.updateOfferLetter(id, {
+        status: "sent",
+        approvedBy: actorId,
+        approvedAt: new Date(),
+      });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/onboard/${letter.token}`;
+
+      const emailResult = await sendOfferLetterEmail({
+        to: letter.candidatePersonalEmail,
+        candidateName: letter.candidateName,
+        designation: letter.designation,
+        acceptUrl,
+        expiresAt: letter.expiresAt,
+      });
+
+      if (!emailResult.success) {
+        console.error(`[OfferLetter Approve] Email delivery failed for ${letter.candidatePersonalEmail}: ${emailResult.error}`);
+      }
+
+      // Notify the creating manager
+      const creator = await storage.getAdminUser(letter.createdBy);
+      if (creator) {
+        const portalUrl = `${protocol}://${host}/admin/hr-tools`;
+        await sendOfferLetterApprovalDecisionEmail({
+          to: creator.email,
+          managerFirstName: creator.firstName,
+          candidateName: letter.candidateName,
+          designation: letter.designation,
+          approved: true,
+          reviewUrl: portalUrl,
+        });
+
+        try {
+          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+          if (featureFlags.notifications_enabled) {
+            await storage.createNotification({
+              userId: creator.id,
+              type: "offer_letter_approved",
+              title: "Offer Letter Approved",
+              message: `Your offer letter for ${letter.candidateName} (${letter.designation}) has been approved and sent to the candidate.`,
+              isRead: false,
+              metadata: { offerId: id, candidateName: letter.candidateName },
+            });
+          }
+        } catch (notifErr) {
+          console.error("[OfferLetter Approve] Notification error:", notifErr);
+        }
+      }
+
+      await storage.createAuditLog({
+        action: "offer_letter_approved",
+        actorId,
+        changes: { offerId: id, candidateName: letter.candidateName, designation: letter.designation, emailSent: emailResult.success },
+      });
+
+      res.json({ success: true, emailSent: emailResult.success });
+    } catch (error: any) {
+      console.error("[OfferLetter Approve] Error:", error?.message || error);
+      res.status(500).json({ error: "Failed to approve offer letter" });
+    }
+  });
+
+  // Reject a pending offer letter
+  app.patch("/api/hr/tools/offer-letters/:id/reject", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const actorId = req.session.userId!;
+      const letter = await storage.getOfferLetter(id);
+      if (!letter) return res.status(404).json({ error: "Offer letter not found" });
+      if (letter.status !== "pending_approval") return res.status(400).json({ error: "Offer letter is not pending approval" });
+
+      await storage.updateOfferLetter(id, {
+        status: "rejected",
+        approvalRejectionReason: reason || null,
+      });
+
+      // Notify the creating manager
+      const creator = await storage.getAdminUser(letter.createdBy);
+      if (creator) {
+        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers.host || "localhost";
+        const portalUrl = `${protocol}://${host}/admin/hr-tools`;
+        await sendOfferLetterApprovalDecisionEmail({
+          to: creator.email,
+          managerFirstName: creator.firstName,
+          candidateName: letter.candidateName,
+          designation: letter.designation,
+          approved: false,
+          rejectionReason: reason || undefined,
+          reviewUrl: portalUrl,
+        });
+
+        try {
+          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+          if (featureFlags.notifications_enabled) {
+            await storage.createNotification({
+              userId: creator.id,
+              type: "offer_letter_rejected",
+              title: "Offer Letter Rejected",
+              message: `Your offer letter for ${letter.candidateName} (${letter.designation}) was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+              isRead: false,
+              metadata: { offerId: id, candidateName: letter.candidateName, reason },
+            });
+          }
+        } catch (notifErr) {
+          console.error("[OfferLetter Reject] Notification error:", notifErr);
+        }
+      }
+
+      await storage.createAuditLog({
+        action: "offer_letter_rejected",
+        actorId,
+        changes: { offerId: id, candidateName: letter.candidateName, reason },
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[OfferLetter Reject] Error:", error?.message || error);
+      res.status(500).json({ error: "Failed to reject offer letter" });
+    }
+  });
+
   // Public: View offer letter by token
   app.get("/api/onboard/:token", async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetterByToken(req.params.token);
       if (!letter) {
         return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (letter.status === "pending_approval") {
+        return res.status(403).json({ error: "This offer letter is awaiting internal approval and has not been released yet.", status: "pending_approval" });
+      }
+
+      if (letter.status === "rejected") {
+        return res.status(403).json({ error: "This offer letter is not available.", status: "rejected" });
       }
 
       if (new Date() > letter.expiresAt && letter.status === "sent") {
@@ -3321,6 +3520,14 @@ export async function registerRoutes(
       const letter = await storage.getOfferLetterByToken(req.params.token);
       if (!letter) {
         return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (letter.status === "pending_approval") {
+        return res.status(403).json({ error: "This offer letter has not been released yet.", status: "pending_approval" });
+      }
+
+      if (letter.status === "rejected") {
+        return res.status(403).json({ error: "This offer letter is not available.", status: "rejected" });
       }
 
       if (letter.status === "accepted" || letter.status === "onboarded") {

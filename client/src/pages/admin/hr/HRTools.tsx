@@ -1093,6 +1093,8 @@ const STATUS_BADGES: Record<string, { variant: "default" | "secondary" | "destru
   countersigned: { variant: "default", label: "Countersigned", icon: CheckCircle },
   expired: { variant: "destructive", label: "Expired", icon: Clock },
   cancelled: { variant: "destructive", label: "Cancelled", icon: XCircle },
+  pending_approval: { variant: "outline", label: "Pending HR Approval", icon: Clock },
+  rejected: { variant: "destructive", label: "Rejected", icon: XCircle },
 };
 
 const ADDENDUM_TYPE_LABELS: Record<string, string> = {
@@ -1276,7 +1278,11 @@ function AddendumSubRow({ letter }: { letter: any }) {
 
 function OfferLettersDashboard() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const [activeFilter, setActiveFilter] = useState<"all" | "pending_approval">("all");
+  const [rejectDialog, setRejectDialog] = useState<any>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
   const [countersignModal, setCountersignModal] = useState<any>(null);
   const [viewLetterModal, setViewLetterModal] = useState<any>(null);
@@ -1375,6 +1381,34 @@ function OfferLettersDashboard() {
     onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/hr/tools/offer-letters/${id}/approve`);
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter approved and sent to candidate" });
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await apiRequest("PATCH", `/api/hr/tools/offer-letters/${id}/reject`, { reason });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter rejected — manager has been notified" });
+      setRejectDialog(null);
+      setRejectReason("");
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
   const handleStartOnboarding = async () => {
     if (!hireInEmail || !hireInEmail.endsWith("@hire-in.com")) {
       toast({ title: "Email must end with @hire-in.com", variant: "destructive" });
@@ -1414,15 +1448,52 @@ function OfferLettersDashboard() {
     );
   }
 
+  const isHrOrAdmin = user && ["hr", "admin", "super_admin"].includes(user.role ?? "");
+  const pendingLetters = letters?.filter((l: any) => l.status === "pending_approval") ?? [];
+  const filteredLetters = activeFilter === "pending_approval"
+    ? pendingLetters
+    : (letters ?? []);
+
   return (
     <div className="space-y-4">
-      {(!letters || letters.length === 0) ? (
+      {isHrOrAdmin && (
+        <div className="flex gap-2 items-center">
+          <Button
+            variant={activeFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveFilter("all")}
+            data-testid="filter-tab-all"
+          >
+            All Letters
+          </Button>
+          <Button
+            variant={activeFilter === "pending_approval" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveFilter("pending_approval")}
+            data-testid="filter-tab-pending"
+            className="relative"
+          >
+            Pending Approval
+            {pendingLetters.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-amber-500 text-white">
+                {pendingLetters.length}
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {(!filteredLetters || filteredLetters.length === 0) ? (
         <Card>
           <CardContent className="py-16 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-1" data-testid="text-no-offers">No Offer Letters Yet</h3>
+            <h3 className="text-lg font-medium mb-1" data-testid="text-no-offers">
+              {activeFilter === "pending_approval" ? "No Pending Approvals" : "No Offer Letters Yet"}
+            </h3>
             <p className="text-muted-foreground text-sm">
-              Send your first offer letter from the "Offer Letter Generator" tab.
+              {activeFilter === "pending_approval"
+                ? "All offer letters have been reviewed."
+                : "Send your first offer letter from the \"Offer Letter Generator\" tab."}
             </p>
           </CardContent>
         </Card>
@@ -1445,14 +1516,15 @@ function OfferLettersDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {letters.map((letter: any) => {
+                  {filteredLetters.map((letter: any) => {
                     const statusInfo = STATUS_BADGES[letter.status] || STATUS_BADGES.sent;
                     const StatusIcon = statusInfo.icon;
                     const isExpanded = expandedOfferIds.has(letter.id);
                     const canHaveAddendum = letter.status === "countersigned" || letter.status === "onboarded";
+                    const isPending = letter.status === "pending_approval";
                     return (
                       <>
-                        <tr key={letter.id} className="border-b hover:bg-muted/20" data-testid={`row-offer-${letter.id}`}>
+                        <tr key={letter.id} className={`border-b hover:bg-muted/20 ${isPending ? "bg-amber-50/50" : ""}`} data-testid={`row-offer-${letter.id}`}>
                           <td className="p-3 font-medium" data-testid={`text-candidate-${letter.id}`}>
                             <div className="flex items-center gap-2">
                               {canHaveAddendum && (
@@ -1475,7 +1547,7 @@ function OfferLettersDashboard() {
                           <td className="p-3">{letter.designation}</td>
                           <td className="p-3">{letter.departmentName || "—"}</td>
                           <td className="p-3">
-                            <Badge variant={statusInfo.variant} className="gap-1" data-testid={`badge-status-${letter.id}`}>
+                            <Badge variant={statusInfo.variant} className={`gap-1 ${isPending ? "border-amber-400 text-amber-700" : ""}`} data-testid={`badge-status-${letter.id}`}>
                               <StatusIcon className="h-3 w-3" />
                               {statusInfo.label}
                             </Badge>
@@ -1487,7 +1559,7 @@ function OfferLettersDashboard() {
                           <td className="p-3">{letter.hireInEmail || "—"}</td>
                           <td className="p-3">
                             <div className="flex gap-1 flex-wrap">
-                              {letter.status !== "cancelled" && letter.status !== "expired" && (
+                              {letter.status !== "cancelled" && letter.status !== "expired" && letter.status !== "rejected" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1497,6 +1569,30 @@ function OfferLettersDashboard() {
                                   <FileSearch className="h-4 w-4 mr-1" />
                                   View
                                 </Button>
+                              )}
+                              {isPending && isHrOrAdmin && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                    onClick={() => approveMutation.mutate(letter.id)}
+                                    disabled={approveMutation.isPending}
+                                    data-testid={`button-approve-${letter.id}`}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => { setRejectDialog(letter); setRejectReason(""); }}
+                                    disabled={rejectMutation.isPending}
+                                    data-testid={`button-reject-${letter.id}`}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reject
+                                  </Button>
+                                </>
                               )}
                               {(letter.status === "sent" || letter.status === "viewed") && (
                                 <Button
@@ -1585,6 +1681,43 @@ function OfferLettersDashboard() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!rejectDialog} onOpenChange={(open) => { if (!open) { setRejectDialog(null); setRejectReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Offer Letter</DialogTitle>
+            <DialogDescription>
+              Reject the offer letter for <strong>{rejectDialog?.candidateName}</strong> ({rejectDialog?.designation}). The manager who submitted it will be notified.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Reason for Rejection (optional)</Label>
+              <Textarea
+                data-testid="input-rejection-reason"
+                placeholder="Explain why this offer is being rejected..."
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejectDialog(null); setRejectReason(""); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => rejectMutation.mutate({ id: rejectDialog.id, reason: rejectReason })}
+              disabled={rejectMutation.isPending}
+              data-testid="button-confirm-reject"
+            >
+              {rejectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <XCircle className="h-4 w-4 mr-2" />}
+              Reject Offer Letter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!onboardingModal} onOpenChange={(open) => { if (!open) setOnboardingModal(null); }}>
         <DialogContent>

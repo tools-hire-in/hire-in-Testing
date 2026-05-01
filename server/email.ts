@@ -482,6 +482,145 @@ export async function sendOfferLetterEmail(options: {
   }
 }
 
+export async function sendOfferLetterPendingApprovalEmail(options: {
+  to: string | string[];
+  managerName: string;
+  candidateName: string;
+  designation: string;
+  salary?: string | null;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Offer Letter Pending Approval — ${options.candidateName} (${options.designation})`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Approval Required</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">New Offer Letter Awaiting Your Review</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              <strong>${options.managerName}</strong> has submitted an offer letter that requires your approval before it is sent to the candidate.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Offer Details</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0; width: 140px;">Candidate:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0;">${options.candidateName}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0;">Designation:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0;">${options.designation}</td>
+                </tr>
+                ${options.salary ? `<tr>
+                  <td style="color: #64748b; padding: 4px 0;">Salary:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0;">${options.salary}</td>
+                </tr>` : ""}
+                <tr>
+                  <td style="color: #64748b; padding: 4px 0;">Submitted By:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 4px 0;">${options.managerName}</td>
+                </tr>
+              </table>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.reviewUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Review &amp; Approve
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; margin: 16px 0 0;">
+              Please log in to the HR portal, go to Offer Letters, and switch to the "Pending Approval" tab to review this offer.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `New Offer Letter Awaiting Approval\n\n${options.managerName} has submitted an offer letter for ${options.candidateName} (${options.designation})${options.salary ? ` at ${options.salary}` : ""}.\n\nPlease review and approve at:\n${options.reviewUrl}\n\nHire'in Solutions`,
+    };
+    await client.send(msg);
+    console.log(`Offer letter pending approval email sent to HR`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send offer letter pending approval email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendOfferLetterApprovalDecisionEmail(options: {
+  to: string;
+  managerFirstName: string;
+  candidateName: string;
+  designation: string;
+  approved: boolean;
+  rejectionReason?: string;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const subject = options.approved
+      ? `Your Offer Letter for ${options.candidateName} Has Been Approved`
+      : `Your Offer Letter for ${options.candidateName} Has Been Rejected`;
+    const statusColor = options.approved ? "#16a34a" : "#dc2626";
+    const statusLabel = options.approved ? "Approved" : "Rejected";
+    const bodyText = options.approved
+      ? `Great news — the offer letter you submitted for <strong>${options.candidateName}</strong> (${options.designation}) has been <strong style="color: #16a34a;">approved</strong>. The candidate has been emailed with the offer link.`
+      : `The offer letter you submitted for <strong>${options.candidateName}</strong> (${options.designation}) has been <strong style="color: #dc2626;">rejected</strong>.`;
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Decision</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.managerFirstName},</h2>
+            <div style="background: ${options.approved ? "#f0fdf4" : "#fef2f2"}; border: 1px solid ${options.approved ? "#bbf7d0" : "#fecaca"}; border-radius: 8px; padding: 16px; margin: 0 0 20px; text-align: center;">
+              <span style="color: ${statusColor}; font-size: 18px; font-weight: 700;">${statusLabel}</span>
+            </div>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              ${bodyText}
+            </p>
+            ${!options.approved && options.rejectionReason ? `
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 8px;">Reason for Rejection:</p>
+              <p style="color: #475569; margin: 0; line-height: 1.6;">${options.rejectionReason}</p>
+            </div>` : ""}
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.reviewUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                View Offer Letters
+              </a>
+            </div>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.managerFirstName},\n\nYour offer letter for ${options.candidateName} (${options.designation}) has been ${statusLabel.toLowerCase()}.${!options.approved && options.rejectionReason ? `\n\nReason: ${options.rejectionReason}` : ""}\n\nView details at:\n${options.reviewUrl}\n\nHire'in Solutions`,
+    };
+    await client.send(msg);
+    console.log(`Offer letter approval decision email sent to manager`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send offer letter approval decision email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendHrLetterEmail(options: {
   to: string;
   employeeName: string;
