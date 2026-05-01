@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
+  TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,9 +29,57 @@ import {
   CLOSING_LINE_SENTENCES,
   TEMPLATE_LABELS,
   ROLE_RESPONSIBILITY_SUMMARIES,
+  AMENDMENT_TEMPLATE_TYPES,
 } from "@shared/hrLetterConstants";
 
-const TEMPLATE_OPTIONS = Object.entries(TEMPLATE_LABELS).map(([value, label]) => ({ value, label }));
+const STANDARD_TEMPLATE_TYPES = ["experience", "internship_completion", "internship_certificate", "relieving"];
+
+const AMENDMENT_CARD_CONFIG = [
+  {
+    value: "salary_revision",
+    label: "Salary Revision",
+    description: "Document a change in monthly salary",
+    icon: TrendingUp,
+  },
+  {
+    value: "role_change",
+    label: "Designation / Promotion",
+    description: "Formalise a title or department change",
+    icon: Award,
+  },
+  {
+    value: "combined",
+    label: "Salary + Designation",
+    description: "Combined salary & role change",
+    icon: Layers,
+  },
+  {
+    value: "device_allocation",
+    label: "Device Allocation",
+    description: "Allocate company devices to an employee",
+    icon: Laptop,
+  },
+];
+
+interface DeviceItem {
+  description: string;
+  serialNumber: string;
+  assetTag: string;
+  condition: string;
+}
+
+interface AmendmentMeta {
+  effectiveDate: string;
+  reason: string;
+  previousSalary: string;
+  newSalary: string;
+  newSalaryInWords: string;
+  previousDesignation: string;
+  newDesignation: string;
+  previousDepartment: string;
+  newDepartment: string;
+  deviceItems: DeviceItem[];
+}
 
 interface FormData {
   templateType: string;
@@ -90,6 +139,19 @@ const defaultForm: FormData = {
   customOverrideText: "",
 };
 
+const defaultAmendmentMeta: AmendmentMeta = {
+  effectiveDate: new Date().toISOString().split("T")[0],
+  reason: "",
+  previousSalary: "",
+  newSalary: "",
+  newSalaryInWords: "",
+  previousDesignation: "",
+  newDesignation: "",
+  previousDepartment: "",
+  newDepartment: "",
+  deviceItems: [{ description: "", serialNumber: "", assetTag: "", condition: "" }],
+};
+
 function buildSentencesOverride(sentences: LetterTemplateSentence[]): LetterSentencesOverride {
   const override: LetterSentencesOverride = {
     performance_band: {},
@@ -111,11 +173,16 @@ export function LetterGenerator() {
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>({ ...defaultForm });
+  const [amendmentMeta, setAmendmentMeta] = useState<AmendmentMeta>({ ...defaultAmendmentMeta });
+  const [isManualEntry, setIsManualEntry] = useState(false);
+  const [manualEmployeeEmail, setManualEmployeeEmail] = useState("");
+  const [sendEmail, setSendEmail] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+  const isAmendmentType = (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(form.templateType);
 
   const { data: usersData } = useQuery<{ users: AdminUser[]; counts?: Record<string, number> } | AdminUser[]>({
     queryKey: ["/api/admin/users", "all_non_deleted"],
@@ -224,13 +291,26 @@ export function LetterGenerator() {
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/hr/letters", data);
-      return res.json();
+      return res.json() as Promise<{ id: string; referenceNumber?: string; templateType?: string }>;
     },
-    onSuccess: () => {
-      toast({ title: "Letter created", description: "Draft letter has been saved successfully." });
+    onSuccess: (data) => {
+      const isAmendment = data.templateType && (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(data.templateType);
+      if (isAmendment && data.id) {
+        const link = document.createElement("a");
+        link.href = `/api/hr/letters/${data.id}/download`;
+        link.download = `${data.referenceNumber || "letter"}.docx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      toast({ title: "Letter created", description: isAmendment ? "DOCX downloaded successfully." : "Letter has been generated successfully." });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setForm({ ...defaultForm });
+      setAmendmentMeta({ ...defaultAmendmentMeta });
+      setIsManualEntry(false);
+      setManualEmployeeEmail("");
+      setSendEmail(false);
       setStep(0);
     },
     onError: (err: Error) => {
@@ -254,6 +334,7 @@ export function LetterGenerator() {
   });
 
   function selectEmployee(emp: AdminUser) {
+    const managerEmp = emp.managerId ? employees.find((e: AdminUser) => e.id === emp.managerId) : undefined;
     setForm(prev => ({
       ...prev,
       employeeId: emp.id,
@@ -261,15 +342,17 @@ export function LetterGenerator() {
       employeeCode: emp.employeeId || "",
       designation: emp.designation || "",
       department: emp.departmentId ? deptMap[emp.departmentId] || "" : "",
-      employmentType: (emp as any).employmentType || "",
-      location: (emp as any).location || "",
-      reportingManager: emp.managerId
-        ? employees.find((e: AdminUser) => e.id === emp.managerId)
-          ? `${employees.find((e: AdminUser) => e.id === emp.managerId)!.firstName} ${employees.find((e: AdminUser) => e.id === emp.managerId)!.lastName}`
-          : ""
-        : "",
+      reportingManager: managerEmp ? `${managerEmp.firstName} ${managerEmp.lastName}` : "",
       startDate: emp.joiningDate || "",
     }));
+    if (isAmendmentType) {
+      setAmendmentMeta(prev => ({
+        ...prev,
+        previousDesignation: emp.designation || "",
+        previousDepartment: emp.departmentId ? deptMap[emp.departmentId] || "" : "",
+      }));
+      setManualEmployeeEmail(emp.email || "");
+    }
     setEmployeeSearch("");
   }
 
@@ -291,20 +374,42 @@ export function LetterGenerator() {
 
   const steps = [
     { title: "Template", subtitle: "Select document type" },
-    { title: "Employee", subtitle: isIntern ? "Select intern" : "Select employee" },
-    { title: "Details", subtitle: "Bands & options" },
-    { title: "Signatory", subtitle: "Review & create" },
+    { title: isAmendmentType ? "Employee" : "Employee", subtitle: isAmendmentType ? "Lookup or manual entry" : isIntern ? "Select intern" : "Select employee" },
+    { title: "Details", subtitle: isAmendmentType ? "Amendment fields" : "Bands & options" },
+    { title: "Signatory", subtitle: "Review & generate" },
   ];
 
   function validateStep1(): boolean {
     const errors: Record<string, string> = {};
-    if (!form.employeeId) errors.employeeSearch = "Please search and select an employee before continuing.";
-    if (!form.employeeName) errors.employeeName = "Full name is required.";
-    if (!form.designation) errors.designation = "Designation is required.";
-    if (!form.department) errors.department = "Department is required.";
-    if (!form.startDate) errors.startDate = "Start date is required.";
-    const endDateRequired = ["experience", "internship_completion", "relieving"].includes(form.templateType);
-    if (endDateRequired && !form.endDate) errors.endDate = "End date is required for this letter type.";
+
+    if (isAmendmentType) {
+      if (!isManualEntry && !form.employeeId) {
+        errors.employeeSearch = "Please search and select an employee before continuing.";
+      }
+      if (!form.employeeName) errors.employeeName = "Full name is required.";
+      if (!form.designation) errors.designation = "Designation is required.";
+      if (isManualEntry && !manualEmployeeEmail) errors.manualEmail = "Email is required for manual entry.";
+    } else {
+      if (!form.employeeId) errors.employeeSearch = "Please search and select an employee before continuing.";
+      if (!form.employeeName) errors.employeeName = "Full name is required.";
+      if (!form.designation) errors.designation = "Designation is required.";
+      if (!form.department) errors.department = "Department is required.";
+      if (!form.startDate) errors.startDate = "Start date is required.";
+      const endDateRequired = ["experience", "internship_completion", "relieving"].includes(form.templateType);
+      if (endDateRequired && !form.endDate) errors.endDate = "End date is required for this letter type.";
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function validateStep2(): boolean {
+    if (!isAmendmentType) return true;
+    const errors: Record<string, string> = {};
+    if (!amendmentMeta.effectiveDate) errors.effectiveDate = "Effective date is required.";
+    if (form.templateType === "role_change" || form.templateType === "combined") {
+      if (!amendmentMeta.newDesignation) errors.newDesignation = "New designation is required.";
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -312,6 +417,9 @@ export function LetterGenerator() {
   function handleNext() {
     if (step === 1) {
       if (!validateStep1()) return;
+    }
+    if (step === 2) {
+      if (!validateStep2()) return;
     }
     setFieldErrors({});
     setStep(s => s + 1);
@@ -324,19 +432,99 @@ export function LetterGenerator() {
   }
 
   function handleSubmit() {
-    const payload: Record<string, unknown> = { ...form };
-    if (!isAdmin || !form.customOverrideText) {
-      delete payload.customOverrideText;
+    if (isAmendmentType) {
+      const metadata: Record<string, unknown> = {
+        effectiveDate: amendmentMeta.effectiveDate,
+      };
+
+      if (form.templateType === "salary_revision" || form.templateType === "combined") {
+        metadata.oldSalary = amendmentMeta.previousSalary;
+        metadata.newSalary = amendmentMeta.newSalary;
+        metadata.newSalaryInWords = amendmentMeta.newSalaryInWords;
+      }
+      if (form.templateType === "role_change" || form.templateType === "combined") {
+        metadata.oldDesignation = amendmentMeta.previousDesignation;
+        metadata.newDesignation = amendmentMeta.newDesignation;
+        metadata.oldDepartment = amendmentMeta.previousDepartment;
+        metadata.newDepartment = amendmentMeta.newDepartment;
+      }
+      if (form.templateType === "device_allocation") {
+        metadata.deviceItems = amendmentMeta.deviceItems.filter(d => d.description.trim());
+      }
+      if (amendmentMeta.reason) {
+        metadata.reason = amendmentMeta.reason;
+      }
+
+      if (isManualEntry) {
+        metadata.manualEmployeeName = form.employeeName;
+        metadata.manualDesignation = form.designation;
+        metadata.manualDepartment = form.department;
+        metadata.manualEmail = manualEmployeeEmail;
+      }
+
+      const payload: Record<string, unknown> = {
+        templateType: form.templateType,
+        employeeName: form.employeeName,
+        designation: form.designation,
+        department: form.department,
+        effectiveDate: amendmentMeta.effectiveDate,
+        startDate: form.startDate || undefined,
+        signatoryId: form.signatoryId || undefined,
+        signatoryName: form.signatoryName,
+        signatoryDesignation: form.signatoryDesignation,
+        isManualEntry,
+        manualEmployeeEmail: manualEmployeeEmail || undefined,
+        sendEmail,
+        metadata,
+      };
+
+      if (!isManualEntry) {
+        payload.employeeId = form.employeeId;
+        payload.employeeCode = form.employeeCode;
+      }
+
+      createMutation.mutate(payload);
+    } else {
+      const payload: Record<string, unknown> = { ...form };
+      if (!isAdmin || !form.customOverrideText) {
+        delete payload.customOverrideText;
+      }
+      if (!payload.performanceBand) delete payload.performanceBand;
+      if (!payload.conductBand) delete payload.conductBand;
+      if (!payload.completionBand) delete payload.completionBand;
+      if (!payload.endDate) delete payload.endDate;
+      if (!payload.lastWorkingDay) delete payload.lastWorkingDay;
+      if (!payload.signatoryId) delete payload.signatoryId;
+      if (!payload.employeeId) delete payload.employeeId;
+      createMutation.mutate(payload);
     }
-    if (!payload.performanceBand) delete payload.performanceBand;
-    if (!payload.conductBand) delete payload.conductBand;
-    if (!payload.completionBand) delete payload.completionBand;
-    if (!payload.endDate) delete payload.endDate;
-    if (!payload.lastWorkingDay) delete payload.lastWorkingDay;
-    if (!payload.signatoryId) delete payload.signatoryId;
-    if (!payload.employeeId) delete payload.employeeId;
-    createMutation.mutate(payload);
   }
+
+  function updateDeviceItem(idx: number, field: keyof DeviceItem, value: string) {
+    setAmendmentMeta(prev => {
+      const items = [...prev.deviceItems];
+      items[idx] = { ...items[idx], [field]: value };
+      return { ...prev, deviceItems: items };
+    });
+  }
+
+  function addDeviceItem() {
+    setAmendmentMeta(prev => ({
+      ...prev,
+      deviceItems: [...prev.deviceItems, { description: "", serialNumber: "", assetTag: "", condition: "" }],
+    }));
+  }
+
+  function removeDeviceItem(idx: number) {
+    setAmendmentMeta(prev => ({
+      ...prev,
+      deviceItems: prev.deviceItems.filter((_, i) => i !== idx),
+    }));
+  }
+
+  const employeeEmail = isManualEntry
+    ? manualEmployeeEmail
+    : employees.find(e => e.id === form.employeeId)?.email || "";
 
   return (
     <Card>
@@ -358,252 +546,540 @@ export function LetterGenerator() {
 
         {step === 0 && (
           <div className="space-y-4">
-            <Label>Document Type</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {TEMPLATE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  data-testid={`btn-template-${opt.value}`}
-                  onClick={() => setForm(prev => ({ ...prev, templateType: opt.value }))}
-                  className={`p-4 rounded-lg border text-left transition-colors ${form.templateType === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-                >
-                  <div className="font-medium">{opt.label}</div>
-                </button>
-              ))}
+            <div>
+              <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Standard Letters</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                {STANDARD_TEMPLATE_TYPES.map(type => (
+                  <button
+                    key={type}
+                    data-testid={`btn-template-${type}`}
+                    onClick={() => setForm(prev => ({ ...prev, templateType: type }))}
+                    className={`p-4 rounded-lg border text-left transition-colors ${form.templateType === type ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                  >
+                    <div className="font-medium">{TEMPLATE_LABELS[type]}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Separator />
+            <div>
+              <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Amendment Letters</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                {AMENDMENT_CARD_CONFIG.map(cfg => {
+                  const Icon = cfg.icon;
+                  return (
+                    <button
+                      key={cfg.value}
+                      data-testid={`btn-template-${cfg.value}`}
+                      onClick={() => setForm(prev => ({ ...prev, templateType: cfg.value }))}
+                      className={`p-4 rounded-lg border text-left transition-colors ${form.templateType === cfg.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className="h-4 w-4 text-primary" />
+                        <div className="font-medium">{cfg.label}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{cfg.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
 
         {step === 1 && (
           <div className="space-y-4">
-            <div>
-              <Label>Search {isIntern ? "Intern" : "Employee"} *</Label>
-              <div className="relative mt-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name, ID, or email..."
-                  value={employeeSearch}
-                  onChange={e => { setEmployeeSearch(e.target.value); setFieldErrors(prev => ({ ...prev, employeeSearch: "" })); }}
-                  className={`pl-9 ${fieldErrors.employeeSearch ? "border-destructive" : ""}`}
-                  data-testid="input-employee-search"
-                />
+            {isAmendmentType && (
+              <div className="flex gap-3 p-1 bg-muted rounded-lg">
+                <button
+                  data-testid="toggle-system-employee"
+                  onClick={() => { setIsManualEntry(false); setForm(prev => ({ ...prev, employeeId: "", employeeName: "", employeeCode: "", designation: "", department: "", startDate: "" })); setManualEmployeeEmail(""); }}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${!isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  System Employee
+                </button>
+                <button
+                  data-testid="toggle-manual-entry"
+                  onClick={() => { setIsManualEntry(true); setForm(prev => ({ ...prev, employeeId: "", employeeCode: "" })); setEmployeeSearch(""); }}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Manual Entry
+                </button>
               </div>
-              {form.employeeId && !fieldErrors.employeeSearch && (
-                <p className="text-xs text-muted-foreground mt-1">{form.employeeName} selected</p>
-              )}
-              {fieldErrors.employeeSearch && <p className="text-xs text-destructive mt-1" data-testid="error-employee-search">{fieldErrors.employeeSearch}</p>}
-              {employeeSearch && filteredEmployees.length > 0 && (
-                <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
-                  {filteredEmployees.map((emp) => (
-                    <button
-                      key={emp.id}
-                      onClick={() => { selectEmployee(emp); setFieldErrors(prev => ({ ...prev, employeeSearch: "", employeeName: "" })); }}
-                      className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-0"
-                      data-testid={`btn-select-employee-${emp.id}`}
-                    >
-                      <span className="font-medium">{emp.firstName} {emp.lastName}</span>
-                      <span className="text-muted-foreground ml-2">{emp.employeeId || ""} · {emp.email}</span>
-                    </button>
-                  ))}
+            )}
+
+            {(!isAmendmentType || !isManualEntry) && (
+              <div>
+                <Label>Search {isIntern ? "Intern" : "Employee"} *</Label>
+                <div className="relative mt-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, ID, or email..."
+                    value={employeeSearch}
+                    onChange={e => { setEmployeeSearch(e.target.value); setFieldErrors(prev => ({ ...prev, employeeSearch: "" })); }}
+                    className={`pl-9 ${fieldErrors.employeeSearch ? "border-destructive" : ""}`}
+                    data-testid="input-employee-search"
+                  />
                 </div>
-              )}
-            </div>
+                {form.employeeId && !fieldErrors.employeeSearch && (
+                  <p className="text-xs text-muted-foreground mt-1">{form.employeeName} selected</p>
+                )}
+                {fieldErrors.employeeSearch && <p className="text-xs text-destructive mt-1" data-testid="error-employee-search">{fieldErrors.employeeSearch}</p>}
+                {employeeSearch && filteredEmployees.length > 0 && (
+                  <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
+                    {filteredEmployees.map((emp) => (
+                      <button
+                        key={emp.id}
+                        onClick={() => { selectEmployee(emp); setFieldErrors(prev => ({ ...prev, employeeSearch: "", employeeName: "" })); }}
+                        className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-0"
+                        data-testid={`btn-select-employee-${emp.id}`}
+                      >
+                        <span className="font-medium">{emp.firstName} {emp.lastName}</span>
+                        <span className="text-muted-foreground ml-2">{emp.employeeId || ""} · {emp.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <Separator />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Full Name *</Label>
-                <Input value={form.employeeName} onChange={e => { setForm(prev => ({ ...prev, employeeName: e.target.value })); setFieldErrors(prev => ({ ...prev, employeeName: "" })); }} data-testid="input-employee-name" className={fieldErrors.employeeName ? "border-destructive" : ""} />
-                {form.employeeId && !fieldErrors.employeeName && <p className="text-xs text-muted-foreground mt-1">Auto-filled — edit if needed</p>}
+                <Input
+                  value={form.employeeName}
+                  onChange={e => { setForm(prev => ({ ...prev, employeeName: e.target.value })); setFieldErrors(prev => ({ ...prev, employeeName: "" })); }}
+                  placeholder="Enter full name"
+                  data-testid="input-employee-name"
+                  className={fieldErrors.employeeName ? "border-destructive" : ""}
+                />
                 {fieldErrors.employeeName && <p className="text-xs text-destructive mt-1" data-testid="error-employee-name">{fieldErrors.employeeName}</p>}
               </div>
-              <div>
-                <Label>{isIntern ? "Intern" : "Employee"} ID</Label>
-                <Input value={form.employeeCode} readOnly className="bg-muted" data-testid="input-employee-code" />
-              </div>
-              <div>
-                <Label>Designation *</Label>
-                <Input value={form.designation} onChange={e => { setForm(prev => ({ ...prev, designation: e.target.value })); setFieldErrors(prev => ({ ...prev, designation: "" })); }} placeholder="e.g. Software Engineer" data-testid="input-designation" className={fieldErrors.designation ? "border-destructive" : ""} />
-                {fieldErrors.designation && <p className="text-xs text-destructive mt-1" data-testid="error-designation">{fieldErrors.designation}</p>}
-              </div>
-              <div>
-                <Label>Department *</Label>
-                <Input value={form.department} onChange={e => { setForm(prev => ({ ...prev, department: e.target.value })); setFieldErrors(prev => ({ ...prev, department: "" })); }} placeholder="e.g. Engineering" data-testid="input-department" className={fieldErrors.department ? "border-destructive" : ""} />
-                {fieldErrors.department && <p className="text-xs text-destructive mt-1" data-testid="error-department">{fieldErrors.department}</p>}
-              </div>
-              <div>
-                <Label>Start Date *</Label>
-                <Input type="date" value={form.startDate} onChange={e => { setForm(prev => ({ ...prev, startDate: e.target.value })); setFieldErrors(prev => ({ ...prev, startDate: "" })); }} data-testid="input-start-date" className={fieldErrors.startDate ? "border-destructive" : ""} />
-                {fieldErrors.startDate && <p className="text-xs text-destructive mt-1" data-testid="error-start-date">{fieldErrors.startDate}</p>}
-              </div>
-              <div>
-                <Label>End Date {["experience", "internship_completion", "relieving"].includes(form.templateType) && <span className="text-destructive">*</span>}</Label>
-                <Input type="date" value={form.endDate} onChange={e => { setForm(prev => ({ ...prev, endDate: e.target.value })); setFieldErrors(prev => ({ ...prev, endDate: "" })); }} data-testid="input-end-date" className={fieldErrors.endDate ? "border-destructive" : ""} />
-                {fieldErrors.endDate && <p className="text-xs text-destructive mt-1" data-testid="error-end-date">{fieldErrors.endDate}</p>}
-              </div>
-              {showLastWorkingDay && (
+
+              {!isManualEntry && (
                 <div>
-                  <Label>Last Working Day</Label>
-                  <Input type="date" value={form.lastWorkingDay} onChange={e => setForm(prev => ({ ...prev, lastWorkingDay: e.target.value }))} data-testid="input-last-working-day" />
+                  <Label>{isIntern ? "Intern" : "Employee"} ID</Label>
+                  <Input value={form.employeeCode} readOnly className="bg-muted" data-testid="input-employee-code" />
                 </div>
               )}
+
+              {isAmendmentType && isManualEntry && (
+                <div>
+                  <Label>Employee ID (optional)</Label>
+                  <Input
+                    value={form.employeeCode}
+                    onChange={e => setForm(prev => ({ ...prev, employeeCode: e.target.value }))}
+                    placeholder="e.g. HIS-HR-NOVA"
+                    data-testid="input-employee-code-manual"
+                  />
+                </div>
+              )}
+
               <div>
-                <Label>Location</Label>
-                <Input value={form.location} onChange={e => setForm(prev => ({ ...prev, location: e.target.value }))} placeholder="e.g. New Delhi" data-testid="input-location" />
+                <Label>Current Designation *</Label>
+                <Input
+                  value={form.designation}
+                  onChange={e => { setForm(prev => ({ ...prev, designation: e.target.value })); setFieldErrors(prev => ({ ...prev, designation: "" })); }}
+                  placeholder="e.g. Software Engineer"
+                  data-testid="input-designation"
+                  className={fieldErrors.designation ? "border-destructive" : ""}
+                />
+                {fieldErrors.designation && <p className="text-xs text-destructive mt-1" data-testid="error-designation">{fieldErrors.designation}</p>}
               </div>
+
+              <div>
+                <Label>Department {!isAmendmentType && <span className="text-destructive">*</span>}</Label>
+                <Input
+                  value={form.department}
+                  onChange={e => { setForm(prev => ({ ...prev, department: e.target.value })); setFieldErrors(prev => ({ ...prev, department: "" })); }}
+                  placeholder="e.g. Engineering"
+                  data-testid="input-department"
+                  className={fieldErrors.department ? "border-destructive" : ""}
+                />
+                {fieldErrors.department && <p className="text-xs text-destructive mt-1" data-testid="error-department">{fieldErrors.department}</p>}
+              </div>
+
+              {!isAmendmentType && (
+                <>
+                  <div>
+                    <Label>Start Date *</Label>
+                    <Input type="date" value={form.startDate} onChange={e => { setForm(prev => ({ ...prev, startDate: e.target.value })); setFieldErrors(prev => ({ ...prev, startDate: "" })); }} data-testid="input-start-date" className={fieldErrors.startDate ? "border-destructive" : ""} />
+                    {fieldErrors.startDate && <p className="text-xs text-destructive mt-1" data-testid="error-start-date">{fieldErrors.startDate}</p>}
+                  </div>
+                  <div>
+                    <Label>End Date {["experience", "internship_completion", "relieving"].includes(form.templateType) && <span className="text-destructive">*</span>}</Label>
+                    <Input type="date" value={form.endDate} onChange={e => { setForm(prev => ({ ...prev, endDate: e.target.value })); setFieldErrors(prev => ({ ...prev, endDate: "" })); }} data-testid="input-end-date" className={fieldErrors.endDate ? "border-destructive" : ""} />
+                    {fieldErrors.endDate && <p className="text-xs text-destructive mt-1" data-testid="error-end-date">{fieldErrors.endDate}</p>}
+                  </div>
+                  {showLastWorkingDay && (
+                    <div>
+                      <Label>Last Working Day</Label>
+                      <Input type="date" value={form.lastWorkingDay} onChange={e => setForm(prev => ({ ...prev, lastWorkingDay: e.target.value }))} data-testid="input-last-working-day" />
+                    </div>
+                  )}
+                  <div>
+                    <Label>Location</Label>
+                    <Input value={form.location} onChange={e => setForm(prev => ({ ...prev, location: e.target.value }))} placeholder="e.g. New Delhi" data-testid="input-location" />
+                  </div>
+                </>
+              )}
+
+              {isAmendmentType && isManualEntry && (
+                <>
+                  <div>
+                    <Label>Date of Joining</Label>
+                    <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} data-testid="input-doj" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Personal Email *</Label>
+                    <Input
+                      type="email"
+                      value={manualEmployeeEmail}
+                      onChange={e => { setManualEmployeeEmail(e.target.value); setFieldErrors(prev => ({ ...prev, manualEmail: "" })); }}
+                      placeholder="employee@example.com"
+                      data-testid="input-manual-email"
+                      className={fieldErrors.manualEmail ? "border-destructive" : ""}
+                    />
+                    {fieldErrors.manualEmail && <p className="text-xs text-destructive mt-1">{fieldErrors.manualEmail}</p>}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-4">
-            {showPerformanceBand && (
-              <div>
-                <Label>Performance Band</Label>
-                <Select value={form.performanceBand} onValueChange={v => setForm(prev => ({ ...prev, performanceBand: v }))}>
-                  <SelectTrigger data-testid="select-performance-band"><SelectValue placeholder="Select performance band" /></SelectTrigger>
-                  <SelectContent>
-                    {PERFORMANCE_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {showConductBand && (
-              <div>
-                <Label>Conduct Band</Label>
-                <Select value={form.conductBand} onValueChange={v => setForm(prev => ({ ...prev, conductBand: v }))}>
-                  <SelectTrigger data-testid="select-conduct-band"><SelectValue placeholder="Select conduct band" /></SelectTrigger>
-                  <SelectContent>
-                    {CONDUCT_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {showCompletionBand && (
-              <div>
-                <Label>Completion Band</Label>
-                <Select value={form.completionBand} onValueChange={v => setForm(prev => ({ ...prev, completionBand: v }))}>
-                  <SelectTrigger data-testid="select-completion-band"><SelectValue placeholder="Select completion band" /></SelectTrigger>
-                  <SelectContent>
-                    {COMPLETION_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div>
-              <Label>Closing Line</Label>
-              <Select value={form.closingLine} onValueChange={v => setForm(prev => ({ ...prev, closingLine: v }))}>
-                <SelectTrigger data-testid="select-closing-line"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CLOSING_LINES.map(c => (
-                    <SelectItem key={c.value} value={c.value}>
-                      {closingSentences[c.value] || c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Separator />
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Include responsibilities summary</Label>
-                <Switch checked={form.includeResponsibilities} onCheckedChange={v => setForm(prev => ({ ...prev, includeResponsibilities: v }))} data-testid="switch-responsibilities" />
-              </div>
-              {form.includeResponsibilities && (
-                <div className="space-y-2">
-                  {hasDbMatch ? (
-                    <ResponsibilityCardSelector
-                      role={matchedDbRoles[0]}
-                      selected={form.responsibilitiesSummary}
-                      onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+            {/* === AMENDMENT LETTER DETAILS === */}
+            {isAmendmentType && (
+              <>
+                <div>
+                  <Label>Effective Date *</Label>
+                  <Input
+                    type="date"
+                    value={amendmentMeta.effectiveDate}
+                    onChange={e => { setAmendmentMeta(prev => ({ ...prev, effectiveDate: e.target.value })); setFieldErrors(prev => ({ ...prev, effectiveDate: "" })); }}
+                    data-testid="input-effective-date"
+                    className={fieldErrors.effectiveDate ? "border-destructive" : ""}
+                  />
+                  {fieldErrors.effectiveDate && <p className="text-xs text-destructive mt-1">{fieldErrors.effectiveDate}</p>}
+                </div>
+
+                {(form.templateType === "salary_revision" || form.templateType === "combined") && (
+                  <>
+                    <Separator />
+                    <p className="text-sm font-semibold">Salary Details</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Previous Monthly Salary (₹)</Label>
+                        <Input
+                          value={amendmentMeta.previousSalary}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, previousSalary: e.target.value }))}
+                          placeholder="e.g. 45000"
+                          data-testid="input-prev-salary"
+                        />
+                      </div>
+                      <div>
+                        <Label>New Monthly Salary (₹)</Label>
+                        <Input
+                          value={amendmentMeta.newSalary}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, newSalary: e.target.value }))}
+                          placeholder="e.g. 55000"
+                          data-testid="input-new-salary"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label>New Salary in Words</Label>
+                        <Input
+                          value={amendmentMeta.newSalaryInWords}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, newSalaryInWords: e.target.value }))}
+                          placeholder="e.g. Fifty-Five Thousand Only"
+                          data-testid="input-salary-in-words"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {(form.templateType === "role_change" || form.templateType === "combined") && (
+                  <>
+                    <Separator />
+                    <p className="text-sm font-semibold">Role / Designation Details</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Previous Designation</Label>
+                        <Input
+                          value={amendmentMeta.previousDesignation}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, previousDesignation: e.target.value }))}
+                          placeholder="e.g. Software Engineer"
+                          data-testid="input-prev-designation"
+                        />
+                      </div>
+                      <div>
+                        <Label>New Designation *</Label>
+                        <Input
+                          value={amendmentMeta.newDesignation}
+                          onChange={e => { setAmendmentMeta(prev => ({ ...prev, newDesignation: e.target.value })); setFieldErrors(prev => ({ ...prev, newDesignation: "" })); }}
+                          placeholder="e.g. Senior Software Engineer"
+                          data-testid="input-new-designation"
+                          className={fieldErrors.newDesignation ? "border-destructive" : ""}
+                        />
+                        {fieldErrors.newDesignation && <p className="text-xs text-destructive mt-1">{fieldErrors.newDesignation}</p>}
+                      </div>
+                      <div>
+                        <Label>Previous Department (optional)</Label>
+                        <Input
+                          value={amendmentMeta.previousDepartment}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, previousDepartment: e.target.value }))}
+                          placeholder="e.g. Engineering"
+                          data-testid="input-prev-department"
+                        />
+                      </div>
+                      <div>
+                        <Label>New Department (optional)</Label>
+                        <Input
+                          value={amendmentMeta.newDepartment}
+                          onChange={e => setAmendmentMeta(prev => ({ ...prev, newDepartment: e.target.value }))}
+                          placeholder="e.g. Product"
+                          data-testid="input-new-department"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {form.templateType === "device_allocation" && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Device / Asset List</p>
+                      <Button type="button" size="sm" variant="outline" onClick={addDeviceItem} data-testid="btn-add-device">
+                        <Plus className="h-3 w-3 mr-1" /> Add Device
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      {amendmentMeta.deviceItems.map((item, idx) => (
+                        <div key={idx} className="border rounded-lg p-3 space-y-2" data-testid={`device-item-${idx}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">Device #{idx + 1}</span>
+                            {amendmentMeta.deviceItems.length > 1 && (
+                              <Button type="button" size="sm" variant="ghost" onClick={() => removeDeviceItem(idx)} data-testid={`btn-remove-device-${idx}`}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="col-span-2">
+                              <Label className="text-xs">Description *</Label>
+                              <Input
+                                value={item.description}
+                                onChange={e => updateDeviceItem(idx, "description", e.target.value)}
+                                placeholder="e.g. MacBook Pro 14-inch"
+                                data-testid={`input-device-desc-${idx}`}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Serial Number</Label>
+                              <Input
+                                value={item.serialNumber}
+                                onChange={e => updateDeviceItem(idx, "serialNumber", e.target.value)}
+                                placeholder="S/N"
+                                data-testid={`input-device-serial-${idx}`}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Asset Tag</Label>
+                              <Input
+                                value={item.assetTag}
+                                onChange={e => updateDeviceItem(idx, "assetTag", e.target.value)}
+                                placeholder="Asset ID"
+                                data-testid={`input-device-asset-${idx}`}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Label className="text-xs">Condition</Label>
+                              <Input
+                                value={item.condition}
+                                onChange={e => updateDeviceItem(idx, "condition", e.target.value)}
+                                placeholder="e.g. New / Good / Refurbished"
+                                data-testid={`input-device-condition-${idx}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {form.templateType !== "device_allocation" && (
+                  <div>
+                    <Label>Reason / Remarks (optional)</Label>
+                    <Textarea
+                      value={amendmentMeta.reason}
+                      onChange={e => setAmendmentMeta(prev => ({ ...prev, reason: e.target.value }))}
+                      placeholder="Optional reason for this amendment..."
+                      data-testid="input-amendment-reason"
                     />
-                  ) : filteredResponsibilityOptions.length > 0 ? (
-                    <ResponsibilityCardSelector
-                      optionA={filteredResponsibilityOptions[0].options[0].text}
-                      optionB={filteredResponsibilityOptions[0].options[1].text}
-                      selected={form.responsibilitiesSummary}
-                      onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
-                    />
-                  ) : (
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* === STANDARD LETTER DETAILS === */}
+            {!isAmendmentType && (
+              <>
+                {showPerformanceBand && (
+                  <div>
+                    <Label>Performance Band</Label>
+                    <Select value={form.performanceBand} onValueChange={v => setForm(prev => ({ ...prev, performanceBand: v }))}>
+                      <SelectTrigger data-testid="select-performance-band"><SelectValue placeholder="Select performance band" /></SelectTrigger>
+                      <SelectContent>
+                        {PERFORMANCE_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {showConductBand && (
+                  <div>
+                    <Label>Conduct Band</Label>
+                    <Select value={form.conductBand} onValueChange={v => setForm(prev => ({ ...prev, conductBand: v }))}>
+                      <SelectTrigger data-testid="select-conduct-band"><SelectValue placeholder="Select conduct band" /></SelectTrigger>
+                      <SelectContent>
+                        {CONDUCT_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {showCompletionBand && (
+                  <div>
+                    <Label>Completion Band</Label>
+                    <Select value={form.completionBand} onValueChange={v => setForm(prev => ({ ...prev, completionBand: v }))}>
+                      <SelectTrigger data-testid="select-completion-band"><SelectValue placeholder="Select completion band" /></SelectTrigger>
+                      <SelectContent>
+                        {COMPLETION_BANDS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label>Closing Line</Label>
+                  <Select value={form.closingLine} onValueChange={v => setForm(prev => ({ ...prev, closingLine: v }))}>
+                    <SelectTrigger data-testid="select-closing-line"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CLOSING_LINES.map(c => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {closingSentences[c.value] || c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Include responsibilities summary</Label>
+                    <Switch checked={form.includeResponsibilities} onCheckedChange={v => setForm(prev => ({ ...prev, includeResponsibilities: v }))} data-testid="switch-responsibilities" />
+                  </div>
+                  {form.includeResponsibilities && (
                     <div className="space-y-2">
-                      {form.designation.trim() && (
-                        <p className="text-xs text-muted-foreground">
-                          No template found for &quot;{form.designation}&quot;. Select from all available role templates:
-                        </p>
-                      )}
-                      <Select
-                        value={form.responsibilitiesSummary}
-                        onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
-                      >
-                        <SelectTrigger data-testid="select-all-roles-fallback">
-                          <SelectValue placeholder="Select a role template..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allDbRoles.length > 0
-                            ? allDbRoles.filter(r => r.isActive).map((role) => (
-                                <SelectGroup key={role.id}>
-                                  <SelectLabel>{role.roleLabel}</SelectLabel>
-                                  <SelectItem value={role.defaultSummary} data-testid={`fallback-role-${role.roleKey}-a`}>Option A</SelectItem>
-                                  <SelectItem value={role.alternateSummary} data-testid={`fallback-role-${role.roleKey}-b`}>Option B</SelectItem>
-                                </SelectGroup>
-                              ))
-                            : ROLE_RESPONSIBILITY_SUMMARIES.map((role) => (
-                                <SelectGroup key={role.designation}>
-                                  <SelectLabel>{role.designation}</SelectLabel>
-                                  {role.options.map((opt, idx) => (
-                                    <SelectItem
-                                      key={`${role.designation}-${idx}`}
-                                      value={opt.text}
-                                      data-testid={`fallback-role-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
-                                    >
-                                      {opt.label}
-                                    </SelectItem>
+                      {hasDbMatch ? (
+                        <ResponsibilityCardSelector
+                          role={matchedDbRoles[0]}
+                          selected={form.responsibilitiesSummary}
+                          onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                        />
+                      ) : filteredResponsibilityOptions.length > 0 ? (
+                        <ResponsibilityCardSelector
+                          optionA={filteredResponsibilityOptions[0].options[0].text}
+                          optionB={filteredResponsibilityOptions[0].options[1].text}
+                          selected={form.responsibilitiesSummary}
+                          onSelect={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                        />
+                      ) : (
+                        <div className="space-y-2">
+                          {form.designation.trim() && (
+                            <p className="text-xs text-muted-foreground">
+                              No template found for &quot;{form.designation}&quot;. Select from all available role templates:
+                            </p>
+                          )}
+                          <Select
+                            value={form.responsibilitiesSummary}
+                            onValueChange={v => setForm(prev => ({ ...prev, responsibilitiesSummary: v }))}
+                          >
+                            <SelectTrigger data-testid="select-all-roles-fallback">
+                              <SelectValue placeholder="Select a role template..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allDbRoles.length > 0
+                                ? allDbRoles.filter(r => r.isActive).map((role) => (
+                                    <SelectGroup key={role.id}>
+                                      <SelectLabel>{role.roleLabel}</SelectLabel>
+                                      <SelectItem value={role.defaultSummary} data-testid={`fallback-role-${role.roleKey}-a`}>Option A</SelectItem>
+                                      <SelectItem value={role.alternateSummary} data-testid={`fallback-role-${role.roleKey}-b`}>Option B</SelectItem>
+                                    </SelectGroup>
+                                  ))
+                                : ROLE_RESPONSIBILITY_SUMMARIES.map((role) => (
+                                    <SelectGroup key={role.designation}>
+                                      <SelectLabel>{role.designation}</SelectLabel>
+                                      {role.options.map((opt, idx) => (
+                                        <SelectItem
+                                          key={`${role.designation}-${idx}`}
+                                          value={opt.text}
+                                          data-testid={`fallback-role-${role.designation.replace(/\s+/g, "-").toLowerCase()}-${idx}`}
+                                        >
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
                                   ))}
-                                </SelectGroup>
-                              ))}
-                        </SelectContent>
-                      </Select>
-                      {form.responsibilitiesSummary && (
-                        <p className="text-sm text-muted-foreground bg-muted rounded-md p-3 mt-2">{form.responsibilitiesSummary}</p>
+                            </SelectContent>
+                          </Select>
+                          {form.responsibilitiesSummary && (
+                            <p className="text-sm text-muted-foreground bg-muted rounded-md p-3 mt-2">{form.responsibilitiesSummary}</p>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
-                </div>
-              )}
-              {showProject && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <Label>Include internship project name</Label>
-                    <Switch checked={form.includeProject} onCheckedChange={v => setForm(prev => ({ ...prev, includeProject: v }))} data-testid="switch-project" />
-                  </div>
-                  {form.includeProject && (
-                    <Select value={form.projectName} onValueChange={v => setForm(prev => ({ ...prev, projectName: v }))}>
-                      <SelectTrigger data-testid="select-project-name"><SelectValue placeholder="Select project category" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Web Application Development">Web Application Development</SelectItem>
-                        <SelectItem value="Mobile Application Development">Mobile Application Development</SelectItem>
-                        <SelectItem value="Data Analytics & Visualization">Data Analytics & Visualization</SelectItem>
-                        <SelectItem value="Machine Learning & AI">Machine Learning & AI</SelectItem>
-                        <SelectItem value="Cloud Infrastructure & DevOps">Cloud Infrastructure & DevOps</SelectItem>
-                        <SelectItem value="UI/UX Design & Research">UI/UX Design & Research</SelectItem>
-                        <SelectItem value="Quality Assurance & Automation">Quality Assurance & Automation</SelectItem>
-                        <SelectItem value="Business Process Automation">Business Process Automation</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {showProject && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <Label>Include internship project name</Label>
+                        <Switch checked={form.includeProject} onCheckedChange={v => setForm(prev => ({ ...prev, includeProject: v }))} data-testid="switch-project" />
+                      </div>
+                      {form.includeProject && (
+                        <Select value={form.projectName} onValueChange={v => setForm(prev => ({ ...prev, projectName: v }))}>
+                          <SelectTrigger data-testid="select-project-name"><SelectValue placeholder="Select project category" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Web Application Development">Web Application Development</SelectItem>
+                            <SelectItem value="Mobile Application Development">Mobile Application Development</SelectItem>
+                            <SelectItem value="Data Analytics & Visualization">Data Analytics & Visualization</SelectItem>
+                            <SelectItem value="Machine Learning & AI">Machine Learning & AI</SelectItem>
+                            <SelectItem value="Cloud Infrastructure & DevOps">Cloud Infrastructure & DevOps</SelectItem>
+                            <SelectItem value="UI/UX Design & Research">UI/UX Design & Research</SelectItem>
+                            <SelectItem value="Quality Assurance & Automation">Quality Assurance & Automation</SelectItem>
+                            <SelectItem value="Business Process Automation">Business Process Automation</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-              <div className="flex items-center justify-between">
-                <Label>Include company seal</Label>
-                <Switch checked={form.includeSeal} onCheckedChange={v => setForm(prev => ({ ...prev, includeSeal: v }))} data-testid="switch-seal" />
-              </div>
-            </div>
-            {isAdmin && (
-              <>
-                <Separator />
-                <div>
-                  <Label className="text-amber-600">Custom Paragraph Override (Admin Only)</Label>
-                  <Textarea placeholder="Optional custom paragraph..." value={form.customOverrideText} onChange={e => setForm(prev => ({ ...prev, customOverrideText: e.target.value }))} className="mt-1" data-testid="input-custom-override" />
+                  <div className="flex items-center justify-between">
+                    <Label>Include company seal</Label>
+                    <Switch checked={form.includeSeal} onCheckedChange={v => setForm(prev => ({ ...prev, includeSeal: v }))} data-testid="switch-seal" />
+                  </div>
                 </div>
+                {isAdmin && (
+                  <>
+                    <Separator />
+                    <div>
+                      <Label className="text-amber-600">Custom Paragraph Override (Admin Only)</Label>
+                      <Textarea placeholder="Optional custom paragraph..." value={form.customOverrideText} onChange={e => setForm(prev => ({ ...prev, customOverrideText: e.target.value }))} className="mt-1" data-testid="input-custom-override" />
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -635,14 +1111,62 @@ export function LetterGenerator() {
                 <Input value={form.signatoryDesignation} readOnly disabled className="bg-muted" data-testid="input-signatory-designation" />
               </div>
             </div>
-            <div>
-              <Label>Issue Date</Label>
-              <Input type="date" value={form.issueDate} onChange={e => setForm(prev => ({ ...prev, issueDate: e.target.value }))} data-testid="input-issue-date" />
-            </div>
+            {!isAmendmentType && (
+              <div>
+                <Label>Issue Date</Label>
+                <Input type="date" value={form.issueDate} onChange={e => setForm(prev => ({ ...prev, issueDate: e.target.value }))} data-testid="input-issue-date" />
+              </div>
+            )}
+
+            {/* Summary for amendment letters */}
+            {isAmendmentType && (
+              <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
+                <p className="font-semibold">Summary</p>
+                <p><span className="text-muted-foreground">Employee:</span> {form.employeeName}</p>
+                <p><span className="text-muted-foreground">Current Designation:</span> {form.designation}</p>
+                {form.department && <p><span className="text-muted-foreground">Department:</span> {form.department}</p>}
+                <p><span className="text-muted-foreground">Effective Date:</span> {amendmentMeta.effectiveDate}</p>
+                {(form.templateType === "salary_revision" || form.templateType === "combined") && amendmentMeta.newSalary && (
+                  <p><span className="text-muted-foreground">New Monthly Salary:</span> ₹{amendmentMeta.newSalary}</p>
+                )}
+                {(form.templateType === "role_change" || form.templateType === "combined") && amendmentMeta.newDesignation && (
+                  <p><span className="text-muted-foreground">New Designation:</span> {amendmentMeta.newDesignation}</p>
+                )}
+                {form.templateType === "device_allocation" && (
+                  <p><span className="text-muted-foreground">Devices:</span> {amendmentMeta.deviceItems.filter(d => d.description).length} item(s)</p>
+                )}
+              </div>
+            )}
+
             <Separator />
-            <Button variant="outline" onClick={() => setShowPreview(true)} data-testid="btn-preview-letter">
-              <Eye className="h-4 w-4 mr-2" /> Preview Letter
-            </Button>
+
+            {/* Email toggle for amendment letters */}
+            {isAmendmentType && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <Label>Send to employee email</Label>
+                  </div>
+                  <Switch checked={sendEmail} onCheckedChange={setSendEmail} data-testid="switch-send-email" />
+                </div>
+                {sendEmail && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Sending to:</Label>
+                    <Input value={employeeEmail} readOnly className="bg-muted text-sm mt-1" data-testid="input-email-preview" />
+                    {!employeeEmail && (
+                      <p className="text-xs text-amber-600 mt-1">No email found — enter email in the employee step first.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isAmendmentType && (
+              <Button variant="outline" onClick={() => setShowPreview(true)} data-testid="btn-preview-letter">
+                <Eye className="h-4 w-4 mr-2" /> Preview Letter
+              </Button>
+            )}
           </div>
         )}
 
@@ -651,13 +1175,13 @@ export function LetterGenerator() {
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           {step < steps.length - 1 ? (
-            <Button onClick={handleNext} disabled={step !== 1 && !canNext()} data-testid="btn-next-step">
+            <Button onClick={handleNext} disabled={step !== 1 && step !== 2 && !canNext()} data-testid="btn-next-step">
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={!canNext() || createMutation.isPending} data-testid="btn-create-letter">
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Letter
+              {isAmendmentType ? "Generate DOCX" : "Create Letter"}
             </Button>
           )}
         </div>

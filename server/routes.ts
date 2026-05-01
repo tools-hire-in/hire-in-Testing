@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -19,7 +19,7 @@ import path from "path";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
-import { generateAddendumDocx } from "./offerLetterAddendum";
+import { generateAddendumDocx, type AddendumData } from "./offerLetterAddendum";
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
@@ -5278,17 +5278,160 @@ export async function registerRoutes(
 
   app.post("/api/hr/letters", requireRole("hr"), async (req, res) => {
     try {
+      const templateType = req.body.templateType;
+      const STANDARD_TEMPLATES = ["experience", "internship_completion", "internship_certificate", "relieving"];
+      const AMENDMENT_TEMPLATES = ["salary_revision", "role_change", "combined", "device_allocation"];
+      const validTemplates = [...STANDARD_TEMPLATES, ...AMENDMENT_TEMPLATES];
+      if (!templateType || !validTemplates.includes(templateType)) {
+        return res.status(400).json({ error: "Invalid template type" });
+      }
+
+      const isAmendment = AMENDMENT_TEMPLATES.includes(templateType);
+
+      // --- AMENDMENT LETTER PATH ---
+      if (isAmendment) {
+        const isManual = req.body.isManualEntry === true || req.body.isManualEntry === "true";
+        let resolvedEmployeeName = (req.body.employeeName || "").trim();
+        let resolvedDesignation = (req.body.designation || "").trim();
+        let resolvedDepartment = (req.body.department || "").trim();
+        let resolvedEmployeeCode = (req.body.employeeCode || "").trim();
+        let resolvedEmployeeId: string | null = null;
+        let resolvedEmail = (req.body.manualEmployeeEmail || "").trim();
+        let resolvedStartDate = (req.body.startDate || "").trim();
+
+        if (!isManual) {
+          if (!req.body.employeeId) {
+            return res.status(400).json({ error: "Employee must be selected from the system." });
+          }
+          const employee = await storage.getAdminUser(req.body.employeeId);
+          if (!employee) {
+            return res.status(400).json({ error: "Selected employee not found in system." });
+          }
+          resolvedEmployeeId = employee.id;
+          resolvedEmployeeName = resolvedEmployeeName || `${employee.firstName} ${employee.lastName}`.trim();
+          resolvedDesignation = resolvedDesignation || employee.designation || "";
+          if (!resolvedDepartment && employee.departmentId) {
+            const dept = await storage.getDepartment(employee.departmentId);
+            resolvedDepartment = dept?.name || "";
+          }
+          resolvedEmployeeCode = resolvedEmployeeCode || employee.employeeId || "";
+          resolvedEmail = resolvedEmail || employee.email || "";
+          resolvedStartDate = resolvedStartDate || employee.joiningDate || "";
+        }
+
+        if (!resolvedEmployeeName) {
+          return res.status(400).json({ error: "Full name is required." });
+        }
+        if (!resolvedDesignation) {
+          return res.status(400).json({ error: "Designation is required." });
+        }
+
+        const metadata: Record<string, unknown> = req.body.metadata || {};
+        const effectiveDate = (
+          (req.body.effectiveDate || "").trim() ||
+          (typeof metadata.effectiveDate === "string" ? metadata.effectiveDate : "") ||
+          new Date().toISOString().split("T")[0]
+        );
+
+        const issueDate = new Date().toISOString().split("T")[0];
+        const signatoryName = (req.body.signatoryName || "").trim();
+        const signatoryDesignation = (req.body.signatoryDesignation || "HR Manager").trim();
+
+        const docData: AddendumData = {
+          candidateName: resolvedEmployeeName,
+          originalOfferDate: resolvedStartDate || effectiveDate,
+          originalDesignation: resolvedDesignation,
+          effectiveDate,
+          hrManagerName: signatoryName || "HR Manager",
+          addendumType: templateType as AddendumData["addendumType"],
+          ...metadata,
+        };
+        const docxBuffer = await generateAddendumDocx(docData);
+
+        const letterData: InsertHrLetter = {
+          templateType: templateType as InsertHrLetter["templateType"],
+          employeeId: resolvedEmployeeId,
+          employeeName: resolvedEmployeeName,
+          employeeCode: resolvedEmployeeCode || null,
+          designation: resolvedDesignation,
+          department: resolvedDepartment || null,
+          startDate: resolvedStartDate || effectiveDate,
+          signatoryName: signatoryName || null,
+          signatoryDesignation: signatoryDesignation || null,
+          signatoryId: req.body.signatoryId || null,
+          issueDate: issueDate || null,
+          manualEmployeeEmail: resolvedEmail || null,
+          metadata,
+          createdBy: req.session.userId!,
+          status: "draft",
+        };
+
+        const letter = await storage.createHrLetter(letterData);
+
+        const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
+        const year = new Date().getFullYear();
+        const refPrefix = `RL/${prefix}/${year}/`;
+        const count = await storage.getHrLetterCountByPrefix(refPrefix);
+        const referenceNumber = generateRefNumber(prefix, year, count);
+        const { authCode, documentHash } = computeLetterAuthCode({ ...letter, issueDate });
+
+        const docDir = path.resolve("uploads/hr-letters");
+        if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true });
+        const docFilename = `${referenceNumber.replace(/\//g, "-")}.docx`;
+        const docPath = path.join(docDir, docFilename);
+        fs.writeFileSync(docPath, docxBuffer);
+
+        const issuedRecord = await storage.updateHrLetter(letter.id, {
+          status: "issued",
+          referenceNumber,
+          authCode,
+          documentHash,
+          issuedBy: req.session.userId!,
+          issuedAt: new Date(),
+          issueDate,
+          pdfPath: `hr-letters/${docFilename}`,
+        });
+
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: resolvedEmployeeId || req.session.userId!,
+          action: "create_hr_letter",
+          changes: { templateType: letter.templateType, employeeName: letter.employeeName, letterId: letter.id, isManual },
+        });
+
+        // Send email if requested
+        if (req.body.sendEmail && resolvedEmail) {
+          try {
+            const verifyUrl = `${process.env.APP_URL || "https://hire-in.com"}/verify`;
+            const ccList = req.body.ccEmails
+              ? String(req.body.ccEmails).split(",").map((e: string) => e.trim()).filter(Boolean)
+              : [];
+            await sendHrLetterEmail({
+              to: resolvedEmail,
+              employeeName: resolvedEmployeeName,
+              letterType: letter.templateType,
+              referenceNumber,
+              authCode,
+              verifyUrl,
+              pdfBuffer: docxBuffer as Buffer,
+              pdfFilename: docFilename,
+              cc: ccList.length ? ccList : undefined,
+            });
+          } catch (emailErr) {
+            console.error("Amendment letter email send error:", emailErr);
+          }
+        }
+
+        return res.status(201).json(issuedRecord);
+      }
+
+      // --- STANDARD LETTER PATH (existing logic unchanged) ---
       if (!req.body.employeeId) {
         return res.status(400).json({ error: "Employee must be selected from the system. Manual entry is not allowed." });
       }
       const employee = await storage.getAdminUser(req.body.employeeId);
       if (!employee) {
         return res.status(400).json({ error: "Selected employee not found in system." });
-      }
-      const templateType = req.body.templateType;
-      const validTemplates = ["experience", "internship_completion", "internship_certificate", "relieving"];
-      if (!templateType || !validTemplates.includes(templateType)) {
-        return res.status(400).json({ error: "Invalid template type" });
       }
       if (!req.body.startDate) {
         return res.status(400).json({ error: "Start date is required" });
@@ -5572,19 +5715,45 @@ export async function registerRoutes(
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
 
+      const AMENDMENT_TEMPLATES = ["salary_revision", "role_change", "combined", "device_allocation"];
+      const isAmendment = AMENDMENT_TEMPLATES.includes(letter.templateType);
       const inline = req.query.inline === "1";
       const last4 = (letter.employeeCode || "").slice(-4) || "XXXX";
       const safeName = (letter.employeeName || "letter").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
-      const downloadFilename = `${safeName}_${last4}.pdf`;
-      const disposition = inline ? `inline; filename="${downloadFilename}"` : `attachment; filename="${downloadFilename}"`;
+      const ext = isAmendment ? "docx" : "pdf";
+      const downloadFilename = `${safeName}_${last4}.${ext}`;
+      const mimeType = isAmendment
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/pdf";
+      const disposition = inline && !isAmendment
+        ? `inline; filename="${downloadFilename}"`
+        : `attachment; filename="${downloadFilename}"`;
 
       if (letter.pdfPath) {
         const filePath = path.resolve("uploads", letter.pdfPath);
         if (fs.existsSync(filePath)) {
-          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Type", mimeType);
           res.setHeader("Content-Disposition", disposition);
           return res.sendFile(filePath);
         }
+      }
+
+      // For amendment letters with no stored file, regenerate DOCX
+      if (isAmendment) {
+        const meta: Record<string, unknown> = (typeof letter.metadata === "object" && letter.metadata !== null ? letter.metadata : {}) as Record<string, unknown>;
+        const effectiveDateFromMeta = typeof meta.effectiveDate === "string" ? meta.effectiveDate : letter.startDate;
+        const docxBuffer = await generateAddendumDocx({
+          candidateName: letter.employeeName,
+          originalOfferDate: letter.startDate,
+          originalDesignation: letter.designation,
+          effectiveDate: effectiveDateFromMeta,
+          hrManagerName: letter.signatoryName || "HR Manager",
+          addendumType: letter.templateType as AddendumData["addendumType"],
+          ...meta,
+        });
+        res.setHeader("Content-Type", mimeType);
+        res.setHeader("Content-Disposition", disposition);
+        return res.send(docxBuffer);
       }
 
       const dbSentences = await storage.getLetterTemplateSentences();

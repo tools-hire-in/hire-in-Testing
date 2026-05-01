@@ -315,6 +315,20 @@ async function ensureHrLettersTables() {
   }
 }
 
+async function ensureHrLetterAmendmentTypes() {
+  try {
+    await db.execute(sql`ALTER TYPE hr_letter_template_type ADD VALUE IF NOT EXISTS 'salary_revision'`);
+    await db.execute(sql`ALTER TYPE hr_letter_template_type ADD VALUE IF NOT EXISTS 'role_change'`);
+    await db.execute(sql`ALTER TYPE hr_letter_template_type ADD VALUE IF NOT EXISTS 'combined'`);
+    await db.execute(sql`ALTER TYPE hr_letter_template_type ADD VALUE IF NOT EXISTS 'device_allocation'`);
+    await db.execute(sql`ALTER TABLE hr_letters ADD COLUMN IF NOT EXISTS metadata JSONB`);
+    await db.execute(sql`ALTER TABLE hr_letters ADD COLUMN IF NOT EXISTS manual_employee_email VARCHAR`);
+    log("HR letter amendment types and columns ensured");
+  } catch (err) {
+    console.error("HR letter amendment types migration error:", err);
+  }
+}
+
 async function ensureOfferLetterApprovalColumns() {
   try {
     await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS approved_by VARCHAR REFERENCES admin_users(id)`);
@@ -553,6 +567,7 @@ async function backfillHolidayAttendance() {
   await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();
+  await ensureHrLetterAmendmentTypes();
   try {
     await db.execute(sql`ALTER TABLE salary_slips ADD COLUMN IF NOT EXISTS lop_leaves numeric DEFAULT '0'`);
   } catch (err) {

@@ -55,6 +55,10 @@ export const TEMPLATE_PREFIX_MAP: Record<string, string> = {
   internship_completion: "INT",
   internship_certificate: "CRT",
   relieving: "REL",
+  salary_revision: "SAL",
+  role_change: "ROL",
+  combined: "CMB",
+  device_allocation: "DEV",
 };
 
 export const TEMPLATE_LABELS: Record<string, string> = {
@@ -62,7 +66,14 @@ export const TEMPLATE_LABELS: Record<string, string> = {
   internship_completion: "Internship Completion Letter",
   internship_certificate: "Internship Certificate",
   relieving: "Relieving Letter",
+  salary_revision: "Salary Revision Letter",
+  role_change: "Designation / Promotion Letter",
+  combined: "Salary + Designation (Combined)",
+  device_allocation: "Device Allocation Letter",
 };
+
+export const AMENDMENT_TEMPLATE_TYPES = ["salary_revision", "role_change", "combined", "device_allocation"] as const;
+export type AmendmentTemplateType = typeof AMENDMENT_TEMPLATE_TYPES[number];
 
 export interface RoleResponsibilityOption {
   label: string;

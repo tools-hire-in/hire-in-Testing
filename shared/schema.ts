@@ -663,6 +663,10 @@ export const hrLetterTemplateTypeEnum = pgEnum("hr_letter_template_type", [
   "internship_completion",
   "internship_certificate",
   "relieving",
+  "salary_revision",
+  "role_change",
+  "combined",
+  "device_allocation",
 ]);
 
 export const hrLetterStatusEnum = pgEnum("hr_letter_status", [
@@ -749,6 +753,8 @@ export const hrLetters = pgTable("hr_letters", {
   revokedAt: timestamp("revoked_at"),
   revokeReason: text("revoke_reason"),
   ccEmails: text("cc_emails"),
+  metadata: jsonb("metadata"),
+  manualEmployeeEmail: varchar("manual_employee_email"),
 });
 
 export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({

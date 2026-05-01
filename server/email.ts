@@ -642,13 +642,21 @@ export async function sendHrLetterEmail(options: {
       internship_completion: "Internship Completion Letter",
       internship_certificate: "Internship Certificate",
       relieving: "Relieving Letter",
+      salary_revision: "Salary Revision Letter",
+      role_change: "Designation / Promotion Letter",
+      combined: "Salary & Designation Amendment",
+      device_allocation: "Device Allocation Letter",
     };
     const typeLabel = letterTypeLabel[options.letterType] || "HR Letter";
+
+    const mimeType = options.pdfFilename?.toLowerCase().endsWith(".docx")
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "application/pdf";
 
     const attachments = options.pdfBuffer && options.pdfFilename ? [{
       content: options.pdfBuffer.toString("base64"),
       filename: options.pdfFilename,
-      type: "application/pdf",
+      type: mimeType,
       disposition: "attachment" as const,
     }] : undefined;
 
