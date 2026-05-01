@@ -1,7 +1,7 @@
 // SendGrid email service
 import sgMail from '@sendgrid/mail';
 
-const FROM_EMAIL = 'noreply@hire-in.com';
+const FROM_EMAIL = 'alina.carter@hire-in.com'; // NOTE: alina.carter@hire-in.com must be a verified sender in SendGrid (domain or single-sender verification) for emails to deliver successfully.
 
 async function getUncachableSendGridClient() {
   const apiKey = process.env.SENDGRID_API_KEY_NEW;
@@ -41,18 +41,18 @@ export async function sendInvitationEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: "You're Invited to Hire'in Solutions Employee Portal",
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: "You're Invited to Rayomind Solutions LLP Employee Portal",
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">AI-Powered Recruitment Platform</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Welcome, ${options.firstName}!</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
-              You've been invited to join the Hire'in Solutions employee portal as <strong>${roleName}</strong>.
+              You've been invited to join the Rayomind Solutions LLP employee portal as <strong>${roleName}</strong>.
             </p>
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
               <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Your Login Credentials</p>
@@ -95,12 +95,12 @@ export async function sendInvitationEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Welcome to Hire'in Solutions, ${options.firstName}!\n\nYou've been invited as ${roleName}.${options.employeeId ? `\nEmployee ID: ${options.employeeId}` : ""}\n\nYour login credentials:\nEmail: ${options.to}\nPassword: ${options.temporaryPassword}\n\nLogin at: ${options.loginUrl}\n\nPlease change your password after your first login.\n\nPost-Onboarding Checklist:\n- Upload KYC documents (Aadhaar Card, PAN Card)\n- Upload educational certificates (10th, 12th, Graduation)\n- Upload previous employment documents (Relieving Letter, Last 3 months' Salary Slips)\n- Complete bank account details (Cancelled Cheque, Account Number, IFSC)\n- Add emergency contact information\n- Set up Two-Factor Authentication`,
+      text: `Welcome to Rayomind Solutions LLP, ${options.firstName}!\n\nYou've been invited as ${roleName}.${options.employeeId ? `\nEmployee ID: ${options.employeeId}` : ""}\n\nYour login credentials:\nEmail: ${options.to}\nPassword: ${options.temporaryPassword}\n\nLogin at: ${options.loginUrl}\n\nPlease change your password after your first login.\n\nPost-Onboarding Checklist:\n- Upload KYC documents (Aadhaar Card, PAN Card)\n- Upload educational certificates (10th, 12th, Graduation)\n- Upload previous employment documents (Relieving Letter, Last 3 months' Salary Slips)\n- Complete bank account details (Cancelled Cheque, Account Number, IFSC)\n- Add emergency contact information\n- Set up Two-Factor Authentication`,
     };
 
     await client.send(msg);
@@ -121,7 +121,7 @@ export async function sendRayoAcademyCredentialsEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: "Your Rayo Academy Training Account",
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
@@ -158,12 +158,12 @@ export async function sendRayoAcademyCredentialsEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Hi ${options.firstName},\n\nA Rayo Academy training account has been created for you.\n\nYour credentials:\nEmail: ${options.to}\nTemporary Password: ${options.tempPassword}\n\nPlease visit https://rayo.academy to log in and change your password.\n\nHire'in Solutions`,
+      text: `Hi ${options.firstName},\n\nA Rayo Academy training account has been created for you.\n\nYour credentials:\nEmail: ${options.to}\nTemporary Password: ${options.tempPassword}\n\nPlease visit https://rayo.academy to log in and change your password.\n\nRayomind Solutions LLP`,
     };
     await client.send(msg);
     console.log(`Rayo Academy credentials email sent to ${options.to}`);
@@ -203,12 +203,12 @@ export async function sendDocumentReminderEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: "Reminder: Pending Onboarding Documents - Hire'in Solutions",
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: "Reminder: Pending Onboarding Documents - Rayomind Solutions LLP",
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Document Reminder</p>
           </div>
           <div style="padding: 32px;">
@@ -228,7 +228,7 @@ export async function sendDocumentReminderEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -255,12 +255,12 @@ export async function sendPasswordResetEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: "Password Reset - Hire'in Solutions",
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: "Password Reset - Rayomind Solutions LLP",
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Password Reset Request</p>
           </div>
           <div style="padding: 32px;">
@@ -279,7 +279,7 @@ export async function sendPasswordResetEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -313,12 +313,12 @@ export async function sendSalaryReport(options: {
     const msg: any = {
       to: toAddresses,
       cc: ccAddresses,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Monthly Salary Processing Report - ${options.summary.monthName} ${options.summary.year}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Monthly Salary Processing Report</p>
           </div>
           <div style="padding: 32px;">
@@ -350,7 +350,7 @@ export async function sendSalaryReport(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -383,18 +383,18 @@ export async function sendWelcomeEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: "Welcome to Hire'in Solutions!",
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: "Welcome to Rayomind Solutions LLP!",
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">AI-Powered Recruitment Platform</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Welcome aboard, ${options.firstName} ${options.lastName}!</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
-              Your account on the Hire'in Solutions employee portal is now active. Here's what you can do:
+              Your account on the Rayomind Solutions LLP employee portal is now active. Here's what you can do:
             </p>
             <ul style="color: #475569; line-height: 1.8; padding-left: 20px; margin: 0 0 16px;">
               <li>View your dashboard and company updates</li>
@@ -409,12 +409,12 @@ export async function sendWelcomeEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Welcome aboard, ${options.firstName} ${options.lastName}!\n\nYour Hire'in Solutions employee portal account is now active.\n\nYou can:\n- View your dashboard\n- Track attendance\n- Manage leave requests\n- View holidays and org chart\n- Set up 2FA for security\n\nWe recommend enabling two-factor authentication from your profile.`,
+      text: `Welcome aboard, ${options.firstName} ${options.lastName}!\n\nYour Rayomind Solutions LLP employee portal account is now active.\n\nYou can:\n- View your dashboard\n- Track attendance\n- Manage leave requests\n- View holidays and org chart\n- Set up 2FA for security\n\nWe recommend enabling two-factor authentication from your profile.`,
     };
 
     await client.send(msg);
@@ -440,18 +440,19 @@ export async function sendOfferLetterEmail(options: {
     const msg = {
       to: options.to,
       cc: options.cc?.length ? options.cc : undefined,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: `Offer Letter from Hire'in Solutions — ${options.designation}`,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      replyTo: { email: 'alina.carter@hire-in.com', name: 'Alina Carter' },
+      subject: `Offer Letter from Rayomind Solutions LLP — ${options.designation}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">AI-Powered Recruitment Platform</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Congratulations, ${options.candidateName}!</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
-              We are excited to extend an offer to you for the position of <strong>${options.designation}</strong> at Hire'in Solutions.
+              We are excited to extend an offer to you for the position of <strong>${options.designation}</strong> at Rayomind Solutions LLP.
             </p>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">
               Please review your offer letter and accept it by clicking the button below. This offer is valid until <strong>${expiryStr}</strong>.
@@ -468,12 +469,12 @@ export async function sendOfferLetterEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Congratulations, ${options.candidateName}!\n\nWe are excited to extend an offer for the position of ${options.designation} at Hire'in Solutions.\n\nPlease review and accept your offer by visiting:\n${options.acceptUrl}\n\nThis offer is valid until ${expiryStr}.\n\nBest regards,\nHire'in Solutions`,
+      text: `Congratulations, ${options.candidateName}!\n\nWe are excited to extend an offer for the position of ${options.designation} at Rayomind Solutions LLP.\n\nPlease review and accept your offer by visiting:\n${options.acceptUrl}\n\nThis offer is valid until ${expiryStr}.\n\nBest regards,\nRayomind Solutions LLP`,
     };
     await client.send(msg);
     console.log(`Offer letter email sent to ${options.to}`);
@@ -496,12 +497,12 @@ export async function sendOfferLetterPendingApprovalEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Offer Letter Pending Approval — ${options.candidateName} (${options.designation})`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Approval Required</p>
           </div>
           <div style="padding: 32px;">
@@ -541,12 +542,12 @@ export async function sendOfferLetterPendingApprovalEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `New Offer Letter Awaiting Approval\n\n${options.managerName} has submitted an offer letter for ${options.candidateName} (${options.designation})${options.salary ? ` at ${options.salary}` : ""}.\n\nPlease review and approve at:\n${options.reviewUrl}\n\nHire'in Solutions`,
+      text: `New Offer Letter Awaiting Approval\n\n${options.managerName} has submitted an offer letter for ${options.candidateName} (${options.designation})${options.salary ? ` at ${options.salary}` : ""}.\n\nPlease review and approve at:\n${options.reviewUrl}\n\nRayomind Solutions LLP`,
     };
     await client.send(msg);
     console.log(`Offer letter pending approval email sent to HR`);
@@ -578,12 +579,12 @@ export async function sendOfferLetterApprovalDecisionEmail(options: {
       : `The offer letter you submitted for <strong>${options.candidateName}</strong> (${options.designation}) has been <strong style="color: #dc2626;">rejected</strong>.`;
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Decision</p>
           </div>
           <div style="padding: 32px;">
@@ -607,12 +608,12 @@ export async function sendOfferLetterApprovalDecisionEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Hi ${options.managerFirstName},\n\nYour offer letter for ${options.candidateName} (${options.designation}) has been ${statusLabel.toLowerCase()}.${!options.approved && options.rejectionReason ? `\n\nReason: ${options.rejectionReason}` : ""}\n\nView details at:\n${options.reviewUrl}\n\nHire'in Solutions`,
+      text: `Hi ${options.managerFirstName},\n\nYour offer letter for ${options.candidateName} (${options.designation}) has been ${statusLabel.toLowerCase()}.${!options.approved && options.rejectionReason ? `\n\nReason: ${options.rejectionReason}` : ""}\n\nView details at:\n${options.reviewUrl}\n\nRayomind Solutions LLP`,
     };
     await client.send(msg);
     console.log(`Offer letter approval decision email sent to manager`);
@@ -655,6 +656,7 @@ export async function sendHrLetterEmail(options: {
       to: options.to,
       cc: options.cc?.length ? options.cc : undefined,
       from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      replyTo: { email: 'alina.carter@hire-in.com', name: 'Alina Carter' },
       subject: `Your ${typeLabel} — Rayomind Solutions LLP (Ref: ${options.referenceNumber})`,
       attachments,
       html: `
@@ -713,18 +715,18 @@ export async function sendOnboardingWelcomeEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
-      subject: `Welcome to Hire'in Solutions — Your Onboarding Guide`,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Welcome to Rayomind Solutions LLP — Your Onboarding Guide`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Welcome to the Team!</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Welcome aboard, ${options.firstName} ${options.lastName}!</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 20px;">
-              Congratulations on joining Hire'in Solutions as <strong>${options.designation}</strong>! Your employee portal account is ready. Here are your login credentials:
+              Congratulations on joining Rayomind Solutions LLP as <strong>${options.designation}</strong>! Your employee portal account is ready. Here are your login credentials:
             </p>
 
             <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
@@ -776,12 +778,12 @@ export async function sendOnboardingWelcomeEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Welcome aboard, ${options.firstName} ${options.lastName}!\n\nYour Hire'in Solutions employee portal account is ready.\n\nCredentials:\n- Employee ID: ${options.employeeId}\n- Email: ${options.to}\n- Temporary Password: ${options.temporaryPassword}\n\n10-Step Onboarding Checklist:\n1. Log in and change your password at ${options.loginUrl}\n2. Set up 2FA (required)\n3. Upload KYC documents\n4. Upload education certificates\n5. Upload employment documents\n6. Upload cancelled cheque/voided check\n7. Enter bank account details\n8. Add emergency contacts\n9. Select 2 floating holidays\n10. Start punching attendance daily\n\nQuestions? Raise a ticket in the portal or contact HR.`,
+      text: `Welcome aboard, ${options.firstName} ${options.lastName}!\n\nYour Rayomind Solutions LLP employee portal account is ready.\n\nCredentials:\n- Employee ID: ${options.employeeId}\n- Email: ${options.to}\n- Temporary Password: ${options.temporaryPassword}\n\n10-Step Onboarding Checklist:\n1. Log in and change your password at ${options.loginUrl}\n2. Set up 2FA (required)\n3. Upload KYC documents\n4. Upload education certificates\n5. Upload employment documents\n6. Upload cancelled cheque/voided check\n7. Enter bank account details\n8. Add emergency contacts\n9. Select 2 floating holidays\n10. Start punching attendance daily\n\nQuestions? Raise a ticket in the portal or contact HR.`,
     };
     await client.send(msg);
     console.log(`Onboarding welcome email sent to ${options.to}`);
@@ -802,12 +804,12 @@ export async function sendReviewCycleOpenedEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Performance Review Cycle Opened: ${options.cycleName}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Performance Review</p>
           </div>
           <div style="padding: 32px;">
@@ -820,7 +822,7 @@ export async function sendReviewCycleOpenedEmail(options: {
             </p>
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
-            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
           </div>
         </div>
       `,
@@ -845,12 +847,12 @@ export async function sendSelfReviewDueReminderEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Reminder: Self-Review Due — ${options.cycleName}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Self-Review Reminder</p>
           </div>
           <div style="padding: 32px;">
@@ -863,7 +865,7 @@ export async function sendSelfReviewDueReminderEmail(options: {
             </p>
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
-            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
           </div>
         </div>
       `,
@@ -899,18 +901,19 @@ export async function sendAddendumEmail(options: {
     const msg = {
       to: options.to,
       cc: options.cc?.length ? options.cc : undefined,
-      from: { email: fromEmail, name: "Rayomind Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      replyTo: { email: 'alina.carter@hire-in.com', name: 'Alina Carter' },
       subject: `Amendment to Your Offer — ${typeLabel}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Offer Letter Amendment</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Dear ${options.candidateName},</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
-              An amendment (<strong>${typeLabel}</strong>) to your offer letter has been issued by Rayomind Solutions.
+              An amendment (<strong>${typeLabel}</strong>) to your offer letter has been issued by Rayomind Solutions LLP.
             </p>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">
               Please review the updated terms and provide your digital signature by clicking the button below.
@@ -927,12 +930,12 @@ export async function sendAddendumEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
       `,
-      text: `Dear ${options.candidateName},\n\nAn amendment (${typeLabel}) to your offer letter has been issued.\n\nPlease review and sign at:\n${options.acceptUrl}\n\nBest regards,\nRayomind Solutions`,
+      text: `Dear ${options.candidateName},\n\nAn amendment (${typeLabel}) to your offer letter has been issued.\n\nPlease review and sign at:\n${options.acceptUrl}\n\nBest regards,\nRayomind Solutions LLP`,
     };
     await client.send(msg);
     console.log(`Addendum email sent to ${options.to}`);
@@ -961,12 +964,12 @@ export async function sendAddendumAcceptedEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Rayomind Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Addendum Signed — ${options.candidateName} (${typeLabel})`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dcfce7; margin: 8px 0 0; font-size: 14px;">Addendum Accepted</p>
           </div>
           <div style="padding: 32px;">
@@ -980,7 +983,7 @@ export async function sendAddendumAcceptedEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Rayomind Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -1011,12 +1014,12 @@ export async function sendLeaveAppliedEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Leave Request: ${options.employeeName} — ${options.leaveType}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Leave Request Notification</p>
           </div>
           <div style="padding: 32px;">
@@ -1061,7 +1064,7 @@ export async function sendLeaveAppliedEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -1097,12 +1100,12 @@ export async function sendLeaveDecisionEmail(options: {
 
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Your Leave Request Has Been ${isApproved ? "Approved" : "Rejected"}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: ${headerColor}; padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: ${isApproved ? "#dcfce7" : "#fee2e2"}; margin: 8px 0 0; font-size: 14px;">${headerSubtitle}</p>
           </div>
           <div style="padding: 32px;">
@@ -1141,7 +1144,7 @@ export async function sendLeaveDecisionEmail(options: {
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+              &copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.
             </p>
           </div>
         </div>
@@ -1167,12 +1170,12 @@ export async function sendCheckInReminderEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {
       to: options.to,
-      from: { email: fromEmail, name: "Hire'in Solutions" },
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Check-In Reminder: ${options.scheduledDate}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Check-In Reminder</p>
           </div>
           <div style="padding: 32px;">
@@ -1185,7 +1188,7 @@ export async function sendCheckInReminderEmail(options: {
             </p>
           </div>
           <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
-            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
           </div>
         </div>
       `,
