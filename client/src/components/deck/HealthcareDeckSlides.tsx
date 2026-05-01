@@ -245,7 +245,7 @@ function Slide3About() {
         <div style={{ flex: 0.8, display: "flex", flexDirection: "column", gap: 10 }}>
           {[
             { icon: Heart, label: "Healthcare-Exclusive Division", desc: "Dedicated clinical staffing expertise" },
-            { icon: ShieldCheck, label: "proKred.com Platform", desc: "Proprietary credentialing automation" },
+            { icon: ShieldCheck, label: "proKred.com Platform", desc: "Advanced credentialing automation" },
             { icon: Users, label: "60+ Clinical Recruiters", desc: "Specialty-trained healthcare teams" },
             { icon: Globe, label: "All 50 US States", desc: "Coast-to-coast clinical coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (

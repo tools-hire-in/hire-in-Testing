@@ -68,7 +68,7 @@ const TECH_TOOLS = [
   {
     name: "KlerHire AI",
     tagline: "AI-Powered Hiring Intelligence",
-    description: "Proprietary AI platform with AI Booster for recruiters to deeply understand requirements and perform intelligent resume matching — ensuring only the most qualified candidates make the shortlist.",
+    description: "Best-in-class AI platform with AI Booster for recruiters to deeply understand requirements and perform intelligent resume matching — ensuring only the most qualified candidates make the shortlist.",
     features: ["AI Booster for Recruiters", "Smart Resume Matching", "Requirement Analysis", "Quality-First Shortlisting"],
     icon: Brain,
     accent: "border-primary/20 bg-gradient-to-br from-primary/5 to-transparent",
@@ -104,7 +104,7 @@ const PROCESS_STEPS = [
 
 const DIFFERENTIATORS = [
   { icon: Sparkles, title: "Tech-Forward DNA", description: "Born from a software company — we build like technologists, not just staffing firms." },
-  { icon: Brain, title: "Proprietary AI Tools", description: "KlerHire and proKred.com give us capabilities no traditional agency can match." },
+  { icon: Brain, title: "Best-in-Class AI Tools", description: "KlerHire and proKred.com give us capabilities no traditional agency can match." },
   { icon: Clock, title: "50% Faster Placements", description: "AI pre-screening cuts time-to-hire in half while improving quality." },
   { icon: Shield, title: "100% Compliance", description: "Zero-compromise credential verification for every placement." },
   { icon: Globe, title: "10+ Years of Excellence", description: "Backed by Rayomind with over a decade of technology expertise." },
@@ -204,7 +204,7 @@ export default function CapabilityDeck() {
                   <strong className="text-foreground">{COMPANY.name}</strong> was established as a tech-forward startup under <strong className="text-foreground">Rayomind</strong> (est. 2014) with a singular mission: to revolutionize recruitment by merging cutting-edge AI technology with genuine human understanding.
                 </p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  With over a decade of technology expertise as our foundation, we don't just fill positions — we engineer perfect matches. Our proprietary tools like KlerHire AI and proKred.com give us capabilities that traditional staffing firms simply cannot replicate.
+                  With over a decade of technology expertise as our foundation, we don't just fill positions — we engineer perfect matches. We leverage best-in-class AI tools like KlerHire AI and proKred.com for capabilities that traditional staffing firms simply cannot replicate.
                 </p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   We specialize in Healthcare, IT, Engineering, and Professional Services — serving clients from Fortune 500 companies to innovative startups across the United States.
@@ -409,8 +409,8 @@ export default function CapabilityDeck() {
               <div className="w-8 h-px bg-primary" />
               <p className="text-primary font-semibold tracking-wider uppercase text-[11px]">Our Technology</p>
             </div>
-            <h2 className="text-2xl md:text-3xl font-bold mb-2 tracking-tight">Powered by Proprietary AI</h2>
-            <p className="text-sm text-muted-foreground mb-6 max-w-xl">We build our own technology. Our proprietary tools give us an unfair advantage in finding, matching, and placing top talent.</p>
+            <h2 className="text-2xl md:text-3xl font-bold mb-2 tracking-tight">Powered by Best-in-Class AI</h2>
+            <p className="text-sm text-muted-foreground mb-6 max-w-xl">We deploy the best AI tools available. KlerHire AI and proKred.com give us an unfair advantage in finding, matching, and placing top talent.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {TECH_TOOLS.map((tool) => (
