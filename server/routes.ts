@@ -3169,7 +3169,7 @@ export async function registerRoutes(
       const { candidateTitle, candidateName, candidatePersonalEmail, candidateAddress,
         designation, subjectDesignation, reportingToUserId, departmentId,
         employmentType, proposedStartDate, salary, salaryInWords,
-        location, jurisdiction, hrManagerName, offerDate } = req.body;
+        location, jurisdiction, hrManagerName, offerDate, ccEmails } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
@@ -3207,6 +3207,7 @@ export async function registerRoutes(
         createdBy: actorId,
         expiresAt,
         hireInEmail: null,
+        ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -3263,12 +3264,17 @@ export async function registerRoutes(
       // HR/Admin flow: send directly to candidate
       const acceptUrl = `${protocol}://${host}/onboard/${token}`;
 
+      const parsedCcEmails = Array.isArray(ccEmails)
+        ? ccEmails.filter(Boolean)
+        : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+
       const emailResult = await sendOfferLetterEmail({
         to: candidatePersonalEmail.toLowerCase(),
         candidateName,
         designation,
         acceptUrl,
         expiresAt,
+        cc: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
       });
 
       if (!emailResult.success) {
@@ -3697,7 +3703,7 @@ export async function registerRoutes(
         oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
         oldConfirmationDate, newConfirmationDate,
         customClauseTitle, customClauseText,
-        deviceItems,
+        deviceItems, ccEmails,
       } = req.body;
 
       if (!addendumType || !effectiveDate) {
@@ -3730,6 +3736,7 @@ export async function registerRoutes(
         customClauseTitle: customClauseTitle || null,
         customClauseText: customClauseText || null,
         deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
+        ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
       });
 
       await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
@@ -3738,11 +3745,16 @@ export async function registerRoutes(
       const host = req.headers.host || "localhost";
       const acceptUrl = `${protocol}://${host}/addendum/${token}`;
 
+      const parsedAddendumCcEmails = Array.isArray(ccEmails)
+        ? ccEmails.filter(Boolean)
+        : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+
       const emailResult = await sendAddendumEmail({
         to: offerLetter.candidatePersonalEmail,
         candidateName: offerLetter.candidateName,
         addendumType,
         acceptUrl,
+        cc: parsedAddendumCcEmails.length > 0 ? parsedAddendumCcEmails : undefined,
       });
 
       if (!emailResult.success) {
@@ -3821,11 +3833,16 @@ export async function registerRoutes(
       const host = req.headers.host || "localhost";
       const acceptUrl = `${protocol}://${host}/addendum/${addendum.token}`;
 
+      const storedCcEmails = addendum.ccEmails
+        ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+        : [];
+
       const emailResult = await sendAddendumEmail({
         to: offerLetter.candidatePersonalEmail,
         candidateName: addendum.candidateName,
         addendumType: addendum.addendumType,
         acceptUrl,
+        cc: storedCcEmails.length > 0 ? storedCcEmails : undefined,
       });
 
       if (addendum.status === "draft") {
@@ -5519,6 +5536,10 @@ export async function registerRoutes(
       if (!recipientEmail) {
         return res.status(400).json({ error: "No email address found for the employee" });
       }
+      const rawCcEmails = req.body.ccEmails;
+      const parsedHrLetterCcEmails = Array.isArray(rawCcEmails)
+        ? rawCcEmails.filter(Boolean)
+        : (typeof rawCcEmails === "string" && rawCcEmails.trim() ? rawCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
 
       let pdfBuffer: Buffer | undefined;
       if (letter.pdfPath) {
@@ -5563,17 +5584,22 @@ export async function registerRoutes(
         verifyUrl,
         pdfBuffer,
         pdfFilename: `${letter.referenceNumber.replace(/\//g, "-")}.pdf`,
+        cc: parsedHrLetterCcEmails.length > 0 ? parsedHrLetterCcEmails : undefined,
       });
 
       if (!result.success) {
         return res.status(500).json({ error: `Failed to send email: ${result.error}` });
       }
 
+      if (parsedHrLetterCcEmails.length > 0) {
+        await storage.updateHrLetter(letter.id, { ccEmails: parsedHrLetterCcEmails.join(",") });
+      }
+
       await storage.createAuditLog({
         actorId: req.session.userId!,
         targetId: letter.id,
         action: "email_hr_letter",
-        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber },
+        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber, cc: parsedHrLetterCcEmails.length > 0 ? parsedHrLetterCcEmails : undefined },
       });
 
       res.json({ success: true, sentTo: recipientEmail });

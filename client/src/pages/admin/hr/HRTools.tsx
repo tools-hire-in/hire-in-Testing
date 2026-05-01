@@ -645,6 +645,7 @@ interface OfferFormData {
   candidateTitle: string;
   candidateName: string;
   candidatePersonalEmail: string;
+  ccEmails: string;
   candidateAddress: string;
   designation: string;
   subjectDesignation: string;
@@ -666,6 +667,7 @@ function getDefaultOfferData(): OfferFormData {
     candidateTitle: "Mr.",
     candidateName: "",
     candidatePersonalEmail: "",
+    ccEmails: "",
     candidateAddress: "",
     designation: "",
     subjectDesignation: "",
@@ -940,6 +942,11 @@ function OfferLetterGenerator() {
             <div>
               <Label>Personal Email</Label>
               <Input data-testid="input-offer-email" type="email" value={formData.candidatePersonalEmail} onChange={e => updateField("candidatePersonalEmail", e.target.value)} placeholder="candidate@gmail.com" />
+            </div>
+            <div>
+              <Label>CC Recipients <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input data-testid="input-offer-cc" type="text" value={formData.ccEmails} onChange={e => updateField("ccEmails", e.target.value)} placeholder="manager@hire-in.com, ceo@hire-in.com" />
+              <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1305,6 +1312,7 @@ function OfferLettersDashboard() {
     oldConfirmationDate: "", newConfirmationDate: "",
     customClauseTitle: "", customClauseText: "",
     deviceItems: [] as { description: string; serialNumber: string; assetTag: string; condition: string }[],
+    ccEmails: "",
   });
   const [submittingAddendum, setSubmittingAddendum] = useState(false);
 
@@ -1329,6 +1337,7 @@ function OfferLettersDashboard() {
     oldConfirmationDate: "", newConfirmationDate: "",
     customClauseTitle: "", customClauseText: "",
     deviceItems: [],
+    ccEmails: "",
   });
 
   const handleCreateAddendum = async () => {
@@ -2083,6 +2092,11 @@ function OfferLettersDashboard() {
                 <Label>Reason / Remarks (optional)</Label>
                 <Input data-testid="input-addendum-reason" className="mt-1" placeholder="e.g. Annual performance review" value={addendumForm.reason} onChange={e => setAddendumForm(f => ({ ...f, reason: e.target.value }))} />
               </div>
+            </div>
+            <div>
+              <Label>CC Recipients <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input data-testid="input-addendum-cc" className="mt-1" placeholder="manager@hire-in.com, ceo@hire-in.com" value={addendumForm.ccEmails} onChange={e => setAddendumForm(f => ({ ...f, ccEmails: e.target.value }))} />
+              <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
 
             {/* Preview */}

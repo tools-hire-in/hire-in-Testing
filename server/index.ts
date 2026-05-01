@@ -305,6 +305,10 @@ async function ensureHrLettersTables() {
       CREATE UNIQUE INDEX IF NOT EXISTS hr_letters_reference_number_idx ON hr_letters(reference_number)
     `);
 
+    await db.execute(sql`
+      ALTER TABLE hr_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
+    `);
+
     log("HR letters enum types, table, and indexes ensured successfully");
   } catch (err) {
     console.error("HR letters table migration error:", err);
@@ -332,6 +336,12 @@ async function ensureOfferLetterAddendumsTable() {
       await db.execute(sql`
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS device_items JSONB
       `);
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS cc_emails TEXT
+      `);
+      await db.execute(sql`
+        ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
+      `);
       return;
     }
 
@@ -356,6 +366,7 @@ async function ensureOfferLetterAddendumsTable() {
         custom_clause_title VARCHAR,
         custom_clause_text TEXT,
         device_items JSONB,
+        cc_emails TEXT,
         effective_date VARCHAR,
         reason TEXT,
         hr_manager_name VARCHAR,
@@ -375,6 +386,9 @@ async function ensureOfferLetterAddendumsTable() {
       )
     `);
     log("offer_letter_addendums table created successfully");
+    await db.execute(sql`
+      ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
+    `);
   } catch (err) {
     console.error("Offer letter addendums table migration error:", err);
   }

@@ -638,6 +638,7 @@ export const offerLetters = pgTable("offer_letters", {
   approvedBy: varchar("approved_by").references(() => adminUsers.id),
   approvedAt: timestamp("approved_at"),
   approvalRejectionReason: text("approval_rejection_reason"),
+  ccEmails: text("cc_emails"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
@@ -746,6 +747,7 @@ export const hrLetters = pgTable("hr_letters", {
   revokedBy: varchar("revoked_by").references(() => adminUsers.id),
   revokedAt: timestamp("revoked_at"),
   revokeReason: text("revoke_reason"),
+  ccEmails: text("cc_emails"),
 });
 
 export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({
@@ -1058,6 +1060,7 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   customClauseTitle: varchar("custom_clause_title"),
   customClauseText: text("custom_clause_text"),
   deviceItems: jsonb("device_items"),
+  ccEmails: text("cc_emails"),
 
   effectiveDate: varchar("effective_date"),
   reason: text("reason"),

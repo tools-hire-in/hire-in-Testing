@@ -39,6 +39,8 @@ export function LettersDashboard() {
   const [revokeReason, setRevokeReason] = useState("");
   const [reissueDialog, setReissueDialog] = useState<HrLetter | null>(null);
   const [reissueReason, setReissueReason] = useState("");
+  const [emailCcDialog, setEmailCcDialog] = useState<HrLetter | null>(null);
+  const [emailCcInput, setEmailCcInput] = useState("");
 
   const { data: letters = [], isLoading } = useQuery<HrLetter[]>({
     queryKey: ["/api/hr/letters", { templateType: templateFilter !== "all" ? templateFilter : undefined, status: statusFilter !== "all" ? statusFilter : undefined, search: search || undefined }],
@@ -71,12 +73,14 @@ export function LettersDashboard() {
   });
 
   const emailMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/hr/letters/${id}/email`);
+    mutationFn: async ({ id, ccEmails }: { id: string; ccEmails?: string }) => {
+      const res = await apiRequest("POST", `/api/hr/letters/${id}/email`, ccEmails ? { ccEmails } : undefined);
       return res.json();
     },
     onSuccess: (data: { sentTo: string }) => {
       toast({ title: "Email sent", description: `Letter emailed to ${data.sentTo}` });
+      setEmailCcDialog(null);
+      setEmailCcInput("");
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -165,7 +169,7 @@ export function LettersDashboard() {
                         }} data-testid={`btn-print-letter-${letter.id}`}>
                           <Printer className="h-4 w-4 text-slate-600" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => emailMutation.mutate(letter.id)} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
+                        <Button variant="ghost" size="sm" onClick={() => { setEmailCcDialog(letter); setEmailCcInput(""); }} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
                           <Mail className="h-4 w-4 text-blue-600" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => setReissueDialog(letter)} data-testid={`btn-reissue-letter-${letter.id}`}>
@@ -267,6 +271,47 @@ export function LettersDashboard() {
             <Button onClick={() => reissueDialog && reissueMutation.mutate({ id: reissueDialog.id, reason: reissueReason })} disabled={!reissueReason || reissueMutation.isPending} data-testid="btn-confirm-reissue">
               {reissueMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Re-issue with Updated Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!emailCcDialog} onOpenChange={(open) => { if (!open) { setEmailCcDialog(null); setEmailCcInput(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-blue-600" />
+              Send Letter by Email
+            </DialogTitle>
+            <DialogDescription>
+              The letter will be emailed to the employee. Optionally add CC recipients below.
+            </DialogDescription>
+          </DialogHeader>
+          {emailCcDialog && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800 space-y-1">
+              <p className="font-medium">{emailCcDialog.employeeName}</p>
+              <p className="text-xs">{emailCcDialog.referenceNumber || "Draft"}</p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>CC Recipients <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              data-testid="input-hr-letter-cc"
+              placeholder="manager@hire-in.com, ceo@hire-in.com"
+              value={emailCcInput}
+              onChange={e => setEmailCcInput(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Separate multiple emails with commas</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEmailCcDialog(null); setEmailCcInput(""); }}>Cancel</Button>
+            <Button
+              onClick={() => emailCcDialog && emailMutation.mutate({ id: emailCcDialog.id, ccEmails: emailCcInput.trim() || undefined })}
+              disabled={emailMutation.isPending}
+              data-testid="btn-confirm-email-letter"
+            >
+              {emailMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Send Email
             </Button>
           </DialogFooter>
         </DialogContent>

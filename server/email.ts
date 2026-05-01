@@ -432,12 +432,14 @@ export async function sendOfferLetterEmail(options: {
   designation: string;
   acceptUrl: string;
   expiresAt: Date;
+  cc?: string[];
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const expiryStr = options.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     const msg = {
       to: options.to,
+      cc: options.cc?.length ? options.cc : undefined,
       from: { email: fromEmail, name: "Hire'in Solutions" },
       subject: `Offer Letter from Hire'in Solutions — ${options.designation}`,
       html: `
@@ -630,6 +632,7 @@ export async function sendHrLetterEmail(options: {
   verifyUrl: string;
   pdfBuffer?: Buffer;
   pdfFilename?: string;
+  cc?: string[];
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
@@ -650,6 +653,7 @@ export async function sendHrLetterEmail(options: {
 
     const msg = {
       to: options.to,
+      cc: options.cc?.length ? options.cc : undefined,
       from: { email: fromEmail, name: "Rayomind Solutions LLP" },
       subject: `Your ${typeLabel} — Rayomind Solutions LLP (Ref: ${options.referenceNumber})`,
       attachments,
@@ -879,6 +883,7 @@ export async function sendAddendumEmail(options: {
   candidateName: string;
   addendumType: string;
   acceptUrl: string;
+  cc?: string[];
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
@@ -893,6 +898,7 @@ export async function sendAddendumEmail(options: {
 
     const msg = {
       to: options.to,
+      cc: options.cc?.length ? options.cc : undefined,
       from: { email: fromEmail, name: "Rayomind Solutions" },
       subject: `Amendment to Your Offer — ${typeLabel}`,
       html: `
