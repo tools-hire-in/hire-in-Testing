@@ -179,7 +179,7 @@ Why this matters:
 Microsoft Teams Expectations:
 
 Active Presence
-- Be present and engaged during working hours (8:00 PM – 4:00 AM IST)
+- Be present and engaged during working hours (7:00 PM – 4:00 AM IST)
 - Update your Teams status when away or unavailable
 - Silence is not acceptable when awareness is expected
 

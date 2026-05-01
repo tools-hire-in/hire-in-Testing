@@ -5402,7 +5402,7 @@ export async function registerRoutes(
         // Send email if requested
         if (req.body.sendEmail && resolvedEmail) {
           try {
-            const verifyUrl = `${process.env.APP_URL || "https://hire-in.com"}/verify`;
+            const verifyUrl = `${process.env.BASE_URL || "https://employee.hire-in.com"}/verify`;
             const ccList = req.body.ccEmails
               ? String(req.body.ccEmails).split(",").map((e: string) => e.trim()).filter(Boolean)
               : [];

@@ -757,7 +757,7 @@ export async function sendOnboardingWelcomeEmail(options: {
               <li><strong>Enter Bank Account Details</strong> — Go to Profile → Bank Details and enter your bank account information for salary processing</li>
               <li><strong>Add Emergency Contacts</strong> — Go to Profile → Emergency Contacts and add at least one emergency contact</li>
               <li><strong>Select Your 2 Floating Holidays</strong> — Go to Holidays → Regional and choose 2 optional holidays for the year</li>
-              <li><strong>Start Punching Attendance</strong> — Use the Attendance page to punch in/out daily (8-hour threshold, 8 PM - 4 AM IST shift)</li>
+              <li><strong>Start Punching Attendance</strong> — Use the Attendance page to punch in/out daily (8-hour threshold, 7 PM - 4 AM IST shift)</li>
             </ol>
 
             <h3 style="color: #1e293b; margin: 0 0 12px; font-size: 18px;">🗺 Portal Navigation</h3>
