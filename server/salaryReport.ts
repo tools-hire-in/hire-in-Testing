@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { adminUsers, attendance, leaveRequests, holidays, departments } from "@shared/schema";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { adminUsers, attendance, leaveRequests, holidays, departments, leaveBalances } from "@shared/schema";
+import { eq, and, gte, lte } from "drizzle-orm";
 
 interface EmployeeReportRow {
   employeeName: string;
@@ -11,7 +11,8 @@ interface EmployeeReportRow {
   workingDays: number;
   presentDays: number;
   absentDays: number;
-  approvedLeaves: number;
+  paidLeaves: number;
+  lopLeaves: number;
   holidays: number;
   totalHours: number;
   attendancePercentage: number;
@@ -26,6 +27,7 @@ export interface SalaryReportSummary {
   monthName: string;
   totalEmployees: number;
   totalPayable: number;
+  totalDeductions: number;
   totalHoursWorked: number;
   generatedAt: string;
 }
@@ -54,12 +56,44 @@ function getWorkingDaysInMonth(year: number, month: number, holidayDates: Set<st
   return workingDays;
 }
 
+/**
+ * Prorate a leave request's totalDays to only count days falling within the
+ * report month's [startDate, endDate] window. This prevents multi-month leave
+ * requests from inflating a single month's approved leave count.
+ */
+function prorateLeaveToMonth(
+  lrStartDate: string,
+  lrEndDate: string,
+  lrTotalDays: number,
+  monthStart: string,
+  monthEnd: string
+): number {
+  const reqStart = new Date(lrStartDate);
+  const reqEnd = new Date(lrEndDate);
+  const mStart = new Date(monthStart);
+  const mEnd = new Date(monthEnd);
+
+  const overlapStart = reqStart < mStart ? mStart : reqStart;
+  const overlapEnd = reqEnd > mEnd ? mEnd : reqEnd;
+
+  const overlapCalendarDays = Math.max(
+    0,
+    Math.round((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  );
+  const totalCalendarDays = Math.max(
+    1,
+    Math.round((reqEnd.getTime() - reqStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  );
+
+  return (overlapCalendarDays / totalCalendarDays) * lrTotalDays;
+}
+
 export async function generateMonthlySalaryReport(year: number, month: number): Promise<SalaryReportResult> {
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const daysInMonth = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments] = await Promise.all([
+  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments, allLeaveBalances] = await Promise.all([
     db.select().from(adminUsers).where(eq(adminUsers.isActive, true)),
     db.select().from(attendance).where(and(gte(attendance.date, startDate), lte(attendance.date, endDate))),
     db.select().from(leaveRequests).where(
@@ -71,6 +105,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     ),
     db.select().from(holidays).where(and(gte(holidays.date, startDate), lte(holidays.date, endDate))),
     db.select().from(departments),
+    db.select().from(leaveBalances).where(eq(leaveBalances.year, year)),
   ]);
 
   const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
@@ -83,14 +118,36 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     attendanceByUser.get(rec.userId)!.push(rec);
   }
 
-  const leavesByUser = new Map<string, number>();
+  // Group leave requests by user and leave type, prorated to this month's window
+  const leavesByUserAndType = new Map<string, Map<string, number>>();
   for (const lr of allLeaveRequests) {
-    const existing = leavesByUser.get(lr.userId) || 0;
-    leavesByUser.set(lr.userId, existing + Number(lr.totalDays || 0));
+    const proratedDays = prorateLeaveToMonth(
+      lr.startDate,
+      lr.endDate,
+      Number(lr.totalDays || 0),
+      startDate,
+      endDate
+    );
+    if (proratedDays <= 0) continue;
+    if (!leavesByUserAndType.has(lr.userId)) leavesByUserAndType.set(lr.userId, new Map());
+    const typeMap = leavesByUserAndType.get(lr.userId)!;
+    const existing = typeMap.get(lr.leaveTypeId) || 0;
+    typeMap.set(lr.leaveTypeId, existing + proratedDays);
+  }
+
+  // Group leave balances by user and leave type
+  const balancesByUserAndType = new Map<string, Map<string, { totalDays: number; usedDays: number }>>();
+  for (const lb of allLeaveBalances) {
+    if (!balancesByUserAndType.has(lb.userId)) balancesByUserAndType.set(lb.userId, new Map());
+    balancesByUserAndType.get(lb.userId)!.set(lb.leaveTypeId, {
+      totalDays: Number(lb.totalDays || 0),
+      usedDays: Number(lb.usedDays || 0),
+    });
   }
 
   const rows: EmployeeReportRow[] = [];
   let totalPayable = 0;
+  let totalDeductions = 0;
   let totalHoursWorked = 0;
 
   for (const user of allUsers) {
@@ -105,10 +162,36 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     const regionalHolidayDays = userHolidayStamps.filter(a => !holidayDates.has(a.date)).length;
     const totalHolidaysForUser = holidayDates.size + regionalHolidayDays;
     const totalHours = userAttendance.reduce((sum, a) => sum + (Number(a.totalHours) || 0), 0);
-    const approvedLeaves = leavesByUser.get(user.id) || 0;
 
-    const effectivePresentDays = presentDays + approvedLeaves + regionalHolidayDays;
+    // Compute paid vs LOP leaves per leave type
+    let paidLeaves = 0;
+    let lopLeaves = 0;
+    const userLeavesByType = leavesByUserAndType.get(user.id) || new Map();
+    const userBalances = balancesByUserAndType.get(user.id) || new Map();
+
+    for (const [leaveTypeId, approvedThisMonth] of userLeavesByType) {
+      const balance = userBalances.get(leaveTypeId);
+      if (balance) {
+        // usedDays in the balance record includes all approved leaves for the year
+        // (including this month). Subtract this month's to get balance before this month.
+        const usedBeforeThisMonth = balance.usedDays - approvedThisMonth;
+        const remainingBalance = Math.max(0, balance.totalDays - usedBeforeThisMonth);
+        const paidThisType = Math.min(approvedThisMonth, remainingBalance);
+        const lopThisType = approvedThisMonth - paidThisType;
+        paidLeaves += paidThisType;
+        lopLeaves += lopThisType;
+      } else {
+        // No balance record for this leave type — all treated as LOP
+        lopLeaves += approvedThisMonth;
+      }
+    }
+
+    // Only paid leaves count toward effective present days.
+    // LOP leaves are NOT added here — they fall through as absent days.
+    const effectivePresentDays = presentDays + paidLeaves + regionalHolidayDays;
     const absentDays = Math.max(0, workingDays - effectivePresentDays);
+    // absentDays now naturally includes LOP days (they were not added to effectivePresentDays).
+    // So deductions = absentDays * dailyRate — NO need to add lopLeaves again.
     const attendancePercentage = workingDays > 0 ? Math.round((effectivePresentDays / workingDays) * 100) : 0;
 
     const dailyRate = workingDays > 0 ? monthlySalary / workingDays : 0;
@@ -124,7 +207,8 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
       workingDays,
       presentDays,
       absentDays,
-      approvedLeaves,
+      paidLeaves: Math.round(paidLeaves * 100) / 100,
+      lopLeaves: Math.round(lopLeaves * 100) / 100,
       holidays: totalHolidaysForUser,
       totalHours: Math.round(totalHours * 100) / 100,
       attendancePercentage,
@@ -135,6 +219,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
 
     rows.push(row);
     totalPayable += row.netPayable;
+    totalDeductions += row.deductions;
     totalHoursWorked += row.totalHours;
   }
 
@@ -146,18 +231,19 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     monthName: getMonthName(month),
     totalEmployees: rows.length,
     totalPayable: Math.round(totalPayable * 100) / 100,
+    totalDeductions: Math.round(totalDeductions * 100) / 100,
     totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
     generatedAt: new Date().toISOString(),
   };
 
   const csvHeaders = [
     "Employee Name", "Email", "Designation", "Department", "Salary",
-    "Working Days", "Present Days", "Absent Days", "Approved Leaves", "Holidays",
+    "Working Days", "Present Days", "Absent Days", "Paid Leaves", "LOP Leaves (Unpaid)", "Holidays",
     "Total Hours", "Attendance %", "Gross Salary", "Deductions", "Net Payable"
   ];
   const csvRows = rows.map(r => [
     `"${r.employeeName}"`, `"${r.email}"`, `"${r.designation}"`, `"${r.department}"`,
-    r.salary, r.workingDays, r.presentDays, r.absentDays, r.approvedLeaves, r.holidays,
+    r.salary, r.workingDays, r.presentDays, r.absentDays, r.paidLeaves, r.lopLeaves, r.holidays,
     r.totalHours, r.attendancePercentage, r.grossSalary, r.deductions, r.netPayable
   ].join(","));
   const csv = [csvHeaders.join(","), ...csvRows].join("\n");

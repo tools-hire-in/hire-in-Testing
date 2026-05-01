@@ -23,7 +23,8 @@ interface EmployeeReportRow {
   workingDays: number;
   presentDays: number;
   absentDays: number;
-  approvedLeaves: number;
+  paidLeaves: number;
+  lopLeaves: number;
   holidays: number;
   totalHours: number;
   attendancePercentage: number;
@@ -38,6 +39,7 @@ interface SalaryReportSummary {
   monthName: string;
   totalEmployees: number;
   totalPayable: number;
+  totalDeductions: number;
   totalHoursWorked: number;
   generatedAt: string;
 }
@@ -396,7 +398,7 @@ export function SalaryReportsContent() {
 
         {previewData && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
@@ -435,6 +437,18 @@ export function SalaryReportsContent() {
                   <p className="text-sm text-muted-foreground">Net payable for the month</p>
                 </CardContent>
               </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Deductions</CardTitle>
+                  <DollarSign className="h-5 w-5 text-red-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-red-600 dark:text-red-400" data-testid="text-total-deductions">
+                    {formatCurrency(previewData.summary.totalDeductions)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Absences + LOP deductions</p>
+                </CardContent>
+              </Card>
             </div>
 
             <Card>
@@ -463,7 +477,8 @@ export function SalaryReportsContent() {
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Salary</th>
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Working Days</th>
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Present</th>
-                          <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Leaves</th>
+                          <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Paid Leaves</th>
+                          <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">LOP</th>
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Hours</th>
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Attendance %</th>
                           <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Net Payable</th>
@@ -484,7 +499,8 @@ export function SalaryReportsContent() {
                             <td className="py-2 px-2 text-right whitespace-nowrap">{formatCurrency(row.salary)}</td>
                             <td className="py-2 px-2 text-right">{row.workingDays}</td>
                             <td className="py-2 px-2 text-right">{row.presentDays}</td>
-                            <td className="py-2 px-2 text-right">{row.approvedLeaves}</td>
+                            <td className="py-2 px-2 text-right">{row.paidLeaves}</td>
+                            <td className={`py-2 px-2 text-right font-medium ${row.lopLeaves > 0 ? "text-amber-600 dark:text-amber-400" : ""}`} data-testid={`text-lop-leaves-${idx}`}>{row.lopLeaves}</td>
                             <td className="py-2 px-2 text-right">{row.totalHours}</td>
                             <td className="py-2 px-2 text-right">{row.attendancePercentage}%</td>
                             <td className="py-2 px-2 text-right font-medium whitespace-nowrap">{formatCurrency(row.netPayable)}</td>

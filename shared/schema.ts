@@ -235,6 +235,7 @@ export const salarySlips = pgTable("salary_slips", {
   daysPresent: integer("days_present").notNull().default(0),
   daysAbsent: integer("days_absent").notNull().default(0),
   approvedLeaves: numeric("approved_leaves").notNull().default("0"),
+  lopLeaves: numeric("lop_leaves").default("0"),
   totalHours: numeric("total_hours").notNull().default("0"),
   attendancePercentage: numeric("attendance_percentage").notNull().default("0"),
   generatedAt: timestamp("generated_at").defaultNow(),

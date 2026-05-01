@@ -553,6 +553,11 @@ async function backfillHolidayAttendance() {
   await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();
+  try {
+    await db.execute(sql`ALTER TABLE salary_slips ADD COLUMN IF NOT EXISTS lop_leaves numeric DEFAULT '0'`);
+  } catch (err) {
+    console.error("salary_slips lop_leaves migration error:", err);
+  }
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
   await backfillEmployeeIds();
