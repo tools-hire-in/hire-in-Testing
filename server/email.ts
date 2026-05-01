@@ -996,6 +996,167 @@ export async function sendAddendumAcceptedEmail(options: {
   }
 }
 
+export async function sendLeaveAppliedEmail(options: {
+  to: string;
+  managerName: string;
+  employeeName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  totalDays: string;
+  reason: string;
+  approvalUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Leave Request: ${options.employeeName} — ${options.leaveType}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Leave Request Notification</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.managerName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              <strong>${options.employeeName}</strong> has submitted a leave request that requires your approval.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Leave Details</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0; width: 120px;">Employee:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.employeeName}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">Leave Type:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.leaveType}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">From:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.startDate}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">To:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.endDate}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">Total Days:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.totalDays}</td>
+                </tr>
+                ${options.reason ? `<tr>
+                  <td style="color: #64748b; padding: 6px 0; vertical-align: top;">Reason:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.reason}</td>
+                </tr>` : ""}
+              </table>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.approvalUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Review Leave Request
+              </a>
+            </div>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.managerName},\n\n${options.employeeName} has submitted a leave request.\n\nLeave Type: ${options.leaveType}\nFrom: ${options.startDate}\nTo: ${options.endDate}\nTotal Days: ${options.totalDays}${options.reason ? `\nReason: ${options.reason}` : ""}\n\nReview at: ${options.approvalUrl}`,
+    };
+    await client.send(msg);
+    console.log(`Leave applied email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send leave applied email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendLeaveDecisionEmail(options: {
+  to: string;
+  employeeName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: "approved" | "rejected";
+  reviewComment?: string | null;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const isApproved = options.status === "approved";
+    const headerColor = isApproved
+      ? "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)"
+      : "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)";
+    const headerSubtitle = isApproved ? "Leave Approved" : "Leave Rejected";
+    const statusText = isApproved ? "approved" : "rejected";
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Solutions" },
+      subject: `Your Leave Request Has Been ${isApproved ? "Approved" : "Rejected"}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: ${headerColor}; padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: ${isApproved ? "#dcfce7" : "#fee2e2"}; margin: 8px 0 0; font-size: 14px;">${headerSubtitle}</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.employeeName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Your leave request has been <strong>${statusText}</strong>.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Leave Details</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0; width: 120px;">Leave Type:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.leaveType}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">From:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.startDate}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">To:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.endDate}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; padding: 6px 0;">Status:</td>
+                  <td style="color: ${isApproved ? "#16a34a" : "#dc2626"}; font-weight: 600; padding: 6px 0; text-transform: capitalize;">${statusText}</td>
+                </tr>
+                ${options.reviewComment ? `<tr>
+                  <td style="color: #64748b; padding: 6px 0; vertical-align: top;">Comment:</td>
+                  <td style="color: #1e293b; font-weight: 500; padding: 6px 0;">${options.reviewComment}</td>
+                </tr>` : ""}
+              </table>
+            </div>
+            <p style="color: #475569; line-height: 1.6; margin: 0;">
+              You can view your leave history in the employee portal.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.employeeName},\n\nYour leave request has been ${statusText}.\n\nLeave Type: ${options.leaveType}\nFrom: ${options.startDate}\nTo: ${options.endDate}${options.reviewComment ? `\nComment: ${options.reviewComment}` : ""}\n\nYou can view your leave history in the employee portal.`,
+    };
+    await client.send(msg);
+    console.log(`Leave decision email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send leave decision email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendCheckInReminderEmail(options: {
   to: string;
   firstName: string;

@@ -12,7 +12,7 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -1932,6 +1932,65 @@ export async function registerRoutes(
       }
       const lr = await storage.createLeaveRequest(result.data);
       res.status(201).json(lr);
+
+      (async () => {
+        try {
+          const employee = await storage.getAdminUser(userId);
+          if (!employee) return;
+          const employeeName = `${employee.firstName} ${employee.lastName}`;
+
+          let approver: { id: string | null; firstName: string; lastName: string; email?: string | null } | null = null;
+          let currentManagerId = employee.managerId;
+          while (currentManagerId) {
+            const manager = await storage.getAdminUser(currentManagerId);
+            if (!manager) break;
+            const isOnLeave = await storage.isUserOnLeaveToday(manager.id);
+            if (!isOnLeave) {
+              approver = { id: manager.id, firstName: manager.firstName, lastName: manager.lastName, email: manager.email };
+              break;
+            }
+            currentManagerId = manager.managerId;
+          }
+          if (!approver) {
+            approver = { id: null, firstName: "HR", lastName: "Department", email: null };
+          }
+
+          const leaveType = await storage.getLeaveType(lr.leaveTypeId);
+          const leaveTypeName = leaveType?.name || "Leave";
+          const approvalUrl = `${req.protocol}://${req.get("host")}/admin/hr/leave-approvals`;
+
+          if (approver.email) {
+            await sendLeaveAppliedEmail({
+              to: approver.email,
+              managerName: `${approver.firstName} ${approver.lastName}`,
+              employeeName,
+              leaveType: leaveTypeName,
+              startDate: lr.startDate,
+              endDate: lr.endDate,
+              totalDays: lr.totalDays || "1",
+              reason: lr.reason || "",
+              approvalUrl,
+            });
+          }
+
+          if (approver.id) {
+            const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+            const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+            if (featureFlags.notifications_enabled) {
+              await storage.createNotification({
+                userId: approver.id,
+                type: "leave_request_pending",
+                title: "New Leave Request",
+                message: `${employeeName} has submitted a ${leaveTypeName} request (${lr.startDate} – ${lr.endDate}).`,
+                isRead: false,
+                metadata: { leaveRequestId: lr.id, employeeName, leaveType: leaveTypeName },
+              });
+            }
+          }
+        } catch (bgErr) {
+          console.error("Background leave notification failed:", bgErr);
+        }
+      })();
     } catch (error) {
       res.status(500).json({ error: "Failed to create leave request" });
     }
@@ -1975,6 +2034,42 @@ export async function registerRoutes(
       }
 
       res.json(lr);
+
+      (async () => {
+        try {
+          const employee = await storage.getAdminUser(lr.userId);
+          if (!employee || !employee.email) return;
+
+          const leaveType = await storage.getLeaveType(lr.leaveTypeId);
+          const leaveTypeName = leaveType?.name || "Leave";
+
+          await sendLeaveDecisionEmail({
+            to: employee.email,
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            leaveType: leaveTypeName,
+            startDate: lr.startDate,
+            endDate: lr.endDate,
+            status: status as "approved" | "rejected",
+            reviewComment: reviewComment || null,
+          });
+
+          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+          if (featureFlags.notifications_enabled) {
+            const isApproved = status === "approved";
+            await storage.createNotification({
+              userId: lr.userId,
+              type: isApproved ? "leave_request_approved" : "leave_request_rejected",
+              title: isApproved ? "Leave Approved" : "Leave Rejected",
+              message: `Your ${leaveTypeName} request (${lr.startDate} – ${lr.endDate}) has been ${status}.${reviewComment ? ` Comment: ${reviewComment}` : ""}`,
+              isRead: false,
+              metadata: { leaveRequestId: lr.id, leaveType: leaveTypeName, status },
+            });
+          }
+        } catch (bgErr) {
+          console.error("Background leave decision notification failed:", bgErr);
+        }
+      })();
     } catch (error) {
       res.status(500).json({ error: "Failed to review leave request" });
     }

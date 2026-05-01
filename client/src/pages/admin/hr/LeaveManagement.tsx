@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CalendarCheck, Plus, X } from "lucide-react";
+import { CalendarCheck, Loader2, Plus, User, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ interface LeaveBalance {
 
 export default function LeaveManagement() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [showApply, setShowApply] = useState(false);
   const [formData, setFormData] = useState({
@@ -68,6 +68,14 @@ export default function LeaveManagement() {
   const { data: balances } = useQuery<LeaveBalance[]>({
     queryKey: ["/api/hr/leave-balances/my"],
     enabled: isAuthenticated,
+  });
+
+  const { data: approverData, isLoading: approverLoading } = useQuery<{
+    approver: { id: string | null; firstName: string; lastName: string; role: string };
+    escalationPath: string[];
+  }>({
+    queryKey: ["/api/hr/leave-requests/approver", user?.id],
+    enabled: showApply && !!user?.id,
   });
 
   const applyMutation = useMutation({
@@ -258,6 +266,26 @@ export default function LeaveManagement() {
                   placeholder="Reason for leave..."
                   data-testid="input-leave-reason"
                 />
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2" data-testid="text-leave-approver">
+                {approverLoading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                    <span>Finding approver...</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Your request will be sent to:{" "}
+                      <strong className="text-foreground">
+                        {approverData
+                          ? `${approverData.approver.firstName} ${approverData.approver.lastName}`
+                          : "HR Department"}
+                      </strong>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <DialogFooter>
