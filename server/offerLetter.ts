@@ -246,7 +246,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
 
           heading("4. Work Hours & Schedule"),
           bodyText(
-            "You will operate primarily in alignment with U.S. time zones to support the U.S. Healthcare Recruitment vertical. Your standard working hours are 7:00 PM to 4:00 AM IST (9 hours including a 1-hour unpaid break, equating to 8 net working hours per day). Business exigencies may require occasional flexibility in schedule or availability."
+            "You will operate primarily in alignment with U.S. time zones to support the U.S. Healthcare Recruitment vertical. Your standard working hours are 7:00 PM to 4:00 AM IST (9 hours per day). Business exigencies may require occasional flexibility in schedule or availability."
           ),
 
           heading("5. Compensation & Structure"),
