@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -143,6 +144,7 @@ export default function LeaveApprovals() {
                 {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
               </div>
             ) : requests && requests.length > 0 ? (
+              <TooltipProvider>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -165,7 +167,18 @@ export default function LeaveApprovals() {
                         <td className="py-2 px-2">{lr.startDate}</td>
                         <td className="py-2 px-2">{lr.endDate}</td>
                         <td className="py-2 px-2">{lr.totalDays}</td>
-                        <td className="py-2 px-2 max-w-[150px] truncate">{lr.reason || "-"}</td>
+                        <td className="py-2 px-2 max-w-[150px]">
+                          {lr.reason ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="truncate block cursor-default" data-testid={`text-reason-${lr.id}`}>{lr.reason}</span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs whitespace-pre-wrap">
+                                {lr.reason}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : "-"}
+                        </td>
                         <td className="py-2 px-2">
                           <Badge variant="secondary" className={statusColors[lr.status] || ""}>
                             {lr.status}
@@ -198,6 +211,7 @@ export default function LeaveApprovals() {
                   </tbody>
                 </table>
               </div>
+              </TooltipProvider>
             ) : (
               <div className="text-center py-8">
                 <CalendarCheck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

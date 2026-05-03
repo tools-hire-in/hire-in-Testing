@@ -235,7 +235,7 @@ const administrationMenu = [
     href: "/admin/hr/training",
     label: "Training Management",
     icon: GraduationCap,
-    roles: ["super_admin", "admin", "hr", "manager", "operations"]
+    roles: ["super_admin", "admin", "hr", "operations"]
   },
   {
     href: "/admin/hr/settings",
