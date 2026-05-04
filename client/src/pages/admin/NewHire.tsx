@@ -105,7 +105,6 @@ function OnboardingTab() {
           </thead>
           <tbody>
             {hires.map((h, i) => {
-              const isNightShiftRole = h.role !== "manager";
               return (
                 <tr
                   key={h.id}
@@ -133,10 +132,7 @@ function OnboardingTab() {
                     <StatusChip ok={h.has_bank_details} label={h.has_bank_details ? "Added" : "Missing"} />
                   </td>
                   <td className="px-4 py-3">
-                    {isNightShiftRole
-                      ? <StatusChip ok={h.has_ns_consent} label={h.has_ns_consent ? "Signed" : "Pending"} />
-                      : <StatusChip ok={true} label="N/A" na />
-                    }
+                    <StatusChip ok={h.has_ns_consent} label={h.has_ns_consent ? "Signed" : "Pending"} />
                   </td>
                   <td className="px-4 py-3">
                     <Button

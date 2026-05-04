@@ -4520,6 +4520,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Cannot onboard — offer status is '${letter.status}', must be 'countersigned'` });
       }
 
+      // Managers may only onboard candidates from their own offer letters
+      const actingUser = await storage.getAdminUser(req.session.userId!);
+      if (actingUser?.role === "manager" && letter.createdBy !== req.session.userId!) {
+        return res.status(403).json({ error: "Managers can only initiate onboarding for offer letters they created" });
+      }
+
       const { hireInEmail } = req.body;
       if (!hireInEmail || !hireInEmail.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Email must end with @hire-in.com" });
@@ -4671,6 +4677,7 @@ export async function registerRoutes(
         WHERE u.joining_date >= CURRENT_DATE - INTERVAL '90 days'
           AND u.is_active = true
           AND u.deleted_at IS NULL
+          AND u.role = 'employee'
         ORDER BY u.joining_date DESC
       `);
       res.json(result.rows);
