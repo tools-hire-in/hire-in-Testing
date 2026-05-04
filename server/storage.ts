@@ -167,7 +167,25 @@ export interface IStorage {
   createLeaveBalance(lb: InsertLeaveBalance): Promise<LeaveBalance>;
   updateLeaveBalance(id: string, lb: Partial<InsertLeaveBalance>): Promise<LeaveBalance | undefined>;
   initLeaveBalances(userId: string, year: number): Promise<LeaveBalance[]>;
-  accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number; skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> }>;
+  accrueMonthlyLeaves(year: number, month: number): Promise<{
+    usersProcessed: number;
+    accrualsMade: number;
+    skippedUsers: Array<{ name: string; reason: string; leaveTypeName: string }>;
+    processedDetails: Array<{ name: string; leaveTypeName: string; accruedDays: number; accrualType: string; newBalance: number }>;
+    runAt: string;
+    year: number;
+    month: number;
+  }>;
+  runYearEndBatch(year: number): Promise<{
+    processed: number;
+    elCarried: number;
+    slLapsed: number;
+    coCleared: number;
+    capEvents: Array<{ userId: string; name: string; leaveTypeName: string; remaining: number; cap: number; forfeited: number }>;
+    details: Array<{ userId: string; email: string; name: string; leaveTypeName: string; action: string; days: number }>;
+  }>;
+  countLeaveDays(startDate: string, endDate: string): Promise<number>;
+  getLeaveAccrualsByUser(userId: string, year?: number): Promise<LeaveAccrual[]>;
 
   // Leave Requests
   getLeaveRequests(filters?: { userId?: string; status?: string }): Promise<LeaveRequest[]>;
@@ -842,13 +860,27 @@ export class DatabaseStorage implements IStorage {
     return Math.round(totalHours * 100) / 100;
   }
 
-  async accrueMonthlyLeaves(year: number, month: number): Promise<{ usersProcessed: number; accrualsMade: number; skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> }> {
+  async accrueMonthlyLeaves(year: number, month: number): Promise<{
+    usersProcessed: number;
+    accrualsMade: number;
+    skippedUsers: Array<{ name: string; reason: string; leaveTypeName: string }>;
+    processedDetails: Array<{ userId: string; email: string; name: string; leaveTypeName: string; accruedDays: number; accrualType: string; newBalance: number }>;
+    runAt: string;
+    year: number;
+    month: number;
+  }> {
+    // EL bonus months: January(1), May(5), September(9) → credit 2 days instead of 1
+    const EL_BONUS_MONTHS = [1, 5, 9];
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = new Date();
+
     const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
     const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
 
     let usersProcessed = 0;
     let accrualsMade = 0;
-    const skippedUsers: Array<{ name: string; hoursWorked: number; requiredHours: number }> = [];
+    const skippedUsers: Array<{ name: string; reason: string; leaveTypeName: string }> = [];
+    const processedDetails: Array<{ userId: string; email: string; name: string; leaveTypeName: string; accruedDays: number; accrualType: string; newBalance: number }> = [];
 
     for (const user of activeUsers) {
       const joiningDate = user.joiningDate ? new Date(user.joiningDate) : null;
@@ -860,6 +892,11 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // 30-day minimum employment check applies to all leave types
+      const employedForThirtyDays = joiningDate
+        ? (now.getTime() - joiningDate.getTime()) >= THIRTY_DAYS_MS
+        : true;
+
       let userBalances = await this.getLeaveBalances(user.id, year);
       if (userBalances.length === 0) {
         userBalances = await this.initLeaveBalances(user.id, year);
@@ -867,61 +904,330 @@ export class DatabaseStorage implements IStorage {
 
       const hoursWorked = await this.getUserMonthlyHours(user.id, year, month);
       let userAccrued = false;
+      const userName = `${user.firstName} ${user.lastName || ""}`.trim();
 
       for (const lt of activeLeaveTypesList) {
         const monthlyRate = parseFloat(lt.monthlyAccrual || "0");
         if (monthlyRate <= 0) continue;
 
-        const minHours = parseFloat(lt.minHoursForAccrual || "128");
-        const qualified = hoursWorked >= minHours;
+        // 30-day employment check applies to all leave types
+        if (!employedForThirtyDays) {
+          skippedUsers.push({ name: userName, reason: "Employment < 30 days", leaveTypeName: lt.name });
+          await db.insert(leaveAccruals).values({
+            userId: user.id, leaveTypeId: lt.id, year, month,
+            accruedDays: "0", hoursWorked: String(hoursWorked),
+            qualified: false, accrualType: "monthly",
+            skipReason: "Employment < 30 days",
+          }).onConflictDoNothing();
+          continue;
+        }
+
+        let daysToCredit = monthlyRate;
+        let accrualType = "monthly";
+
+        if (lt.isConditional) {
+          // EL: conditional on hours worked threshold
+          const minHours = parseFloat(lt.minHoursForAccrual || "128");
+          if (hoursWorked < minHours) {
+            skippedUsers.push({
+              name: userName,
+              reason: `Hours worked (${hoursWorked}h) below required (${minHours}h)`,
+              leaveTypeName: lt.name,
+            });
+            await db.insert(leaveAccruals).values({
+              userId: user.id, leaveTypeId: lt.id, year, month,
+              accruedDays: "0", hoursWorked: String(hoursWorked),
+              qualified: false, accrualType: "monthly",
+              skipReason: `Hours ${hoursWorked}h < ${minHours}h threshold`,
+            }).onConflictDoNothing();
+            continue;
+          }
+          // EL bonus months: Jan(1), May(5), Sep(9) get +1 extra day
+          if (EL_BONUS_MONTHS.includes(month)) {
+            daysToCredit = monthlyRate + 1;
+            accrualType = "monthly+bonus";
+          }
+        } else {
+          // SL (isConditional=false, unconditional): cap annual total to exactly 8 days.
+          // 0.67 × 12 = 8.04 so we check how much has already been credited this year
+          // and reduce the credit so the full-year total never exceeds 8.
+          const SL_ANNUAL_CAP = 8;
+          const yearAccruals = await db.select().from(leaveAccruals).where(
+            and(
+              eq(leaveAccruals.userId, user.id),
+              eq(leaveAccruals.leaveTypeId, lt.id),
+              eq(leaveAccruals.year, year),
+              eq(leaveAccruals.qualified, true),
+            )
+          );
+          const alreadyCredited = yearAccruals.reduce((sum, a) => sum + parseFloat(a.accruedDays), 0);
+          const allowedCredit = Math.max(0, SL_ANNUAL_CAP - alreadyCredited);
+          if (allowedCredit <= 0) {
+            skippedUsers.push({ name: userName, reason: `Annual SL cap (${SL_ANNUAL_CAP}) already reached`, leaveTypeName: lt.name });
+            await db.insert(leaveAccruals).values({
+              userId: user.id, leaveTypeId: lt.id, year, month,
+              accruedDays: "0", hoursWorked: String(hoursWorked),
+              qualified: false, accrualType: "monthly",
+              skipReason: `SL annual cap of ${SL_ANNUAL_CAP} days already reached`,
+            }).onConflictDoNothing();
+            continue;
+          }
+          // Credit exactly what remains up to the cap (handles Dec catch-up or early-joiner rounding)
+          daysToCredit = Math.min(daysToCredit, parseFloat(allowedCredit.toFixed(2)));
+        }
 
         const inserted = await db.insert(leaveAccruals).values({
-          userId: user.id,
-          leaveTypeId: lt.id,
-          year,
-          month,
-          accruedDays: qualified ? String(monthlyRate) : "0",
+          userId: user.id, leaveTypeId: lt.id, year, month,
+          accruedDays: String(daysToCredit),
           hoursWorked: String(hoursWorked),
-          qualified,
+          qualified: true,
+          accrualType,
         }).onConflictDoNothing().returning();
 
-        if (inserted.length === 0) continue;
+        if (inserted.length === 0) continue; // Already processed this month
 
-        if (qualified) {
-          let balance = userBalances.find(b => b.leaveTypeId === lt.id);
-          if (!balance) {
-            const [created] = await db.insert(leaveBalances).values({
-              userId: user.id,
-              leaveTypeId: lt.id,
-              totalDays: "0",
-              usedDays: "0",
-              year,
-            }).returning();
-            balance = created;
-            userBalances.push(created);
-          }
-          const newTotal = parseFloat(balance.totalDays) + monthlyRate;
-          const maxDays = lt.defaultDays;
-          const cappedTotal = Math.min(newTotal, maxDays);
-          await db.update(leaveBalances)
-            .set({ totalDays: String(cappedTotal), updatedAt: new Date() })
-            .where(eq(leaveBalances.id, balance.id));
-
-          accrualsMade++;
-          userAccrued = true;
-        } else {
-          skippedUsers.push({
-            name: `${user.firstName} ${user.lastName || ""}`.trim(),
-            hoursWorked,
-            requiredHours: minHours,
-          });
+        let balance = userBalances.find(b => b.leaveTypeId === lt.id);
+        if (!balance) {
+          const [created] = await db.insert(leaveBalances).values({
+            userId: user.id, leaveTypeId: lt.id,
+            totalDays: "0", usedDays: "0", year,
+          }).returning();
+          balance = created;
+          userBalances.push(created);
         }
+
+        // No mid-year cap: EL cap of 45 days is applied at year-end only
+        const newTotal = parseFloat(balance.totalDays) + daysToCredit;
+
+        await db.update(leaveBalances)
+          .set({ totalDays: String(newTotal), updatedAt: new Date() })
+          .where(eq(leaveBalances.id, balance.id));
+
+        accrualsMade++;
+        userAccrued = true;
+        processedDetails.push({ userId: user.id, email: user.email, name: userName, leaveTypeName: lt.name, accruedDays: daysToCredit, accrualType, newBalance: newTotal });
       }
 
       if (userAccrued) usersProcessed++;
     }
 
-    return { usersProcessed, accrualsMade, skippedUsers };
+    const runAt = now.toISOString();
+
+    // Store run log for HR audit
+    await this.upsertSystemSetting("accrual_run_log_latest", { year, month, runAt, usersProcessed, accrualsMade, skippedCount: skippedUsers.length, skippedUsers, processedDetails });
+    const histSetting = await this.getSystemSetting("accrual_run_log_history");
+    const hist = (histSetting?.value as any[]) || [];
+    hist.unshift({ year, month, runAt, usersProcessed, accrualsMade, skippedCount: skippedUsers.length });
+    await this.upsertSystemSetting("accrual_run_log_history", hist.slice(0, 24));
+
+    return { usersProcessed, accrualsMade, skippedUsers, processedDetails, runAt, year, month };
+  }
+
+  async runYearEndBatch(year: number): Promise<{
+    processed: number;
+    elCarried: number;
+    slLapsed: number;
+    coCleared: number;
+    details: Array<{ userId: string; email: string; name: string; leaveTypeName: string; action: string; days: number }>;
+  }> {
+    const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
+    const allLeaveTypes = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
+
+    let processed = 0;
+    let elCarried = 0;
+    let slLapsed = 0;
+    let coCleared = 0;
+    const details: Array<{ userId: string; email: string; name: string; leaveTypeName: string; action: string; days: number }> = [];
+    // Cap events: when EL carry-forward is limited by the carryForwardCap (excess forfeited)
+    const capEvents: Array<{ userId: string; name: string; leaveTypeName: string; remaining: number; cap: number; forfeited: number }> = [];
+
+    for (const user of activeUsers) {
+      const balances = await this.getLeaveBalances(user.id, year);
+      const userName = `${user.firstName} ${user.lastName || ""}`.trim();
+
+      for (const lt of allLeaveTypes) {
+        const balance = balances.find(b => b.leaveTypeId === lt.id);
+        if (!balance) continue;
+
+        const totalDays = parseFloat(balance.totalDays);
+        const usedDays = parseFloat(balance.usedDays);
+        const remaining = Math.max(0, totalDays - usedDays);
+
+        const isEL = !!lt.isConditional && (lt.carryForwardCap || 0) > 0;
+        const isCO = lt.name.toLowerCase().includes("comp") || lt.name.toLowerCase().includes("compensatory");
+        // Explicitly exclude LWP from isSL so it is never processed by year-end lapse
+        const isSL = !lt.isConditional && !isCO && !(/lwp|loss.?of.?pay/i.test(lt.name));
+
+        if (isEL) {
+          const cap = lt.carryForwardCap || 45;
+          const carryForward = Math.min(remaining, cap);
+          // Record a cap event if the employee had more than the cap — excess is forfeited
+          if (remaining > cap) {
+            capEvents.push({ userId: user.id, name: userName, leaveTypeName: lt.name, remaining, cap, forfeited: remaining - cap });
+          }
+          const nextYear = year + 1;
+
+          // IDEMPOTENCY CHECK: skip if year-end carry-forward already exists for this user+type+year
+          const existingCarryForward = await db.select().from(leaveAccruals).where(
+            and(
+              eq(leaveAccruals.userId, user.id),
+              eq(leaveAccruals.leaveTypeId, lt.id),
+              eq(leaveAccruals.year, nextYear),
+              eq(leaveAccruals.month, 0),
+              sql`${leaveAccruals.accrualType} = 'year_end_carry_forward'`
+            )
+          ).limit(1);
+
+          if (existingCarryForward.length > 0) {
+            // Already processed — report the existing carry-forward value
+            details.push({ userId: user.id, email: user.email, name: userName, leaveTypeName: lt.name, action: "carry_forward_skipped", days: parseFloat(existingCarryForward[0].accruedDays) });
+            elCarried++;
+            continue;
+          }
+
+          // Create or update next year balance with carry-forward
+          const nextYearBalances = await this.getLeaveBalances(user.id, nextYear);
+          const nextBalance = nextYearBalances.find(b => b.leaveTypeId === lt.id);
+          if (!nextBalance) {
+            await db.insert(leaveBalances).values({
+              userId: user.id, leaveTypeId: lt.id,
+              totalDays: String(carryForward), usedDays: "0", year: nextYear,
+            });
+          } else {
+            await db.update(leaveBalances)
+              .set({ totalDays: String(parseFloat(nextBalance.totalDays) + carryForward), updatedAt: new Date() })
+              .where(eq(leaveBalances.id, nextBalance.id));
+          }
+
+          await db.insert(leaveAccruals).values({
+            userId: user.id, leaveTypeId: lt.id, year: nextYear, month: 0,
+            accruedDays: String(carryForward), hoursWorked: "0", qualified: true,
+            accrualType: "year_end_carry_forward",
+            skipReason: `Carried from ${year}: ${remaining.toFixed(2)} remaining, cap ${cap}`,
+          }).onConflictDoNothing();
+
+          details.push({ userId: user.id, email: user.email, name: userName, leaveTypeName: lt.name, action: "carry_forward", days: carryForward });
+          elCarried++;
+        } else if (isSL) {
+          // SL lapses fully on Dec 31 (unconditional, no carry-forward)
+          if (remaining > 0) {
+            // IDEMPOTENCY CHECK: skip if SL lapse already recorded for this user+type+year
+            const existingSLLapse = await db.select().from(leaveAccruals).where(
+              and(
+                eq(leaveAccruals.userId, user.id),
+                eq(leaveAccruals.leaveTypeId, lt.id),
+                eq(leaveAccruals.year, year),
+                eq(leaveAccruals.month, 12),
+                sql`${leaveAccruals.accrualType} = 'year_end_lapse'`
+              )
+            ).limit(1);
+
+            if (existingSLLapse.length === 0) {
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: lt.id, year, month: 12,
+                accruedDays: String(-remaining), hoursWorked: "0", qualified: true,
+                accrualType: "year_end_lapse",
+                skipReason: `${remaining.toFixed(2)} SL days lapsed Dec 31, ${year}`,
+              }).onConflictDoNothing();
+
+              // Reconcile leave_balances so the current year shows zero remaining
+              await db.update(leaveBalances)
+                .set({ usedDays: String(parseFloat(balance.usedDays) + remaining), updatedAt: new Date() })
+                .where(eq(leaveBalances.id, balance.id));
+            }
+          }
+          details.push({ userId: user.id, email: user.email, name: userName, leaveTypeName: lt.name, action: "lapse", days: remaining });
+          slLapsed++;
+        } else if (isCO) {
+          // Comp-Off: expire only accruals older than 30 days (age-based, not blanket year-end)
+          const thirtyDaysAgo = new Date(new Date(year, 11, 31).getTime() - 30 * 24 * 60 * 60 * 1000);
+
+          // IDEMPOTENCY CHECK: skip if CO lapse already recorded for this user+type+year
+          const existingCOLapse = await db.select().from(leaveAccruals).where(
+            and(
+              eq(leaveAccruals.userId, user.id),
+              eq(leaveAccruals.leaveTypeId, lt.id),
+              eq(leaveAccruals.year, year),
+              eq(leaveAccruals.month, 12),
+              sql`${leaveAccruals.accrualType} = 'year_end_lapse'`
+            )
+          ).limit(1);
+
+          if (existingCOLapse.length === 0) {
+            const oldCoAccruals = await db.select().from(leaveAccruals).where(
+              and(
+                eq(leaveAccruals.userId, user.id),
+                eq(leaveAccruals.leaveTypeId, lt.id),
+                eq(leaveAccruals.qualified, true),
+                sql`${leaveAccruals.createdAt} < ${thirtyDaysAgo.toISOString()}`,
+                sql`CAST(${leaveAccruals.accruedDays} AS NUMERIC) > 0`
+              )
+            );
+            const oldCoTotal = oldCoAccruals.reduce((sum, a) => sum + parseFloat(a.accruedDays), 0);
+            const usedDays = parseFloat(balance.usedDays);
+            const oldCoRemaining = Math.max(0, oldCoTotal - usedDays);
+            if (oldCoRemaining > 0) {
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: lt.id, year, month: 12,
+                accruedDays: String(-oldCoRemaining), hoursWorked: "0", qualified: true,
+                accrualType: "year_end_lapse",
+                skipReason: `${oldCoRemaining.toFixed(2)} Comp-Off days >30 days old expired Dec 31, ${year}`,
+              }).onConflictDoNothing();
+
+              // Reconcile leave_balances so expired CO shows zero remaining
+              await db.update(leaveBalances)
+                .set({ usedDays: String(usedDays + oldCoRemaining), updatedAt: new Date() })
+                .where(eq(leaveBalances.id, balance.id));
+
+              details.push({ userId: user.id, email: user.email, name: userName, leaveTypeName: lt.name, action: "co_expire", days: oldCoRemaining });
+              coCleared++;
+            }
+          }
+        }
+      }
+      processed++;
+    }
+
+    const histSetting = await this.getSystemSetting("year_end_batch_log");
+    const hist = (histSetting?.value as any[]) || [];
+    hist.unshift({ year, runAt: new Date().toISOString(), processed, elCarried, slLapsed, coCleared, capEvents });
+    await this.upsertSystemSetting("year_end_batch_log", hist.slice(0, 5));
+
+    return { processed, elCarried, slLapsed, coCleared, capEvents, details };
+  }
+
+  async countLeaveDays(startDate: string, endDate: string): Promise<number> {
+    const start = new Date(startDate + "T00:00:00");
+    const end = new Date(endDate + "T00:00:00");
+    if (start > end) return 0;
+
+    const allHolidays = await db.select().from(holidays).where(
+      and(
+        eq(holidays.isOptional, false),
+        sql`${holidays.date} >= ${startDate} AND ${holidays.date} <= ${endDate}`
+      )
+    );
+    const holidayDates = new Set(allHolidays.map(h => h.date));
+
+    let count = 0;
+    const current = new Date(start);
+    while (current <= end) {
+      const dayOfWeek = current.getDay();
+      const dateStr = current.toISOString().split("T")[0];
+      if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) {
+        count++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return count;
+  }
+
+  async getLeaveAccrualsByUser(userId: string, year?: number): Promise<LeaveAccrual[]> {
+    const baseCondition = eq(leaveAccruals.userId, userId);
+    const whereClause = year ? and(baseCondition, eq(leaveAccruals.year, year)) : baseCondition;
+    return await db.select().from(leaveAccruals)
+      .where(whereClause)
+      .orderBy(desc(leaveAccruals.year), desc(leaveAccruals.month));
   }
 
   // ==========================================
@@ -1116,12 +1422,6 @@ export class DatabaseStorage implements IStorage {
   // ==========================================
   // LEAVE ADJUSTMENTS
   // ==========================================
-
-  async getLeaveAccrualsByUser(userId: string, year: number): Promise<LeaveAccrual[]> {
-    return db.select().from(leaveAccruals)
-      .where(and(eq(leaveAccruals.userId, userId), eq(leaveAccruals.year, year)))
-      .orderBy(asc(leaveAccruals.month));
-  }
 
   async createLeaveAdjustment(adj: InsertLeaveAdjustment): Promise<LeaveAdjustment> {
     const [created] = await db.insert(leaveAdjustments).values(adj).returning();

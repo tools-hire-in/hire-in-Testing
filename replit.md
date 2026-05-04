@@ -21,7 +21,7 @@ The platform features a modern UI with React 18, TypeScript, Tailwind CSS, and S
 
 ### Feature Specifications
 The platform includes a comprehensive HR Portal System with:
-- **Employee Management**: Dashboard, attendance, leave management (hours-based, monthly accrual), holiday calendar, profile, tickets, org chart. Support for employee exit statuses: Relieved (involuntary) and Left Company (voluntary).
+- **Employee Management**: Dashboard, attendance, leave management (EL 15 days/year with bonus months + SL 8 days/year; monthly accrual engine; LWP gating; weekend/holiday exclusion; year-end carry-forward/lapse batch; 4-tab employee UI: Balance/Apply/History/Accrual), holiday calendar, profile, tickets, org chart. Support for employee exit statuses: Relieved (involuntary) and Left Company (voluntary).
 - **Manager Features**: Team attendance viewing, leave request approvals, configurable attendance thresholds, proactive training extension requests.
 - **HR/Admin Features**: Comprehensive settings for leave types, holidays, departments, and user management. Super Admin soft-delete functionality.
 - **HR Tools**: Salary Slip Generator (PDF, LOP deductions), Offer Letter Generator (DOCX, auto-fill, email, digital acceptance, status tracking, addendum generation with HMAC-SHA256), Template-based Letter Generator (Experience, Internship, Relieving letters with controlled wording). **Amendment Letters**: Salary Revision, Designation/Promotion, Combined, Device Allocation — with system employee picker or manual entry, DOCX generation via existing addendum engine, optional email delivery. Verifiable via /verify page.

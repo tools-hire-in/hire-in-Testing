@@ -26,6 +26,8 @@ interface LeaveType {
   minHoursForAccrual: string;
   description: string | null;
   isActive: boolean;
+  isConditional: boolean;
+  carryForwardCap: number | null;
 }
 
 interface Holiday {
@@ -544,7 +546,7 @@ export default function HRSettings() {
 
   const [showLeaveType, setShowLeaveType] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
-  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true });
+  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0" });
 
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -609,15 +611,32 @@ export default function HRSettings() {
     onSuccess: async (res) => {
       const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
-      let desc = `${result.message}. ${result.usersProcessed} users earned leave, ${result.accrualsMade} accruals made.`;
-      if (result.skippedUsers && result.skippedUsers.length > 0) {
-        desc += ` ${result.skippedUsers.length} user(s) did not meet hours threshold.`;
-      }
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-accruals/run-log"] });
+      const desc = `${result.usersProcessed} users processed, ${result.accrualsMade} accruals made, ${result.skippedUsers?.length || 0} skipped.`;
       toast({ title: "Accrual Complete", description: desc });
     },
     onError: () => {
       toast({ title: "Failed", description: "Could not run leave accrual", variant: "destructive" });
     },
+  });
+
+  const yearEndMutation = useMutation({
+    mutationFn: (data: { year: number }) => apiRequest("POST", "/api/hr/leave-accruals/year-end", data),
+    onSuccess: async (res) => {
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-accruals/run-log"] });
+      toast({ title: "Year-End Batch Complete", description: `${result.elCarried} EL carry-forwards, ${result.slLapsed} SL lapsed.` });
+    },
+    onError: () => {
+      toast({ title: "Failed", description: "Could not run year-end batch", variant: "destructive" });
+    },
+  });
+
+  const { data: accrualLog, isLoading: accrualLogLoading } = useQuery<{ latest: any; history: any[]; yearEndLog: any[] }>({
+    queryKey: ["/api/hr/leave-accruals/run-log"],
+    enabled: isAuthenticated && (user?.role === "hr" || user?.role === "admin" || user?.role === "super_admin"),
+    staleTime: 30000,
   });
 
   const holidayMutation = useMutation({
@@ -806,10 +825,19 @@ export default function HRSettings() {
   const openLeaveTypeForm = (lt?: LeaveType) => {
     if (lt) {
       setEditingLeaveType(lt);
-      setLtForm({ name: lt.name, defaultDays: String(lt.defaultDays), monthlyAccrual: lt.monthlyAccrual || "0", minHoursForAccrual: lt.minHoursForAccrual || "128", description: lt.description || "", isActive: lt.isActive });
+      setLtForm({
+        name: lt.name,
+        defaultDays: String(lt.defaultDays),
+        monthlyAccrual: lt.monthlyAccrual || "0",
+        minHoursForAccrual: lt.minHoursForAccrual || "128",
+        description: lt.description || "",
+        isActive: lt.isActive,
+        isConditional: lt.isConditional ?? true,
+        carryForwardCap: String(lt.carryForwardCap ?? 0),
+      });
     } else {
       setEditingLeaveType(null);
-      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true });
+      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0" });
     }
     setShowLeaveType(true);
   };
@@ -857,6 +885,15 @@ export default function HRSettings() {
               >
                 {accrualMutation.isPending ? "Running..." : "Run Monthly Accrual"}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => yearEndMutation.mutate({ year: new Date().getFullYear() - 1 })}
+                disabled={yearEndMutation.isPending}
+                data-testid="button-run-year-end"
+              >
+                {yearEndMutation.isPending ? "Running..." : "Run Year-End Batch"}
+              </Button>
               <Button size="sm" onClick={() => openLeaveTypeForm()} data-testid="button-add-leave-type">
                 <Plus className="h-4 w-4 mr-1" />
                 Add
@@ -874,7 +911,8 @@ export default function HRSettings() {
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Min Hours</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Type</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Carry Fwd Cap</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
@@ -884,7 +922,14 @@ export default function HRSettings() {
                         <td className="py-2 px-2 font-medium">{lt.name}</td>
                         <td className="py-2 px-2">{lt.defaultDays}</td>
                         <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
-                        <td className="py-2 px-2">{parseFloat(lt.minHoursForAccrual || "128")}h</td>
+                        <td className="py-2 px-2">
+                          <Badge variant={lt.isConditional ? "default" : "secondary"} className="text-xs">
+                            {lt.isConditional ? "Conditional (EL)" : "Unconditional (SL)"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2 text-muted-foreground">
+                          {(lt.carryForwardCap ?? 0) > 0 ? `${lt.carryForwardCap} days` : "None"}
+                        </td>
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openLeaveTypeForm(lt)}>
@@ -909,6 +954,106 @@ export default function HRSettings() {
             )}
           </CardContent>
         </Card>
+
+        {isHrOrAbove && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Accrual Run Log</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {accrualLogLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : accrualLog ? (
+                <div className="space-y-4">
+                  {accrualLog.latest && (
+                    <div className="p-3 rounded-md border bg-muted/30">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Latest Accrual Run</p>
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <span><strong>{accrualLog.latest.month}/{accrualLog.latest.year}</strong></span>
+                        <span className="text-green-700 dark:text-green-400">{accrualLog.latest.accrualsMade} accruals made</span>
+                        <span>{accrualLog.latest.usersProcessed} users processed</span>
+                        {accrualLog.latest.skippedCount > 0 && (
+                          <span className="text-red-600 dark:text-red-400">{accrualLog.latest.skippedCount} skipped</span>
+                        )}
+                        <span className="text-muted-foreground">{new Date(accrualLog.latest.runAt).toLocaleString()}</span>
+                      </div>
+                      {accrualLog.latest.skippedUsers && accrualLog.latest.skippedUsers.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs text-muted-foreground font-medium mb-1">Skipped employees:</p>
+                          <div className="max-h-32 overflow-y-auto space-y-0.5">
+                            {accrualLog.latest.skippedUsers.map((s: { name: string; leaveTypeName: string; reason: string }, i: number) => (
+                              <div key={i} className="text-xs text-muted-foreground flex gap-2" data-testid={`skipped-user-${i}`}>
+                                <span className="font-medium text-foreground">{s.name}</span>
+                                <span>— {s.leaveTypeName}: {s.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {accrualLog.history && accrualLog.history.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Run History</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Period</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Processed</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Accruals</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Skipped</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Run At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {accrualLog.history.map((h: { month: number; year: number; usersProcessed: number; accrualsMade: number; skippedCount: number; runAt: string }, i: number) => (
+                              <tr key={i} className="border-b last:border-0" data-testid={`accrual-history-row-${i}`}>
+                                <td className="py-1.5 px-2">{h.month}/{h.year}</td>
+                                <td className="py-1.5 px-2">{h.usersProcessed}</td>
+                                <td className="py-1.5 px-2 text-green-700 dark:text-green-400">{h.accrualsMade}</td>
+                                <td className="py-1.5 px-2 text-red-600 dark:text-red-400">{h.skippedCount}</td>
+                                <td className="py-1.5 px-2 text-muted-foreground">{new Date(h.runAt).toLocaleDateString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {/* Year-end cap events: EL carry-forward truncations where excess was forfeited */}
+                  {accrualLog.yearEndLog && accrualLog.yearEndLog.length > 0 && accrualLog.yearEndLog.some((ye: any) => ye.capEvents && ye.capEvents.length > 0) && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">EL Cap Events (Year-End)</p>
+                      <div className="space-y-2">
+                        {accrualLog.yearEndLog.filter((ye: any) => ye.capEvents && ye.capEvents.length > 0).map((ye: { year: number; runAt: string; capEvents: Array<{ name: string; leaveTypeName: string; remaining: number; cap: number; forfeited: number }> }, yi: number) => (
+                          <div key={yi} className="p-2 rounded border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+                            <p className="text-xs font-medium text-amber-800 dark:text-amber-400 mb-1">
+                              Year-end {ye.year} — {ye.capEvents.length} employee(s) had EL capped at carry-forward limit
+                            </p>
+                            <div className="max-h-28 overflow-y-auto space-y-0.5">
+                              {ye.capEvents.map((ev, ei: number) => (
+                                <div key={ei} className="text-xs text-amber-700 dark:text-amber-300 flex gap-2" data-testid={`cap-event-${yi}-${ei}`}>
+                                  <span className="font-medium">{ev.name}</span>
+                                  <span>— {ev.leaveTypeName}: had {ev.remaining.toFixed(1)} days, capped at {ev.cap}, forfeited {ev.forfeited.toFixed(1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!accrualLog.latest && (!accrualLog.history || accrualLog.history.length === 0) && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No accrual runs recorded yet. Click "Run Monthly Accrual" to start.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No accrual log available.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -992,7 +1137,7 @@ export default function HRSettings() {
                   data-testid="input-lt-name"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Annual Days (Max)</Label>
                   <Input
@@ -1006,19 +1151,32 @@ export default function HRSettings() {
                   <Label>Monthly Accrual</Label>
                   <Input
                     type="number"
-                    step="0.5"
+                    step="0.01"
                     value={ltForm.monthlyAccrual}
                     onChange={(e) => setLtForm(prev => ({ ...prev, monthlyAccrual: e.target.value }))}
                     data-testid="input-lt-monthly-accrual"
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Min Hours/Month</Label>
                   <Input
                     type="number"
                     value={ltForm.minHoursForAccrual}
                     onChange={(e) => setLtForm(prev => ({ ...prev, minHoursForAccrual: e.target.value }))}
+                    disabled={!ltForm.isConditional}
                     data-testid="input-lt-min-hours"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Carry-Forward Cap (days)</Label>
+                  <Input
+                    type="number"
+                    value={ltForm.carryForwardCap}
+                    onChange={(e) => setLtForm(prev => ({ ...prev, carryForwardCap: e.target.value }))}
+                    placeholder="0 = no carry-forward"
+                    data-testid="input-lt-carry-forward-cap"
                   />
                 </div>
               </div>
@@ -1030,21 +1188,47 @@ export default function HRSettings() {
                   data-testid="input-lt-description"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={ltForm.isActive}
-                  onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isActive: v }))}
-                  data-testid="switch-lt-active"
-                />
-                <Label>Active</Label>
+              <div className="flex items-center gap-6 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={ltForm.isActive}
+                    onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isActive: v }))}
+                    data-testid="switch-lt-active"
+                  />
+                  <Label>Active</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={ltForm.isConditional}
+                    onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isConditional: v }))}
+                    data-testid="switch-lt-conditional"
+                  />
+                  <div>
+                    <Label>Conditional Accrual (EL)</Label>
+                    <p className="text-xs text-muted-foreground">If enabled, requires min hours/month to qualify. Disable for unconditional leave (SL).</p>
+                  </div>
+                </div>
               </div>
+              {!ltForm.isConditional && (
+                <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    <strong>Legal Note:</strong> Delhi S&amp;E Act mandates minimum 12 combined casual/sick days per year. Client policy sets 8 SL days following UP/Haryana rules. Confirm with legal before deployment.
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowLeaveType(false)}>Cancel</Button>
               <Button
                 onClick={() => leaveTypeMutation.mutate({
                   id: editingLeaveType?.id,
-                  body: { ...ltForm, defaultDays: parseInt(ltForm.defaultDays), monthlyAccrual: ltForm.monthlyAccrual, minHoursForAccrual: ltForm.minHoursForAccrual },
+                  body: {
+                    ...ltForm,
+                    defaultDays: parseInt(ltForm.defaultDays),
+                    monthlyAccrual: ltForm.monthlyAccrual,
+                    minHoursForAccrual: ltForm.minHoursForAccrual,
+                    carryForwardCap: parseInt(ltForm.carryForwardCap) || 0,
+                  },
                 })}
                 disabled={!ltForm.name || leaveTypeMutation.isPending}
                 data-testid="button-save-leave-type"

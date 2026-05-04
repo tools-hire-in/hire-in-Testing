@@ -152,6 +152,13 @@ export const leaveTypes = pgTable("leave_types", {
   minHoursForAccrual: numeric("min_hours_for_accrual").notNull().default("128"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
+  // If true, accrual is conditional on min_hours_for_accrual threshold (EL).
+  // If false, accrual is unconditional — only 30-day employment check applies (SL).
+  // LEGAL NOTE: Delhi S&E Act requires minimum 12 combined casual/sick days per year.
+  // Client has instructed 8 Sick Leave days following UP/Haryana policy.
+  // Flag for legal review before production deployment.
+  isConditional: boolean("is_conditional").notNull().default(true),
+  carryForwardCap: integer("carry_forward_cap").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -173,6 +180,10 @@ export const leaveRequests = pgTable("leave_requests", {
   startDate: varchar("start_date").notNull(),
   endDate: varchar("end_date").notNull(),
   totalDays: numeric("total_days").notNull(),
+  halfDay: boolean("half_day").notNull().default(false),
+  halfDayPart: varchar("half_day_part"), // 'first' | 'second'
+  splitPaidDays: numeric("split_paid_days"), // paid portion when request is split with LWP
+  splitLwpDays: numeric("split_lwp_days"),   // LWP portion; null = no split
   reason: text("reason"),
   status: leaveStatusEnum("status").notNull().default("pending"),
   reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
@@ -191,6 +202,8 @@ export const leaveAccruals = pgTable("leave_accruals", {
   accruedDays: numeric("accrued_days").notNull().default("0"),
   hoursWorked: numeric("hours_worked").notNull().default("0"),
   qualified: boolean("qualified").notNull().default(true),
+  accrualType: varchar("accrual_type").notNull().default("monthly"), // 'monthly' | 'monthly+bonus' | 'year_end_carry_forward' | 'year_end_lapse'
+  skipReason: text("skip_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

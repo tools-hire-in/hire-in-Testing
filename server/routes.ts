@@ -12,7 +12,7 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendLeaveAccrualEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -1892,12 +1892,106 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid month (must be 1-12)" });
       }
       const result = await storage.accrueMonthlyLeaves(targetYear, targetMonth);
-      res.json({ 
+
+      // Emit per-employee in-app notifications (same as scheduler path)
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const notificationsEnabled = featureFlags.notifications_enabled === true;
+      if (notificationsEnabled) {
+        const monthName = new Date(targetYear, targetMonth - 1).toLocaleString("en-IN", { month: "long" });
+        const userMap = new Map<string, { types: { leaveTypeName: string; days: number; newBalance: number; accrualType: string }[] }>();
+        for (const d of result.processedDetails) {
+          const entry = userMap.get(d.userId);
+          if (entry) entry.types.push({ leaveTypeName: d.leaveTypeName, days: d.accruedDays, newBalance: d.newBalance, accrualType: d.accrualType });
+          else userMap.set(d.userId, { types: [{ leaveTypeName: d.leaveTypeName, days: d.accruedDays, newBalance: d.newBalance, accrualType: d.accrualType }] });
+        }
+        for (const [userId, info] of Array.from(userMap.entries())) {
+          const typesSummary = info.types.map((t: { leaveTypeName: string; days: number; newBalance: number; accrualType: string }) => {
+            const bonus = t.accrualType === "monthly+bonus" ? " (incl. bonus)" : "";
+            return `${t.leaveTypeName}: +${t.days}${bonus} → balance: ${t.newBalance.toFixed(1)}`;
+          }).join("; ");
+          try {
+            await storage.createNotification({
+              userId,
+              type: "leave_accrual",
+              title: `${monthName} ${targetYear} Leave Credited`,
+              message: `Your leave has been credited for ${monthName} ${targetYear}. ${typesSummary}.`,
+              isRead: false,
+              metadata: { year: targetYear, month: targetMonth, types: info.types },
+            });
+          } catch (_) { /* non-fatal */ }
+        }
+      }
+
+      // Per-employee emails — same as scheduler path (fire-and-forget, non-fatal)
+      for (const d of result.processedDetails) {
+        if (d.email) {
+          sendLeaveAccrualEmail({
+            to: d.email,
+            employeeName: d.name,
+            year: targetYear,
+            month: targetMonth,
+            types: [{ leaveTypeName: d.leaveTypeName, days: d.accruedDays, newBalance: d.newBalance, accrualType: d.accrualType }],
+          }).catch(() => { /* non-fatal */ });
+        }
+      }
+
+      res.json({
         message: `Accrual completed for ${targetMonth}/${targetYear}`,
-        ...result 
+        ...result,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to run leave accrual" });
+    }
+  });
+
+  app.post("/api/hr/leave-accruals/year-end", requireRole("hr"), async (req, res) => {
+    try {
+      const year = Number(req.body.year ?? new Date().getFullYear());
+      if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+      const result = await storage.runYearEndBatch(year);
+      res.json({ message: `Year-end batch completed for ${year}`, ...result });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to run year-end batch" });
+    }
+  });
+
+  app.get("/api/hr/leave-accruals/run-log", requireRole("hr"), async (req, res) => {
+    try {
+      const latest = await storage.getSystemSetting("accrual_run_log_latest");
+      const history = await storage.getSystemSetting("accrual_run_log_history");
+      const yearEndLog = await storage.getSystemSetting("year_end_batch_log");
+      res.json({
+        latest: latest?.value || null,
+        history: history?.value || [],
+        yearEndLog: yearEndLog?.value || [],
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch accrual run log" });
+    }
+  });
+
+  app.get("/api/hr/leave-accruals/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const accruals = await storage.getLeaveAccrualsByUser(userId, year);
+      res.json(accruals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch leave accruals" });
+    }
+  });
+
+  app.get("/api/hr/leave-days-count", requireAuth, async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) return res.status(400).json({ error: "startDate and endDate required" });
+      const count = await storage.countLeaveDays(String(startDate), String(endDate));
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to count leave days" });
     }
   });
 
@@ -1930,7 +2024,37 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: "Invalid leave request data", details: result.error.issues });
       }
-      const lr = await storage.createLeaveRequest(result.data);
+
+      // LWP (Loss of Pay) gating: block only if EL/SL/Comp-Off balance remains
+      // (not other special/manual leave types — per policy, only earned categories gate LWP)
+      const leaveType = await storage.getLeaveType(result.data.leaveTypeId);
+      if (leaveType && /lwp|loss.?of.?pay/i.test(leaveType.name)) {
+        const year = parseInt(result.data.startDate.split("-")[0]);
+        const balances = await storage.getLeaveBalances(userId, year);
+        const allLeaveTypes = await storage.getLeaveTypes();
+        const eligibleRemaining = balances.reduce((sum, b) => {
+          const lt = allLeaveTypes.find(t => t.id === b.leaveTypeId);
+          if (!lt) return sum;
+          // Only gate on EL (conditional+carry-forward), SL (unconditional), and Comp-Off
+          const isEL = lt.isConditional && (lt.carryForwardCap || 0) > 0;
+          const isSL = !lt.isConditional && !(/comp|compensatory/i.test(lt.name)) && !(/lwp|loss.?of.?pay/i.test(lt.name));
+          const isCO = /comp|compensatory/i.test(lt.name);
+          if (!isEL && !isSL && !isCO) return sum;
+          const remaining = parseFloat(b.totalDays) - parseFloat(b.usedDays);
+          return sum + Math.max(0, remaining);
+        }, 0);
+        if (eligibleRemaining > 0) {
+          return res.status(422).json({
+            error: `LWP cannot be applied while you have ${eligibleRemaining.toFixed(1)} day(s) of EL/SL/Comp-Off remaining. Please exhaust your earned leave balance first.`,
+          });
+        }
+      }
+
+      // Auto-calculate working days (excluding weekends and holidays)
+      const calculatedDays = await storage.countLeaveDays(result.data.startDate, result.data.endDate);
+      const finalDays = result.data.halfDay ? 0.5 : calculatedDays;
+
+      const lr = await storage.createLeaveRequest({ ...result.data, totalDays: String(finalDays) });
       res.status(201).json(lr);
 
       (async () => {
@@ -2028,7 +2152,12 @@ export async function registerRoutes(
         const balances = await storage.getLeaveBalances(lr.userId, year);
         const balance = balances.find(b => b.leaveTypeId === lr.leaveTypeId);
         if (balance) {
-          const newUsed = parseFloat(balance.usedDays || "0") + parseFloat(lr.totalDays || "0");
+          // For split-leave: deduct only the paid portion (splitPaidDays) from this leave type's balance.
+          // The LWP portion (splitLwpDays) does not come from any balance — it is unpaid.
+          const paidPortion = lr.splitPaidDays != null
+            ? parseFloat(lr.splitPaidDays)
+            : parseFloat(lr.totalDays || "0");
+          const newUsed = parseFloat(balance.usedDays || "0") + paidPortion;
           await storage.updateLeaveBalance(balance.id, { usedDays: String(newUsed) });
         }
       }

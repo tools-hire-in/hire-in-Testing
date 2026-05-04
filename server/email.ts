@@ -1168,6 +1168,148 @@ export async function sendLeaveDecisionEmail(options: {
   }
 }
 
+export async function sendLeaveAccrualEmail(options: {
+  to: string;
+  employeeName: string;
+  year: number;
+  month: number;
+  types: Array<{ leaveTypeName: string; days: number; newBalance: number; accrualType: string }>;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const monthName = new Date(options.year, options.month - 1, 1).toLocaleString("en-IN", { month: "long" });
+    const typeRows = options.types.map(t => {
+      const bonus = t.accrualType === "monthly+bonus" ? " <span style='color:#7c3aed;font-size:11px;'>(Bonus Month)</span>" : "";
+      return `<tr>
+        <td style="color:#1e293b;padding:6px 8px;">${t.leaveTypeName}${bonus}</td>
+        <td style="color:#16a34a;font-weight:600;padding:6px 8px;">+${t.days}</td>
+        <td style="color:#1e293b;font-weight:600;padding:6px 8px;">${t.newBalance.toFixed(1)} days</td>
+      </tr>`;
+    }).join("");
+    const typeText = options.types.map(t => {
+      const bonus = t.accrualType === "monthly+bonus" ? " (Bonus Month)" : "";
+      return `${t.leaveTypeName}${bonus}: +${t.days} → balance: ${t.newBalance.toFixed(1)} days`;
+    }).join("\n");
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `${monthName} ${options.year} Leave Credited — ${options.employeeName}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Rayomind Solutions LLP</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:14px;">Monthly Leave Credit Notification</p>
+          </div>
+          <div style="padding:32px;">
+            <p style="color:#475569;margin:0 0 4px;">Dear <strong>${options.employeeName}</strong>,</p>
+            <p style="color:#475569;line-height:1.6;margin:0 0 24px;">
+              Your leave balance has been updated for <strong>${monthName} ${options.year}</strong>.
+            </p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:0 0 24px;">
+              <p style="color:#1e293b;font-weight:600;margin:0 0 12px;">Leave Credited This Month</p>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="border-bottom:1px solid #e2e8f0;">
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">Type</th>
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">Credited</th>
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">New Balance</th>
+                  </tr>
+                </thead>
+                <tbody>${typeRows}</tbody>
+              </table>
+            </div>
+            <p style="color:#475569;font-size:13px;line-height:1.6;margin:0;">
+              Log in to the HR portal to view your full leave balance and apply for leave.
+            </p>
+          </div>
+          <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.employeeName},\n\n${monthName} ${options.year} Leave Credited:\n${typeText}\n\nLog in to the HR portal to view your balance.`,
+    };
+    await client.send(msg);
+    console.log(`Leave accrual email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send leave accrual email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendLeaveYearEndEmail(options: {
+  to: string;
+  employeeName: string;
+  year: number;
+  events: Array<{ action: string; leaveTypeName: string; days: number }>;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const carries = options.events.filter(e => e.action === "carry_forward");
+    const lapses = options.events.filter(e => e.action === "lapse");
+    const coExpires = options.events.filter(e => e.action === "co_expire");
+
+    const rows = [
+      ...carries.map(e => `<tr><td style="padding:6px 8px;color:#1e293b;">${e.leaveTypeName}</td><td style="padding:6px 8px;color:#16a34a;font-weight:600;">Carried forward</td><td style="padding:6px 8px;color:#1e293b;font-weight:600;">${e.days.toFixed(1)} days</td></tr>`),
+      ...lapses.map(e => `<tr><td style="padding:6px 8px;color:#1e293b;">${e.leaveTypeName}</td><td style="padding:6px 8px;color:#dc2626;font-weight:600;">Lapsed (Dec 31)</td><td style="padding:6px 8px;color:#1e293b;font-weight:600;">${e.days.toFixed(1)} days</td></tr>`),
+      ...coExpires.map(e => `<tr><td style="padding:6px 8px;color:#1e293b;">${e.leaveTypeName}</td><td style="padding:6px 8px;color:#d97706;font-weight:600;">Expired (>30 days)</td><td style="padding:6px 8px;color:#1e293b;font-weight:600;">${e.days.toFixed(1)} days</td></tr>`),
+    ].join("");
+
+    const textSummary = [
+      ...carries.map(e => `${e.leaveTypeName}: ${e.days.toFixed(1)} days carried forward`),
+      ...lapses.map(e => `${e.leaveTypeName}: ${e.days.toFixed(1)} days lapsed on Dec 31`),
+      ...coExpires.map(e => `${e.leaveTypeName}: ${e.days.toFixed(1)} days expired (>30 days old)`),
+    ].join("\n");
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Year-End Leave Update — ${options.year}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Rayomind Solutions LLP</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:14px;">Year-End Leave Statement — ${options.year}</p>
+          </div>
+          <div style="padding:32px;">
+            <p style="color:#475569;margin:0 0 4px;">Dear <strong>${options.employeeName}</strong>,</p>
+            <p style="color:#475569;line-height:1.6;margin:0 0 24px;">
+              Year-end leave processing has been completed for <strong>${options.year}</strong>. Here is a summary of changes to your leave balance:
+            </p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:0 0 24px;">
+              <p style="color:#1e293b;font-weight:600;margin:0 0 12px;">Year-End Leave Summary</p>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="border-bottom:1px solid #e2e8f0;">
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">Leave Type</th>
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">Action</th>
+                    <th style="text-align:left;color:#64748b;padding:6px 8px;font-size:12px;">Days</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+            <p style="color:#475569;line-height:1.6;margin:0;">
+              Please contact HR if you have any questions about your leave balance.
+            </p>
+          </div>
+          <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.employeeName},\n\nYear-end leave processing for ${options.year} is complete:\n\n${textSummary}\n\nContact HR for any questions.`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send year-end leave email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendCheckInReminderEmail(options: {
   to: string;
   firstName: string;
