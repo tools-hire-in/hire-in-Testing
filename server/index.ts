@@ -547,6 +547,13 @@ async function backfillHolidayAttendance() {
   }
 
   try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS gender VARCHAR`);
+    log("Ensured gender column exists on admin_users");
+  } catch (err) {
+    console.error("admin_users gender migration error:", err);
+  }
+
+  try {
     await db.execute(sql`
       DO $$ BEGIN
         CREATE TYPE employment_status AS ENUM ('active', 'relieved', 'left_company');
