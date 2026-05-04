@@ -9,6 +9,9 @@ export interface AuthUser {
   role: "super_admin" | "admin" | "hr" | "operations" | "manager" | "employee";
   isActive: boolean;
   totpEnabled: boolean;
+  employeeId?: string | null;
+  salary?: string | null;
+  gender?: string | null;
 }
 
 async function fetchUser(): Promise<AuthUser | null> {

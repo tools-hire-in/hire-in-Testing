@@ -140,6 +140,9 @@ export async function getCurrentUser(req: Request) {
       role: adminUsers.role,
       isActive: adminUsers.isActive,
       totpEnabled: adminUsers.totpEnabled,
+      employeeId: adminUsers.employeeId,
+      salary: adminUsers.salary,
+      gender: adminUsers.gender,
     })
     .from(adminUsers)
     .where(eq(adminUsers.id, req.session.userId))

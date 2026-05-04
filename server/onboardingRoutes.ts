@@ -2067,6 +2067,7 @@ export function registerOnboardingRoutes(app: Express) {
         signedAt: latestConsent.signedAt,
         expiresAt: latestConsent.expiresAt,
         daysToExpiry: isExpired ? 0 : daysToExpiry,
+        shiftName: "Night Shift",
       });
     } catch (error) {
       console.error(error);
