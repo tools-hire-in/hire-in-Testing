@@ -6,7 +6,7 @@ export default {
   theme: {
     extend: {
       borderRadius: {
-        lg: ".5625rem", /* 9px */
+        lg: ".75rem", /* 12px */
         md: ".375rem", /* 6px */
         sm: ".1875rem", /* 3px */
       },
@@ -80,6 +80,28 @@ export default {
           away: "rgb(245 158 11)",
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
+        },
+        // Semantic leave type colours
+        el: {
+          DEFAULT: "hsl(var(--el) / <alpha-value>)",
+          foreground: "hsl(var(--el-foreground) / <alpha-value>)",
+          muted: "hsl(var(--el) / 0.10)",
+        },
+        sl: {
+          DEFAULT: "hsl(var(--sl) / <alpha-value>)",
+          foreground: "hsl(var(--sl-foreground) / <alpha-value>)",
+          muted: "hsl(var(--sl) / 0.10)",
+        },
+        co: {
+          DEFAULT: "hsl(var(--co) / <alpha-value>)",
+          foreground: "hsl(var(--co-foreground) / <alpha-value>)",
+          muted: "hsl(var(--co) / 0.10)",
+        },
+        portal: {
+          DEFAULT: "hsl(var(--portal) / <alpha-value>)",
+          foreground: "hsl(var(--portal-foreground) / <alpha-value>)",
+          muted: "hsl(var(--portal) / 0.10)",
+          accent: "hsl(var(--portal-accent) / <alpha-value>)",
         },
       },
       fontFamily: {

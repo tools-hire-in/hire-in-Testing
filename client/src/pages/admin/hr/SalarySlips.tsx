@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PortalHeader } from "@/components/ui/portal-header";
 import { useAuth } from "@/hooks/use-auth";
 
 interface SalarySlip {
@@ -206,15 +207,13 @@ export default function SalarySlips() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-salary-slips-title">My Salary Slips</h1>
-            <p className="text-muted-foreground">View and download your monthly salary slips</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+        <PortalHeader
+          label="HR Portal"
+          title="My Salary Slips"
+          subtitle="View and download your monthly salary slips"
+          action={
             <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-32" data-testid="select-year">
+              <SelectTrigger className="w-32 bg-white/10 border-white/20 text-white" data-testid="select-year">
                 <SelectValue placeholder="Year" />
               </SelectTrigger>
               <SelectContent>
@@ -223,8 +222,9 @@ export default function SalarySlips() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-        </div>
+          }
+          data-testid="text-salary-slips-title"
+        />
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -265,7 +265,7 @@ export default function SalarySlips() {
                         <IndianRupee className="h-3.5 w-3.5" />
                         Gross Salary
                       </span>
-                      <span className="text-sm font-medium" data-testid={`text-gross-${slip.id}`}>
+                      <span className="text-sm font-medium font-mono" data-testid={`text-gross-${slip.id}`}>
                         {formatCurrency(slip.grossSalary)}
                       </span>
                     </div>
@@ -274,13 +274,13 @@ export default function SalarySlips() {
                         <TrendingDown className="h-3.5 w-3.5" />
                         Deductions
                       </span>
-                      <span className="text-sm font-medium text-red-600 dark:text-red-400" data-testid={`text-deductions-${slip.id}`}>
+                      <span className="text-sm font-medium font-mono text-red-600 dark:text-red-400" data-testid={`text-deductions-${slip.id}`}>
                         - {formatCurrency(slip.deductions)}
                       </span>
                     </div>
                     <div className="border-t pt-2 flex items-center justify-between">
                       <span className="text-sm font-semibold">Net Payable</span>
-                      <span className="text-base font-bold" data-testid={`text-net-${slip.id}`}>
+                      <span className="text-base font-bold font-mono" data-testid={`text-net-${slip.id}`}>
                         {formatCurrency(slip.netPayable)}
                       </span>
                     </div>

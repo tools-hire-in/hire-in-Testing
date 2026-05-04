@@ -257,7 +257,7 @@ export default function TrainingProgress() {
                 <Card key={status}>
                   <CardContent className="pt-4 pb-4">
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">{cfg.label}</p>
-                    <p className="text-3xl font-bold mt-1">{count}</p>
+                    <p className="text-3xl font-mono font-bold mt-1">{count}</p>
                     <p className="text-xs text-muted-foreground">assignments</p>
                   </CardContent>
                 </Card>

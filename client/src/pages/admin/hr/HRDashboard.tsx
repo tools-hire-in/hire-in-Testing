@@ -23,6 +23,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StatCard } from "@/components/ui/stat-card";
+import { LeaveBalanceCard } from "@/components/hr/leave-balance-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -221,17 +224,16 @@ export default function HRDashboard() {
 
         {/* Training alert banner */}
         {(trainingAlerts?.total ?? 0) > 0 && (
-          <div
-            className={`flex items-center justify-between gap-4 p-4 rounded-lg border-l-4 ${(trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
+          <Alert
+            variant={(trainingAlerts?.overdue ?? 0) > 0 ? "destructive" : "warning"}
+            className="flex items-center justify-between gap-4"
             data-testid="dashboard-training-alert"
           >
             <div className="flex items-center gap-3">
-              <AlertTriangle className={`h-5 w-5 shrink-0 ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`} />
-              <div>
-                <p className={`font-semibold text-sm ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
-                  Training Reminder
-                </p>
-                <p className={`text-xs ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <AlertDescription>
+                <p className="font-semibold text-sm">Training Reminder</p>
+                <p className="text-xs mt-0.5">
                   {(trainingAlerts?.overdue ?? 0) > 0 && (
                     <span>{trainingAlerts!.overdue} overdue{(trainingAlerts?.dueSoon ?? 0) > 0 ? `, ${trainingAlerts!.dueSoon} due soon` : ""}</span>
                   )}
@@ -239,19 +241,18 @@ export default function HRDashboard() {
                     <span>{trainingAlerts!.dueSoon} {trainingAlerts!.dueSoon === 1 ? "track" : "tracks"} due within 3 days</span>
                   )}
                 </p>
-              </div>
+              </AlertDescription>
             </div>
             <Button
               size="sm"
               variant="outline"
-              className={(trainingAlerts?.overdue ?? 0) > 0 ? "border-red-300 text-red-700 hover:bg-red-100" : "border-amber-300 text-amber-700 hover:bg-amber-100"}
               onClick={() => setLocation("/admin/growth")}
               data-testid="link-go-to-training"
             >
               <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
               Go to My Growth
             </Button>
-          </div>
+          </Alert>
         )}
 
         {/* Manager / Admin: Team Pulse section */}
@@ -271,19 +272,19 @@ export default function HRDashboard() {
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-present-count">
-                  <p className="text-xl font-bold text-green-600">{teamTodayData.presentCount}</p>
+                  <p className="text-xl font-mono font-bold text-green-600">{teamTodayData.presentCount}</p>
                   <p className="text-xs text-muted-foreground">Present</p>
                 </div>
                 <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-absent-count">
-                  <p className="text-xl font-bold text-red-600">{teamTodayData.absentCount}</p>
+                  <p className="text-xl font-mono font-bold text-red-600">{teamTodayData.absentCount}</p>
                   <p className="text-xs text-muted-foreground">Absent</p>
                 </div>
                 <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-leave-count">
-                  <p className="text-xl font-bold text-blue-600">{teamTodayData.onLeaveCount}</p>
+                  <p className="text-xl font-mono font-bold text-blue-600">{teamTodayData.onLeaveCount}</p>
                   <p className="text-xs text-muted-foreground">On Leave</p>
                 </div>
                 <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-approvals-count">
-                  <p className="text-xl font-bold text-amber-600">{pendingLeaveApprovalsCount ?? 0}</p>
+                  <p className="text-xl font-mono font-bold text-amber-600">{pendingLeaveApprovalsCount ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Pending Leaves</p>
                 </div>
               </div>
@@ -390,57 +391,37 @@ export default function HRDashboard() {
           </Card>
 
           {/* This Month */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
-              <TrendingUp className="h-5 w-5 text-green-600" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isLoading ? (
-                <Skeleton className="h-32 w-full" />
-              ) : (
-                <>
-                  <div className="text-center py-2">
-                    <div className="text-4xl font-bold" data-testid="text-present-days">{stats?.presentDaysThisMonth || 0}</div>
-                    <p className="text-sm text-muted-foreground">Days Present</p>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Total Hours</span>
-                      <span className="text-sm font-medium">{stats?.totalHoursThisMonth || "0"} hrs</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Working Days</span>
-                      <span className="text-sm font-medium">{currentDay} / {daysInMonth}</span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {isLoading ? (
+            <Card><CardContent className="p-5"><Skeleton className="h-28 w-full" /></CardContent></Card>
+          ) : (
+            <StatCard
+              label="This Month"
+              value={stats?.presentDaysThisMonth || 0}
+              subvalue={`${stats?.totalHoursThisMonth || "0"} hrs · ${currentDay}/${daysInMonth} days`}
+              icon={<TrendingUp className="h-5 w-5" />}
+              accentColour="text-green-600"
+              data-testid="text-present-days"
+            />
+          )}
 
           {/* Leave Requests */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Leave Requests</CardTitle>
-              <CalendarCheck className="h-5 w-5 text-orange-600" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isLoading ? (
-                <Skeleton className="h-32 w-full" />
-              ) : (
-                <>
-                  <div className="text-center py-2">
-                    <div className="text-4xl font-bold" data-testid="text-pending-leaves">{stats?.pendingLeaveRequests || 0}</div>
-                    <p className="text-sm text-muted-foreground">Pending Requests</p>
-                  </div>
-                  <Button variant="outline" className="w-full" onClick={() => setLocation("/admin/hr?tab=leaves")} data-testid="link-view-leaves">
-                    View My Leaves
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {isLoading ? (
+            <Card><CardContent className="p-5"><Skeleton className="h-28 w-full" /></CardContent></Card>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <StatCard
+                label="Leave Requests"
+                value={stats?.pendingLeaveRequests || 0}
+                subvalue="Pending this month"
+                icon={<CalendarCheck className="h-5 w-5" />}
+                accentColour="text-orange-600"
+                data-testid="text-pending-leaves"
+              />
+              <Button variant="outline" className="w-full" onClick={() => setLocation("/admin/hr?tab=leaves")} data-testid="link-view-leaves">
+                View My Leaves
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Leave balances + Upcoming holidays */}
@@ -457,21 +438,23 @@ export default function HRDashboard() {
                   {stats.leaveBalances.map((bal) => {
                     const total = parseFloat(bal.totalDays);
                     const used = parseFloat(bal.usedDays);
-                    const remaining = total - used;
-                    const percent = total > 0 ? (used / total) * 100 : 0;
+                    const available = Math.max(0, total - used);
+                    const name = getLeaveTypeName(bal.leaveTypeId);
+                    const lt = leaveTypes?.find(l => l.id === bal.leaveTypeId);
+                    const isEL = lt?.isConditional && (lt.carryForwardCap || 0) > 0;
+                    const isCompOff = /comp.?off|compensatory/i.test(name);
+                    const isSL = lt && !lt.isConditional && !/lwp|loss.?of.?pay/i.test(name) && !isCompOff;
+                    const type: "el" | "sl" | "co" | "default" = isEL ? "el" : isSL ? "sl" : isCompOff ? "co" : "default";
                     return (
-                      <div key={bal.id} data-testid={`leave-balance-${bal.leaveTypeId}`}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm">{getLeaveTypeName(bal.leaveTypeId)}</span>
-                          <span className="text-sm text-muted-foreground">{remaining} / {total} days</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-md h-2">
-                          <div
-                            className="bg-primary rounded-md h-2 transition-all"
-                            style={{ width: `${Math.min(percent, 100)}%` }}
-                          />
-                        </div>
-                      </div>
+                      <LeaveBalanceCard
+                        key={bal.id}
+                        type={type}
+                        label={name}
+                        balance={available}
+                        total={total}
+                        used={used}
+                        data-testid={`leave-balance-${bal.leaveTypeId}`}
+                      />
                     );
                   })}
                 </div>

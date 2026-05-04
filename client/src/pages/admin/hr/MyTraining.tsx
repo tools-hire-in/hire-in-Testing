@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PortalHeader } from "@/components/ui/portal-header";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -790,87 +792,78 @@ export default function MyTraining() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <GraduationCap className="h-6 w-6 text-blue-600" />
-              My Training
-            </h1>
-            <p className="text-muted-foreground mt-1">Complete your assigned learning tracks and earn your acknowledgements</p>
-          </div>
-          <Button
-            onClick={() => window.open("https://rayo.academy", "_blank")}
-            className="bg-indigo-600 hover:bg-indigo-700"
-            data-testid="button-open-rayo-academy"
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Open Rayo Academy
-          </Button>
-        </div>
+        <PortalHeader
+          label="HR Portal"
+          title="My Training"
+          subtitle="Complete your assigned learning tracks and earn your acknowledgements"
+          action={
+            <Button
+              onClick={() => window.open("https://rayo.academy", "_blank")}
+              className="bg-white/15 hover:bg-white/25 text-white border border-white/20"
+              data-testid="button-open-rayo-academy"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open Rayo Academy
+            </Button>
+          }
+        />
 
         {showFallbackBanner && (
-          <div
-            className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30"
-            data-testid="banner-rayo-fallback"
-          >
-            <WifiOff className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">Training data may be delayed</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+          <Alert variant="warning" data-testid="banner-rayo-fallback">
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-semibold text-sm">Training data may be delayed</p>
+              <p className="text-xs mt-0.5">
                 Unable to reach Rayo Academy. Showing locally cached training data. Your progress may not reflect recent activity on Rayo Academy.
               </p>
-            </div>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
 
         {isLocked && (
-          <div
-            className="flex items-start gap-3 p-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30"
-            data-testid="banner-compliance-lock"
-          >
-            <ShieldAlert className="h-6 w-6 mt-0.5 shrink-0 text-red-600" />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-red-800 dark:text-red-300">Portal Locked — Overdue Training</p>
-              <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+          <Alert variant="destructive" data-testid="banner-compliance-lock">
+            <ShieldAlert className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-semibold">Portal Locked — Overdue Training</p>
+              <p className="text-sm mt-1">
                 Your portal access is restricted because you have {complianceStatus?.overdueCount} overdue training
                 {(complianceStatus?.overdueCount ?? 0) === 1 ? " track" : " tracks"}:
                 <strong> {complianceStatus?.trackTitles?.join(", ")}</strong>.
                 Complete your training or request a due date extension below to restore full access.
               </p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+              <p className="text-xs mt-1">
                 Punch-in and punch-out are also blocked while your portal is locked.
               </p>
-            </div>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
 
         {showBanner && !isLocked && (
-          <div
-            className={`flex items-start gap-3 p-4 rounded-lg border-l-4 ${overdueCount > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
-            data-testid="banner-training-due"
-          >
-            <AlertTriangle className={`h-5 w-5 mt-0.5 shrink-0 ${overdueCount > 0 ? "text-red-600" : "text-amber-600"}`} />
-            <div className="flex-1 min-w-0">
-              <p className={`font-semibold text-sm ${overdueCount > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
-                {overdueCount > 0
-                  ? `${overdueCount} training ${overdueCount === 1 ? "track is" : "tracks are"} overdue`
-                  : `${dueSoonCount} training ${dueSoonCount === 1 ? "track is" : "tracks are"} due within 3 days`}
-              </p>
-              <p className={`text-xs mt-0.5 ${overdueCount > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
-                {overdueCount > 0 && dueSoonCount > 0
-                  ? `Also ${dueSoonCount} more due soon. `
-                  : ""}
-                Complete them to stay on track.
-              </p>
-            </div>
-            <button
-              onClick={() => setBannerDismissed(true)}
-              className={`shrink-0 p-1 rounded hover:bg-black/10 ${overdueCount > 0 ? "text-red-500" : "text-amber-500"}`}
-              data-testid="button-dismiss-training-banner"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <Alert variant={overdueCount > 0 ? "destructive" : "warning"} data-testid="banner-training-due">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-sm">
+                    {overdueCount > 0
+                      ? `${overdueCount} training ${overdueCount === 1 ? "track is" : "tracks are"} overdue`
+                      : `${dueSoonCount} training ${dueSoonCount === 1 ? "track is" : "tracks are"} due within 3 days`}
+                  </p>
+                  <p className="text-xs mt-0.5">
+                    {overdueCount > 0 && dueSoonCount > 0 ? `Also ${dueSoonCount} more due soon. ` : ""}
+                    Complete them to stay on track.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setBannerDismissed(true)}
+                  className="shrink-0 p-1 rounded hover:bg-black/10"
+                  data-testid="button-dismiss-training-banner"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </AlertDescription>
+          </Alert>
         )}
 
         {isLoading && (

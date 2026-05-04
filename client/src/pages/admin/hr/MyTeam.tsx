@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { StatCard } from "@/components/ui/stat-card";
 import {
   Users,
   Search,
@@ -694,16 +695,12 @@ function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <DollarSign className="h-5 w-5" /> Current Salary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(salary.currentSalary)}</div>
-        </CardContent>
-      </Card>
+      <StatCard
+        label="Current Salary"
+        value={formatCurrency(salary.currentSalary)}
+        icon={<DollarSign className="h-5 w-5" />}
+        accentColour="text-green-600"
+      />
 
       <Card>
         <CardHeader>
@@ -1128,7 +1125,7 @@ function LeavesTab({
                   <div key={b.id} className="border rounded-lg p-3">
                     <div className="font-medium text-sm">{b.leaveTypeName}</div>
                     <div className="mt-2 flex items-end gap-2">
-                      <span className="text-2xl font-bold">{remaining.toFixed(1)}</span>
+                      <span className="text-2xl font-mono font-bold">{remaining.toFixed(1)}</span>
                       <span className="text-sm text-muted-foreground mb-0.5">/ {total.toFixed(1)} days</span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">Used: {used.toFixed(1)}</div>
@@ -1269,7 +1266,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
             <div className="flex items-center gap-3">
               <CalendarDays className="h-8 w-8 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{leaveData.summary.totalDaysTaken}</p>
+                <p className="text-2xl font-mono font-bold">{leaveData.summary.totalDaysTaken}</p>
                 <p className="text-sm text-muted-foreground">Days Taken ({leaveData.year})</p>
               </div>
             </div>
@@ -1280,7 +1277,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
             <div className="flex items-center gap-3">
               <Clock className="h-8 w-8 text-yellow-500" />
               <div>
-                <p className="text-2xl font-bold">{leaveData.summary.pendingCount}</p>
+                <p className="text-2xl font-mono font-bold">{leaveData.summary.pendingCount}</p>
                 <p className="text-sm text-muted-foreground">Pending Requests</p>
               </div>
             </div>

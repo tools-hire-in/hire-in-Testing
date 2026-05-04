@@ -107,19 +107,19 @@ export default function HolidayCalendar() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold" data-testid="text-total-holidays">{holidays?.length || 0}</div>
+              <div className="text-3xl font-mono font-bold" data-testid="text-total-holidays">{holidays?.length || 0}</div>
               <p className="text-sm text-muted-foreground">Total Holidays</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold">{upcoming.length}</div>
+              <div className="text-3xl font-mono font-bold">{upcoming.length}</div>
               <p className="text-sm text-muted-foreground">Upcoming</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold" data-testid="text-regional-selected">{selectionCount}/2</div>
+              <div className="text-3xl font-mono font-bold" data-testid="text-regional-selected">{selectionCount}/2</div>
               <p className="text-sm text-muted-foreground">Regional Holidays Selected</p>
             </CardContent>
           </Card>

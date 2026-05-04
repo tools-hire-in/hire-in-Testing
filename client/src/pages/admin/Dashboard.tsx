@@ -3,7 +3,8 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Briefcase, Users, FileText, Mail, TrendingUp, Clock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -84,24 +85,18 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {statCards.map((stat) => (
             <Link key={stat.title} href={stat.href}>
-              <Card className="hover-elevate cursor-pointer transition-all">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {stat.title}
-                  </CardTitle>
-                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
-                </CardHeader>
-                <CardContent>
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-16" />
-                  ) : (
-                    <>
-                      <div className="text-3xl font-bold">{stat.value}</div>
-                      <p className="text-xs text-muted-foreground">{stat.subtitle}</p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              {isLoading ? (
+                <Card className="cursor-pointer"><CardContent className="p-5"><Skeleton className="h-16 w-full" /></CardContent></Card>
+              ) : (
+                <StatCard
+                  label={stat.title}
+                  value={stat.value}
+                  subvalue={stat.subtitle}
+                  icon={<stat.icon className="h-5 w-5" />}
+                  accentColour={stat.color}
+                  className="hover-elevate cursor-pointer transition-all"
+                />
+              )}
             </Link>
           ))}
         </div>

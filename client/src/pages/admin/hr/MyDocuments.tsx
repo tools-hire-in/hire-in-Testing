@@ -236,7 +236,7 @@ export default function MyDocuments() {
               {uploadedRequired} of {requiredDocs.length} required documents uploaded
             </CardDescription>
           </div>
-          <span className="text-2xl font-bold" data-testid="text-progress-percent">
+          <span className="text-2xl font-mono font-bold" data-testid="text-progress-percent">
             {progressPercent}%
           </span>
         </CardHeader>

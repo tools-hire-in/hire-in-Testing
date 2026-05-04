@@ -45,16 +45,34 @@
   --chart-5: 142 71% 40%;
   --font-sans: Inter, system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+  --font-mono: 'DM Mono', 'JetBrains Mono', Menlo, monospace;
   --radius: .5rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(215 25% 17% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(215 25% 17% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(215 25% 17% / 0.00), 0px 1px 2px -1px hsl(215 25% 17% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(215 25% 17% / 0.00), 0px 1px 2px -1px hsl(215 25% 17% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(215 25% 17% / 0.00), 0px 2px 4px -1px hsl(215 25% 17% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(215 25% 17% / 0.00), 0px 4px 6px -1px hsl(215 25% 17% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(215 25% 17% / 0.00), 0px 8px 10px -1px hsl(215 25% 17% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(215 25% 17% / 0.00);
+
+  /* Semantic leave/portal colour tokens */
+  --el: 217 65% 48%;
+  --el-foreground: 0 0% 100%;
+  --el-muted: 217 65% 48% / 0.10;
+  --sl: 28 80% 54%;
+  --sl-foreground: 0 0% 100%;
+  --sl-muted: 28 80% 54% / 0.10;
+  --co: 142 45% 42%;
+  --co-foreground: 0 0% 100%;
+  --co-muted: 142 45% 42% / 0.10;
+  --portal: 220 45% 28%;
+  --portal-foreground: 0 0% 100%;
+  --portal-muted: 220 45% 28% / 0.10;
+  --portal-accent: 217 65% 48%;
+  --portal-gradient: linear-gradient(135deg, hsl(220 45% 18%) 0%, hsl(220 45% 28%) 100%);
+
+  /* Real shadow values — subtle lift */
+  --shadow-2xs: 0px 1px 2px 0px hsl(215 25% 17% / 0.06);
+  --shadow-xs: 0px 1px 3px 0px hsl(215 25% 17% / 0.08);
+  --shadow-sm: 0px 1px 2px 0px hsl(215 25% 17% / 0.06), 0px 1px 3px -1px hsl(215 25% 17% / 0.08);
+  --shadow: 0px 2px 4px 0px hsl(215 25% 17% / 0.08), 0px 1px 3px -1px hsl(215 25% 17% / 0.06);
+  --shadow-md: 0px 4px 8px -2px hsl(215 25% 17% / 0.10), 0px 2px 4px -1px hsl(215 25% 17% / 0.06);
+  --shadow-lg: 0px 8px 16px -4px hsl(215 25% 17% / 0.12), 0px 4px 6px -1px hsl(215 25% 17% / 0.06);
+  --shadow-xl: 0px 16px 24px -8px hsl(215 25% 17% / 0.14), 0px 8px 10px -1px hsl(215 25% 17% / 0.08);
+  --shadow-2xl: 0px 24px 40px -12px hsl(215 25% 17% / 0.18);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -127,14 +145,32 @@
   --chart-3: 210 50% 65%;
   --chart-4: 280 60% 65%;
   --chart-5: 142 71% 60%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(210 40% 98% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(210 40% 98% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(210 40% 98% / 0.00), 0px 1px 2px -1px hsl(210 40% 98% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(210 40% 98% / 0.00), 0px 1px 2px -1px hsl(210 40% 98% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(210 40% 98% / 0.00), 0px 2px 4px -1px hsl(210 40% 98% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(210 40% 98% / 0.00), 0px 4px 6px -1px hsl(210 40% 98% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(210 40% 98% / 0.00), 0px 8px 10px -1px hsl(210 40% 98% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(210 40% 98% / 0.00);
+
+  /* Semantic leave/portal colour tokens — dark mode */
+  --el: 217 65% 58%;
+  --el-foreground: 0 0% 100%;
+  --el-muted: 217 65% 58% / 0.12;
+  --sl: 28 80% 64%;
+  --sl-foreground: 0 0% 100%;
+  --sl-muted: 28 80% 64% / 0.12;
+  --co: 142 45% 52%;
+  --co-foreground: 0 0% 100%;
+  --co-muted: 142 45% 52% / 0.12;
+  --portal: 220 45% 20%;
+  --portal-foreground: 0 0% 100%;
+  --portal-muted: 220 45% 20% / 0.15;
+  --portal-accent: 217 65% 58%;
+  --portal-gradient: linear-gradient(135deg, hsl(220 45% 12%) 0%, hsl(220 45% 20%) 100%);
+
+  /* Real shadow values — dark mode subtle glow */
+  --shadow-2xs: 0px 1px 2px 0px hsl(210 40% 98% / 0.04);
+  --shadow-xs: 0px 1px 3px 0px hsl(210 40% 98% / 0.05);
+  --shadow-sm: 0px 1px 2px 0px hsl(210 40% 98% / 0.04), 0px 1px 3px -1px hsl(210 40% 98% / 0.05);
+  --shadow: 0px 2px 4px 0px hsl(210 40% 98% / 0.05), 0px 1px 3px -1px hsl(210 40% 98% / 0.04);
+  --shadow-md: 0px 4px 8px -2px hsl(210 40% 98% / 0.06), 0px 2px 4px -1px hsl(210 40% 98% / 0.04);
+  --shadow-lg: 0px 8px 16px -4px hsl(210 40% 98% / 0.08), 0px 4px 6px -1px hsl(210 40% 98% / 0.04);
+  --shadow-xl: 0px 16px 24px -8px hsl(210 40% 98% / 0.10), 0px 8px 10px -1px hsl(210 40% 98% / 0.05);
+  --shadow-2xl: 0px 24px 40px -12px hsl(210 40% 98% / 0.12);
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));

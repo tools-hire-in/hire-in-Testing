@@ -414,15 +414,15 @@ export default function Profile() {
               <CardContent>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <div className="text-2xl font-bold">{presentDays}</div>
+                    <div className="text-2xl font-mono font-bold">{presentDays}</div>
                     <p className="text-xs text-muted-foreground">Days Present</p>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">{totalHours.toFixed(1)}</div>
+                    <div className="text-2xl font-mono font-bold">{totalHours.toFixed(1)}</div>
                     <p className="text-xs text-muted-foreground">Total Hours</p>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">{presentDays > 0 ? (totalHours / presentDays).toFixed(1) : "0"}</div>
+                    <div className="text-2xl font-mono font-bold">{presentDays > 0 ? (totalHours / presentDays).toFixed(1) : "0"}</div>
                     <p className="text-xs text-muted-foreground">Avg Hours/Day</p>
                   </div>
                 </div>

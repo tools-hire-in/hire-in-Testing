@@ -405,7 +405,7 @@ export function SalaryReportsContent() {
                   <Users className="h-5 w-5 text-blue-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold" data-testid="text-total-employees">
+                  <div className="text-3xl font-mono font-bold" data-testid="text-total-employees">
                     {previewData.summary.totalEmployees}
                   </div>
                   <p className="text-sm text-muted-foreground">
@@ -419,7 +419,7 @@ export function SalaryReportsContent() {
                   <Clock className="h-5 w-5 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold" data-testid="text-total-hours">
+                  <div className="text-3xl font-mono font-bold" data-testid="text-total-hours">
                     {previewData.summary.totalHoursWorked.toLocaleString()}
                   </div>
                   <p className="text-sm text-muted-foreground">Hours across all employees</p>
@@ -431,7 +431,7 @@ export function SalaryReportsContent() {
                   <DollarSign className="h-5 w-5 text-orange-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold" data-testid="text-total-payable">
+                  <div className="text-3xl font-mono font-bold" data-testid="text-total-payable">
                     {formatCurrency(previewData.summary.totalPayable)}
                   </div>
                   <p className="text-sm text-muted-foreground">Net payable for the month</p>
@@ -443,7 +443,7 @@ export function SalaryReportsContent() {
                   <DollarSign className="h-5 w-5 text-red-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-red-600 dark:text-red-400" data-testid="text-total-deductions">
+                  <div className="text-3xl font-mono font-bold text-red-600 dark:text-red-400" data-testid="text-total-deductions">
                     {formatCurrency(previewData.summary.totalDeductions)}
                   </div>
                   <p className="text-sm text-muted-foreground">Absences + LOP deductions</p>

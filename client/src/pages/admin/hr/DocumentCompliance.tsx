@@ -289,7 +289,7 @@ export function DocumentComplianceContent() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-employees">{summary.totalEmployees}</div>
+            <div className="text-2xl font-mono font-bold" data-testid="text-total-employees">{summary.totalEmployees}</div>
           </CardContent>
         </Card>
         <Card data-testid="card-fully-compliant">
@@ -298,7 +298,7 @@ export function DocumentComplianceContent() {
             <CheckCircle2 className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600" data-testid="text-fully-compliant">{summary.fullyCompliant}</div>
+            <div className="text-2xl font-mono font-bold text-green-600" data-testid="text-fully-compliant">{summary.fullyCompliant}</div>
           </CardContent>
         </Card>
         <Card data-testid="card-pending-docs">
@@ -307,7 +307,7 @@ export function DocumentComplianceContent() {
             <Clock className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600" data-testid="text-pending-docs">{summary.pendingDocs}</div>
+            <div className="text-2xl font-mono font-bold text-yellow-600" data-testid="text-pending-docs">{summary.pendingDocs}</div>
           </CardContent>
         </Card>
         <Card data-testid="card-missing-required">
@@ -316,7 +316,7 @@ export function DocumentComplianceContent() {
             <AlertTriangle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600" data-testid="text-missing-required">{summary.noDocs}</div>
+            <div className="text-2xl font-mono font-bold text-red-600" data-testid="text-missing-required">{summary.noDocs}</div>
           </CardContent>
         </Card>
       </div>

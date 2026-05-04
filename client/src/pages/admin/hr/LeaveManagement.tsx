@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,9 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PortalHeader } from "@/components/ui/portal-header";
+import { LeaveBalanceCard } from "@/components/hr/leave-balance-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -94,97 +97,6 @@ function getStatusBadge(status: LeaveRequest["status"]) {
 }
 
 const EL_BONUS_MONTHS = [1, 5, 9]; // Jan, May, Sep
-
-function BalanceCard({ lt, balance }: { lt: LeaveType; balance: LeaveBalance | undefined }) {
-  const total = parseFloat(balance?.totalDays || "0");
-  const used = parseFloat(balance?.usedDays || "0");
-  const available = Math.max(0, total - used);
-  const isEL = lt.isConditional && (lt.carryForwardCap || 0) > 0;
-  const isSL = !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name);
-  const isLWP = /lwp|loss.?of.?pay/i.test(lt.name);
-  const progressPct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
-  const carryForwardWarning = isEL && (lt.carryForwardCap || 0) > 0 && available > (lt.carryForwardCap || 45);
-
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1; // 1-indexed
-  const nextAccrualDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const nextAccrualStr = nextAccrualDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-  // For EL: check if the NEXT accrual month is a bonus month
-  const nextMonth = nextAccrualDate.getMonth() + 1;
-  const isCurrentBonusMonth = isEL && EL_BONUS_MONTHS.includes(currentMonth);
-  const isNextBonusMonth = isEL && EL_BONUS_MONTHS.includes(nextMonth);
-  const nextMonthDays = isNextBonusMonth ? 2 : parseFloat(lt.monthlyAccrual || "1");
-
-  return (
-    <Card className="relative overflow-hidden" data-testid={`balance-card-${lt.id}`}>
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">{lt.name}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {isEL && `EL · Carry fwd up to ${lt.carryForwardCap || 45} days`}
-              {isSL && "SL · Lapses Dec 31"}
-              {isLWP && "Loss of Pay"}
-              {!isEL && !isSL && !isLWP && `${lt.defaultDays} days/year`}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-foreground" data-testid={`text-available-${lt.id}`}>{available.toFixed(1)}</p>
-            <p className="text-xs text-muted-foreground">available</p>
-          </div>
-        </div>
-
-        {isCurrentBonusMonth && (
-          <div className="mb-3 flex items-center gap-1.5 px-2 py-1.5 bg-purple-50 dark:bg-purple-950/30 rounded-md border border-purple-200 dark:border-purple-800" data-testid={`text-bonus-month-${lt.id}`}>
-            <TrendingUp className="h-3.5 w-3.5 text-purple-600 shrink-0" />
-            <p className="text-xs text-purple-700 dark:text-purple-400 font-medium">
-              Bonus month — +2 EL credited this month!
-            </p>
-          </div>
-        )}
-
-        {!isLWP && total > 0 && (
-          <>
-            <Progress value={progressPct} className="h-1.5 mb-2" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{used.toFixed(1)} used</span>
-              <span>{total.toFixed(1)} total</span>
-            </div>
-          </>
-        )}
-
-        {carryForwardWarning && (
-          <div className="mt-3 flex items-start gap-1.5 p-2 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-800">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              Balance exceeds {lt.carryForwardCap || 45}-day carry-forward cap. Excess will lapse Dec 31.
-            </p>
-          </div>
-        )}
-        {isSL && available > 0 && (
-          <div className="mt-3 flex items-start gap-1.5 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
-            <Info className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-blue-700 dark:text-blue-400">
-              Unused SL balance lapses on Dec 31 — no carry-forward.
-            </p>
-          </div>
-        )}
-
-        {!isLWP && (
-          <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              Next accrual {nextAccrualStr}
-            </span>
-            <span className={isNextBonusMonth ? "text-purple-600 dark:text-purple-400 font-medium" : ""}>
-              +{nextMonthDays}{isNextBonusMonth ? " (bonus)" : ""}/month
-            </span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function LeaveManagement() {
   const [, setLocation] = useLocation();
@@ -354,33 +266,35 @@ export default function LeaveManagement() {
   return (
     <AdminLayout>
       <div className="space-y-6 max-w-4xl">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-leave-management-title">Leave Management</h1>
-            <p className="text-sm text-muted-foreground">View your leave balance, apply for leave, and track accruals</p>
-          </div>
-          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-            <SelectTrigger className="w-[110px]" data-testid="select-leave-year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <PortalHeader
+          label="HR Portal"
+          title="Leave Management"
+          subtitle="View your leave balance, apply for leave, and track accruals"
+          action={
+            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+              <SelectTrigger className="w-[110px] bg-white/10 border-white/20 text-white" data-testid="select-leave-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+          data-testid="text-leave-management-title"
+        />
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 w-full" data-testid="tabs-leave-management">
-            <TabsTrigger value="balance" data-testid="tab-balance">Balance</TabsTrigger>
-            <TabsTrigger value="apply" data-testid="tab-apply">Apply Leave</TabsTrigger>
-            <TabsTrigger value="history" data-testid="tab-history">History</TabsTrigger>
-            <TabsTrigger value="accrual" data-testid="tab-accrual">Accrual</TabsTrigger>
-          </TabsList>
+        <PillTabs value={activeTab} onValueChange={setActiveTab}>
+          <PillTabsList className="grid grid-cols-4 w-full" data-testid="tabs-leave-management">
+            <PillTabsTrigger value="balance" data-testid="tab-balance">Balance</PillTabsTrigger>
+            <PillTabsTrigger value="apply" data-testid="tab-apply">Apply Leave</PillTabsTrigger>
+            <PillTabsTrigger value="history" data-testid="tab-history">History</PillTabsTrigger>
+            <PillTabsTrigger value="accrual" data-testid="tab-accrual">Accrual</PillTabsTrigger>
+          </PillTabsList>
 
           {/* BALANCE TAB */}
-          <TabsContent value="balance" className="mt-4">
+          <PillTabsContent value="balance">
             {balancesLoading || ltLoading ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[1, 2, 3].map(i => <Skeleton key={i} className="h-40" />)}
@@ -395,13 +309,50 @@ export default function LeaveManagement() {
             ) : (
               <>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {activeLeaveTypes.map(lt => (
-                    <BalanceCard
-                      key={lt.id}
-                      lt={lt}
-                      balance={balances?.find(b => b.leaveTypeId === lt.id)}
-                    />
-                  ))}
+                  {activeLeaveTypes.map(lt => {
+                    const balance = balances?.find(b => b.leaveTypeId === lt.id);
+                    const total = parseFloat(balance?.totalDays || "0");
+                    const used = parseFloat(balance?.usedDays || "0");
+                    const available = Math.max(0, total - used);
+                    const isEL = lt.isConditional && (lt.carryForwardCap || 0) > 0;
+                    const isSL = !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name) && !/comp.?off|compensatory/i.test(lt.name);
+                    const isCompOff = /comp.?off|compensatory/i.test(lt.name);
+                    const isLWP = /lwp|loss.?of.?pay/i.test(lt.name);
+                    const now = new Date();
+                    const nextAccrualDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                    const nextAccrualStr = nextAccrualDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                    const nextMonth = nextAccrualDate.getMonth() + 1;
+                    const isCurrentBonusMonth = isEL && EL_BONUS_MONTHS.includes(now.getMonth() + 1);
+                    const isNextBonusMonth = isEL && EL_BONUS_MONTHS.includes(nextMonth);
+                    const nextMonthDays = isNextBonusMonth ? 2 : parseFloat(lt.monthlyAccrual || "1");
+                    const carryForwardWarning = isEL && (lt.carryForwardCap || 0) > 0 && available > (lt.carryForwardCap || 45);
+                    const leaveTypeToken: "el" | "sl" | "co" | "default" = isEL ? "el" : isSL ? "sl" : isCompOff ? "co" : "default";
+                    const subtitle = isEL
+                      ? `EL · Carry fwd up to ${lt.carryForwardCap || 45} days`
+                      : isSL ? "SL · Lapses Dec 31"
+                      : isCompOff ? "Comp-Off · Use within 90 days"
+                      : isLWP ? "Loss of Pay"
+                      : `${lt.defaultDays} days/year`;
+                    return (
+                      <LeaveBalanceCard
+                        key={lt.id}
+                        type={leaveTypeToken}
+                        label={lt.name}
+                        balance={available}
+                        total={total}
+                        used={used}
+                        subtitle={subtitle}
+                        isCurrentBonusMonth={isCurrentBonusMonth}
+                        isNextBonusMonth={isNextBonusMonth}
+                        showCarryForwardWarning={carryForwardWarning}
+                        carryForwardCap={lt.carryForwardCap || 45}
+                        showLapseWarning={isSL && available > 0}
+                        nextAccrualDate={!isLWP ? nextAccrualStr : undefined}
+                        nextAccrualDays={!isLWP ? nextMonthDays : undefined}
+                        data-testid={`balance-card-${lt.id}`}
+                      />
+                    );
+                  })}
                 </div>
                 <Card className="mt-4 bg-muted/30 border-dashed">
                   <CardContent className="py-3 px-4">
@@ -414,10 +365,10 @@ export default function LeaveManagement() {
                 </Card>
               </>
             )}
-          </TabsContent>
+          </PillTabsContent>
 
           {/* APPLY LEAVE TAB */}
-          <TabsContent value="apply" className="mt-4">
+          <PillTabsContent value="apply">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -459,10 +410,10 @@ export default function LeaveManagement() {
                     </div>
                   )}
                   {lwpWarning && (
-                    <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="text-lwp-warning">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-amber-700 dark:text-amber-400">{lwpWarning}</p>
-                    </div>
+                    <Alert variant="warning" data-testid="text-lwp-warning">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>{lwpWarning}</AlertDescription>
+                    </Alert>
                   )}
                 </div>
 
@@ -697,10 +648,10 @@ export default function LeaveManagement() {
                 </Button>
               </CardContent>
             </Card>
-          </TabsContent>
+          </PillTabsContent>
 
           {/* HISTORY TAB */}
-          <TabsContent value="history" className="mt-4 space-y-4">
+          <PillTabsContent value="history" className="space-y-4">
             {/* Annual summary */}
             {activeLeaveTypes.length > 0 && (
               <Card>
@@ -717,7 +668,7 @@ export default function LeaveManagement() {
                       const total = parseFloat(bal?.totalDays || "0");
                       return (
                         <div key={lt.id} className="text-center min-w-[70px]" data-testid={`summary-${lt.id}`}>
-                          <p className="text-xl font-bold">{used.toFixed(1)}</p>
+                          <p className="text-xl font-mono font-bold">{used.toFixed(1)}</p>
                           <p className="text-xs text-muted-foreground">{lt.name}</p>
                           <p className="text-xs text-muted-foreground">of {total.toFixed(1)}</p>
                         </div>
@@ -792,10 +743,10 @@ export default function LeaveManagement() {
                 })}
               </div>
             )}
-          </TabsContent>
+          </PillTabsContent>
 
           {/* ACCRUAL TAB */}
-          <TabsContent value="accrual" className="mt-4 space-y-6">
+          <PillTabsContent value="accrual" className="space-y-6">
             {accrualsLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-48" />
@@ -947,8 +898,8 @@ export default function LeaveManagement() {
                 )}
               </>
             )}
-          </TabsContent>
-        </Tabs>
+          </PillTabsContent>
+        </PillTabs>
       </div>
     </AdminLayout>
   );

@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
+import { PortalHeader } from "@/components/ui/portal-header";
 import {
   Dialog,
   DialogContent,
@@ -153,16 +154,18 @@ export default function Attendance() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-attendance-title">Attendance</h1>
-          <p className="text-muted-foreground">Your attendance and regularization requests</p>
-        </div>
-        <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
-          <TabsList>
-            <TabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</TabsTrigger>
-            <TabsTrigger value="tickets" data-testid="tab-tickets">Regularization Requests</TabsTrigger>
-          </TabsList>
-          <TabsContent value="attendance">
+        <PortalHeader
+          label="HR Portal"
+          title="Attendance"
+          subtitle="Your attendance and regularization requests"
+          data-testid="text-attendance-title"
+        />
+        <PillTabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
+          <PillTabsList>
+            <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
+            <PillTabsTrigger value="tickets" data-testid="tab-tickets">Regularization Requests</PillTabsTrigger>
+          </PillTabsList>
+          <PillTabsContent value="attendance">
             <div className="space-y-6">
         <div className="flex items-center justify-end flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -201,19 +204,19 @@ export default function Attendance() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold" data-testid="text-total-present">{totalPresent}</div>
+              <div className="text-3xl font-mono font-bold" data-testid="text-total-present">{totalPresent}</div>
               <p className="text-sm text-muted-foreground">Days Present</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold">{totalHours.toFixed(1)}</div>
+              <div className="text-3xl font-mono font-bold">{totalHours.toFixed(1)}</div>
               <p className="text-sm text-muted-foreground">Total Hours</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold">{totalPresent > 0 ? (totalHours / totalPresent).toFixed(1) : "0"}</div>
+              <div className="text-3xl font-mono font-bold">{totalPresent > 0 ? (totalHours / totalPresent).toFixed(1) : "0"}</div>
               <p className="text-sm text-muted-foreground">Avg Hours/Day</p>
             </CardContent>
           </Card>
@@ -362,11 +365,11 @@ export default function Attendance() {
           )}
         </DialogContent>
       </Dialog>
-          </TabsContent>
-          <TabsContent value="tickets">
+          </PillTabsContent>
+          <PillTabsContent value="tickets">
             <TicketsContent />
-          </TabsContent>
-        </Tabs>
+          </PillTabsContent>
+        </PillTabs>
       </div>
     </AdminLayout>
   );
