@@ -1,15 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, CalendarDays, CalendarCheck, TrendingUp, LogIn, LogOut as LogOutIcon, Globe, Lock, Check, GraduationCap, AlertTriangle } from "lucide-react";
+import {
+  Clock,
+  CalendarDays,
+  CalendarCheck,
+  TrendingUp,
+  LogIn,
+  LogOut as LogOutIcon,
+  Globe,
+  Lock,
+  Check,
+  GraduationCap,
+  AlertTriangle,
+  Users,
+  FileCheck,
+  Coffee,
+} from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { BreakWidget } from "@/components/admin/BreakWidget";
 
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed";
@@ -18,6 +35,7 @@ interface DashboardStats {
   presentDaysThisMonth: number;
   totalHoursThisMonth: string;
   pendingLeaveRequests: number;
+  productiveHoursToday: string | null;
   leaveBalances: Array<{
     id: string;
     leaveTypeId: string;
@@ -127,7 +145,6 @@ export default function HRDashboard() {
 
   const selectedRegionalIds = new Set(regionalSelections?.map(s => s.holidayId) || []);
   const regionalSelectionCount = regionalSelections?.length || 0;
-
   const regionalHolidays = holidays?.filter(h => h.type === "regional") || [];
 
   const upcomingHolidays = holidays
@@ -142,45 +159,194 @@ export default function HRDashboard() {
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const currentDay = today.getDate();
 
+  const punchedIn = stats?.todayStatus === "punched_in";
+  const dayComplete = stats?.todayStatus === "completed";
+
+  const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
+
+  const { data: teamTodayData } = useQuery<{
+    presentCount: number; absentCount: number; onLeaveCount: number; totalCount: number;
+  }>({
+    queryKey: ["/api/hr/attendance/my-team/today-summary"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/attendance/my-team?date=" + today.toISOString().split("T")[0], { credentials: "include" });
+        if (!res.ok) return { presentCount: 0, absentCount: 0, onLeaveCount: 0, totalCount: 0 };
+        const data = await res.json();
+        const members = data.members || [];
+        const attendance = data.attendance || [];
+        const getStatus = (userId: string) => {
+          const att = attendance.find((a: any) => a.userId === userId);
+          if (!att) return "absent";
+          if (att.status === "on_leave") return "on_leave";
+          if (att.punchIn && att.punchOut) return "present";
+          if (att.punchIn) return "working";
+          return "absent";
+        };
+        const present = members.filter((m: any) => ["present", "working"].includes(getStatus(m.id))).length;
+        const absent = members.filter((m: any) => getStatus(m.id) === "absent").length;
+        const onLeave = members.filter((m: any) => getStatus(m.id) === "on_leave").length;
+        return { presentCount: present, absentCount: absent, onLeaveCount: onLeave, totalCount: members.length };
+      } catch { return { presentCount: 0, absentCount: 0, onLeaveCount: 0, totalCount: 0 }; }
+    },
+    enabled: isAuthenticated && isManagerRole,
+    refetchInterval: 60000,
+  });
+
+  const { data: pendingLeaveApprovalsCount } = useQuery<number>({
+    queryKey: ["/api/hr/leave-requests/my-team", "pending"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/leave-requests/my-team?status=pending", { credentials: "include" });
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return Array.isArray(data) ? data.length : 0;
+      } catch { return 0; }
+    },
+    enabled: isAuthenticated && isManagerRole,
+    refetchInterval: 60000,
+  });
+
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-hr-dashboard-title">HR Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back, {user?.firstName || "Employee"}
+          <h1 className="text-2xl font-bold" data-testid="text-hr-dashboard-title">
+            Good {today.getHours() < 12 ? "morning" : today.getHours() < 17 ? "afternoon" : "evening"}, {user?.firstName || "there"} 👋
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Training alert banner */}
+        {(trainingAlerts?.total ?? 0) > 0 && (
+          <div
+            className={`flex items-center justify-between gap-4 p-4 rounded-lg border-l-4 ${(trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
+            data-testid="dashboard-training-alert"
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`h-5 w-5 shrink-0 ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`} />
+              <div>
+                <p className={`font-semibold text-sm ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
+                  Training Reminder
+                </p>
+                <p className={`text-xs ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {(trainingAlerts?.overdue ?? 0) > 0 && (
+                    <span>{trainingAlerts!.overdue} overdue{(trainingAlerts?.dueSoon ?? 0) > 0 ? `, ${trainingAlerts!.dueSoon} due soon` : ""}</span>
+                  )}
+                  {(trainingAlerts?.overdue ?? 0) === 0 && (trainingAlerts?.dueSoon ?? 0) > 0 && (
+                    <span>{trainingAlerts!.dueSoon} {trainingAlerts!.dueSoon === 1 ? "track" : "tracks"} due within 3 days</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className={(trainingAlerts?.overdue ?? 0) > 0 ? "border-red-300 text-red-700 hover:bg-red-100" : "border-amber-300 text-amber-700 hover:bg-amber-100"}
+              onClick={() => setLocation("/admin/growth")}
+              data-testid="link-go-to-training"
+            >
+              <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
+              Go to My Growth
+            </Button>
+          </div>
+        )}
+
+        {/* Manager / Admin: Team Pulse section */}
+        {isManagerRole && teamTodayData && teamTodayData.totalCount > 0 && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-sm font-semibold">Your Team Today</CardTitle>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setLocation("/admin/hr/my-team")}>
+                  View Team →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-present-count">
+                  <p className="text-xl font-bold text-green-600">{teamTodayData.presentCount}</p>
+                  <p className="text-xs text-muted-foreground">Present</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-absent-count">
+                  <p className="text-xl font-bold text-red-600">{teamTodayData.absentCount}</p>
+                  <p className="text-xs text-muted-foreground">Absent</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-leave-count">
+                  <p className="text-xl font-bold text-blue-600">{teamTodayData.onLeaveCount}</p>
+                  <p className="text-xs text-muted-foreground">On Leave</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-background border" data-testid="team-approvals-count">
+                  <p className="text-xl font-bold text-amber-600">{pendingLeaveApprovalsCount ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">Pending Leaves</p>
+                </div>
+              </div>
+              {(pendingLeaveApprovalsCount ?? 0) > 0 && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg p-2">
+                  <FileCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span>{pendingLeaveApprovalsCount} leave {pendingLeaveApprovalsCount === 1 ? "request" : "requests"} awaiting your approval</span>
+                  <Button size="sm" variant="link" className="h-auto p-0 text-xs ml-auto text-amber-700 dark:text-amber-400" onClick={() => setLocation("/admin/hr/my-team?tab=leave-approvals")}>
+                    Review →
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Top row: Attendance card (with break widget) + Month + Leave */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Attendance + Breaks */}
           <Card className="lg:col-span-1">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Attendance</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Today</CardTitle>
               <Clock className="h-5 w-5 text-blue-600" />
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? (
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-32 w-full" />
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Status</span>
-                    <Badge
-                      variant={stats?.todayStatus === "completed" ? "default" : stats?.todayStatus === "punched_in" ? "secondary" : "outline"}
-                      data-testid="badge-attendance-status"
-                    >
-                      {stats?.todayStatus === "completed" ? "Day Complete" : stats?.todayStatus === "punched_in" ? "Working" : "Not Started"}
-                    </Badge>
+                  {/* Status + times */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Status</span>
+                      <Badge
+                        variant={dayComplete ? "default" : punchedIn ? "secondary" : "outline"}
+                        data-testid="badge-attendance-status"
+                      >
+                        {dayComplete ? "Day Complete" : punchedIn ? "Working" : "Not Started"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">In</span>
+                      <span className="text-sm font-medium font-mono" data-testid="text-punch-in-time">{formatTime(stats?.punchInTime || null)}</span>
+                    </div>
+                    {dayComplete && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Out</span>
+                        <span className="text-sm font-medium font-mono" data-testid="text-punch-out-time">{formatTime(stats?.punchOutTime || null)}</span>
+                      </div>
+                    )}
+                    {(punchedIn || dayComplete) && stats?.productiveHoursToday && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Productive
+                        </span>
+                        <span className="text-sm font-medium font-mono text-green-600 dark:text-green-400" data-testid="text-productive-hours">{stats.productiveHoursToday}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">In</span>
-                    <span className="text-sm font-medium" data-testid="text-punch-in-time">{formatTime(stats?.punchInTime || null)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Out</span>
-                    <span className="text-sm font-medium" data-testid="text-punch-out-time">{formatTime(stats?.punchOutTime || null)}</span>
-                  </div>
-                  <div className="pt-2">
+
+                  {/* Punch actions */}
+                  <div>
                     {stats?.todayStatus === "not_punched" && (
                       <Button
                         className="w-full"
@@ -210,11 +376,20 @@ export default function HRDashboard() {
                       </p>
                     )}
                   </div>
+
+                  {/* Break widget — only visible when punched in */}
+                  {(punchedIn || dayComplete) && (
+                    <>
+                      <Separator />
+                      <BreakWidget punchedIn={punchedIn} />
+                    </>
+                  )}
                 </>
               )}
             </CardContent>
           </Card>
 
+          {/* This Month */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
@@ -222,26 +397,29 @@ export default function HRDashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? (
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-32 w-full" />
               ) : (
                 <>
-                  <div className="text-center">
+                  <div className="text-center py-2">
                     <div className="text-4xl font-bold" data-testid="text-present-days">{stats?.presentDaysThisMonth || 0}</div>
                     <p className="text-sm text-muted-foreground">Days Present</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total Hours</span>
-                    <span className="text-sm font-medium">{stats?.totalHoursThisMonth || "0"} hrs</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Working Days</span>
-                    <span className="text-sm font-medium">{currentDay} / {daysInMonth}</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Total Hours</span>
+                      <span className="text-sm font-medium">{stats?.totalHoursThisMonth || "0"} hrs</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Working Days</span>
+                      <span className="text-sm font-medium">{currentDay} / {daysInMonth}</span>
+                    </div>
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
+          {/* Leave Requests */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Leave Requests</CardTitle>
@@ -249,15 +427,15 @@ export default function HRDashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? (
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-32 w-full" />
               ) : (
                 <>
-                  <div className="text-center">
+                  <div className="text-center py-2">
                     <div className="text-4xl font-bold" data-testid="text-pending-leaves">{stats?.pendingLeaveRequests || 0}</div>
                     <p className="text-sm text-muted-foreground">Pending Requests</p>
                   </div>
-                  <Button variant="outline" className="w-full" asChild>
-                    <a href="/admin/hr/leaves" data-testid="link-view-leaves">View My Leaves</a>
+                  <Button variant="outline" className="w-full" onClick={() => setLocation("/admin/hr?tab=leaves")} data-testid="link-view-leaves">
+                    View My Leaves
                   </Button>
                 </>
               )}
@@ -265,42 +443,8 @@ export default function HRDashboard() {
           </Card>
         </div>
 
-        {(trainingAlerts?.total ?? 0) > 0 && (
-          <div
-            className={`flex items-center justify-between gap-4 p-4 rounded-lg border-l-4 ${(trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-50 border-l-red-500 dark:bg-red-950/30" : "bg-amber-50 border-l-amber-500 dark:bg-amber-950/30"}`}
-            data-testid="dashboard-training-alert"
-          >
-            <div className="flex items-center gap-3">
-              <AlertTriangle className={`h-5 w-5 shrink-0 ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`} />
-              <div>
-                <p className={`font-semibold text-sm ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
-                  Training Reminder
-                </p>
-                <p className={`text-xs ${(trainingAlerts?.overdue ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
-                  {(trainingAlerts?.overdue ?? 0) > 0 && (
-                    <span>{trainingAlerts!.overdue} overdue{(trainingAlerts?.dueSoon ?? 0) > 0 ? `, ${trainingAlerts!.dueSoon} due soon` : ""}</span>
-                  )}
-                  {(trainingAlerts?.overdue ?? 0) === 0 && (trainingAlerts?.dueSoon ?? 0) > 0 && (
-                    <span>{trainingAlerts!.dueSoon} {trainingAlerts!.dueSoon === 1 ? "track" : "tracks"} due within 3 days</span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className={(trainingAlerts?.overdue ?? 0) > 0 ? "border-red-300 text-red-700 hover:bg-red-100" : "border-amber-300 text-amber-700 hover:bg-amber-100"}
-              asChild
-            >
-              <a href="/admin/hr/my-training" data-testid="link-go-to-training">
-                <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
-                Go to My Training
-              </a>
-            </Button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Leave balances + Upcoming holidays */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Leave Balances</CardTitle>
@@ -364,6 +508,7 @@ export default function HRDashboard() {
           </Card>
         </div>
 
+        {/* Regional Holiday Selection */}
         {regionalHolidays.length > 0 && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -413,11 +558,6 @@ export default function HRDashboard() {
                   );
                 })}
               </div>
-              {regionalSelectionCount > 0 && (
-                <p className="text-xs text-muted-foreground mt-4">
-                  Contact HR or Super Admin to change your selections.
-                </p>
-              )}
             </CardContent>
           </Card>
         )}

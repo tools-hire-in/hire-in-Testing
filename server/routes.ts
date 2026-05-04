@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -1381,6 +1381,30 @@ export async function registerRoutes(
         todayStatus = todayRecord.punchOut ? "completed" : "punched_in";
       }
 
+      // Calculate productive hours (total punch duration minus break time)
+      let productiveHoursToday: string | null = null;
+      if (todayRecord?.punchIn) {
+        const endTime = todayRecord.punchOut ? new Date(todayRecord.punchOut) : new Date();
+        const punchInTime = new Date(todayRecord.punchIn);
+        const totalMs = endTime.getTime() - punchInTime.getTime();
+        // Subtract break time
+        const todayBreaks = await db.select().from(breakRecords)
+          .where(and(eq(breakRecords.userId, userId), eq(breakRecords.date, today)));
+        const breakMinutes = todayBreaks.reduce((sum, b) => {
+          if (b.durationMinutes) return sum + parseFloat(b.durationMinutes);
+          if (!b.endedAt && b.startedAt) {
+            // Active break — count elapsed so far
+            return sum + (new Date().getTime() - new Date(b.startedAt).getTime()) / 60000;
+          }
+          return sum;
+        }, 0);
+        const productiveMs = Math.max(0, totalMs - breakMinutes * 60000);
+        const productiveHours = productiveMs / (1000 * 60 * 60);
+        const wholeH = Math.floor(productiveHours);
+        const mins = Math.round((productiveHours - wholeH) * 60);
+        productiveHoursToday = `${wholeH}h ${mins}m`;
+      }
+
       res.json({
         todayStatus,
         punchInTime: todayRecord?.punchIn || null,
@@ -1389,6 +1413,7 @@ export async function registerRoutes(
         totalHoursThisMonth: totalHours.toFixed(1),
         pendingLeaveRequests: pendingCount,
         leaveBalances: activeBalances,
+        productiveHoursToday,
       });
     } catch (error) {
       console.error("Dashboard stats error:", error);
@@ -1757,6 +1782,135 @@ export async function registerRoutes(
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch out" });
+    }
+  });
+
+  // --- Break Records ---
+  app.get("/api/hr/attendance/breaks/today", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const records = await db.select().from(breakRecords)
+        .where(and(eq(breakRecords.userId, userId), eq(breakRecords.date, today)));
+      const totalMinutes = records.reduce((sum, r) => sum + parseFloat(r.durationMinutes || "0"), 0);
+      const activeBreak = records.find(r => !r.endedAt) || null;
+      const lunchTaken = records.filter(r => r.breakType === "lunch" && r.endedAt);
+      const teaTaken = records.filter(r => r.breakType === "tea" && r.endedAt);
+      res.json({
+        breaks: records,
+        totalMinutes,
+        lunchMinutes: lunchTaken.reduce((s, r) => s + parseFloat(r.durationMinutes || "0"), 0),
+        teaMinutes: teaTaken.reduce((s, r) => s + parseFloat(r.durationMinutes || "0"), 0),
+        activeBreak,
+        entitlement: { lunch: 30, tea: 15, teaCount: 2, total: 60 },
+        lunchCount: lunchTaken.length,
+        teaCount: teaTaken.length,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch break records" });
+    }
+  });
+
+  app.post("/api/hr/attendance/breaks/start", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const { breakType } = req.body;
+      if (!breakType || !["lunch", "tea"].includes(breakType)) {
+        return res.status(400).json({ error: "Invalid break type. Must be 'lunch' or 'tea'" });
+      }
+      const todayAttendance = await storage.getTodayAttendance(userId);
+      if (!todayAttendance || !todayAttendance.punchIn || todayAttendance.punchOut) {
+        return res.status(400).json({ error: "You must be punched in to start a break" });
+      }
+      const existing = await db.select().from(breakRecords)
+        .where(and(eq(breakRecords.userId, userId), eq(breakRecords.date, today)));
+      const activeBreak = existing.find(r => !r.endedAt);
+      if (activeBreak) {
+        return res.status(400).json({ error: "You already have an active break. End it first." });
+      }
+      // Check limits
+      const lunchCount = existing.filter(r => r.breakType === "lunch" && r.endedAt).length;
+      const teaCount = existing.filter(r => r.breakType === "tea" && r.endedAt).length;
+      if (breakType === "lunch" && lunchCount >= 1) {
+        return res.status(400).json({ error: "Lunch break already taken today" });
+      }
+      if (breakType === "tea" && teaCount >= 2) {
+        return res.status(400).json({ error: "Both tea breaks already taken today" });
+      }
+      const [record] = await db.insert(breakRecords).values({
+        userId,
+        attendanceId: todayAttendance.id,
+        date: today,
+        breakType: breakType as "lunch" | "tea",
+        startedAt: new Date(),
+      }).returning();
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to start break" });
+    }
+  });
+
+  app.post("/api/hr/attendance/breaks/end", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const existing = await db.select().from(breakRecords)
+        .where(and(eq(breakRecords.userId, userId), eq(breakRecords.date, today)));
+      const activeBreak = existing.find(r => !r.endedAt);
+      if (!activeBreak) {
+        return res.status(400).json({ error: "No active break found" });
+      }
+      const endedAt = new Date();
+      const startedAt = new Date(activeBreak.startedAt);
+      const durationMinutes = ((endedAt.getTime() - startedAt.getTime()) / 60000).toFixed(1);
+      const [updated] = await db.update(breakRecords)
+        .set({ endedAt, durationMinutes })
+        .where(eq(breakRecords.id, activeBreak.id))
+        .returning();
+      // Soft warning payload
+      const allocated = activeBreak.breakType === "lunch" ? 30 : 15;
+      const exceeded = parseFloat(durationMinutes) > allocated;
+      res.json({ ...updated, exceeded, allocated, durationMinutes: parseFloat(durationMinutes) });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to end break" });
+    }
+  });
+
+  app.get("/api/hr/attendance/breaks/team-status", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role;
+      const today = new Date().toISOString().split("T")[0];
+
+      // Scope to authorized team members only
+      let scopedUserIds: string[];
+      if (["super_admin", "admin", "hr"].includes(userRole!)) {
+        // Broad scope: all active users
+        const allUsers = await storage.getAdminUsers();
+        scopedUserIds = allUsers.map(u => u.id);
+      } else {
+        // manager/operations: direct reports only
+        const teamMembers = await storage.getTeamMembers(userId);
+        scopedUserIds = teamMembers.map(m => m.id);
+      }
+
+      if (scopedUserIds.length === 0) {
+        return res.json({});
+      }
+
+      const todayBreaks = await db.select().from(breakRecords)
+        .where(and(eq(breakRecords.date, today), inArray(breakRecords.userId, scopedUserIds)));
+
+      const statusMap: Record<string, { activeBreak: typeof todayBreaks[0] | null; totalMinutes: number }> = {};
+      for (const b of todayBreaks) {
+        if (!statusMap[b.userId]) statusMap[b.userId] = { activeBreak: null, totalMinutes: 0 };
+        if (!b.endedAt) statusMap[b.userId].activeBreak = b;
+        else statusMap[b.userId].totalMinutes += parseFloat(b.durationMinutes || "0");
+      }
+      res.json(statusMap);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch team break status" });
     }
   });
 

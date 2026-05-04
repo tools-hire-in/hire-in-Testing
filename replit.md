@@ -28,6 +28,11 @@ The platform includes a comprehensive HR Portal System with:
 - **Public Document Verification**: A `/verify` page for HR letters using reference number and auth code.
 - **Offer Acceptance & Counter-Signature**: Candidate acceptance and HR/Admin counter-signing with cryptographic document hashing.
 - **My Team Management**: Role-based employee management page (`/admin/hr/my-team`) with read-only views, edit capabilities (e.g., punch corrections, profile updates), leave tracking, and an audit trail for all changes.
+- **Break Tracking System**: Employees can start/end Lunch (1×30min) and Tea (2×15min) breaks via a BreakWidget on the dashboard. Live timer, policy tooltip with soft warnings. Backend break_records table. Managers see on_lunch/on_tea status badges in Team Attendance.
+- **Role-Specific Dashboards**: HRDashboard adapts by role — manager/admin/HR see a "Your Team Today" pulse card with present/absent/on-leave/pending-leave counts and quick actions. Employee view shows personal attendance, leave balance, break widget.
+- **Consolidated Navigation & Sidebar**: New AdminLayout with profile avatar header, collapsible icon sidebar (persisted via localStorage), and consolidated nav items: My Work, My Profile, My Growth, My Team, Recruitment, People & HR.
+- **Tab-Based Page Consolidation**: My Work (/admin/hr) has 4 tabs: Dashboard/Attendance/Leaves/Holidays. My Team (/admin/hr/my-team) has 4 tabs. People & HR (/admin/hr/people) consolidates HR management views.
+- **`/admin` Redirect**: Root /admin now redirects to /admin/hr (My Work dashboard).
 - **Post-Onboarding Documents**: Management of employee documents, bank details, and emergency contacts.
 - **Feature Flags**: Centralized management via `system_settings` table for features like notifications, document reminder emails, onboarding training, and performance management.
 - **In-App Notifications**: System with unread count badge, dependent on feature flags.

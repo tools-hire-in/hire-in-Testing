@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,9 +45,18 @@ interface MemberAttendanceResponse {
   attendance: AttendanceRecord[];
 }
 
+interface TeamBreakStatus {
+  [userId: string]: {
+    activeBreak: { breakType: "lunch" | "tea"; startedAt: string } | null;
+    totalMinutes: number;
+  };
+}
+
 const statusColors: Record<string, string> = {
   present: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   absent: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  on_lunch: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  on_tea: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
   half_day: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   late: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   on_leave: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
@@ -73,6 +82,8 @@ const statusLabels: Record<string, string> = {
   on_leave: "On Leave",
   holiday: "Holiday",
   weekend: "Weekend",
+  on_lunch: "On Lunch",
+  on_tea: "Tea Break",
 };
 
 export default function TeamAttendance() {
@@ -93,6 +104,14 @@ export default function TeamAttendance() {
   const { data, isLoading } = useQuery<TeamAttendanceResponse>({
     queryKey: ["/api/hr/attendance/my-team", { date: selectedDate }],
     enabled: isAuthenticated,
+  });
+
+  const isToday = selectedDate === new Date().toISOString().split("T")[0];
+
+  const { data: teamBreakStatus } = useQuery<TeamBreakStatus>({
+    queryKey: ["/api/hr/attendance/breaks/team-status"],
+    enabled: isAuthenticated && isToday,
+    refetchInterval: 30000,
   });
 
   const [mYear, mMonth] = memberMonth.split("-").map(Number);
@@ -140,14 +159,21 @@ export default function TeamAttendance() {
     return `${wholeHours}h ${minutes}m`;
   };
 
-  const getEffectiveStatus = (att: AttendanceRecord | undefined) => {
+  const getEffectiveStatus = (att: AttendanceRecord | undefined, userId?: string) => {
     if (!att) return "absent";
     if (att.status === "on_leave" || att.status === "holiday") return att.status;
     if (att.punchIn && att.punchOut && att.totalHours) {
       const hours = parseFloat(att.totalHours);
       return hours >= 8 ? "present" : "absent";
     }
-    if (att.punchIn && !att.punchOut) return "working";
+    if (att.punchIn && !att.punchOut) {
+      // Check if on break
+      if (userId && teamBreakStatus?.[userId]?.activeBreak) {
+        const breakType = teamBreakStatus[userId].activeBreak!.breakType;
+        return breakType === "lunch" ? "on_lunch" : "on_tea";
+      }
+      return "working";
+    }
     return att.status || "absent";
   };
 
@@ -158,16 +184,20 @@ export default function TeamAttendance() {
   const getMemberAttendance = (id: string) => attendanceRecords.find(a => a.userId === id);
 
   const presentCount = members.filter(m => {
-    const eff = getEffectiveStatus(getMemberAttendance(m.id));
-    return eff === "present" || eff === "working";
+    const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
+    return eff === "present" || eff === "working" || eff === "on_lunch" || eff === "on_tea";
   }).length;
   const absentCount = members.filter(m => {
-    const eff = getEffectiveStatus(getMemberAttendance(m.id));
+    const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "absent";
   }).length;
   const onLeaveCount = members.filter(m => {
-    const eff = getEffectiveStatus(getMemberAttendance(m.id));
+    const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "on_leave";
+  }).length;
+  const onBreakCount = members.filter(m => {
+    const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
+    return eff === "on_lunch" || eff === "on_tea";
   }).length;
 
   const handleDownload = () => {
@@ -218,40 +248,53 @@ export default function TeamAttendance() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-green-100 dark:bg-green-900 flex items-center justify-center">
+              <div className="h-10 w-10 rounded-md bg-green-100 dark:bg-green-900 flex items-center justify-center shrink-0">
                 <span className="text-green-700 dark:text-green-300 font-bold">{presentCount}</span>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Present</p>
-                <p className="text-lg font-semibold" data-testid="text-present-count">{presentCount} / {members.length}</p>
+                <p className="text-xs text-muted-foreground">Present</p>
+                <p className="text-base font-semibold" data-testid="text-present-count">{presentCount} / {members.length}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-red-100 dark:bg-red-900 flex items-center justify-center">
+              <div className="h-10 w-10 rounded-md bg-red-100 dark:bg-red-900 flex items-center justify-center shrink-0">
                 <span className="text-red-700 dark:text-red-300 font-bold">{absentCount}</span>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Absent</p>
-                <p className="text-lg font-semibold" data-testid="text-absent-count">{absentCount}</p>
+                <p className="text-xs text-muted-foreground">Absent</p>
+                <p className="text-base font-semibold" data-testid="text-absent-count">{absentCount}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <div className="h-10 w-10 rounded-md bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
                 <span className="text-blue-700 dark:text-blue-300 font-bold">{onLeaveCount}</span>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">On Leave</p>
-                <p className="text-lg font-semibold" data-testid="text-leave-count">{onLeaveCount}</p>
+                <p className="text-xs text-muted-foreground">On Leave</p>
+                <p className="text-base font-semibold" data-testid="text-leave-count">{onLeaveCount}</p>
               </div>
             </CardContent>
           </Card>
+          {isToday && (
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="h-10 w-10 rounded-md bg-amber-100 dark:bg-amber-900 flex items-center justify-center shrink-0">
+                  <span className="text-amber-700 dark:text-amber-300 font-bold">{onBreakCount}</span>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">On Break</p>
+                  <p className="text-base font-semibold" data-testid="text-break-count">{onBreakCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <Card>
@@ -275,14 +318,15 @@ export default function TeamAttendance() {
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch In</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch Out</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Duration</th>
+                      {isToday && <th className="text-left py-3 px-2 font-medium text-muted-foreground">Break</th>}
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {members.map((member) => {
                       const att = getMemberAttendance(member.id);
-                      const effectiveStatus = getEffectiveStatus(att);
-                      const isWorking = effectiveStatus === "working";
+                      const effectiveStatus = getEffectiveStatus(att, member.id);
+                      const isWorking = effectiveStatus === "working" || effectiveStatus === "on_lunch" || effectiveStatus === "on_tea";
                       return (
                         <tr
                           key={member.id}
@@ -314,9 +358,33 @@ export default function TeamAttendance() {
                               <span className="font-medium">{formatDuration(att.totalHours)}</span>
                             ) : "-"}
                           </td>
+                          {isToday && (
+                            <td className="py-2 px-2">
+                              {(() => {
+                                const memberBreak = teamBreakStatus?.[member.id];
+                                if (!memberBreak) return <span className="text-muted-foreground text-xs">—</span>;
+                                const activeBreak = memberBreak.activeBreak;
+                                const totalMin = memberBreak.totalMinutes;
+                                if (activeBreak) {
+                                  const elapsedMin = Math.floor((Date.now() - new Date(activeBreak.startedAt).getTime()) / 60000);
+                                  return (
+                                    <div className="flex flex-col">
+                                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">{elapsedMin}m active</span>
+                                      {totalMin > 0 && <span className="text-xs text-muted-foreground">{Math.round(totalMin)}m total</span>}
+                                    </div>
+                                  );
+                                }
+                                if (totalMin > 0) return <span className="text-xs text-muted-foreground">{Math.round(totalMin)}m taken</span>;
+                                return <span className="text-muted-foreground text-xs">—</span>;
+                              })()}
+                            </td>
+                          )}
                           <td className="py-2 px-2">
                             <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
-                              {effectiveStatus === "working" ? "Working" : statusLabels[effectiveStatus] || effectiveStatus}
+                              {effectiveStatus === "working" && "Working"}
+                              {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
+                              {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
+                              {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
                             </Badge>
                           </td>
                         </tr>

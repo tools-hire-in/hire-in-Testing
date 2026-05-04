@@ -1231,6 +1231,43 @@ export type HrLetter = typeof hrLetters.$inferSelect;
 export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
 
 // ==========================================
+// BREAK RECORDS (for punch/break system)
+// ==========================================
+
+export const breakTypeEnum = pgEnum("break_type", ["lunch", "tea"]);
+
+export const breakRecords = pgTable("break_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  attendanceId: varchar("attendance_id").references(() => attendance.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  date: varchar("date").notNull(),
+  breakType: breakTypeEnum("break_type").notNull(),
+  startedAt: timestamp("started_at").notNull(),
+  endedAt: timestamp("ended_at"),
+  durationMinutes: numeric("duration_minutes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const breakRecordsRelations = relations(breakRecords, ({ one }) => ({
+  attendance: one(attendance, {
+    fields: [breakRecords.attendanceId],
+    references: [attendance.id],
+  }),
+  user: one(adminUsers, {
+    fields: [breakRecords.userId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const insertBreakRecordSchema = createInsertSchema(breakRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBreakRecord = z.infer<typeof insertBreakRecordSchema>;
+export type BreakRecord = typeof breakRecords.$inferSelect;
+
+// ==========================================
 // LETTER TEMPLATE SENTENCES (configurable via admin)
 // ==========================================
 
