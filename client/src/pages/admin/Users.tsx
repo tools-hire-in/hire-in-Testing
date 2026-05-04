@@ -130,6 +130,7 @@ export default function AdminUsers() {
   const [newHierarchyLevel, setNewHierarchyLevel] = useState("team_member");
   const [newSalary, setNewSalary] = useState("");
   const [newManagerId, setNewManagerId] = useState("");
+  const [newGender, setNewGender] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
@@ -842,14 +843,25 @@ export default function AdminUsers() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
+                <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
                 <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
-                  <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department (required)" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No Department</SelectItem>
                     {deptList?.filter(d => d.isActive).map(d => (
                       <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Select value={newGender} onValueChange={setNewGender}>
+                  <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -862,8 +874,9 @@ export default function AdminUsers() {
                   hierarchyLevel: newHierarchyLevel || undefined,
                   salary: newSalary || undefined,
                   managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
+                  gender: newGender || undefined,
                 } as any)}
-                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending}
+                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || !newDepartmentId || newDepartmentId === "none" || inviteMutation.isPending}
                 data-testid="button-send-invite"
               >
                 {inviteMutation.isPending ? "Sending..." : "Send Invite"}

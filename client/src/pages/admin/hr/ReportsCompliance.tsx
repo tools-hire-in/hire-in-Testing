@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { SalaryReportsContent } from "./SalaryReports";
 import { DocumentComplianceContent } from "./DocumentCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
+import { PolicyComplianceContent } from "./PolicyCompliance";
 
 export default function ReportsCompliance() {
   const [, setLocation] = useLocation();
@@ -20,6 +21,7 @@ export default function ReportsCompliance() {
   const validTabs = [
     ...(isHR ? ["salary"] : []),
     ...(isHR ? ["compliance"] : []),
+    ...(isHR ? ["policy"] : []),
     ...(isAdmin ? ["audit"] : []),
   ];
   const defaultTab = validTabs[0] || "salary";
@@ -62,13 +64,14 @@ export default function ReportsCompliance() {
             Reports & Compliance
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Salary reports, document compliance, and audit logs
+            Salary reports, document compliance, policy acknowledgments, and audit logs
           </p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-reports">
           <TabsList>
             {isHR && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}
             {isHR && <TabsTrigger value="compliance" data-testid="tab-compliance">Document Compliance</TabsTrigger>}
+            {isHR && <TabsTrigger value="policy" data-testid="tab-policy">Policy Compliance</TabsTrigger>}
             {isAdmin && <TabsTrigger value="audit" data-testid="tab-audit">Audit Logs</TabsTrigger>}
           </TabsList>
           {isHR && (
@@ -79,6 +82,11 @@ export default function ReportsCompliance() {
           {isHR && (
             <TabsContent value="compliance">
               <DocumentComplianceContent />
+            </TabsContent>
+          )}
+          {isHR && (
+            <TabsContent value="policy">
+              <PolicyComplianceContent />
             </TabsContent>
           )}
           {isAdmin && (

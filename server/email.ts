@@ -1352,3 +1352,52 @@ export async function sendCheckInReminderEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendPolicyUpdateEmail(options: {
+  to: string;
+  firstName: string;
+  lastName: string;
+  trackTitle: string;
+  versionNumber: number;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Action Required: "${options.trackTitle}" Policy Updated — Re-sign Required`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Policy Update — Action Required</h1>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 18px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              The employment policy <strong>"${options.trackTitle}"</strong> has been updated to <strong>Version ${options.versionNumber}</strong>.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              As a mandatory compliance requirement, you must review and re-sign this policy before you can continue accessing the HR portal.
+            </p>
+            <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px; margin: 24px 0;">
+              <p style="color: #991b1b; font-weight: 600; margin: 0;">⚠ Your portal access will be restricted until you re-sign this policy.</p>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Please log in to the portal and complete the policy acknowledgment at your earliest convenience.
+            </p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nThe policy "${options.trackTitle}" has been updated to Version ${options.versionNumber}. You must re-sign it before you can access the HR portal.\n\nPlease log in to complete the acknowledgment.\n\nRayomind Solutions LLP`,
+    };
+    await client.send(msg);
+    console.log(`Policy update email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send policy update email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

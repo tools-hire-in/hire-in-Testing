@@ -42,6 +42,7 @@ export const adminUsers = pgTable("admin_users", {
   hierarchyLevel: hierarchyLevelEnum("hierarchy_level").default("team_member"),
   employeeId: varchar("employee_id").unique(),
   joiningDate: date("joining_date"),
+  gender: varchar("gender"),
   totpSecret: varchar("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   employmentStatus: employmentStatusEnum("employment_status").default("active"),
@@ -914,6 +915,9 @@ export const learningTracks = pgTable("learning_tracks", {
   targetDepartmentId: varchar("target_department_id").references(() => departments.id),
   version: varchar("version").notNull().default("1.0"),
   status: varchar("status").notNull().default("draft"), // draft | published | archived
+  isPolicyTrack: boolean("is_policy_track").notNull().default(false),
+  versionNumber: integer("version_number").notNull().default(1),
+  publishedAt: timestamp("published_at"),
   createdBy: varchar("created_by").references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -985,6 +989,7 @@ export const sectionAcknowledgements = pgTable("section_acknowledgements", {
   acknowledgedAt: timestamp("acknowledged_at").defaultNow(),
   ipAddress: varchar("ip_address"),
   documentHash: varchar("document_hash"), // sha256 of section body at time of ack
+  signedVersion: integer("signed_version"), // track versionNumber at time of signing (policy tracks)
 });
 
 // Track completion receipts
@@ -995,6 +1000,24 @@ export const trackCompletions = pgTable("track_completions", {
   completedAt: timestamp("completed_at").defaultNow(),
   receiptHash: varchar("receipt_hash"), // sha256 of all ack hashes concatenated
   receiptData: jsonb("receipt_data"), // snapshot of all acknowledgements
+  signedVersion: integer("signed_version"), // track versionNumber at time of completion (policy tracks)
+});
+
+// Night Shift Consent records (Female employees, 12-month expiry)
+export const nightShiftConsents = pgTable("night_shift_consents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  signedAt: timestamp("signed_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  typedName: varchar("typed_name").notNull(),
+  ipAddress: varchar("ip_address"),
+  isActive: boolean("is_active").notNull().default(true),
+  documentHash: varchar("document_hash"),
+  createdAt: timestamp("created_at").defaultNow(),
+  // Lifecycle status: active | expired | withdrawn
+  status: varchar("status").notNull().default("active"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  version: integer("version").notNull().default(1),
 });
 
 // Immutable audit event stream
@@ -1038,6 +1061,7 @@ export const insertSectionProgressSchema = createInsertSchema(sectionProgress).o
 export const insertSectionAcknowledgementSchema = createInsertSchema(sectionAcknowledgements).omit({ id: true, acknowledgedAt: true });
 export const insertTrackCompletionSchema = createInsertSchema(trackCompletions).omit({ id: true, completedAt: true });
 export const insertOnboardingAuditEventSchema = createInsertSchema(onboardingAuditEvents).omit({ id: true, createdAt: true });
+export const insertNightShiftConsentSchema = createInsertSchema(nightShiftConsents).omit({ id: true, createdAt: true, signedAt: true });
 
 // ==========================================
 // OFFER LETTER ADDENDUMS
@@ -1217,6 +1241,8 @@ export type OnboardingAuditEvent = typeof onboardingAuditEvents.$inferSelect;
 export type InsertOnboardingAuditEvent = z.infer<typeof insertOnboardingAuditEventSchema>;
 export type TrainingExtensionRequest = typeof trainingExtensionRequests.$inferSelect;
 export type InsertTrainingExtensionRequest = z.infer<typeof insertTrainingExtensionRequestSchema>;
+export type NightShiftConsent = typeof nightShiftConsents.$inferSelect;
+export type InsertNightShiftConsent = z.infer<typeof insertNightShiftConsentSchema>;
 export type PerformanceGoal = typeof performanceGoals.$inferSelect;
 export type InsertPerformanceGoal = z.infer<typeof insertPerformanceGoalSchema>;
 export type CheckIn = typeof checkIns.$inferSelect;

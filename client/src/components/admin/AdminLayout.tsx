@@ -236,14 +236,40 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const isComplianceLocked = !isLockExempt && complianceStatus?.locked === true;
   const isOnTrainingPage = location === "/admin/hr/my-training" || location.startsWith("/admin/hr/my-training") ||
     location.startsWith("/admin/growth");
+  const isOnPolicyGatePage = location === "/admin/policy-gate";
 
   const userNeeds2FASetup = user && !user.totpEnabled;
 
+  const POLICY_GATE_EXEMPT = ["super_admin", "admin"];
+  const isPolicyGateExempt = POLICY_GATE_EXEMPT.includes(user?.role || "");
+
+  const { data: policyGateStatus } = useQuery<{ hasPendingPolicies: boolean; policies: any[] }>({
+    queryKey: ["/api/onboarding/policy-gate-status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/policy-gate-status", { credentials: "include" });
+        // Fail-closed: if status cannot be determined, block access (hasPendingPolicies: true)
+        if (!res.ok) return { hasPendingPolicies: true, policies: [] };
+        return res.json();
+      } catch { return { hasPendingPolicies: true, policies: [] }; }
+    },
+    refetchInterval: 300000,
+    enabled: !!user && !isPolicyGateExempt,
+  });
+
+  const hasPendingPolicies = !isPolicyGateExempt && policyGateStatus?.hasPendingPolicies === true;
+
   useEffect(() => {
-    if (isComplianceLocked && !isOnTrainingPage && !userNeeds2FASetup) {
-      setLocation("/admin/growth");
+    if (hasPendingPolicies && !isOnPolicyGatePage && !userNeeds2FASetup) {
+      setLocation("/admin/policy-gate");
     }
-  }, [isComplianceLocked, isOnTrainingPage, userNeeds2FASetup, setLocation]);
+  }, [hasPendingPolicies, isOnPolicyGatePage, userNeeds2FASetup, setLocation]);
+
+  useEffect(() => {
+    if (isComplianceLocked && !isOnTrainingPage && !userNeeds2FASetup && !hasPendingPolicies) {
+      setLocation("/admin/hr/my-training");
+    }
+  }, [isComplianceLocked, isOnTrainingPage, userNeeds2FASetup, hasPendingPolicies, setLocation]);
 
   const ENDORSER_ROLES = ["manager", "hr", "admin"];
   const isEndorserRole = ENDORSER_ROLES.includes(user?.role || "");

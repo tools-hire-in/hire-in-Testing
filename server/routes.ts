@@ -667,6 +667,10 @@ export async function registerRoutes(
       if (!email?.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
       }
+
+      if (!departmentId) {
+        return res.status(400).json({ error: "Department is required when creating a new employee" });
+      }
       
       const existing = await storage.getAdminUserByEmail(email);
       if (existing) {
@@ -684,6 +688,8 @@ export async function registerRoutes(
       }
       const employeeIdVal = await generateEmployeeId(deptName);
 
+      const { gender } = req.body;
+
       const user = await storage.createAdminUser({
         email: email.toLowerCase(),
         password: hashedPassword,
@@ -698,11 +704,59 @@ export async function registerRoutes(
         salary: salary || null,
         employeeId: employeeIdVal,
         managerId: managerId || null,
+        gender: gender || null,
       });
 
       storage.initializeEmployeeDocuments(user.id).catch(err =>
         console.error("Failed to initialize documents for user:", err)
       );
+
+      // Auto-assign all published tracks to the new user
+      // - Policy tracks: immediate due date (required before portal access)
+      // - Non-policy SOP tracks: 15-day due date, filtered by role/department
+      (async () => {
+        try {
+          const { db: dbInstance } = await import("./db");
+          const { learningTracks: lt, trackAssignments: ta } = await import("@shared/schema");
+          const { eq, and, or, isNull } = await import("drizzle-orm");
+
+          const allPublishedTracks = await dbInstance.select().from(lt)
+            .where(eq(lt.status, "published"));
+
+          const dueIn14Days = new Date();
+          dueIn14Days.setDate(dueIn14Days.getDate() + 14);
+
+          for (const track of allPublishedTracks) {
+            // Skip tracks that don't match the user's role/department
+            // Policy tracks are always assigned. Non-policy tracks:
+            //   - null or "all_roles" targetRole => assign to all roles
+            //   - specific role => must match user's role
+            //   - null targetDepartmentId => assign to all departments
+            //   - specific dept => must match user's department
+            if (!track.isPolicyTrack) {
+              const trackRole = track.targetRole;
+              const trackDept = track.targetDepartmentId;
+              const roleMatch = !trackRole || trackRole === "all_roles" || trackRole === user.role;
+              const deptMatch = !trackDept || trackDept === user.departmentId;
+              if (!roleMatch || !deptMatch) continue;
+            }
+
+            const [existing] = await dbInstance.select().from(ta)
+              .where(and(eq(ta.trackId, track.id), eq(ta.userId, user.id)));
+            if (!existing) {
+              await dbInstance.insert(ta).values({
+                trackId: track.id,
+                userId: user.id,
+                assignedBy: req.session.userId!,
+                dueDate: track.isPolicyTrack ? new Date() : dueIn14Days,
+                status: "not_started",
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Track auto-assignment failed (non-fatal):", err);
+        }
+      })();
 
       await storage.createAuditLog({
         actorId: req.session.userId!,

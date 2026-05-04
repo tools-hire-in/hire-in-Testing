@@ -3,9 +3,9 @@ import { db } from "./db";
 import {
   learningTracks, trackSections, sectionQuizQuestions, sectionQuizOptions,
   trackAssignments, sectionProgress, sectionAcknowledgements, trackCompletions, onboardingAuditEvents,
-  systemSettings, trainingExtensionRequests, adminUsers, attendance,
+  systemSettings, trainingExtensionRequests, adminUsers, attendance, nightShiftConsents,
 } from "@shared/schema";
-import { eq, and, inArray, sql, isNull, lt, ne } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull, lt, ne, desc } from "drizzle-orm";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
 import {
@@ -80,10 +80,12 @@ export function registerOnboardingRoutes(app: Express) {
     if (!ADMIN_ROLES.includes(role)) return res.status(403).json({ error: "Not authorized" });
 
     try {
-      const { title, description, targetRole, targetDepartmentId, version } = req.body;
+      const { title, description, targetRole, targetDepartmentId, version, isPolicyTrack } = req.body;
       const [track] = await db.insert(learningTracks).values({
         title, description, targetRole: targetRole || null, targetDepartmentId: targetDepartmentId || null,
         version: version || "1.0", status: "draft", createdBy: req.session.userId!,
+        isPolicyTrack: isPolicyTrack === true || isPolicyTrack === "true" ? true : false,
+        versionNumber: 1,
       }).returning();
 
       await appendAuditEvent(req.session.userId!, "track_created", { trackId: track.id, title });
@@ -101,15 +103,85 @@ export function registerOnboardingRoutes(app: Express) {
 
     try {
       const { id } = req.params as { id: string };
-      const { title, description, targetRole, targetDepartmentId, version, status } = req.body;
+      const { title, description, targetRole, targetDepartmentId, version, status, isPolicyTrack } = req.body;
+
+      // Fetch current track to check if it's being published as a policy track
+      const [existing] = await db.select().from(learningTracks).where(eq(learningTracks.id, id));
+      if (!existing) return res.status(404).json({ error: "Track not found" });
+
+      const isPolicy = isPolicyTrack !== undefined ? isPolicyTrack : existing.isPolicyTrack;
+
+      // Correct version bump logic:
+      // - "first publish": existing status is not "published", new status is "published" → set publishedAt, keep version
+      // - "re-publish" (update while published): existing and new status both "published" AND it's a policy track → bump version
+      const isFirstPublish = status === "published" && existing.status !== "published";
+      const isRePublish = status === "published" && existing.status === "published" && isPolicy;
+
+      let versionNumber = existing.versionNumber;
+      let publishedAt = existing.publishedAt;
+
+      if (isFirstPublish) {
+        publishedAt = new Date();
+      } else if (isRePublish) {
+        versionNumber = (existing.versionNumber || 1) + 1;
+        publishedAt = new Date();
+      }
+
+      const updateData: any = {
+        title, description, targetRole: targetRole ?? existing.targetRole,
+        targetDepartmentId: targetDepartmentId ?? existing.targetDepartmentId,
+        version: version ?? existing.version, status: status ?? existing.status,
+        isPolicyTrack: isPolicy, versionNumber, publishedAt, updatedAt: new Date(),
+      };
+
       const [updated] = await db.update(learningTracks)
-        .set({ title, description, targetRole, targetDepartmentId, version, status, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(learningTracks.id, id)).returning();
 
       if (status === "published") {
-        await appendAuditEvent(req.session.userId!, "track_published", { trackId: id });
+        await appendAuditEvent(req.session.userId!, "track_published", { trackId: id, isPolicyTrack: isPolicy, versionNumber });
       }
-      res.json(updated);
+
+      // When a policy track version is bumped, notify all assigned employees that re-signing is required
+      if (isRePublish) {
+        try {
+          const assignments = await db.select({
+            userId: trackAssignments.userId,
+          }).from(trackAssignments).where(eq(trackAssignments.trackId, id));
+
+          // Get user details for email notifications
+          const userIds = assignments.map(a => a.userId);
+          const affectedUsers = userIds.length > 0
+            ? await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+              .from(adminUsers).where(inArray(adminUsers.id, userIds))
+            : [];
+
+          // Create audit events for all assigned users
+          await Promise.allSettled(assignments.map(a =>
+            db.insert(onboardingAuditEvents).values({
+              userId: a.userId,
+              eventType: "policy_re_sign_required",
+              metadata: { trackId: id, trackTitle: updated.title, versionNumber },
+            })
+          ));
+
+          // Send email notifications to all affected users
+          const { sendPolicyUpdateEmail } = await import("./email");
+          await Promise.allSettled(affectedUsers.map(u =>
+            sendPolicyUpdateEmail({
+              to: u.email,
+              firstName: u.firstName,
+              lastName: u.lastName,
+              trackTitle: updated.title,
+              versionNumber: versionNumber ?? 1,
+            }).catch(e => console.error(`Policy update email failed for ${u.email}:`, e))
+          ));
+        } catch (notifyErr) {
+          console.error("Policy re-publish notification failed (non-fatal):", notifyErr);
+        }
+      }
+
+      res.json({ ...updated, requiresReSign: isRePublish, affectedUsersCount: isRePublish ? (await db.select({ userId: trackAssignments.userId }).from(trackAssignments).where(eq(trackAssignments.trackId, id))).length : 0 });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to update track" });
@@ -549,9 +621,20 @@ export function registerOnboardingRoutes(app: Express) {
       const [existingAck] = await db.select().from(sectionAcknowledgements)
         .where(and(eq(sectionAcknowledgements.assignmentId, assignmentId), eq(sectionAcknowledgements.sectionId, sectionId)));
 
+      // Get track versionNumber for policy tracks
+      const [assignment] = await db.select().from(trackAssignments)
+        .where(eq(trackAssignments.id, assignmentId));
+      let trackVersionNumber: number | null = null;
+      if (assignment) {
+        const [track] = await db.select({ versionNumber: learningTracks.versionNumber, isPolicyTrack: learningTracks.isPolicyTrack })
+          .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+        if (track?.isPolicyTrack) trackVersionNumber = track.versionNumber;
+      }
+
       if (!existingAck) {
         await db.insert(sectionAcknowledgements).values({
           assignmentId, sectionId, userId, typedName, documentHash, ipAddress: ip,
+          signedVersion: trackVersionNumber,
         });
       }
 
@@ -567,8 +650,6 @@ export function registerOnboardingRoutes(app: Express) {
       let autoReceiptHash = "";
       let autoReceiptData: any = null;
       try {
-        const [assignment] = await db.select().from(trackAssignments)
-          .where(eq(trackAssignments.id, assignmentId));
         if (assignment && assignment.status !== "completed") {
           const allSections = await db.select().from(trackSections)
             .where(eq(trackSections.trackId, assignment.trackId));
@@ -598,6 +679,7 @@ export function registerOnboardingRoutes(app: Express) {
             if (!existingCompletion) {
               await db.insert(trackCompletions).values({
                 assignmentId, userId, receiptHash: autoReceiptHash, receiptData: autoReceiptData,
+                signedVersion: trackVersionNumber,
               });
             }
 
@@ -1560,6 +1642,571 @@ export function registerOnboardingRoutes(app: Express) {
       res.status(500).json({ error: "Failed to provision Rayo Academy user" });
     }
   });
+
+  // ==========================================
+  // POLICY GATE ROUTES
+  // ==========================================
+
+  // Get policy gate status for current user — returns unsigned/outdated policy tracks
+  app.get("/api/onboarding/policy-gate-status", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const POLICY_GATE_EXEMPT = ["super_admin", "admin"];
+    if (POLICY_GATE_EXEMPT.includes(req.session.role!)) {
+      return res.json({ hasPendingPolicies: false, policies: [] });
+    }
+
+    try {
+      const userId = req.session.userId;
+
+      // Get all published policy tracks assigned to this user
+      const assignments = await db.select({
+        assignment: trackAssignments,
+        track: learningTracks,
+      }).from(trackAssignments)
+        .innerJoin(learningTracks, eq(learningTracks.id, trackAssignments.trackId))
+        .where(and(
+          eq(trackAssignments.userId, userId),
+          eq(learningTracks.isPolicyTrack, true),
+          eq(learningTracks.status, "published"),
+        ));
+
+      const pending = await Promise.all(assignments.map(async ({ assignment, track }) => {
+        // Check if completed with current version
+        const [completion] = await db.select().from(trackCompletions)
+          .where(eq(trackCompletions.assignmentId, assignment.id));
+
+        const isComplete = assignment.status === "completed";
+        const isCurrent = completion?.signedVersion === track.versionNumber;
+
+        if (isComplete && isCurrent) return null;
+
+        const sections = await db.select().from(trackSections)
+          .where(eq(trackSections.trackId, track.id))
+          .orderBy(trackSections.orderIndex);
+
+        return {
+          trackId: track.id,
+          title: track.title,
+          description: track.description,
+          versionNumber: track.versionNumber,
+          assignmentId: assignment.id,
+          status: isComplete && !isCurrent ? "outdated" : assignment.status,
+          sections,
+        };
+      }));
+
+      const pendingPolicies = pending.filter(Boolean);
+
+      // Night Shift Consent check: Female employees must have a valid (non-expired) consent
+      let nightShiftPending = false;
+      let nightShiftConsent: any = null;
+      try {
+        const [userRecord] = await db.select({ gender: adminUsers.gender, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers).where(eq(adminUsers.id, userId));
+
+        if (userRecord?.gender === "Female") {
+          const [latestConsent] = await db.select().from(nightShiftConsents)
+            .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)))
+            .orderBy(desc(nightShiftConsents.signedAt))
+            .limit(1);
+
+          if (!latestConsent || new Date(latestConsent.expiresAt) < new Date()) {
+            nightShiftPending = true;
+            nightShiftConsent = {
+              status: latestConsent ? "expired" : "not_signed",
+              expiresAt: latestConsent?.expiresAt ?? null,
+            };
+          }
+        }
+      } catch (nsErr) {
+        console.error("Night shift consent check failed (non-fatal):", nsErr);
+      }
+
+      const hasPendingPolicies = pendingPolicies.length > 0 || nightShiftPending;
+      res.json({ hasPendingPolicies, policies: pendingPolicies, nightShiftPending, nightShiftConsent });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to check policy gate status" });
+    }
+  });
+
+  // Sign a policy section (policy gate sign-off)
+  app.post("/api/onboarding/policy-gate/sign-section", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const { assignmentId, sectionId, typedName, dwellSeconds } = req.body;
+      if (!assignmentId || !sectionId || !typedName) {
+        return res.status(400).json({ error: "assignmentId, sectionId, typedName required" });
+      }
+
+      const userId = req.session.userId;
+
+      // Server-side: validate typedName matches user's full name
+      const [signingUser] = await db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+        .from(adminUsers).where(eq(adminUsers.id, userId));
+      if (signingUser) {
+        const expectedName = `${signingUser.firstName} ${signingUser.lastName}`.trim().toLowerCase();
+        if (typedName.trim().toLowerCase() !== expectedName) {
+          return res.status(400).json({ error: "Typed name does not match your full name on record.", expectedName: `${signingUser.firstName} ${signingUser.lastName}` });
+        }
+      }
+
+      const [assignment] = await db.select().from(trackAssignments)
+        .where(and(eq(trackAssignments.id, assignmentId), eq(trackAssignments.userId, userId)));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      // Validate that sectionId actually belongs to this assignment's track (prevent cross-track forgery)
+      const [section] = await db.select().from(trackSections)
+        .where(and(eq(trackSections.id, sectionId), eq(trackSections.trackId, assignment.trackId)));
+      if (!section) return res.status(404).json({ error: "Section not found or does not belong to this assignment's track" });
+
+      // Server-side dwell enforcement: client must have spent at least minDwellSeconds on the section
+      const requiredDwell = section.minDwellSeconds ?? 0;
+      if (requiredDwell > 0) {
+        const clientDwell = typeof dwellSeconds === "number" ? dwellSeconds : parseInt(dwellSeconds ?? "0", 10);
+        if (isNaN(clientDwell) || clientDwell < requiredDwell) {
+          return res.status(400).json({
+            error: `Please read the section for at least ${requiredDwell} seconds before signing.`,
+            requiredDwell,
+            clientDwell: isNaN(clientDwell) ? 0 : clientDwell,
+          });
+        }
+      }
+
+      const [track] = await db.select().from(learningTracks)
+        .where(eq(learningTracks.id, assignment.trackId));
+
+      const documentHash = crypto.createHash("sha256").update(section.body).digest("hex");
+      const ip = req.ip || req.socket?.remoteAddress || "";
+
+      // Remove old ack if version changed (re-signing)
+      await db.delete(sectionAcknowledgements)
+        .where(and(
+          eq(sectionAcknowledgements.assignmentId, assignmentId),
+          eq(sectionAcknowledgements.sectionId, sectionId),
+        ));
+
+      await db.insert(sectionAcknowledgements).values({
+        assignmentId, sectionId, userId, typedName, documentHash, ipAddress: ip,
+        signedVersion: track?.versionNumber ?? 1,
+      });
+
+      // Ensure progress is in_progress
+      const [existingProgress] = await db.select().from(sectionProgress)
+        .where(and(eq(sectionProgress.assignmentId, assignmentId), eq(sectionProgress.sectionId, sectionId)));
+      if (!existingProgress) {
+        await db.insert(sectionProgress).values({
+          assignmentId, sectionId, userId, status: "completed", dwellSeconds: 0, completedAt: new Date(), lastViewedAt: new Date(),
+        });
+      } else {
+        await db.update(sectionProgress)
+          .set({ status: "completed", completedAt: new Date() })
+          .where(and(eq(sectionProgress.assignmentId, assignmentId), eq(sectionProgress.sectionId, sectionId)));
+      }
+
+      await db.update(trackAssignments)
+        .set({ status: "in_progress" })
+        .where(and(eq(trackAssignments.id, assignmentId), eq(trackAssignments.status, "not_started")));
+
+      await appendAuditEvent(userId, "policy_section_signed", {
+        assignmentId, sectionId, typedName, trackId: assignment.trackId,
+        versionNumber: track?.versionNumber,
+      });
+
+      res.json({ ok: true, documentHash });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to sign policy section" });
+    }
+  });
+
+  // Complete a policy track (after all sections signed)
+  app.post("/api/onboarding/policy-gate/complete-track", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const { assignmentId } = req.body;
+      if (!assignmentId) return res.status(400).json({ error: "assignmentId required" });
+
+      const userId = req.session.userId;
+
+      const [assignment] = await db.select().from(trackAssignments)
+        .where(and(eq(trackAssignments.id, assignmentId), eq(trackAssignments.userId, userId)));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      const [track] = await db.select().from(learningTracks)
+        .where(eq(learningTracks.id, assignment.trackId));
+
+      const sections = await db.select().from(trackSections)
+        .where(eq(trackSections.trackId, assignment.trackId));
+      const acks = await db.select().from(sectionAcknowledgements)
+        .where(eq(sectionAcknowledgements.assignmentId, assignmentId));
+
+      // Exact section identity coverage check (not just count)
+      const requiredSectionIds = new Set(sections.map(s => s.id));
+      const signedSectionIds = new Set(acks.map(a => a.sectionId));
+      const missingSections = [...requiredSectionIds].filter(id => !signedSectionIds.has(id));
+      if (missingSections.length > 0) {
+        return res.status(400).json({ error: "Not all sections signed", missingSectionIds: missingSections });
+      }
+
+      const allHashes = acks.sort((a, b) => a.sectionId.localeCompare(b.sectionId))
+        .map(a => a.documentHash || "").join("|");
+      const receiptHash = crypto.createHash("sha256").update(allHashes).digest("hex");
+
+      const receiptData = {
+        trackId: assignment.trackId,
+        assignmentId,
+        userId,
+        versionNumber: track?.versionNumber,
+        completedAt: new Date().toISOString(),
+        acknowledgements: acks.map(a => ({
+          sectionId: a.sectionId,
+          typedName: a.typedName,
+          acknowledgedAt: a.acknowledgedAt,
+          documentHash: a.documentHash,
+        })),
+      };
+
+      // Upsert completion (replace if re-signing)
+      await db.delete(trackCompletions).where(eq(trackCompletions.assignmentId, assignmentId));
+      await db.insert(trackCompletions).values({
+        assignmentId, userId, receiptHash, receiptData,
+        signedVersion: track?.versionNumber ?? 1,
+      });
+
+      await db.update(trackAssignments)
+        .set({ status: "completed", completedAt: new Date() })
+        .where(eq(trackAssignments.id, assignmentId));
+
+      await appendAuditEvent(userId, "policy_track_signed", {
+        assignmentId, trackId: assignment.trackId, receiptHash, versionNumber: track?.versionNumber,
+      });
+
+      res.json({ ok: true, receiptHash });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to complete policy track" });
+    }
+  });
+
+  // HR Policy Compliance Dashboard
+  app.get("/api/onboarding/policy-compliance", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const role = req.session.role!;
+      const userId = req.session.userId;
+
+      let users;
+      if (["super_admin", "admin", "hr"].includes(role)) {
+        users = await db.select().from(adminUsers)
+          .where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+      } else {
+        users = await db.select().from(adminUsers)
+          .where(and(eq(adminUsers.managerId, userId), eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+      }
+
+      // Get all published policy tracks
+      const policyTracks = await db.select().from(learningTracks)
+        .where(and(eq(learningTracks.isPolicyTrack, true), eq(learningTracks.status, "published")));
+
+      const matrix = await Promise.all(users.map(async (user) => {
+        const userAssignments = await db.select().from(trackAssignments)
+          .where(eq(trackAssignments.userId, user.id));
+
+        const trackStatuses = await Promise.all(policyTracks.map(async (track) => {
+          const assignment = userAssignments.find(a => a.trackId === track.id);
+          if (!assignment) {
+            return { trackId: track.id, trackTitle: track.title, status: "not_assigned", signedVersion: null, currentVersion: track.versionNumber };
+          }
+
+          const [completion] = await db.select().from(trackCompletions)
+            .where(eq(trackCompletions.assignmentId, assignment.id));
+
+          const isComplete = assignment.status === "completed";
+          const isCurrent = completion?.signedVersion === track.versionNumber;
+          let status = "not_signed";
+          if (isComplete && isCurrent) status = "signed";
+          else if (isComplete && !isCurrent) status = "outdated";
+          else if (assignment.status === "in_progress") status = "in_progress";
+
+          return {
+            trackId: track.id,
+            trackTitle: track.title,
+            status,
+            signedVersion: completion?.signedVersion ?? null,
+            currentVersion: track.versionNumber,
+            signedAt: completion?.completedAt ?? null,
+            assignmentId: assignment.id,
+          };
+        }));
+
+        // Night shift consent (for Female employees)
+        let nightShiftStatus = null;
+        if (user.gender === "Female") {
+          const [latestConsent] = await db.select().from(nightShiftConsents)
+            .where(and(eq(nightShiftConsents.userId, user.id), eq(nightShiftConsents.isActive, true)))
+            .orderBy(desc(nightShiftConsents.signedAt))
+            .limit(1);
+
+          if (latestConsent) {
+            const isExpired = new Date(latestConsent.expiresAt) < new Date();
+            const daysToExpiry = Math.ceil((new Date(latestConsent.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            nightShiftStatus = {
+              signedAt: latestConsent.signedAt,
+              expiresAt: latestConsent.expiresAt,
+              status: isExpired ? "expired" : daysToExpiry <= 30 ? "expiring_soon" : "valid",
+              daysToExpiry: isExpired ? 0 : daysToExpiry,
+            };
+          } else {
+            nightShiftStatus = { status: "not_signed" };
+          }
+        }
+
+        return {
+          user: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            employeeId: user.employeeId,
+            role: user.role,
+            gender: user.gender,
+          },
+          trackStatuses,
+          nightShiftStatus,
+        };
+      }));
+
+      res.json({ policyTracks: policyTracks.map(t => ({ id: t.id, title: t.title, versionNumber: t.versionNumber, publishedAt: t.publishedAt })), matrix });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch policy compliance" });
+    }
+  });
+
+  // Retroactive assign all policy tracks to all active employees
+  app.post("/api/onboarding/retroactive-assign-policies", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const policyTracks = await db.select().from(learningTracks)
+        .where(and(eq(learningTracks.isPolicyTrack, true), eq(learningTracks.status, "published")));
+
+      const allUsers = await db.select().from(adminUsers)
+        .where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+
+      let assigned = 0;
+      let skipped = 0;
+
+      for (const track of policyTracks) {
+        for (const user of allUsers) {
+          const [existing] = await db.select().from(trackAssignments)
+            .where(and(eq(trackAssignments.trackId, track.id), eq(trackAssignments.userId, user.id)));
+          if (existing) { skipped++; continue; }
+
+          await db.insert(trackAssignments).values({
+            trackId: track.id,
+            userId: user.id,
+            assignedBy: req.session.userId,
+            dueDate: new Date(),
+            status: "not_started",
+          });
+          assigned++;
+        }
+      }
+
+      await appendAuditEvent(req.session.userId, "retroactive_policy_assignment", {
+        assignedCount: assigned, skippedCount: skipped,
+      });
+
+      res.json({ ok: true, assigned, skipped });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to retroactively assign policies" });
+    }
+  });
+
+  // ==========================================
+  // NIGHT SHIFT CONSENT ROUTES
+  // ==========================================
+
+  // Get night shift consent status for current user
+  app.get("/api/onboarding/night-shift-consent/status", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const userId = req.session.userId;
+      const [user] = await db.select({ gender: adminUsers.gender, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+        .from(adminUsers).where(eq(adminUsers.id, userId));
+
+      if (!user || user.gender !== "Female") {
+        return res.json({ required: false });
+      }
+
+      const [latestConsent] = await db.select().from(nightShiftConsents)
+        .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)))
+        .orderBy(desc(nightShiftConsents.signedAt))
+        .limit(1);
+
+      if (!latestConsent) {
+        return res.json({ required: true, status: "not_signed" });
+      }
+
+      const isExpired = new Date(latestConsent.expiresAt) < new Date();
+      const daysToExpiry = Math.ceil((new Date(latestConsent.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+      res.json({
+        required: true,
+        status: isExpired ? "expired" : "valid",
+        signedAt: latestConsent.signedAt,
+        expiresAt: latestConsent.expiresAt,
+        daysToExpiry: isExpired ? 0 : daysToExpiry,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to get night shift consent status" });
+    }
+  });
+
+  // Sign night shift consent
+  app.post("/api/onboarding/night-shift-consent/sign", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const { typedName } = req.body;
+      if (!typedName) return res.status(400).json({ error: "typedName required" });
+
+      const userId = req.session.userId;
+
+      // Server-side: verify the signer is a Female employee
+      const [signerRecord] = await db.select({
+        firstName: adminUsers.firstName,
+        lastName: adminUsers.lastName,
+        gender: adminUsers.gender,
+      }).from(adminUsers).where(eq(adminUsers.id, userId));
+
+      if (!signerRecord) return res.status(404).json({ error: "User not found" });
+
+      if (signerRecord.gender !== "Female") {
+        return res.status(403).json({ error: "Night Shift Consent is only required for female employees." });
+      }
+
+      // Server-side: validate typedName matches employee's full name on record
+      const expectedName = `${signerRecord.firstName} ${signerRecord.lastName}`.trim().toLowerCase();
+      if (typedName.trim().toLowerCase() !== expectedName) {
+        return res.status(400).json({
+          error: "Typed name does not match your full name on record.",
+          expectedName: `${signerRecord.firstName} ${signerRecord.lastName}`,
+        });
+      }
+
+      const ip = req.ip || req.socket?.remoteAddress || "";
+
+      // Get current version for this user (increment from last consent, or start at 1)
+      const [lastConsent] = await db.select({ version: nightShiftConsents.version })
+        .from(nightShiftConsents).where(eq(nightShiftConsents.userId, userId))
+        .orderBy(desc(nightShiftConsents.signedAt)).limit(1);
+      const nextVersion = (lastConsent?.version ?? 0) + 1;
+
+      // Mark old consents as inactive + expired/superseded
+      await db.update(nightShiftConsents)
+        .set({ isActive: false, status: "expired" })
+        .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)));
+
+      const signedAt = new Date();
+      const expiresAt = new Date(signedAt);
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 12-month expiry
+
+      const consentText = `Night Shift Consent v${nextVersion} - ${typedName} - ${signedAt.toISOString()}`;
+      const documentHash = crypto.createHash("sha256").update(consentText).digest("hex");
+
+      const [consent] = await db.insert(nightShiftConsents).values({
+        userId,
+        expiresAt,
+        typedName,
+        ipAddress: ip,
+        documentHash,
+        isActive: true,
+        status: "active",
+        version: nextVersion,
+      }).returning();
+
+      await appendAuditEvent(userId, "night_shift_consent_signed", {
+        consentId: consent.id, typedName, expiresAt: expiresAt.toISOString(), version: nextVersion,
+      });
+
+      res.json({ ok: true, consent });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to sign night shift consent" });
+    }
+  });
+
+  // Withdraw night shift consent (employee self-service)
+  app.post("/api/onboarding/night-shift-consent/withdraw", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const userId = req.session.userId;
+      const now = new Date();
+      await db.update(nightShiftConsents)
+        .set({ isActive: false, status: "withdrawn", withdrawnAt: now })
+        .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)));
+
+      await appendAuditEvent(userId, "night_shift_consent_withdrawn", { withdrawnAt: now.toISOString() });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to withdraw consent" });
+    }
+  });
+
+  // HR view of all night shift consents
+  app.get("/api/onboarding/night-shift-consents", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+
+    try {
+      const consents = await db.select({
+        consent: nightShiftConsents,
+        user: {
+          id: adminUsers.id,
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+          email: adminUsers.email,
+          employeeId: adminUsers.employeeId,
+          gender: adminUsers.gender,
+        },
+      }).from(nightShiftConsents)
+        .innerJoin(adminUsers, eq(adminUsers.id, nightShiftConsents.userId))
+        .where(eq(nightShiftConsents.isActive, true))
+        .orderBy(desc(nightShiftConsents.signedAt));
+
+      const enriched = consents.map(({ consent, user }) => {
+        const isExpired = new Date(consent.expiresAt) < new Date();
+        const daysToExpiry = Math.ceil((new Date(consent.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        return {
+          ...consent,
+          user,
+          status: isExpired ? "expired" : daysToExpiry <= 30 ? "expiring_soon" : "valid",
+          daysToExpiry: isExpired ? 0 : daysToExpiry,
+        };
+      });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch night shift consents" });
+    }
+  });
+
+  // Helper function: auto-assign policy tracks to a new user (called from user creation)
+  // Exported for use in routes.ts
 
   // Seed endpoint (super_admin only)
   app.post("/api/onboarding/seed", async (req: Request, res: Response) => {

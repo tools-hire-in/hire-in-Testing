@@ -60,6 +60,9 @@ import Goals from "@/pages/admin/performance/Goals";
 import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
 import Reviews from "@/pages/admin/performance/Reviews";
 import PerformanceFeedback from "@/pages/admin/performance/Feedback";
+import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
+import PolicyGate from "@/pages/admin/PolicyGate";
+import VerifyLetter from "@/pages/VerifyLetter";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -141,6 +144,7 @@ function PublicRouter() {
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
       <Route path="/admin/hr/reports" component={ReportsCompliance} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/policy-gate" component={PolicyGate} />
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
@@ -212,6 +216,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/training-progress" component={TrainingProgress} />
       <Route path="/admin/hr/reports" component={ReportsCompliance} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/policy-gate" component={PolicyGate} />
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>

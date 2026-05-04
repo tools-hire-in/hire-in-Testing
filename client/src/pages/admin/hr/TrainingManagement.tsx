@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
-  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff,
+  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff, Shield,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,7 @@ export default function TrainingManagement() {
   const [endorseComment, setEndorseComment] = useState<Record<string, string>>({});
 
   // Track form state
-  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "all_roles", version: "1.0" });
+  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false });
 
   // Section form state
   const [sectionForm, setSectionForm] = useState({
@@ -162,7 +162,7 @@ export default function TrainingManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
       setShowTrackForm(false);
-      setTrackForm({ title: "", description: "", targetRole: "all_roles", version: "1.0" });
+      setTrackForm({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false });
       toast({ title: "Track created" });
     },
     onError: () => toast({ title: "Failed to create track", variant: "destructive" }),
@@ -170,9 +170,17 @@ export default function TrainingManagement() {
 
   const updateTrack = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/onboarding/tracks/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
-      toast({ title: "Track updated" });
+      const data = await res.json().catch(() => ({}));
+      if (data?.requiresReSign && data?.affectedUsersCount > 0) {
+        toast({
+          title: "Policy version updated",
+          description: `${data.affectedUsersCount} employee(s) will be required to re-sign this policy (version bumped to v${data.versionNumber}).`,
+        });
+      } else {
+        toast({ title: "Track updated" });
+      }
     },
     onError: () => toast({ title: "Failed to update track", variant: "destructive" }),
   });
@@ -689,11 +697,17 @@ export default function TrainingManagement() {
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm leading-tight truncate">{track.title}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-sm leading-tight truncate">{track.title}</p>
+                        {track.isPolicyTrack && <Shield className="h-3 w-3 text-primary shrink-0" />}
+                      </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[track.status] || "bg-gray-100 text-gray-600"}`}>
                           {track.status}
                         </span>
+                        {track.isPolicyTrack && (
+                          <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">Policy</span>
+                        )}
                         <span className="text-xs text-muted-foreground">{track.sectionCount} sections</span>
                         <span className="text-xs text-muted-foreground">{track.assignmentCount} assigned</span>
                       </div>
@@ -731,6 +745,11 @@ export default function TrainingManagement() {
                           {selectedTrack.targetRole && (
                             <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{selectedTrack.targetRole}</span>
                           )}
+                          {selectedTrack.isPolicyTrack && (
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                              <Shield className="h-3 w-3" />Policy v{selectedTrack.versionNumber ?? 1}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {canAdmin && (
@@ -755,6 +774,19 @@ export default function TrainingManagement() {
                           >
                             <UserPlus className="h-4 w-4 mr-1" />
                             Assign
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={selectedTrack.isPolicyTrack ? "secondary" : "outline"}
+                            onClick={() => updateTrack.mutate({
+                              id: selectedTrack.id,
+                              data: { isPolicyTrack: !selectedTrack.isPolicyTrack },
+                            })}
+                            data-testid="button-toggle-policy-track"
+                            title={selectedTrack.isPolicyTrack ? "Remove mandatory policy flag" : "Mark as mandatory policy track"}
+                          >
+                            <Shield className={`h-4 w-4 mr-1 ${selectedTrack.isPolicyTrack ? "text-primary" : ""}`} />
+                            {selectedTrack.isPolicyTrack ? "Policy" : "Set Policy"}
                           </Button>
                           <Button
                             size="sm"
@@ -893,6 +925,22 @@ export default function TrainingManagement() {
                   value={trackForm.version}
                   onChange={e => setTrackForm(p => ({ ...p, version: e.target.value }))}
                 />
+              </div>
+            </div>
+            <div
+              className={`flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors ${trackForm.isPolicyTrack ? "bg-primary/5 border-primary/30" : "hover:bg-muted/50"}`}
+              onClick={() => setTrackForm(p => ({ ...p, isPolicyTrack: !p.isPolicyTrack }))}
+              data-testid="toggle-is-policy-track"
+            >
+              <div className="flex items-center gap-3">
+                <Shield className={`h-4 w-4 ${trackForm.isPolicyTrack ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className="text-sm font-medium">Mandatory Policy Track</p>
+                  <p className="text-xs text-muted-foreground">Employees must sign this before accessing the portal</p>
+                </div>
+              </div>
+              <div className={`w-10 h-5 rounded-full transition-colors relative ${trackForm.isPolicyTrack ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${trackForm.isPolicyTrack ? "left-5.5 translate-x-0.5" : "left-0.5"}`} />
               </div>
             </div>
           </div>

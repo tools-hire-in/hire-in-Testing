@@ -2,6 +2,9 @@ import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import { sendSalaryReport, sendLeaveAccrualEmail, sendLeaveYearEndEmail } from "./email";
 import { storage } from "./storage";
+import { db } from "./db";
+import { nightShiftConsents, adminUsers } from "@shared/schema";
+import { eq, and, lt, gt, isNull } from "drizzle-orm";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -207,7 +210,71 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
+  // Night shift consent expiry alerts — daily at 8 AM IST
+  cron.schedule("0 8 * * *", async () => {
+    console.log("[scheduler] Running night shift consent expiry check...");
+    try {
+      const now = new Date();
+      const in30days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const in14days = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+      const consents = await db.select({
+        consent: nightShiftConsents,
+        user: { id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName },
+      }).from(nightShiftConsents)
+        .innerJoin(adminUsers, eq(adminUsers.id, nightShiftConsents.userId))
+        .where(and(eq(nightShiftConsents.isActive, true), gt(nightShiftConsents.expiresAt, now)));
+
+      // Fetch all active HR users for 30-day HR alerts (privacy: consent details go to HR only, not manager)
+      const hrUsers = await db.select({ id: adminUsers.id }).from(adminUsers)
+        .where(and(eq(adminUsers.isActive, true), eq(adminUsers.role, "hr"), isNull(adminUsers.deletedAt)));
+
+      for (const { consent, user } of consents) {
+        const expiresAt = new Date(consent.expiresAt);
+        const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+        // 14-day alert: notify the employee directly
+        if (daysLeft <= 14) {
+          await storage.createNotification({
+            userId: user.id,
+            type: "night_shift_consent_expiring",
+            title: "Night Shift Consent Expiring Soon",
+            message: `Your Night Shift Consent will expire in ${daysLeft} day(s) on ${expiresAt.toLocaleDateString()}. Please re-sign to remain compliant.`,
+            isRead: false,
+            metadata: { consentId: consent.id, expiresAt: expiresAt.toISOString(), daysLeft },
+          }).catch(err => console.error("[scheduler] Night shift consent notification failed:", err));
+        }
+
+        // 30-day alert: notify HR users only (not manager — privacy requirement)
+        if (daysLeft <= 30 && daysLeft > 14) {
+          for (const hrUser of hrUsers) {
+            await storage.createNotification({
+              userId: hrUser.id,
+              type: "night_shift_consent_hr_alert",
+              title: "Night Shift Consent Expiring — Action Required",
+              message: `${user.firstName} ${user.lastName}'s Night Shift Consent expires in ${daysLeft} day(s) on ${expiresAt.toLocaleDateString()}. Please follow up.`,
+              isRead: false,
+              metadata: { employeeId: user.id, employeeName: `${user.firstName} ${user.lastName}`, expiresAt: expiresAt.toISOString(), daysLeft },
+            }).catch(err => console.error("[scheduler] Night shift consent HR notification failed:", err));
+          }
+        }
+      }
+
+      // Mark expired consents as inactive + status="expired"
+      await db.update(nightShiftConsents)
+        .set({ isActive: false, status: "expired" })
+        .where(and(eq(nightShiftConsents.isActive, true), lt(nightShiftConsents.expiresAt, now)));
+
+      console.log(`[scheduler] Night shift consent check complete. ${consents.length} active consents checked.`);
+    } catch (error) {
+      console.error("[scheduler] Night shift consent expiry check failed:", error);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report: last day of month at 6 PM CST");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
+  console.log("  - Night shift consent expiry check: daily at 8 AM IST");
 }
