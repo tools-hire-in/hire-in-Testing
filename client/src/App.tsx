@@ -60,9 +60,7 @@ import Goals from "@/pages/admin/performance/Goals";
 import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
 import Reviews from "@/pages/admin/performance/Reviews";
 import PerformanceFeedback from "@/pages/admin/performance/Feedback";
-import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
 import PolicyGate from "@/pages/admin/PolicyGate";
-import VerifyLetter from "@/pages/VerifyLetter";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {

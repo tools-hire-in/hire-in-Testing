@@ -1850,6 +1850,9 @@ export async function registerRoutes(
       const activeBreak = records.find(r => !r.endedAt) || null;
       const lunchTaken = records.filter(r => r.breakType === "lunch" && r.endedAt);
       const teaTaken = records.filter(r => r.breakType === "tea" && r.endedAt);
+      // Count includes active break so the frontend can accurately reflect in-progress usage
+      const lunchCount = records.filter(r => r.breakType === "lunch").length;
+      const teaCount = records.filter(r => r.breakType === "tea").length;
       res.json({
         breaks: records,
         totalMinutes,
@@ -1857,8 +1860,8 @@ export async function registerRoutes(
         teaMinutes: teaTaken.reduce((s, r) => s + parseFloat(r.durationMinutes || "0"), 0),
         activeBreak,
         entitlement: { lunch: 30, tea: 15, teaCount: 2, total: 60 },
-        lunchCount: lunchTaken.length,
-        teaCount: teaTaken.length,
+        lunchCount,
+        teaCount,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch break records" });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Coffee, UtensilsCrossed, Timer, Info, AlertTriangle } from "lucide-react";
+import { Coffee, UtensilsCrossed, Timer, Info, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -49,6 +49,16 @@ function formatMinutes(minutes: number): string {
   return `${Math.round(minutes)} min`;
 }
 
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+
+function getFirstAvailable(lunchCount: number, teaCount: number): "lunch" | "tea" | null {
+  if (lunchCount < 1) return "lunch";
+  if (teaCount < 2) return "tea";
+  return null;
+}
+
 export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
   const { toast } = useToast();
   const [breakType, setBreakType] = useState<"lunch" | "tea">("lunch");
@@ -58,8 +68,15 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
   const { data: breakStatus, isLoading } = useQuery<BreakStatus>({
     queryKey: ["/api/hr/attendance/breaks/today"],
     enabled: punchedIn,
-    refetchInterval: 30000,
+    refetchInterval: (query) => (query.state.data?.activeBreak ? 10000 : 30000),
   });
+
+  // Auto-select the first available break type on mount and when status changes
+  useEffect(() => {
+    if (!breakStatus) return;
+    const available = getFirstAvailable(breakStatus.lunchCount, breakStatus.teaCount);
+    if (available) setBreakType(available);
+  }, [breakStatus?.lunchCount, breakStatus?.teaCount]);
 
   useEffect(() => {
     if (breakStatus?.activeBreak?.startedAt) {
@@ -76,8 +93,9 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
 
   const startMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/breaks/start", { breakType }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
       toast({ title: "Break started", description: `Your ${breakType} break has started.` });
     },
     onError: (err: any) => {
@@ -87,8 +105,9 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
 
   const endMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/breaks/end"),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+    onSuccess: async (data: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       if (data?.exceeded) {
         toast({
@@ -116,12 +135,20 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
   const canLunch = !lunchDone && !active;
   const canTea = teaCount < 2 && !active;
 
+  const isCurrentTypeUnavailable =
+    (breakType === "lunch" && lunchDone) ||
+    (breakType === "tea" && teaDone) ||
+    !!active;
+
   // Elapsed minutes for current break to show warning
   const elapsedMs = active ? Date.now() - new Date(active.startedAt).getTime() : 0;
   const elapsedMin = elapsedMs / 60000;
   const allocated = active?.breakType === "lunch" ? 30 : 15;
   const isNearLimit = active && elapsedMin > allocated * 0.8;
   const isOverLimit = active && elapsedMin > allocated;
+
+  // Completed breaks for history
+  const completedBreaks = (breakStatus?.breaks ?? []).filter(r => r.endedAt);
 
   return (
     <div className="space-y-3">
@@ -136,8 +163,8 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
           <TooltipContent className="max-w-56 text-xs" side="left">
             <p className="font-semibold mb-1">Break Policy</p>
             <ul className="space-y-0.5 list-disc list-inside text-muted-foreground">
-              <li>Lunch: 1× up to 30 min</li>
-              <li>Tea: 2× up to 15 min each</li>
+              <li>Lunch: 1× up to 30 min {lunchCount >= 1 ? `· ${lunchCount} of 1 used` : ""}</li>
+              <li>Tea: 2× up to 15 min each · {teaCount} of 2 used</li>
               <li>Total: up to 60 min/day</li>
             </ul>
             <p className="mt-1 text-muted-foreground">Going over is noted — not blocked.</p>
@@ -195,48 +222,94 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
         </div>
       )}
 
-      {/* Start break controls */}
+      {/* Start break controls — only when no active break and breaks remain */}
       {!active && !allDone && (
-        <div className="flex items-center gap-2">
-          <Select
-            value={breakType}
-            onValueChange={(v) => setBreakType(v as "lunch" | "tea")}
-          >
-            <SelectTrigger className="h-8 text-xs flex-1" data-testid="select-break-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="lunch" disabled={lunchDone} data-testid="select-item-lunch">
-                <span className="flex items-center gap-1.5">
-                  <UtensilsCrossed className="h-3.5 w-3.5" />
-                  Lunch {lunchDone ? "(used)" : "(30 min)"}
-                </span>
-              </SelectItem>
-              <SelectItem value="tea" disabled={teaDone} data-testid="select-item-tea">
-                <span className="flex items-center gap-1.5">
-                  <Coffee className="h-3.5 w-3.5" />
-                  Tea {teaDone ? "(used)" : `(${teaCount}/2 · 15 min)`}
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => startMutation.mutate()}
-            disabled={startMutation.isPending || (!canLunch && breakType === "lunch") || (!canTea && breakType === "tea")}
-            className="h-8 text-xs whitespace-nowrap"
-            data-testid="button-start-break"
-          >
-            {startMutation.isPending ? "Starting..." : "Start"}
-          </Button>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Select
+              value={breakType}
+              onValueChange={(v) => setBreakType(v as "lunch" | "tea")}
+            >
+              <SelectTrigger className="h-8 text-xs flex-1" data-testid="select-break-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lunch" disabled={lunchDone} data-testid="select-item-lunch">
+                  <span className="flex items-center gap-1.5">
+                    <UtensilsCrossed className="h-3.5 w-3.5" />
+                    Lunch {lunchDone ? "(used)" : "(30 min)"}
+                  </span>
+                </SelectItem>
+                <SelectItem value="tea" disabled={teaDone} data-testid="select-item-tea">
+                  <span className="flex items-center gap-1.5">
+                    <Coffee className="h-3.5 w-3.5" />
+                    Tea {teaDone ? "(used)" : `(${teaCount}/2 · 15 min)`}
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => startMutation.mutate()}
+              disabled={startMutation.isPending || isCurrentTypeUnavailable}
+              className="h-8 text-xs whitespace-nowrap"
+              data-testid="button-start-break"
+            >
+              {startMutation.isPending ? "Starting..." : "Start"}
+            </Button>
+          </div>
+          {/* Inline availability message */}
+          {breakType === "lunch" && lunchDone && (
+            <p className="text-xs text-muted-foreground" data-testid="text-lunch-taken">
+              Lunch already taken today.
+            </p>
+          )}
+          {breakType === "tea" && teaDone && (
+            <p className="text-xs text-muted-foreground" data-testid="text-tea-taken">
+              Both tea breaks already taken today.
+            </p>
+          )}
         </div>
       )}
 
+      {/* All breaks done — summary row */}
       {allDone && !active && (
-        <p className="text-xs text-muted-foreground" data-testid="text-breaks-complete">
-          All breaks taken today. Total: {formatMinutes(breakStatus?.totalMinutes ?? 0)}
-        </p>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="text-breaks-complete">
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+          <span>All breaks taken · Total: {formatMinutes(breakStatus?.totalMinutes ?? 0)}</span>
+        </div>
+      )}
+
+      {/* Break history — completed breaks for today */}
+      {completedBreaks.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-border/50" data-testid="section-break-history">
+          {completedBreaks.map((br) => {
+            const dur = parseFloat(br.durationMinutes || "0");
+            const alloc = br.breakType === "lunch" ? 30 : 15;
+            const over = dur > alloc;
+            return (
+              <div
+                key={br.id}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+                data-testid={`row-break-history-${br.id}`}
+              >
+                {br.breakType === "lunch"
+                  ? <UtensilsCrossed className="h-3 w-3 shrink-0" />
+                  : <Coffee className="h-3 w-3 shrink-0" />
+                }
+                <span className="capitalize">{br.breakType}</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span>{formatTime(br.startedAt)} – {formatTime(br.endedAt!)}</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span className={over ? "text-amber-600 dark:text-amber-400" : ""}>
+                  {Math.round(dur)} min
+                  {over && <AlertTriangle className="inline h-3 w-3 ml-0.5 -mt-0.5" />}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
