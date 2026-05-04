@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   CalendarCheck, Loader2, Plus, AlertTriangle, CheckCircle2, Clock, XCircle,
-  TrendingUp, FileText, AlertCircle
+  TrendingUp, FileText, AlertCircle, Info
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +22,6 @@ import { LeaveBalanceCard } from "@/components/hr/leave-balance-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-
-// AuthUser now includes employeeId, salary, and gender from the backend.
 
 interface LeaveRequest {
   id: string;
@@ -49,6 +47,7 @@ interface LeaveType {
   isActive: boolean;
   isConditional: boolean;
   carryForwardCap: number | null;
+  occurrenceBased: boolean;
 }
 
 interface LeaveBalance {
@@ -137,6 +136,8 @@ export default function LeaveManagement() {
     halfDayPart: "first",
   };
   const [applyForm, setApplyForm] = useState(applyFormInit);
+  const [selectedReason, setSelectedReason] = useState("");
+  const [otherReasonText, setOtherReasonText] = useState("");
   const [lwpWarning, setLwpWarning] = useState<string | null>(null);
   const [splitPaidDays, setSplitPaidDays] = useState<number | null>(null);
 
@@ -160,7 +161,6 @@ export default function LeaveManagement() {
     enabled: isAuthenticated,
   });
 
-  // Accruals are fetched at all times so the balance tab can show accrued values.
   const { data: accruals, isLoading: accrualsLoading } = useQuery<LeaveAccrual[]>({
     queryKey: ["/api/hr/leave-accruals/my", selectedYear],
     queryFn: async () => {
@@ -202,16 +202,20 @@ export default function LeaveManagement() {
       const bal = balances?.find(b => b.leaveTypeId === data.leaveTypeId);
       const available = bal ? Math.max(0, parseFloat(bal.totalDays) - parseFloat(bal.usedDays)) : 0;
       const balanceAfter = available - appliedDays;
-      const isLWP = selectedLt && /lwp|loss.?of.?pay/i.test(selectedLt.name);
-      const hasSplit = !isLWP && balanceAfter < 0 && available > 0 && splitPaidDays !== null;
+      const isLWP = selectedLt && /lwp|loss.?of.?pay|unpaid/i.test(selectedLt.name);
+      const isEML = selectedLt?.occurrenceBased;
+      const hasSplit = !isLWP && !isEML && balanceAfter < 0 && available > 0 && splitPaidDays !== null;
+      const reasonParts = selectedReason === "Other" || selectedReason === "Other emergency"
+        ? [selectedReason, otherReasonText].filter(Boolean).join(": ")
+        : selectedReason || data.reason || null;
       return apiRequest("POST", "/api/hr/leave-requests", {
         leaveTypeId: data.leaveTypeId,
         startDate: data.startDate,
         endDate: data.endDate,
-        reason: data.reason || null,
+        reason: reasonParts,
         halfDay: data.halfDay,
         halfDayPart: data.halfDay ? data.halfDayPart : null,
-        totalDays: String(appliedDays),
+        totalDays: isEML ? "1" : String(appliedDays),
         ...(hasSplit ? { splitPaidDays, splitLwpDays: appliedDays - (splitPaidDays ?? 0) } : {}),
       });
     },
@@ -219,6 +223,8 @@ export default function LeaveManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-requests/my"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances/my"] });
       setApplyForm(applyFormInit);
+      setSelectedReason("");
+      setOtherReasonText("");
       setLwpWarning(null);
       setSplitPaidDays(null);
       setActiveTab("history");
@@ -248,13 +254,16 @@ export default function LeaveManagement() {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
 
+  // Check LWP warning when leave type changes; also reset reason
   useEffect(() => {
+    setSelectedReason("");
+    setOtherReasonText("");
     if (!applyForm.leaveTypeId || !leaveTypes || !balances) { setLwpWarning(null); return; }
     const lt = leaveTypes.find(t => t.id === applyForm.leaveTypeId);
-    if (!lt || !/lwp|loss.?of.?pay/i.test(lt.name)) { setLwpWarning(null); return; }
+    if (!lt || !/lwp|loss.?of.?pay|unpaid/i.test(lt.name)) { setLwpWarning(null); return; }
     const remaining = balances.reduce((sum, b) => {
       const blt = leaveTypes.find(t => t.id === b.leaveTypeId);
-      if (!blt || /lwp|loss.?of.?pay/i.test(blt.name)) return sum;
+      if (!blt || /lwp|loss.?of.?pay|unpaid/i.test(blt.name) || blt.occurrenceBased) return sum;
       return sum + Math.max(0, parseFloat(b.totalDays) - parseFloat(b.usedDays));
     }, 0);
     setLwpWarning(
@@ -264,9 +273,47 @@ export default function LeaveManagement() {
     );
   }, [applyForm.leaveTypeId, leaveTypes, balances]);
 
+  function getLeaveCategory(lt: LeaveType): "el" | "sl" | "eml" | "lwp" | "co" | "other" {
+    if (lt.occurrenceBased) return "eml";
+    if (/lwp|loss.?of.?pay|unpaid/i.test(lt.name)) return "lwp";
+    if (/comp.?off|compensatory/i.test(lt.name)) return "co";
+    if (/sick|casual|cl/i.test(lt.name)) return "sl";
+    if (/annual|earned|el\b/i.test(lt.name)) return "el";
+    return "other";
+  }
+
+  const REASON_OPTIONS: Record<string, string[]> = {
+    sl: ["Medical appointment", "Personal illness", "Family member illness", "Hospitalisation", "Other"],
+    el: ["Vacation/travel", "Personal errand", "Family event", "Festival/celebration", "Other"],
+    eml: ["Bereavement", "Family medical emergency", "Natural disaster/home emergency", "Legal obligation", "Other emergency"],
+    lwp: ["Personal reasons (no paid leave remaining)"],
+    co: ["Personal errand", "Family event", "Other"],
+    other: ["Personal reasons", "Other"],
+  };
+
+  function getNoticePeriodWarning(lt: LeaveType, startDate: string, days: number): string | null {
+    if (!startDate || days <= 0) return null;
+    const category = getLeaveCategory(lt);
+    if (category === "eml" || category === "lwp" || category === "co") return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(startDate + "T00:00:00");
+    const daysNotice = Math.round((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (category === "sl") {
+      if (daysNotice < 1) return "Sick Leave requires at least 24 hours' advance notice where possible. Your manager's approval is required before you take this leave.";
+      return null;
+    }
+    if (category === "el") {
+      if (days <= 2 && daysNotice < 7) return "Earned Leave of 1–2 days requires at least 1 week's notice. Your manager's approval is required before you take this leave.";
+      if (days >= 3 && days <= 7 && daysNotice < 14) return "Earned Leave of 3–7 days requires at least 2 weeks' notice. Your manager's approval is required before you take this leave.";
+      if (days > 7 && daysNotice < 30) return "Earned Leave of more than 7 days requires at least 1 month's notice. Your manager's approval is required before you take this leave.";
+      return null;
+    }
+    return null;
+  }
+
   if (authLoading || !isAuthenticated) return null;
 
-  // Typed profile fields — populated by the backend via /api/auth/me
   const employeeId: string | undefined = user?.employeeId ?? undefined;
   const salary: string | undefined = user?.salary ?? undefined;
 
@@ -292,7 +339,6 @@ export default function LeaveManagement() {
     usedByType[lr.leaveTypeId] = (usedByType[lr.leaveTypeId] || 0) + parseFloat(lr.totalDays || "0");
   });
 
-  // Accrued per leave type from accrual records for the selected year
   const accruedByType: Record<string, number> = {};
   (accruals || []).forEach(a => {
     const days = parseFloat(a.accruedDays);
@@ -301,15 +347,10 @@ export default function LeaveManagement() {
     }
   });
 
-  // Comp-off expiry: derive from approved comp-off leave requests.
-  // The comp-off policy is 90 days from when it was approved/reviewed.
-  // We find the earliest comp-off approval date within the last 90 days and compute its expiry.
   const compOffExpiryByType: Record<string, string> = {};
   if (myLeaves && leaveTypes) {
     activeLeaveTypes.forEach(lt => {
       if (!/comp.?off|compensatory/i.test(lt.name)) return;
-      // Look at ALL approved comp-off requests to find the earliest one that would still be in the expiry window.
-      // "Grants" are approximated by approved requests reviewed within the last COMP_OFF_EXPIRY_DAYS days.
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - COMP_OFF_EXPIRY_DAYS);
       const compOffApprovals = (myLeaves || [])
@@ -327,7 +368,7 @@ export default function LeaveManagement() {
   }
 
   const elTypes = activeLeaveTypes.filter(lt => lt.isConditional);
-  const slTypes = activeLeaveTypes.filter(lt => !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name));
+  const slTypes = activeLeaveTypes.filter(lt => !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name) && !lt.occurrenceBased);
 
   const getAccrualForTypeMonth = (leaveTypeId: string, month: number) =>
     accruals?.find(a => a.leaveTypeId === leaveTypeId && a.month === month && a.year === selectedYear);
@@ -338,7 +379,7 @@ export default function LeaveManagement() {
   const nextMonth = nextAccrualDate.getMonth() + 1;
 
   const lapsingTypes = activeLeaveTypes.filter(lt => {
-    const isSL = !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name) && !/comp.?off|compensatory/i.test(lt.name);
+    const isSL = !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name) && !/comp.?off|compensatory/i.test(lt.name) && !lt.occurrenceBased;
     if (!isSL) return false;
     const balance = balances?.find(b => b.leaveTypeId === lt.id);
     const available = Math.max(0, parseFloat(balance?.totalDays || "0") - parseFloat(balance?.usedDays || "0"));
@@ -377,7 +418,7 @@ export default function LeaveManagement() {
           data-testid="text-leave-management-title"
         />
 
-        {/* Bordered tab bar */}
+        {/* Custom tab bar */}
         <div>
           <div className="flex border-b border-border" data-testid="tabs-leave-management">
             {(["balance", "apply", "history", "accrual"] as const).map(tab => (
@@ -420,21 +461,50 @@ export default function LeaveManagement() {
                         const total = parseFloat(balance?.totalDays || "0");
                         const used = parseFloat(balance?.usedDays || "0");
                         const available = Math.max(0, total - used);
-                        const isEL = lt.isConditional && (lt.carryForwardCap || 0) > 0;
-                        const isSL = !lt.isConditional && !/lwp|loss.?of.?pay/i.test(lt.name) && !/comp.?off|compensatory/i.test(lt.name);
-                        const isCompOff = /comp.?off|compensatory/i.test(lt.name);
-                        const isLWP = /lwp|loss.?of.?pay/i.test(lt.name);
+                        const isEML = lt.occurrenceBased;
+                        const isEL = !isEML && lt.isConditional && (lt.carryForwardCap || 0) > 0;
+                        const isSL = !isEML && !lt.isConditional && !/lwp|loss.?of.?pay|unpaid/i.test(lt.name) && !/comp.?off|compensatory/i.test(lt.name);
+                        const isCompOff = !isEML && /comp.?off|compensatory/i.test(lt.name);
+                        const isLWP = !isEML && /lwp|loss.?of.?pay|unpaid/i.test(lt.name);
                         const isCurrentBonusMonth = isEL && EL_BONUS_MONTHS.includes(now.getMonth() + 1);
                         const carryForwardWarning = isEL && (lt.carryForwardCap || 0) > 0 && available > (lt.carryForwardCap || 45);
                         const leaveTypeToken: "el" | "sl" | "co" | "default" = isEL ? "el" : isSL ? "sl" : isCompOff ? "co" : "default";
-                        const accrued = !isLWP ? (accruedByType[lt.id] ?? 0) : undefined;
+                        const accrued = !isLWP && !isEML ? (accruedByType[lt.id] ?? 0) : undefined;
 
                         let subtitle = "";
-                        if (isEL) subtitle = `of ${lt.defaultDays}/year · Carry fwd: max ${lt.carryForwardCap || 45}`;
+                        if (isEML) subtitle = "Emergency Leave · Max 3 uses/year";
+                        else if (isEL) subtitle = `of ${lt.defaultDays}/year · Carry fwd: max ${lt.carryForwardCap || 45}`;
                         else if (isSL) subtitle = `of ${lt.defaultDays}/year · Lapses 31 Dec`;
                         else if (isCompOff) subtitle = "Expires within 90 days";
                         else if (isLWP) subtitle = "Loss of Pay";
                         else subtitle = `${lt.defaultDays} days/year`;
+
+                        if (isEML) {
+                          const usedCount = Math.round(used);
+                          const remaining = Math.max(0, 3 - usedCount);
+                          return (
+                            <Card key={lt.id} className="relative overflow-hidden border-2 border-purple-200 dark:border-purple-800" data-testid={`balance-card-${lt.id}`}>
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-purple-500" />
+                              <CardContent className="pt-5 pb-4 px-5 space-y-2">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{lt.name}</p>
+                                    <p className="text-3xl font-mono font-bold text-purple-600 dark:text-purple-400 mt-1">{remaining}</p>
+                                    <p className="text-xs text-muted-foreground">of 3 uses remaining</p>
+                                  </div>
+                                  <div className="flex gap-1 mt-1">
+                                    {[0, 1, 2].map(i => (
+                                      <div key={i} className={`w-3 h-3 rounded-full ${i < usedCount ? "bg-purple-400" : "bg-purple-100 dark:bg-purple-900 border border-purple-300 dark:border-purple-700"}`} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2 mt-2">
+                                  For bereavement, family medical emergencies, legal obligations, and home emergencies. Evidence may be requested.
+                                </p>
+                              </CardContent>
+                            </Card>
+                          );
+                        }
 
                         return (
                           <LeaveBalanceCard
@@ -455,6 +525,37 @@ export default function LeaveManagement() {
                         );
                       })}
                     </div>
+
+                    {/* Policy section */}
+                    <Card className="mt-4 bg-muted/30 border-dashed">
+                      <CardContent className="py-4 px-5 space-y-4">
+                        <div>
+                          <p className="text-xs font-semibold text-foreground mb-1">Leave Policy — Employee Responsibilities</p>
+                          <ol className="text-xs text-muted-foreground leading-relaxed space-y-1 list-decimal ml-4">
+                            <li>Employees must apply for planned leave as far in advance as possible.</li>
+                            <li>It is the employee's responsibility to obtain approval before taking leave. Absence without prior approval may result in disciplinary action and Loss of Pay.</li>
+                            <li>Unapproved absence may be treated as LWP regardless of available balance.</li>
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-foreground mb-1">Minimum Notice Periods</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">Sick Leave</span><span>24 hours' notice</span>
+                            <span className="font-medium text-foreground">EL — 1–2 days</span><span>1 week (7 days)</span>
+                            <span className="font-medium text-foreground">EL — 3–7 days</span><span>2 weeks (14 days)</span>
+                            <span className="font-medium text-foreground">EL — more than 7 days</span><span>1 month (30 days)</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-foreground mb-1">Emergency Leave (EML) — up to 3 occurrences/year</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Covers bereavement, family medical emergency, natural disaster or home emergency, and legal obligation.
+                            Same-day notice is accepted; retrospective approval applies. Maximum 3 uses per year.
+                            Management may request supporting evidence.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
 
                     {/* Lapse warning banner */}
                     {lapsingTypes.length > 0 && (
@@ -478,7 +579,7 @@ export default function LeaveManagement() {
                       </p>
                       <div className="flex flex-wrap gap-2 mb-3">
                         {activeLeaveTypes
-                          .filter(lt => !(/lwp|loss.?of.?pay/i.test(lt.name)) && !(/comp.?off|compensatory/i.test(lt.name)))
+                          .filter(lt => !lt.occurrenceBased && !(/lwp|loss.?of.?pay/i.test(lt.name)) && !(/comp.?off|compensatory/i.test(lt.name)))
                           .map(lt => {
                             const isEL = lt.isConditional && (lt.carryForwardCap || 0) > 0;
                             const isSL = !lt.isConditional;
@@ -554,7 +655,8 @@ export default function LeaveManagement() {
                           const bal = balances?.find(b => b.leaveTypeId === lt.id);
                           const avail = Math.max(0, parseFloat(bal?.totalDays || "0") - parseFloat(bal?.usedDays || "0"));
                           const isSelected = applyForm.leaveTypeId === lt.id;
-                          const isLWP = /lwp|loss.?of.?pay/i.test(lt.name);
+                          const isLWP = /lwp|loss.?of.?pay|unpaid/i.test(lt.name);
+                          const isEML = lt.occurrenceBased;
                           return (
                             <button
                               key={lt.id}
@@ -567,7 +669,12 @@ export default function LeaveManagement() {
                               }`}
                             >
                               <span>{lt.name}</span>
-                              {!isLWP && (
+                              {isEML && (
+                                <span className={`ml-2 text-xs ${isSelected ? "text-primary/70" : "text-muted-foreground"}`}>
+                                  {Math.max(0, 3 - Math.round(parseFloat(bal?.usedDays || "0")))} uses left
+                                </span>
+                              )}
+                              {!isLWP && !isEML && (
                                 <span className={`ml-2 text-xs ${isSelected ? "text-primary/70" : "text-muted-foreground"}`}>
                                   {avail.toFixed(1)} left
                                 </span>
@@ -693,24 +800,30 @@ export default function LeaveManagement() {
                     const bal = balances?.find(b => b.leaveTypeId === applyForm.leaveTypeId);
                     const available = bal ? Math.max(0, parseFloat(bal.totalDays) - parseFloat(bal.usedDays)) : 0;
                     const balanceAfter = available - appliedDays;
-                    const isEL = selectedLt?.isConditional && (selectedLt?.carryForwardCap || 0) > 0;
-                    const isLWP = selectedLt && /lwp|loss.?of.?pay/i.test(selectedLt.name);
-                    const daysUntilStart = applyForm.startDate
-                      ? Math.ceil((new Date(applyForm.startDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                      : 0;
-                    const elShortNotice = isEL && daysUntilStart < 7 && daysUntilStart >= 0;
+                    const isEML = selectedLt?.occurrenceBased;
+                    const isLWP = selectedLt && /lwp|loss.?of.?pay|unpaid/i.test(selectedLt.name);
                     return (
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg" data-testid="text-days-count">
-                          <CalendarCheck className="h-4 w-4 text-primary" />
-                          <span className="text-sm">
-                            <strong>{appliedDays}</strong> working day{appliedDays !== 1 ? "s" : ""} applied
-                            {dayCountData && !applyForm.halfDay && (
-                              <span className="text-muted-foreground ml-1">(weekends &amp; holidays excluded)</span>
-                            )}
-                          </span>
-                        </div>
-                        {selectedLt && !isLWP && appliedDays > 0 && (
+                        {isEML && (
+                          <div className="flex items-start gap-2 p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg" data-testid="text-eml-retrospective-notice">
+                            <Info className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
+                            <p className="text-sm text-purple-700 dark:text-purple-300">
+                              <strong>Emergency Leave — retrospective approval applies.</strong> This will be flagged to your manager as an emergency. Evidence may be requested.
+                            </p>
+                          </div>
+                        )}
+                        {!isEML && (
+                          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg" data-testid="text-days-count">
+                            <CalendarCheck className="h-4 w-4 text-primary" />
+                            <span className="text-sm">
+                              <strong>{appliedDays}</strong> working day{appliedDays !== 1 ? "s" : ""} applied
+                              {dayCountData && !applyForm.halfDay && (
+                                <span className="text-muted-foreground ml-1">(weekends &amp; holidays excluded)</span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {selectedLt && !isLWP && !isEML && appliedDays > 0 && (
                           <div className={`flex items-center justify-between p-3 rounded-lg border text-sm ${balanceAfter < 0 ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800" : "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"}`} data-testid="text-balance-after">
                             <span className="text-muted-foreground">Balance after approval:</span>
                             <span className={`font-semibold ${balanceAfter < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
@@ -719,7 +832,7 @@ export default function LeaveManagement() {
                             </span>
                           </div>
                         )}
-                        {selectedLt && !isLWP && appliedDays > 0 && balanceAfter < 0 && available > 0 && (() => {
+                        {selectedLt && !isLWP && !isEML && appliedDays > 0 && balanceAfter < 0 && available > 0 && (() => {
                           const effectivePaid = splitPaidDays !== null ? splitPaidDays : available;
                           const lwpDays = Math.max(0, appliedDays - effectivePaid);
                           return (
@@ -760,14 +873,16 @@ export default function LeaveManagement() {
                             </div>
                           );
                         })()}
-                        {elShortNotice && (
-                          <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="text-el-notice-warning">
-                            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                            <p className="text-sm text-amber-700 dark:text-amber-400">
-                              EL requests should ideally be submitted at least 7 days in advance. Please inform your manager.
-                            </p>
-                          </div>
-                        )}
+                        {selectedLt && !isEML && (() => {
+                          const warning = getNoticePeriodWarning(selectedLt, applyForm.startDate, appliedDays);
+                          if (!warning) return null;
+                          return (
+                            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="text-notice-period-warning">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                              <p className="text-sm text-amber-700 dark:text-amber-400">{warning}</p>
+                            </div>
+                          );
+                        })()}
                         {isLWP && appliedDays > 0 && (
                           <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg" data-testid="text-lwp-salary-impact">
                             <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
@@ -780,16 +895,38 @@ export default function LeaveManagement() {
                     );
                   })()}
 
-                  <div className="space-y-2">
-                    <Label>Reason <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                    <Textarea
-                      value={applyForm.reason}
-                      onChange={(e) => setApplyForm(prev => ({ ...prev, reason: e.target.value }))}
-                      placeholder="Brief reason for leave..."
-                      rows={3}
-                      data-testid="textarea-leave-reason"
-                    />
-                  </div>
+                  {/* Reason dropdown with contextual options */}
+                  {applyForm.leaveTypeId && (() => {
+                    const selectedLt = leaveTypes?.find(t => t.id === applyForm.leaveTypeId);
+                    if (!selectedLt) return null;
+                    const category = getLeaveCategory(selectedLt);
+                    const options = REASON_OPTIONS[category] || REASON_OPTIONS.other;
+                    const isOther = selectedReason === "Other" || selectedReason === "Other emergency";
+                    return (
+                      <div className="space-y-2">
+                        <Label>Leave Reason</Label>
+                        <Select value={selectedReason} onValueChange={setSelectedReason} data-testid="select-leave-reason">
+                          <SelectTrigger data-testid="trigger-leave-reason">
+                            <SelectValue placeholder="Select a reason…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {options.map(opt => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isOther && (
+                          <Textarea
+                            value={otherReasonText}
+                            onChange={(e) => setOtherReasonText(e.target.value)}
+                            placeholder="Please describe your reason…"
+                            rows={2}
+                            data-testid="textarea-other-reason"
+                          />
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <Button
                     onClick={() => applyMutation.mutate(applyForm)}

@@ -160,6 +160,9 @@ export const leaveTypes = pgTable("leave_types", {
   // Flag for legal review before production deployment.
   isConditional: boolean("is_conditional").notNull().default(true),
   carryForwardCap: integer("carry_forward_cap").default(0),
+  // If true, balance tracks occurrences (count-based) rather than days — used for Emergency Leave (EML).
+  // totalDays field holds max occurrences, usedDays holds occurrences consumed.
+  occurrenceBased: boolean("occurrence_based").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

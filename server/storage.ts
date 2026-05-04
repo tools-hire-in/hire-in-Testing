@@ -823,20 +823,28 @@ export class DatabaseStorage implements IStorage {
 
   async initLeaveBalances(userId: string, year: number): Promise<LeaveBalance[]> {
     const existingBalances = await this.getLeaveBalances(userId, year);
-    if (existingBalances.length > 0) return existingBalances;
 
     const activeLeaveTypes = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
-    const balancesToCreate = activeLeaveTypes.map(lt => ({
-      userId,
-      leaveTypeId: lt.id,
-      totalDays: "0",
-      usedDays: "0",
-      year,
-    }));
 
-    if (balancesToCreate.length === 0) return [];
-    const created = await db.insert(leaveBalances).values(balancesToCreate).returning();
-    return created;
+    // Ensure every active leave type has a balance record (add missing ones even if some exist)
+    const existingTypeIds = new Set(existingBalances.map(b => b.leaveTypeId));
+    const missingTypes = activeLeaveTypes.filter(lt => !existingTypeIds.has(lt.id));
+
+    if (missingTypes.length > 0) {
+      const balancesToCreate = missingTypes.map(lt => ({
+        userId,
+        leaveTypeId: lt.id,
+        // EML: occurrence-based, cap at 3 per year
+        totalDays: lt.occurrenceBased ? "3" : "0",
+        usedDays: "0",
+        year,
+      }));
+      const created = await db.insert(leaveBalances).values(balancesToCreate).returning();
+      return [...existingBalances, ...created];
+    }
+
+    if (existingBalances.length > 0) return existingBalances;
+    return [];
   }
 
   async getUserMonthlyHours(userId: string, year: number, month: number): Promise<number> {
