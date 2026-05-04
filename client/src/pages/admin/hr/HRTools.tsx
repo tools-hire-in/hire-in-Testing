@@ -1615,7 +1615,7 @@ export function OfferLettersDashboard() {
                                   Cancel
                                 </Button>
                               )}
-                              {letter.status === "accepted" && (
+                              {letter.status === "accepted" && isHrOrAdmin && (
                                 <div className="flex gap-1">
                                   <Button
                                     size="sm"

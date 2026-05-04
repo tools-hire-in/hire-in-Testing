@@ -109,7 +109,9 @@ function OnboardingTab() {
               return (
                 <tr
                   key={h.id}
-                  className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                  className={`border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                  onClick={() => setLocation(`/admin/hr/people?tab=users&userId=${h.id}`)}
+                  data-testid={`row-new-hire-${h.id}`}
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium">{h.first_name} {h.last_name}</div>
@@ -141,7 +143,7 @@ function OnboardingTab() {
                       variant="ghost"
                       size="sm"
                       className="h-7 gap-1 text-xs"
-                      onClick={() => setLocation(`/admin/hr/people?tab=users`)}
+                      onClick={(e) => { e.stopPropagation(); setLocation(`/admin/hr/people?tab=users&userId=${h.id}`); }}
                       data-testid={`button-view-hire-${h.id}`}
                     >
                       <ExternalLink className="h-3 w-3" />
