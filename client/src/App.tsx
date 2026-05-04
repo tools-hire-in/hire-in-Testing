@@ -61,6 +61,7 @@ import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
 import Reviews from "@/pages/admin/performance/Reviews";
 import PerformanceFeedback from "@/pages/admin/performance/Feedback";
 import PolicyGate from "@/pages/admin/PolicyGate";
+import NewHire from "@/pages/admin/NewHire";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -123,6 +124,9 @@ function PublicRouter() {
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/jobs">{() => <Redirect to="/admin/recruitment" />}</Route>
       <Route path="/admin/applications">{() => <Redirect to="/admin/recruitment?tab=applications" />}</Route>
+
+      {/* New Hire */}
+      <Route path="/admin/new-hire" component={NewHire} />
 
       {/* Legacy HR standalone pages */}
       <Route path="/admin/hr/dashboard" component={HRDashboard} />
@@ -195,6 +199,9 @@ function EmployeeRouter() {
       <Route path="/admin/contacts" component={AdminContacts} />
       <Route path="/admin/jobs">{() => <Redirect to="/admin/recruitment" />}</Route>
       <Route path="/admin/applications">{() => <Redirect to="/admin/recruitment?tab=applications" />}</Route>
+
+      {/* New Hire */}
+      <Route path="/admin/new-hire" component={NewHire} />
 
       {/* Legacy HR standalone pages */}
       <Route path="/admin/hr/dashboard" component={HRDashboard} />

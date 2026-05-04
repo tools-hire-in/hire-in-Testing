@@ -3553,7 +3553,7 @@ export async function registerRoutes(
   });
 
   // HR Tools: Generate offer letter DOCX
-  app.post("/api/hr/tools/generate-offer-letter", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/generate-offer-letter", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       let departmentName = "";
       if (req.body.departmentId) {
@@ -4509,7 +4509,7 @@ export async function registerRoutes(
   });
 
   // Start onboarding — creates employee profile
-  app.post("/api/hr/tools/offer-letters/:id/start-onboarding", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:id/start-onboarding", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetter(req.params.id);
       if (!letter) {
@@ -4629,6 +4629,53 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Start onboarding error:", error);
       res.status(500).json({ error: error.message || "Failed to start onboarding" });
+    }
+  });
+
+  // New Hire onboarding status — recent employees with setup checklist
+  app.get("/api/hr/new-hire/onboarding-status", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          u.id,
+          u.first_name,
+          u.last_name,
+          u.email,
+          u.employee_id,
+          u.designation,
+          u.joining_date,
+          u.role,
+          d.name AS department_name,
+          COALESCE((
+            SELECT COUNT(*)::int FROM employee_documents WHERE user_id = u.id
+          ), 0) AS document_count,
+          EXISTS (
+            SELECT 1 FROM employee_bank_details WHERE user_id = u.id LIMIT 1
+          ) AS has_bank_details,
+          EXISTS (
+            SELECT 1 FROM night_shift_consents WHERE user_id = u.id AND is_active = true LIMIT 1
+          ) AS has_ns_consent,
+          COALESCE((
+            SELECT ROUND(
+              100.0 * COUNT(CASE WHEN sp.completed_at IS NOT NULL THEN 1 END)
+                    / NULLIF(COUNT(ts.id), 0)
+            )::int
+            FROM track_assignments ta
+            JOIN track_sections ts ON ts.track_id = ta.track_id
+            LEFT JOIN section_progress sp
+              ON sp.assignment_id = ta.id AND sp.section_id = ts.id
+            WHERE ta.user_id = u.id
+          ), 0) AS training_pct
+        FROM admin_users u
+        LEFT JOIN departments d ON d.id = u.department_id
+        WHERE u.joining_date >= CURRENT_DATE - INTERVAL '90 days'
+          AND u.is_active = true
+          AND u.deleted_at IS NULL
+        ORDER BY u.joining_date DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

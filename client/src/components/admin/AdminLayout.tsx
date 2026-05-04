@@ -17,6 +17,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  UserPlus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -366,6 +367,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager"].includes(userRole);
   const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
   const hasHRAccess = ["super_admin", "admin", "hr", "operations"].includes(userRole);
+  const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
   const hasGrowthAccess = trainingEnabled || perfEnabled;
 
   // Training + perf badge total for My Growth
@@ -410,6 +412,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Briefcase,
       roles: ["super_admin", "admin", "operations", "manager"],
     }] : []),
+    ...(hasNewHireAccess ? [{
+      href: "/admin/new-hire",
+      label: "New Hire",
+      icon: UserPlus,
+      roles: ["super_admin", "admin", "hr", "operations", "manager"],
+    }] : []),
     ...(hasHRAccess ? [{
       href: "/admin/hr/people",
       label: "People & HR",
@@ -427,6 +435,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/growth") return location === "/admin/growth" || location.startsWith("/admin/growth") || location.startsWith("/admin/performance") || location.startsWith("/admin/hr/my-training");
     if (href === "/admin/hr/my-team") return location === "/admin/hr/my-team" || location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/hr/team-attendance") || location.startsWith("/admin/hr/leave-approvals") || location.startsWith("/admin/hr/training-progress");
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
+    if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/tools") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
     return location.startsWith(href);
   };

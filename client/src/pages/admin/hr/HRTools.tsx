@@ -684,7 +684,7 @@ function getDefaultOfferData(): OfferFormData {
   };
 }
 
-function OfferLetterGenerator() {
+export function OfferLetterGenerator() {
   const { toast } = useToast();
   const [formData, setFormData] = useState<OfferFormData>(getDefaultOfferData());
   const [generating, setGenerating] = useState(false);
@@ -1283,7 +1283,7 @@ function AddendumSubRow({ letter }: { letter: any }) {
   );
 }
 
-function OfferLettersDashboard() {
+export function OfferLettersDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -2430,7 +2430,7 @@ export default function HRTools() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-hr-tools-title">HR Tools</h1>
-          <p className="text-muted-foreground">Generate salary slips, offer letters, and manage onboarding</p>
+          <p className="text-muted-foreground">Generate salary slips and HR letters</p>
         </div>
 
         <Tabs defaultValue="salary-slip" className="space-y-6">
@@ -2438,14 +2438,6 @@ export default function HRTools() {
             <TabsTrigger value="salary-slip" data-testid="tab-salary-slip">
               <Receipt className="h-4 w-4 mr-2" />
               Salary Slip
-            </TabsTrigger>
-            <TabsTrigger value="offer-letter" data-testid="tab-offer-letter">
-              <FileText className="h-4 w-4 mr-2" />
-              Offer Letter Generator
-            </TabsTrigger>
-            <TabsTrigger value="offer-letters" data-testid="tab-offer-letters">
-              <Mail className="h-4 w-4 mr-2" />
-              Offer Letters
             </TabsTrigger>
             <TabsTrigger value="letter-generator" data-testid="tab-letter-generator">
               <ScrollText className="h-4 w-4 mr-2" />
@@ -2459,14 +2451,6 @@ export default function HRTools() {
 
           <TabsContent value="salary-slip">
             <SalarySlipGenerator />
-          </TabsContent>
-
-          <TabsContent value="offer-letter">
-            <OfferLetterGenerator />
-          </TabsContent>
-
-          <TabsContent value="offer-letters">
-            <OfferLettersDashboard />
           </TabsContent>
 
           <TabsContent value="letter-generator">
