@@ -43,6 +43,13 @@
       "when": 1746424800000,
       "tag": "0005_break_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1746684600000,
+      "tag": "0006_universal_policy_tracks",
+      "breakpoints": true
     }
   ]
 }

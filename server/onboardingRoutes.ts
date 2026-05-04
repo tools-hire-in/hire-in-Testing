@@ -7,7 +7,7 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray, sql, isNull, lt, ne, desc } from "drizzle-orm";
 import crypto from "crypto";
-import { seedOnboardingContent, seedSectionAdditions } from "./onboardingSeed";
+import { seedOnboardingContent, seedSectionAdditions, seedUniversalPolicies } from "./onboardingSeed";
 import {
   isRayoEnabled, getRayoTracks, getRayoUserAssignments, assignRayoTrack,
   getRayoTeamProgress, getRayoComplianceStatus, getRayoTrackProgress,
@@ -80,11 +80,12 @@ export function registerOnboardingRoutes(app: Express) {
     if (!ADMIN_ROLES.includes(role)) return res.status(403).json({ error: "Not authorized" });
 
     try {
-      const { title, description, targetRole, targetDepartmentId, version, isPolicyTrack } = req.body;
+      const { title, description, targetRole, targetDepartmentId, version, isPolicyTrack, isUniversal } = req.body;
       const [track] = await db.insert(learningTracks).values({
         title, description, targetRole: targetRole || null, targetDepartmentId: targetDepartmentId || null,
         version: version || "1.0", status: "draft", createdBy: req.session.userId!,
         isPolicyTrack: isPolicyTrack === true || isPolicyTrack === "true" ? true : false,
+        isUniversal: isUniversal === true || isUniversal === "true" ? true : false,
         versionNumber: 1,
       }).returning();
 
@@ -103,13 +104,14 @@ export function registerOnboardingRoutes(app: Express) {
 
     try {
       const { id } = req.params as { id: string };
-      const { title, description, targetRole, targetDepartmentId, version, status, isPolicyTrack } = req.body;
+      const { title, description, targetRole, targetDepartmentId, version, status, isPolicyTrack, isUniversal } = req.body;
 
       // Fetch current track to check if it's being published as a policy track
       const [existing] = await db.select().from(learningTracks).where(eq(learningTracks.id, id));
       if (!existing) return res.status(404).json({ error: "Track not found" });
 
       const isPolicy = isPolicyTrack !== undefined ? isPolicyTrack : existing.isPolicyTrack;
+      const isUniversalFlag = isUniversal !== undefined ? (isUniversal === true || isUniversal === "true") : existing.isUniversal;
 
       // Correct version bump logic:
       // - "first publish": existing status is not "published", new status is "published" → set publishedAt, keep version
@@ -131,7 +133,7 @@ export function registerOnboardingRoutes(app: Express) {
         title, description, targetRole: targetRole ?? existing.targetRole,
         targetDepartmentId: targetDepartmentId ?? existing.targetDepartmentId,
         version: version ?? existing.version, status: status ?? existing.status,
-        isPolicyTrack: isPolicy, versionNumber, publishedAt, updatedAt: new Date(),
+        isPolicyTrack: isPolicy, isUniversal: isUniversalFlag, versionNumber, publishedAt, updatedAt: new Date(),
       };
 
       const [updated] = await db.update(learningTracks)
@@ -1652,15 +1654,15 @@ export function registerOnboardingRoutes(app: Express) {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
 
     const POLICY_GATE_EXEMPT = ["super_admin", "admin"];
-    if (POLICY_GATE_EXEMPT.includes(req.session.role!)) {
-      return res.json({ hasPendingPolicies: false, policies: [] });
-    }
+    const isExemptRole = POLICY_GATE_EXEMPT.includes(req.session.role!);
 
     try {
       const userId = req.session.userId;
 
-      // Get all published policy tracks assigned to this user
-      const assignments = await db.select({
+      // Get all published policy tracks assigned to this user.
+      // For exempt roles (super_admin, admin): only include tracks marked isUniversal.
+      // For all other roles: include all policy tracks.
+      const allAssignments = await db.select({
         assignment: trackAssignments,
         track: learningTracks,
       }).from(trackAssignments)
@@ -1670,6 +1672,16 @@ export function registerOnboardingRoutes(app: Express) {
           eq(learningTracks.isPolicyTrack, true),
           eq(learningTracks.status, "published"),
         ));
+
+      // Filter: exempt roles only see universal tracks
+      const assignments = isExemptRole
+        ? allAssignments.filter(({ track }) => track.isUniversal)
+        : allAssignments;
+
+      // If exempt role has no universal tracks pending, skip night shift check too
+      if (isExemptRole && assignments.length === 0) {
+        return res.json({ hasPendingPolicies: false, policies: [], nightShiftPending: false, nightShiftConsent: null });
+      }
 
       const pending = await Promise.all(assignments.map(async ({ assignment, track }) => {
         // Check if completed with current version
@@ -1698,14 +1710,15 @@ export function registerOnboardingRoutes(app: Express) {
 
       const pendingPolicies = pending.filter(Boolean);
 
-      // Night Shift Consent check: Female employees must have a valid (non-expired) consent
+      // Night Shift Consent check: Female employees must have a valid (non-expired) consent.
+      // Exempt roles (admin, super_admin) are never gated by Night Shift Consent.
       let nightShiftPending = false;
       let nightShiftConsent: any = null;
       try {
         const [userRecord] = await db.select({ gender: adminUsers.gender, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
           .from(adminUsers).where(eq(adminUsers.id, userId));
 
-        if (userRecord?.gender === "Female") {
+        if (!isExemptRole && userRecord?.gender === "Female") {
           const [latestConsent] = await db.select().from(nightShiftConsents)
             .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)))
             .orderBy(desc(nightShiftConsents.signedAt))
@@ -1982,7 +1995,7 @@ export function registerOnboardingRoutes(app: Express) {
         };
       }));
 
-      res.json({ policyTracks: policyTracks.map(t => ({ id: t.id, title: t.title, versionNumber: t.versionNumber, publishedAt: t.publishedAt })), matrix });
+      res.json({ policyTracks: policyTracks.map(t => ({ id: t.id, title: t.title, versionNumber: t.versionNumber, publishedAt: t.publishedAt, isUniversal: t.isUniversal })), matrix });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to fetch policy compliance" });
@@ -1998,14 +2011,21 @@ export function registerOnboardingRoutes(app: Express) {
       const policyTracks = await db.select().from(learningTracks)
         .where(and(eq(learningTracks.isPolicyTrack, true), eq(learningTracks.status, "published")));
 
-      const allUsers = await db.select().from(adminUsers)
+      const allUsers = await db.select({ id: adminUsers.id, role: adminUsers.role }).from(adminUsers)
         .where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+
+      const EXEMPT_ROLES = ["super_admin", "admin"];
 
       let assigned = 0;
       let skipped = 0;
 
       for (const track of policyTracks) {
-        for (const user of allUsers) {
+        // Universal tracks are assigned to everyone; non-universal tracks skip exempt roles
+        const eligibleUsers = track.isUniversal
+          ? allUsers
+          : allUsers.filter(u => !EXEMPT_ROLES.includes(u.role));
+
+        for (const user of eligibleUsers) {
           const [existing] = await db.select().from(trackAssignments)
             .where(and(eq(trackAssignments.trackId, track.id), eq(trackAssignments.userId, user.id)));
           if (existing) { skipped++; continue; }
@@ -2014,7 +2034,7 @@ export function registerOnboardingRoutes(app: Express) {
             trackId: track.id,
             userId: user.id,
             assignedBy: req.session.userId,
-            dueDate: new Date(),
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             status: "not_started",
           });
           assigned++;
@@ -2217,11 +2237,16 @@ export function registerOnboardingRoutes(app: Express) {
     try {
       const tracksResult = await seedOnboardingContent(req.session.userId!);
       const sectionsResult = await seedSectionAdditions(req.session.userId!);
+      const universalResult = await seedUniversalPolicies(req.session.userId!);
       res.json({
         created: tracksResult.created,
         skipped: tracksResult.skipped,
         sectionsAdded: sectionsResult.added,
         sectionsSkipped: sectionsResult.skipped,
+        universalCreated: universalResult.created,
+        universalSkipped: universalResult.skipped,
+        universalAssigned: universalResult.assigned,
+        universalAssignSkipped: universalResult.assignSkipped,
       });
     } catch (error) {
       console.error(error);

@@ -18,6 +18,7 @@ interface PolicyTrackMeta {
   title: string;
   versionNumber: number;
   publishedAt: string | null;
+  isUniversal?: boolean;
 }
 
 interface TrackStatus {
@@ -151,7 +152,12 @@ function PolicyMatrix({ data }: { data: PolicyComplianceData }) {
                 <TableHead key={t.id} className="min-w-[140px]">
                   <div className="space-y-0.5">
                     <div className="font-medium truncate max-w-32">{t.title}</div>
-                    <div className="text-xs font-normal text-muted-foreground">v{t.versionNumber}</div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs font-normal text-muted-foreground">v{t.versionNumber}</span>
+                      {t.isUniversal && (
+                        <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-1.5 py-0 rounded-full font-medium leading-tight">Universal</span>
+                      )}
+                    </div>
                   </div>
                 </TableHead>
               ))}

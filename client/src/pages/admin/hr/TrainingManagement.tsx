@@ -42,7 +42,7 @@ export default function TrainingManagement() {
   const [endorseComment, setEndorseComment] = useState<Record<string, string>>({});
 
   // Track form state
-  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false });
+  const [trackForm, setTrackForm] = useState({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false, isUniversal: false });
 
   // Section form state
   const [sectionForm, setSectionForm] = useState({
@@ -162,7 +162,7 @@ export default function TrainingManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
       setShowTrackForm(false);
-      setTrackForm({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false });
+      setTrackForm({ title: "", description: "", targetRole: "all_roles", version: "1.0", isPolicyTrack: false, isUniversal: false });
       toast({ title: "Track created" });
     },
     onError: () => toast({ title: "Failed to create track", variant: "destructive" }),
@@ -307,6 +307,8 @@ export default function TrainingManagement() {
       if (data.skipped?.length) parts.push(`${data.skipped.length} track(s) already existed`);
       if (data.sectionsAdded?.length) parts.push(`${data.sectionsAdded.length} new section(s) added`);
       if (data.sectionsSkipped?.length) parts.push(`${data.sectionsSkipped.length} section(s) already present`);
+      if (data.universalCreated?.length) parts.push(`${data.universalCreated.length} universal policy track(s) created`);
+      if (typeof data.universalAssigned === "number" && data.universalAssigned > 0) parts.push(`${data.universalAssigned} assignment(s) created`);
       toast({ title: parts.join(" · ") || "Content already up to date" });
     } catch {
       toast({ title: "Seed failed", variant: "destructive" });
@@ -708,6 +710,9 @@ export default function TrainingManagement() {
                         {track.isPolicyTrack && (
                           <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">Policy</span>
                         )}
+                        {track.isUniversal && (
+                          <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-medium">Universal</span>
+                        )}
                         <span className="text-xs text-muted-foreground">{track.sectionCount} sections</span>
                         <span className="text-xs text-muted-foreground">{track.assignmentCount} assigned</span>
                       </div>
@@ -750,6 +755,11 @@ export default function TrainingManagement() {
                               <Shield className="h-3 w-3" />Policy v{selectedTrack.versionNumber ?? 1}
                             </span>
                           )}
+                          {selectedTrack.isUniversal && (
+                            <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                              <Users className="h-3 w-3" />Universal
+                            </span>
+                          )}
                         </div>
                       </div>
                       {canAdmin && (
@@ -780,7 +790,7 @@ export default function TrainingManagement() {
                             variant={selectedTrack.isPolicyTrack ? "secondary" : "outline"}
                             onClick={() => updateTrack.mutate({
                               id: selectedTrack.id,
-                              data: { isPolicyTrack: !selectedTrack.isPolicyTrack },
+                              data: { isPolicyTrack: !selectedTrack.isPolicyTrack, isUniversal: !selectedTrack.isPolicyTrack ? selectedTrack.isUniversal : false },
                             })}
                             data-testid="button-toggle-policy-track"
                             title={selectedTrack.isPolicyTrack ? "Remove mandatory policy flag" : "Mark as mandatory policy track"}
@@ -788,6 +798,22 @@ export default function TrainingManagement() {
                             <Shield className={`h-4 w-4 mr-1 ${selectedTrack.isPolicyTrack ? "text-primary" : ""}`} />
                             {selectedTrack.isPolicyTrack ? "Policy" : "Set Policy"}
                           </Button>
+                          {selectedTrack.isPolicyTrack && (
+                            <Button
+                              size="sm"
+                              variant={selectedTrack.isUniversal ? "secondary" : "outline"}
+                              onClick={() => updateTrack.mutate({
+                                id: selectedTrack.id,
+                                data: { isUniversal: !selectedTrack.isUniversal },
+                              })}
+                              data-testid="button-toggle-universal"
+                              title={selectedTrack.isUniversal ? "Remove universal flag (admins exempt)" : "Mark as universal — all roles must sign"}
+                              className={selectedTrack.isUniversal ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400" : ""}
+                            >
+                              <Users className={`h-4 w-4 mr-1 ${selectedTrack.isUniversal ? "text-amber-600" : ""}`} />
+                              {selectedTrack.isUniversal ? "Universal" : "Set Universal"}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant={selectedTrack.status === "published" ? "outline" : "default"}
@@ -929,7 +955,7 @@ export default function TrainingManagement() {
             </div>
             <div
               className={`flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors ${trackForm.isPolicyTrack ? "bg-primary/5 border-primary/30" : "hover:bg-muted/50"}`}
-              onClick={() => setTrackForm(p => ({ ...p, isPolicyTrack: !p.isPolicyTrack }))}
+              onClick={() => setTrackForm(p => ({ ...p, isPolicyTrack: !p.isPolicyTrack, isUniversal: !p.isPolicyTrack ? p.isUniversal : false }))}
               data-testid="toggle-is-policy-track"
             >
               <div className="flex items-center gap-3">
@@ -943,6 +969,24 @@ export default function TrainingManagement() {
                 <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${trackForm.isPolicyTrack ? "left-5.5 translate-x-0.5" : "left-0.5"}`} />
               </div>
             </div>
+            {trackForm.isPolicyTrack && (
+              <div
+                className={`flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors ${trackForm.isUniversal ? "bg-amber-50 border-amber-300 dark:bg-amber-950/20 dark:border-amber-700" : "hover:bg-muted/50"}`}
+                onClick={() => setTrackForm(p => ({ ...p, isUniversal: !p.isUniversal }))}
+                data-testid="toggle-is-universal"
+              >
+                <div className="flex items-center gap-3">
+                  <Users className={`h-4 w-4 ${trackForm.isUniversal ? "text-amber-600" : "text-muted-foreground"}`} />
+                  <div>
+                    <p className="text-sm font-medium">Apply to All Roles (Universal)</p>
+                    <p className="text-xs text-muted-foreground">HR, managers, and admins must also sign this policy</p>
+                  </div>
+                </div>
+                <div className={`w-10 h-5 rounded-full transition-colors relative ${trackForm.isUniversal ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${trackForm.isUniversal ? "left-5.5 translate-x-0.5" : "left-0.5"}`} />
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTrackForm(false)}>Cancel</Button>

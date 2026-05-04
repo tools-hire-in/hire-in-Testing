@@ -1,8 +1,9 @@
 import { db } from "./db";
 import {
   learningTracks, trackSections, sectionQuizQuestions, sectionQuizOptions,
+  trackAssignments, adminUsers,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 interface SectionSeed {
   title: string;
@@ -1979,6 +1980,456 @@ A recruiter who disappears after placement loses the candidate's trust, increase
 };
 
 // ==========================================
+// UNIVERSAL POLICY TRACKS
+// ==========================================
+
+interface UniversalTrackSeed {
+  title: string;
+  description: string;
+  sections: SectionSeed[];
+}
+
+const BREAK_LEAVE_POLICY: UniversalTrackSeed = {
+  title: "Break & Leave Policy",
+  description: "All employees must read and acknowledge the organisation's leave entitlements, accrual rules, break entitlements, and procedures for requesting leave.",
+  sections: [
+    {
+      title: "Leave Types & Entitlements",
+      estimatedMinutes: 6,
+      minDwellSeconds: 60,
+      body: `## Leave Types & Entitlements
+
+This section covers the official leave types available to all employees at Hire'in Solutions and the entitlements attached to each.
+
+### Earned Leave (EL)
+- Accrual: 1.5 days per month, provided you have worked a minimum of **128 hours** in that calendar month.
+- Accrual begins after completing **30 days** of employment.
+- Carry-forward cap: Up to **15 days** may be carried forward into the next year. Unused days beyond the cap lapse at year-end.
+- EL must be applied for in advance except in genuine emergencies.
+
+### Sick Leave (SL)
+- Entitlement: **8 days per year**, accrued at approximately 0.67 days per month.
+- No minimum hours threshold — accrual begins after completing **30 days** of employment.
+- SL is intended for genuine illness. Supporting documentation (medical certificate) may be requested for absences of more than 2 consecutive days.
+- Unused SL does not carry forward.
+
+### Emergency Leave (EML)
+- Entitlement: **3 occurrences per year** (not days — each occurrence counts as one use regardless of duration up to 1 day).
+- EML is reserved for sudden, unforeseeable personal emergencies (serious illness of a close family member, bereavement, natural disaster).
+- You must notify your manager **before** your shift or within the first hour of it.
+- EML cannot be used for events that could have been planned in advance.
+
+### Loss of Pay (LWP)
+- When all paid leave balances are exhausted and absence is unavoidable, Loss of Pay (LWP) applies.
+- LWP days are deducted proportionally from your monthly salary.
+- Consistent LWP usage may trigger a performance discussion.
+
+### Public Holidays
+- All employees are entitled to the declared list of Public Holidays for the year.
+- Optional/Regional Holidays: A limited number of optional regional holidays are available. You may select up to **2 optional holidays per year** via the portal.
+- Working on a declared public holiday requires explicit manager approval and may attract compensatory arrangements per applicable law.
+
+### Unpaid Leave / Extended Absence
+- Any planned absence beyond your accrued leave balance must be approved by HR before the absence begins.
+- Extended unapproved absence may be treated as abandonment of employment.`,
+      quiz: {
+        questionText: "How many hours must you work in a month to qualify for Earned Leave accrual?",
+        explanation: "The EL accrual threshold is 128 hours in a calendar month. Months where you work fewer than 128 hours do not generate EL accrual for that month.",
+        options: [
+          { optionText: "80 hours", isCorrect: false },
+          { optionText: "100 hours", isCorrect: false },
+          { optionText: "128 hours", isCorrect: true },
+          { optionText: "160 hours", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Leave Application Process",
+      estimatedMinutes: 5,
+      minDwellSeconds: 50,
+      body: `## Leave Application Process
+
+### How to Apply for Leave
+
+All leave requests must be submitted through the **HR portal** (Leave section). Walk-in or WhatsApp-only requests are not valid leave applications and will not be processed.
+
+**Steps:**
+1. Log in to the portal and navigate to **Leave → Apply**.
+2. Select the leave type, start date, end date, and provide a brief reason.
+3. Submit the request. It will appear as **Pending** until actioned by your approver.
+4. You will receive an in-portal notification and email once your leave is approved or rejected.
+
+### Notice Periods for Leave Requests
+
+| Leave Type | Minimum Notice |
+|---|---|
+| Earned Leave (EL) | At least **3 working days** in advance |
+| Sick Leave (SL) | Same day before shift start, or within the first hour |
+| Emergency Leave (EML) | Before shift or within the first hour |
+| Extended leave (>3 days) | At least **7 working days** in advance |
+
+### Who Approves Your Leave
+
+- Your **immediate manager** is the primary approver for all leave requests.
+- In the absence of a manager, HR will action the request.
+- You should **not assume** a leave is approved until you see the Approved status in the portal.
+
+### Cancellation of Approved Leave
+
+- You may cancel approved leave **up to 24 hours before** the start date via the portal.
+- Cancellations on the day of or after leave start require manager coordination.
+
+### Conduct During Leave
+
+- You are not expected to be available during approved leave.
+- Contacting an employee on leave for non-emergency reasons is discouraged.
+- If you become unwell during EL, you may not convert the days retroactively to SL unless supported by documentation and approved by HR.`,
+      quiz: {
+        questionText: "You want to take 4 days of Earned Leave next week. What is the minimum notice you must give?",
+        explanation: "Earned Leave requires at least 3 working days' notice for short periods and 7 working days for extended absences (over 3 days). Since 4 days is over 3 days, 7 working days' advance notice is required.",
+        options: [
+          { optionText: "Same day", isCorrect: false },
+          { optionText: "3 working days in advance", isCorrect: false },
+          { optionText: "7 working days in advance", isCorrect: true },
+          { optionText: "No advance notice required", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Break Entitlements",
+      estimatedMinutes: 4,
+      minDwellSeconds: 45,
+      body: `## Break Entitlements
+
+All employees are entitled to the following paid breaks during their shift. Break time does not count against your working hours.
+
+### Lunch Break
+- **Duration:** 30 minutes
+- **Timing:** Typically between 1:00 PM and 3:00 PM (coordinate with your team so coverage is maintained).
+- Lunch break must be logged in the attendance system. You are expected to punch out when you begin your break and punch back in when you return.
+- **You may not skip your lunch break and leave 30 minutes early.** Breaks are not interchangeable with working hours.
+
+### Tea Breaks
+- **Duration:** 2 tea breaks of **10 minutes each** — one in the first half and one in the second half of your shift.
+- Tea breaks do not require punch-out but should not be extended beyond 10 minutes.
+- Back-to-back tea breaks or combining them into a single longer break is not permitted.
+
+### Break Policy Violations
+Taking unapproved extended breaks, combining breaks, or leaving early in lieu of breaks is a violation of attendance policy and may be flagged during performance reviews.
+
+### Remote Employees
+The same break entitlements apply to remote employees. You are on an honour system for your tea breaks. Lunch breaks must still be reflected accurately in your punch data.
+
+### Overtime
+If your manager requires you to work beyond your standard shift, the extended time is logged separately. You are still entitled to your standard breaks during any extended period.`,
+      quiz: {
+        questionText: "Which of the following is a correct statement about your lunch break?",
+        explanation: "Lunch breaks are 30 minutes and must be logged via punch-out/in. You cannot skip your break and use that time to leave earlier — breaks are not interchangeable with working hours.",
+        options: [
+          { optionText: "You can skip your lunch break and leave 30 minutes early if your work is done", isCorrect: false },
+          { optionText: "Lunch is 30 minutes and must be logged by punching out and back in", isCorrect: true },
+          { optionText: "You can combine both tea breaks into a longer lunch break", isCorrect: false },
+          { optionText: "Breaks are optional if you are busy", isCorrect: false },
+        ],
+      },
+    },
+  ],
+};
+
+const SHIFT_SETUP_GUIDE: UniversalTrackSeed = {
+  title: "Shift Setup Guide",
+  description: "All employees must understand how shifts are configured, assigned, and managed in the HR portal.",
+  sections: [
+    {
+      title: "Understanding Shift Configuration",
+      estimatedMinutes: 5,
+      minDwellSeconds: 50,
+      body: `## Understanding Shift Configuration
+
+A **shift** defines the working hours you are expected to be present and productive. Shifts are configured and managed by HR and your manager in the HR portal.
+
+### What a Shift Contains
+
+Each shift record includes:
+- **Shift Name** — a label identifying the shift (e.g., "Morning Shift", "General", "US Shift")
+- **Start Time** — the time your working hours begin
+- **End Time** — the time your working hours end
+- **Grace Period** — a buffer (typically 10–15 minutes) after the official start time within which a punch-in is not counted as late
+- **Working Days** — the days of the week the shift applies to (e.g., Monday–Saturday)
+
+### How Shifts Are Assigned
+
+- Shifts are assigned to you by HR or your manager at the time of onboarding or when your schedule changes.
+- Your active shift determines what counts as on-time, late, absent, or overtime in the attendance system.
+- You can view your assigned shift in the **HR portal → My Profile → Shift** section.
+
+### Shift Changes
+
+- If your role or project requires a shift change, your manager must request the change formally through HR.
+- Ad hoc changes (e.g., coming in 2 hours later on a particular day) must be communicated to your manager **in advance** and are not the same as a formal shift change.
+- Consistent deviation from your assigned shift without approval will be reflected as attendance irregularities.
+
+### Night Shifts
+
+- Night shifts are defined as any working hours between **9:00 PM and 7:00 AM IST**.
+- Female employees assigned to night shifts are required to provide explicit written consent annually (Night Shift Consent, a separate requirement).
+- Night shift employees must be given advance notice of at least 24 hours before a night assignment begins.`,
+      quiz: {
+        questionText: "Where can you view your currently assigned shift?",
+        explanation: "Your active shift is visible in the HR portal under My Profile → Shift section. This is the authoritative record for your working hours.",
+        options: [
+          { optionText: "By asking HR directly every day", isCorrect: false },
+          { optionText: "In the HR portal under My Profile → Shift section", isCorrect: true },
+          { optionText: "On the company notice board", isCorrect: false },
+          { optionText: "It cannot be viewed — only HR knows your shift", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Attendance Expectations & Tardiness",
+      estimatedMinutes: 5,
+      minDwellSeconds: 50,
+      body: `## Attendance Expectations & Tardiness
+
+Attendance discipline is taken seriously at Hire'in Solutions. Your shift is your commitment to the team and to our clients.
+
+### On-Time Expectation
+
+- You are expected to punch in **before or at** your shift's start time.
+- A **grace period** (typically 10–15 minutes) is configured on your shift. Punching in within the grace period will not mark you late — but this is not a routine entitlement. Consistent use of the grace period will be noted.
+
+### What Counts as Late
+
+- Any punch-in **after** the grace period ends is marked as **Late** in the system.
+- Late arrivals affect your attendance percentage, which is considered in salary calculations and performance reviews.
+
+### What Counts as Absent
+
+- No punch-in recorded for a working day = **Absent**.
+- If you are unwell or have an emergency, you must still raise a leave request from the portal on the same day. The system will not automatically convert absent marks to leave.
+
+### Half-Day Attendance
+
+- Working fewer than half your standard shift hours is counted as a **Half Day**.
+- Half-day leave requests must be submitted in advance through the portal.
+
+### Regularisation Requests
+
+- If you punched in late, forgot to punch out, or had a technical issue with the attendance system, you may raise a **Regularisation Ticket** through the portal within 3 working days.
+- Regularisation requests are reviewed by HR and are not guaranteed approval. Frequent regularisations may indicate attendance discipline issues.
+
+### Expectations During Your Shift
+
+- You are expected to be reachable on Microsoft Teams during working hours.
+- Stepping away from your workstation for more than 15 minutes (outside of scheduled breaks) must be communicated to your team.`,
+      quiz: {
+        questionText: "You forgot to punch out at the end of your shift yesterday. What should you do?",
+        explanation: "If you missed a punch-out, you must raise a Regularisation Ticket in the portal within 3 working days. HR will review and correct the record. You should not expect the system to auto-correct missed punch events.",
+        options: [
+          { optionText: "Do nothing — the system will auto-correct it", isCorrect: false },
+          { optionText: "Tell your manager verbally and assume it's resolved", isCorrect: false },
+          { optionText: "Raise a Regularisation Ticket in the portal within 3 working days", isCorrect: true },
+          { optionText: "Edit your attendance record directly in the portal", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Working from Home & Remote Shifts",
+      estimatedMinutes: 4,
+      minDwellSeconds: 40,
+      body: `## Working from Home & Remote Shifts
+
+Hire'in Solutions operates with a remote-first model for most roles. Whether you are working from the office or from home, your attendance and shift obligations remain identical.
+
+### Attendance Rules for Remote Employees
+
+- **Punch-in and punch-out** are mandatory regardless of where you are working from.
+- The attendance system does not distinguish between WFH and in-office — both are subject to the same shift rules.
+- You are responsible for ensuring your internet connection and equipment are functioning before your shift begins. Technical failures do not automatically excuse late punch-ins.
+
+### Availability During Remote Shifts
+
+- You must be active and responsive on **Microsoft Teams** during your shift hours.
+- Status should be set to **Available** when you are at your workstation and ready to work.
+- Going offline without notice during working hours (outside of scheduled breaks) is treated the same as leaving the office without permission.
+
+### Video Calls & Meetings
+
+- For team meetings, client calls, or manager check-ins, you are expected to attend with video on unless the meeting host specifies otherwise.
+- Background should be professional and you should be in a quiet environment.
+
+### WFH Day Requests
+
+- Working from home is the default for most employees.
+- If your contract requires office attendance on specific days, deviating from that (without approval) must be covered by leave or agreed with your manager in advance.
+
+### Equipment & Connectivity Responsibility
+
+You are responsible for:
+- A stable internet connection sufficient for Teams calls and portal access.
+- Your own hardware in working condition.
+- Notifying HR if your equipment fails and you cannot work — this should be done on the same day, not retrospectively.`,
+      quiz: {
+        questionText: "You are working from home and your internet drops for 2 hours mid-shift. What is the correct action?",
+        explanation: "You must notify your manager as soon as possible when connectivity issues affect your shift. If the outage causes you to miss work, it may need to be covered by leave. Retroactive explanations without same-day notification are not accepted.",
+        options: [
+          { optionText: "It doesn't matter — WFH attendance is not tracked", isCorrect: false },
+          { optionText: "Notify your manager immediately when the issue occurs, and apply leave if needed", isCorrect: true },
+          { optionText: "Explain it the next day — no immediate action needed", isCorrect: false },
+          { optionText: "Extend your shift the next day to compensate", isCorrect: false },
+        ],
+      },
+    },
+  ],
+};
+
+const PUNCH_IN_OUT_GUIDE: UniversalTrackSeed = {
+  title: "Punch In / Punch Out & Breaks Guide",
+  description: "All employees must understand how to use the punch-in/out system, how breaks are recorded, and what the attendance data means for their payroll.",
+  sections: [
+    {
+      title: "How to Punch In & Punch Out",
+      estimatedMinutes: 4,
+      minDwellSeconds: 45,
+      body: `## How to Punch In & Punch Out
+
+The attendance system records your actual working hours through a punch-in / punch-out process. Accurate punching is your personal responsibility.
+
+### Where to Punch
+
+Log in to the **HR portal** and navigate to **My Work → Attendance** (or the Punch button on your dashboard). The system uses your login session and timestamp — no biometric device is required for remote employees.
+
+### Punching In
+
+- Click **Punch In** at the start of your shift.
+- The system records the exact timestamp. Ensure you punch in **before or within the grace period** of your shift start time.
+- Do **not** ask a colleague to punch in on your behalf. Proxy punching is a serious violation of attendance policy and may result in disciplinary action.
+
+### Punching Out
+
+- Click **Punch Out** at the end of your working day, **after** you have finished all tasks and closed your work applications.
+- Do not punch out and then continue working — your recorded hours must reflect your actual time at work.
+- Always punch out before logging off for the day.
+
+### Forgetting to Punch
+
+- If you forget to punch in or out, raise a **Regularisation Ticket** in the portal within 3 working days with the correct timestamps and reason.
+- Regularisation is subject to manager and HR approval. Frequent missed punches will be flagged.
+
+### Double Punching
+
+- The system prevents duplicate punch-in events. If you punch in again after already being punched in, it will be treated as a punch-out.
+- Check your current attendance status on the dashboard before punching.`,
+      quiz: {
+        questionText: "A colleague is running late and asks you to punch them in so their record doesn't show as late. What should you do?",
+        explanation: "Punching in on behalf of another employee (proxy punching) is a serious attendance policy violation and can result in disciplinary action for both parties. Your colleague must raise a regularisation request if they arrive late.",
+        options: [
+          { optionText: "Punch them in — it's a small favour", isCorrect: false },
+          { optionText: "Refuse — proxy punching is a serious violation of attendance policy", isCorrect: true },
+          { optionText: "Ask your manager first and then punch them in if approved", isCorrect: false },
+          { optionText: "Only do it if they are less than 15 minutes late", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Recording Breaks in the Attendance System",
+      estimatedMinutes: 4,
+      minDwellSeconds: 45,
+      body: `## Recording Breaks in the Attendance System
+
+Breaks are entitlements, not optional gaps. You must record your lunch break accurately in the attendance system. Here is how.
+
+### Lunch Break (30 Minutes)
+
+When you begin your lunch break:
+1. Navigate to **My Work → Attendance** in the portal.
+2. Click **Punch Out** (or the Break button if your interface shows one) to mark the start of your break.
+3. When you return, click **Punch In** to resume recording your working time.
+
+Your total working hours for the day will automatically exclude the break time between your break punch-out and punch-in.
+
+### Why This Matters
+
+- Your payable hours are calculated from your punch data. If you do not record your break, your hours will appear inflated.
+- Conversely, if you forget to punch back in after your break, your record will show an early end to your shift.
+- Both situations may require a regularisation request to correct.
+
+### Tea Breaks (2 × 10 Minutes)
+
+- Tea breaks do **not** require a punch-out. They are short pauses and operate on an honour system.
+- Do not extend tea breaks beyond 10 minutes. Consecutive or combined tea breaks that substantially exceed this will be treated as an unapproved extended absence.
+
+### After-Hours Work
+
+- If you are required to work beyond your shift end time, continue working without punching out. Punch out only when you have genuinely finished.
+- Overtime must be pre-approved by your manager. Working late without approval does not automatically entitle you to compensatory leave or pay.`,
+      quiz: {
+        questionText: "You return from lunch but forgot to punch back in. You realise this 2 hours later. What is the correct action?",
+        explanation: "Forgotten punches must be corrected by raising a Regularisation Ticket within 3 working days. Provide the actual time you returned from lunch as the punch-in time. HR will review and correct the record.",
+        options: [
+          { optionText: "Punch in now and let the system handle the rest", isCorrect: false },
+          { optionText: "Raise a Regularisation Ticket with the actual return-from-break time", isCorrect: true },
+          { optionText: "Do nothing — it will average out over time", isCorrect: false },
+          { optionText: "Ask your manager to fix it for you directly in the system", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Attendance Data & Payroll Impact",
+      estimatedMinutes: 5,
+      minDwellSeconds: 50,
+      body: `## Attendance Data & Payroll Impact
+
+Your punch records are directly used in payroll calculations every month. Understanding this connection helps you avoid surprises on your salary slip.
+
+### How Attendance Affects Your Salary
+
+At the end of each month, your attendance data is used to calculate:
+
+1. **Days Present** — the number of days where you have a valid punch-in (meeting shift expectations).
+2. **Days Absent** — days with no punch record and no approved leave.
+3. **Loss of Pay (LWP)** — absent days that are not covered by paid leave. LWP days are deducted from your gross salary proportionally.
+4. **Leave Balance Consumption** — approved leave is deducted from your leave balance, not from your pay.
+
+### LWP Calculation Example
+
+If your monthly salary is ₹30,000 and the month has 26 working days, each working day is worth approximately ₹1,154. If you have 2 LWP days, ₹2,308 is deducted from your gross salary.
+
+### Attendance Percentage
+
+Your attendance percentage (days present / total working days × 100) is visible on your profile and salary slip. It is also considered in performance reviews.
+
+### How to Check Your Attendance Record
+
+1. Log in to the portal and navigate to **My Work → Attendance**.
+2. You can view your daily punch history, total hours, and status for each day.
+3. Discrepancies must be raised via a **Regularisation Ticket** within 3 working days of the date in question.
+
+### Salary Slip Access
+
+Your monthly salary slip is available in the portal at **My Profile → Salary Slips** after payroll is processed. The slip shows:
+- Basic salary
+- Gross salary
+- Approved leaves consumed
+- LWP days and the corresponding deduction
+- Net payable amount
+
+If you believe your salary slip contains an error, raise the issue with HR within 7 days of the slip being published.`,
+      quiz: {
+        questionText: "You were absent for 3 days last month with no approved leave. How does this affect your salary?",
+        explanation: "Absent days not covered by paid leave are treated as Loss of Pay (LWP). The equivalent daily salary value for each LWP day is deducted from your gross monthly salary proportionally based on the number of working days in the month.",
+        options: [
+          { optionText: "No effect — absent days only affect your leave balance", isCorrect: false },
+          { optionText: "A proportional deduction (LWP) is made from your gross salary for each absent day", isCorrect: true },
+          { optionText: "Your salary is halved for that month", isCorrect: false },
+          { optionText: "You receive a warning but no salary deduction", isCorrect: false },
+        ],
+      },
+    },
+  ],
+};
+
+// ==========================================
 // SEED FUNCTIONS
 // ==========================================
 
@@ -2010,6 +2461,72 @@ async function insertSectionWithQuiz(
       orderIndex: idx,
     }))
   );
+}
+
+export async function seedUniversalPolicies(createdBy: string): Promise<{ created: string[]; skipped: string[]; assigned: number; assignSkipped: number }> {
+  const universalTracks = [BREAK_LEAVE_POLICY, SHIFT_SETUP_GUIDE, PUNCH_IN_OUT_GUIDE];
+  const created: string[] = [];
+  const skipped: string[] = [];
+  let assigned = 0;
+  let assignSkipped = 0;
+
+  // Get all active users
+  const allUsers = await db.select({ id: adminUsers.id }).from(adminUsers)
+    .where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+
+  for (const trackSeed of universalTracks) {
+    const existing = await db.select().from(learningTracks)
+      .where(eq(learningTracks.title, trackSeed.title));
+
+    let trackId: string;
+
+    if (existing.length > 0) {
+      skipped.push(trackSeed.title);
+      trackId = existing[0].id;
+      // Ensure the track is marked as universal and published
+      await db.update(learningTracks)
+        .set({ isPolicyTrack: true, isUniversal: true, status: "published" })
+        .where(eq(learningTracks.id, trackId));
+    } else {
+      const [track] = await db.insert(learningTracks).values({
+        title: trackSeed.title,
+        description: trackSeed.description,
+        targetRole: null,
+        status: "published",
+        isPolicyTrack: true,
+        isUniversal: true,
+        publishedAt: new Date(),
+        versionNumber: 1,
+        createdBy,
+      }).returning();
+
+      trackId = track.id;
+
+      for (let i = 0; i < trackSeed.sections.length; i++) {
+        await insertSectionWithQuiz(trackId, trackSeed.sections[i], i);
+      }
+
+      created.push(trackSeed.title);
+    }
+
+    // Assign to all active users
+    for (const user of allUsers) {
+      const [existingAssignment] = await db.select().from(trackAssignments)
+        .where(and(eq(trackAssignments.trackId, trackId), eq(trackAssignments.userId, user.id)));
+      if (existingAssignment) { assignSkipped++; continue; }
+
+      await db.insert(trackAssignments).values({
+        trackId,
+        userId: user.id,
+        assignedBy: createdBy,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        status: "not_started",
+      });
+      assigned++;
+    }
+  }
+
+  return { created, skipped, assigned, assignSkipped };
 }
 
 export async function seedOnboardingContent(createdBy: string): Promise<{ created: string[]; skipped: string[] }> {

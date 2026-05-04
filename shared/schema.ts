@@ -920,6 +920,7 @@ export const learningTracks = pgTable("learning_tracks", {
   version: varchar("version").notNull().default("1.0"),
   status: varchar("status").notNull().default("draft"), // draft | published | archived
   isPolicyTrack: boolean("is_policy_track").notNull().default(false),
+  isUniversal: boolean("is_universal").notNull().default(false),
   versionNumber: integer("version_number").notNull().default(1),
   publishedAt: timestamp("published_at"),
   createdBy: varchar("created_by").references(() => adminUsers.id),
