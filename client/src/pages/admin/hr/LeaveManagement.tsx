@@ -177,6 +177,17 @@ export default function LeaveManagement() {
     retry: false,
   });
 
+  const { data: myShiftData } = useQuery<{
+    name: string;
+    istStart: string;
+    istEnd: string;
+  } | null>({
+    queryKey: ["/api/hr/my-shift"],
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   const { data: holidays } = useQuery<{ id: string; date: string; name: string }[]>({
     queryKey: ["/api/hr/holidays"],
     enabled: isAuthenticated && activeTab === "apply",
@@ -317,12 +328,19 @@ export default function LeaveManagement() {
   const employeeId: string | undefined = user?.employeeId ?? undefined;
   const salary: string | undefined = user?.salary ?? undefined;
 
-  const hasActiveNightShift = nightShiftConsent?.required === true && nightShiftConsent?.status === "valid";
-  const shiftName: string | undefined = hasActiveNightShift ? nightShiftConsent?.shiftName : undefined;
+  function formatHHMMLeave(t: string): string {
+    const [h, m] = t.split(":").map(Number);
+    const period = h >= 12 ? "PM" : "AM";
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+  }
 
   const subtitleParts: string[] = [];
   if (employeeId) subtitleParts.push(employeeId);
-  if (shiftName) subtitleParts.push(shiftName);
+  if (myShiftData?.name) {
+    const timing = `${formatHHMMLeave(myShiftData.istStart)} – ${formatHHMMLeave(myShiftData.istEnd)} IST`;
+    subtitleParts.push(`${myShiftData.name} · ${timing}`);
+  }
   const headerSubtitle = subtitleParts.length > 0 ? subtitleParts.join(" · ") : "Employee Leave Portal";
 
   const salaryNum = salary ? Number(salary) : NaN;

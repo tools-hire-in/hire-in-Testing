@@ -22,6 +22,8 @@ interface TeamMember {
   email: string;
   designation: string | null;
   departmentId: string | null;
+  shiftName: string | null;
+  expectedStart: string | null;
 }
 
 interface AttendanceRecord {
@@ -315,6 +317,7 @@ export default function TeamAttendance() {
                     <tr className="border-b">
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Employee</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Designation</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Shift</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch In</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch Out</th>
                       <th className="text-left py-3 px-2 font-medium text-muted-foreground">Duration</th>
@@ -341,6 +344,16 @@ export default function TeamAttendance() {
                             </div>
                           </td>
                           <td className="py-2 px-2 text-muted-foreground">{member.designation || "-"}</td>
+                          <td className="py-2 px-2">
+                            {member.shiftName ? (
+                              <div>
+                                <span className="text-xs font-medium" data-testid={`text-shift-name-${member.id}`}>{member.shiftName}</span>
+                                {member.expectedStart && (
+                                  <p className="text-xs text-muted-foreground">{member.expectedStart.slice(0, 5)}</p>
+                                )}
+                              </div>
+                            ) : <span className="text-muted-foreground text-xs">—</span>}
+                          </td>
                           <td className="py-2 px-2">
                             {att?.punchIn ? (
                               <span className="text-green-600 dark:text-green-400 font-medium">{formatTime(att.punchIn)}</span>
@@ -380,12 +393,29 @@ export default function TeamAttendance() {
                             </td>
                           )}
                           <td className="py-2 px-2">
-                            <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
-                              {effectiveStatus === "working" && "Working"}
-                              {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
-                              {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
-                              {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
-                            </Badge>
+                            <div className="space-y-1">
+                              <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
+                                {effectiveStatus === "working" && "Working"}
+                                {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
+                                {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
+                                {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
+                              </Badge>
+                              {isToday && effectiveStatus === "absent" && member.expectedStart && !att?.punchIn && (() => {
+                                const [h, m] = member.expectedStart.split(":").map(Number);
+                                const expectedMins = h * 60 + m;
+                                const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+                                if (nowMins > expectedMins) {
+                                  const hr12 = h % 12 || 12;
+                                  const period = h >= 12 ? "PM" : "AM";
+                                  return (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`text-expected-at-${member.id}`}>
+                                      Expected at {hr12}:{String(m).padStart(2,"0")} {period}
+                                    </p>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           </td>
                         </tr>
                       );

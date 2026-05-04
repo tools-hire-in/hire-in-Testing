@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Coffee, UtensilsCrossed, Timer, Info, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Coffee, UtensilsCrossed, Timer, Info, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,6 +18,18 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
+interface ShiftBreakInfo {
+  name: string;
+  istStart: string;
+  istEnd: string;
+  tea1WindowStart: string;
+  tea1WindowEnd: string;
+  lunchWindowStart: string;
+  lunchWindowEnd: string;
+  tea2WindowStart: string;
+  tea2WindowEnd: string;
+}
+
 interface BreakStatus {
   breaks: BreakRecord[];
   totalMinutes: number;
@@ -27,6 +39,7 @@ interface BreakStatus {
   entitlement: { lunch: number; tea: number; teaCount: number; total: number };
   lunchCount: number;
   teaCount: number;
+  shift: ShiftBreakInfo | null;
 }
 
 interface BreakRecord {
@@ -53,6 +66,13 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+function formatHHMM(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 function getFirstAvailable(lunchCount: number, teaCount: number): "lunch" | "tea" | null {
   if (lunchCount < 1) return "lunch";
   if (teaCount < 2) return "tea";
@@ -71,7 +91,6 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
     refetchInterval: (query) => (query.state.data?.activeBreak ? 10000 : 30000),
   });
 
-  // Auto-select the first available break type on mount and when status changes
   useEffect(() => {
     if (!breakStatus) return;
     const available = getFirstAvailable(breakStatus.lunchCount, breakStatus.teaCount);
@@ -140,18 +159,40 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
     (breakType === "tea" && teaDone) ||
     !!active;
 
-  // Elapsed minutes for current break to show warning
   const elapsedMs = active ? Date.now() - new Date(active.startedAt).getTime() : 0;
   const elapsedMin = elapsedMs / 60000;
   const allocated = active?.breakType === "lunch" ? 30 : 15;
   const isNearLimit = active && elapsedMin > allocated * 0.8;
   const isOverLimit = active && elapsedMin > allocated;
 
-  // Completed breaks for history
   const completedBreaks = (breakStatus?.breaks ?? []).filter(r => r.endedAt);
+  const shift = breakStatus?.shift ?? null;
+
+  const getBreakWindow = (type: "lunch" | "tea", index?: number): string | null => {
+    if (!shift) return null;
+    if (type === "lunch") {
+      return `${formatHHMM(shift.lunchWindowStart)} – ${formatHHMM(shift.lunchWindowEnd)}`;
+    }
+    if (index === 0 || teaCount === 0) {
+      return `${formatHHMM(shift.tea1WindowStart)} – ${formatHHMM(shift.tea1WindowEnd)}`;
+    }
+    return `${formatHHMM(shift.tea2WindowStart)} – ${formatHHMM(shift.tea2WindowEnd)}`;
+  };
 
   return (
     <div className="space-y-3">
+      {/* Shift timing header */}
+      {shift && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5" data-testid="panel-shift-timing">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            <span className="font-medium text-foreground">{shift.name}</span>
+            {" · "}
+            {formatHHMM(shift.istStart)} – {formatHHMM(shift.istEnd)}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted-foreground">Breaks</span>
         <Tooltip>
@@ -160,13 +201,24 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
               <Info className="h-4 w-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent className="max-w-56 text-xs" side="left">
+          <TooltipContent className="max-w-64 text-xs" side="left">
             <p className="font-semibold mb-1">Break Policy</p>
+            {shift && (
+              <p className="text-muted-foreground mb-1">{shift.name} · {formatHHMM(shift.istStart)} – {formatHHMM(shift.istEnd)}</p>
+            )}
             <ul className="space-y-0.5 list-disc list-inside text-muted-foreground">
               <li>Lunch: 1× up to 30 min {lunchCount >= 1 ? `· ${lunchCount} of 1 used` : ""}</li>
               <li>Tea: 2× up to 15 min each · {teaCount} of 2 used</li>
               <li>Total: up to 60 min/day</li>
             </ul>
+            {shift && (
+              <div className="mt-1.5 space-y-0.5 text-muted-foreground">
+                <p className="font-medium text-foreground/80">Suggested windows:</p>
+                <p>Tea 1: {formatHHMM(shift.tea1WindowStart)} – {formatHHMM(shift.tea1WindowEnd)}</p>
+                <p>Lunch: {formatHHMM(shift.lunchWindowStart)} – {formatHHMM(shift.lunchWindowEnd)}</p>
+                <p>Tea 2: {formatHHMM(shift.tea2WindowStart)} – {formatHHMM(shift.tea2WindowEnd)}</p>
+              </div>
+            )}
             <p className="mt-1 text-muted-foreground">Going over is noted — not blocked.</p>
           </TooltipContent>
         </Tooltip>
@@ -259,6 +311,20 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
               {startMutation.isPending ? "Starting..." : "Start"}
             </Button>
           </div>
+          {/* Break window hint */}
+          {!lunchDone && breakType === "lunch" && shift && (
+            <p className="text-xs text-muted-foreground" data-testid="text-break-window-lunch">
+              Window: {formatHHMM(shift.lunchWindowStart)} – {formatHHMM(shift.lunchWindowEnd)}
+            </p>
+          )}
+          {breakType === "tea" && !teaDone && shift && (
+            <p className="text-xs text-muted-foreground" data-testid="text-break-window-tea">
+              Window: {teaCount === 0
+                ? `${formatHHMM(shift.tea1WindowStart)} – ${formatHHMM(shift.tea1WindowEnd)}`
+                : `${formatHHMM(shift.tea2WindowStart)} – ${formatHHMM(shift.tea2WindowEnd)}`
+              }
+            </p>
+          )}
           {/* Inline availability message */}
           {breakType === "lunch" && lunchDone && (
             <p className="text-xs text-muted-foreground" data-testid="text-lunch-taken">

@@ -1851,9 +1851,69 @@ export async function registerRoutes(
       const activeBreak = records.find(r => !r.endedAt) || null;
       const lunchTaken = records.filter(r => r.breakType === "lunch" && r.endedAt);
       const teaTaken = records.filter(r => r.breakType === "tea" && r.endedAt);
-      // Count includes active break so the frontend can accurately reflect in-progress usage
       const lunchCount = records.filter(r => r.breakType === "lunch").length;
       const teaCount = records.filter(r => r.breakType === "tea").length;
+
+      // Fetch shift details for this user
+      let shiftInfo: {
+        name: string;
+        istStart: string;
+        istEnd: string;
+        tea1WindowStart: string;
+        tea1WindowEnd: string;
+        lunchWindowStart: string;
+        lunchWindowEnd: string;
+        tea2WindowStart: string;
+        tea2WindowEnd: string;
+      } | null = null;
+
+      const userShiftRow = await db.execute(sql`
+        SELECT u.shift_id, s.name, s.ist_start_dst, s.ist_end_dst, s.ist_start_std, s.ist_end_std, s.scheduled_hours
+        FROM admin_users u
+        LEFT JOIN shifts s ON s.id = u.shift_id AND s.is_active = true
+        WHERE u.id = ${userId} LIMIT 1
+      `);
+
+      if (userShiftRow.rows.length > 0) {
+        const row = userShiftRow.rows[0] as any;
+        if (row.shift_id && row.name) {
+          const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+          const istDate = new Date(Date.now() + IST_OFFSET_MS);
+          const todayStr = istDate.toISOString().slice(0, 10);
+          const year = parseInt(todayStr.slice(0, 4), 10);
+          const dstRows = await db.execute(sql`
+            SELECT spring_forward_date, fall_back_date FROM dst_config WHERE year = ${year} LIMIT 1
+          `);
+          let isDst = false;
+          if (dstRows.rows.length > 0) {
+            const dr = dstRows.rows[0] as any;
+            isDst = todayStr >= dr.spring_forward_date && todayStr < dr.fall_back_date;
+          }
+          const istStart: string = isDst ? row.ist_start_dst : row.ist_start_std;
+          const istEnd: string = isDst ? row.ist_end_dst : row.ist_end_std;
+
+          // Compute break windows
+          const startMins = (function parseT(t: string) { const [h, m] = t.split(":").map(Number); return h * 60 + m; })(istStart);
+          let endMins = (function parseT(t: string) { const [h, m] = t.split(":").map(Number); return h * 60 + m; })(istEnd);
+          if (endMins <= startMins) endMins += 1440;
+          const duration = endMins - startMins;
+          const midMins = startMins + Math.floor(duration / 2);
+          const fmtM = (m: number) => { const n = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(n / 60)).padStart(2,"0")}:${String(n % 60).padStart(2,"0")}`; };
+
+          shiftInfo = {
+            name: row.name,
+            istStart,
+            istEnd,
+            tea1WindowStart: fmtM(startMins + 90),
+            tea1WindowEnd: fmtM(midMins),
+            lunchWindowStart: fmtM(midMins - 30),
+            lunchWindowEnd: fmtM(midMins + 30),
+            tea2WindowStart: fmtM(midMins),
+            tea2WindowEnd: fmtM(endMins - 90),
+          };
+        }
+      }
+
       res.json({
         breaks: records,
         totalMinutes,
@@ -1863,6 +1923,7 @@ export async function registerRoutes(
         entitlement: { lunch: 30, tea: 15, teaCount: 2, total: 60 },
         lunchCount,
         teaCount,
+        shift: shiftInfo,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch break records" });
@@ -2583,10 +2644,40 @@ export async function registerRoutes(
       const memberIds = teamMembers.map(m => m.id);
       const attendanceRecords = await storage.getAttendanceByTeam(memberIds, date);
 
+      // Fetch shift info for all team members in one query
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(Date.now() + IST_OFFSET_MS);
+      const todayStr = istNow.toISOString().slice(0, 10);
+      const year = parseInt(todayStr.slice(0, 4), 10);
+      const dstRowsTeam = await db.execute(sql`SELECT spring_forward_date, fall_back_date FROM dst_config WHERE year = ${year} LIMIT 1`);
+      let isDstTeam = false;
+      if (dstRowsTeam.rows.length > 0) {
+        const dr = dstRowsTeam.rows[0] as any;
+        isDstTeam = todayStr >= dr.spring_forward_date && todayStr < dr.fall_back_date;
+      }
+      const shiftMap: Record<string, { shiftName: string; expectedStart: string }> = {};
+      if (memberIds.length > 0) {
+        const shiftRows = await db.execute(sql`
+          SELECT u.id as user_id, s.name as shift_name,
+                 s.ist_start_dst, s.ist_start_std
+          FROM admin_users u
+          JOIN shifts s ON s.id = u.shift_id AND s.is_active = true
+          WHERE u.id = ANY(${memberIds})
+        `);
+        for (const row of shiftRows.rows as any[]) {
+          shiftMap[row.user_id] = {
+            shiftName: row.shift_name,
+            expectedStart: isDstTeam ? row.ist_start_dst : row.ist_start_std,
+          };
+        }
+      }
+
       res.json({
         members: teamMembers.map(m => ({
           id: m.id, firstName: m.firstName, lastName: m.lastName, email: m.email,
-          designation: m.designation, departmentId: m.departmentId
+          designation: m.designation, departmentId: m.departmentId,
+          shiftName: shiftMap[m.id]?.shiftName || null,
+          expectedStart: shiftMap[m.id]?.expectedStart || null,
         })),
         attendance: attendanceRecords
       });
@@ -6520,6 +6611,90 @@ export async function registerRoutes(
   // ==========================================
   // SHIFT SYSTEM ROUTES
   // ==========================================
+
+  // Helper: parse "HH:MM" to minutes from midnight
+  function parseTimeToMinutes(t: string): number {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  // Helper: format minutes from midnight to "HH:MM" (handles >24h cross-midnight)
+  function formatMinutesToTime(mins: number): string {
+    const m = ((mins % 1440) + 1440) % 1440;
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+
+  // GET /api/hr/my-shift — returns logged-in employee's shift + DST-resolved timing + upcoming DST transition
+  app.get("/api/hr/my-shift", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(Date.now() + IST_OFFSET_MS);
+      const todayStr = istDate.toISOString().slice(0, 10);
+      const year = parseInt(todayStr.slice(0, 4), 10);
+
+      const userRows = await db.execute(sql`
+        SELECT shift_id FROM admin_users WHERE id = ${userId} LIMIT 1
+      `);
+      if (userRows.rows.length === 0 || !(userRows.rows[0] as any).shift_id) {
+        return res.json(null);
+      }
+      const shiftId = (userRows.rows[0] as any).shift_id as string;
+
+      const dstRows = await db.execute(sql`
+        SELECT spring_forward_date, fall_back_date FROM dst_config WHERE year = ${year} LIMIT 1
+      `);
+      let isDst = false;
+      let springForwardDate: string | null = null;
+      let fallBackDate: string | null = null;
+      if (dstRows.rows.length > 0) {
+        const dr = dstRows.rows[0] as { spring_forward_date: string; fall_back_date: string };
+        springForwardDate = dr.spring_forward_date;
+        fallBackDate = dr.fall_back_date;
+        isDst = todayStr >= dr.spring_forward_date && todayStr < dr.fall_back_date;
+      }
+
+      const shiftRows = await db.execute(sql`
+        SELECT id, name, display_label, us_coverage,
+               ist_start_dst, ist_end_dst, ist_start_std, ist_end_std, scheduled_hours
+        FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1
+      `);
+      if (shiftRows.rows.length === 0) return res.json(null);
+      const s = shiftRows.rows[0] as any;
+
+      const istStart = isDst ? s.ist_start_dst : s.ist_start_std;
+      const istEnd = isDst ? s.ist_end_dst : s.ist_end_std;
+
+      // Check for DST transition within the next 14 days
+      let dstTransition: { date: string; newStart: string; newEnd: string } | null = null;
+      if (springForwardDate || fallBackDate) {
+        const todayMs = istDate.setHours(0, 0, 0, 0);
+        const in14Days = new Date(todayMs + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        if (springForwardDate && springForwardDate > todayStr && springForwardDate <= in14Days) {
+          dstTransition = { date: springForwardDate, newStart: s.ist_start_dst, newEnd: s.ist_end_dst };
+        } else if (fallBackDate && fallBackDate > todayStr && fallBackDate <= in14Days) {
+          dstTransition = { date: fallBackDate, newStart: s.ist_start_std, newEnd: s.ist_end_std };
+        }
+      }
+
+      res.json({
+        id: s.id,
+        name: s.name,
+        displayLabel: s.display_label,
+        usCoverage: s.us_coverage,
+        istStart,
+        istEnd,
+        isDst,
+        scheduledHours: s.scheduled_hours,
+        dstTransition,
+      });
+    } catch (error) {
+      console.error("Get my-shift error:", error);
+      res.status(500).json({ error: "Failed to fetch shift" });
+    }
+  });
 
   app.get("/api/hr/shifts", requireRole("hr", "manager"), async (req, res) => {
     try {

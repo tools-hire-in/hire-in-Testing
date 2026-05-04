@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -16,6 +16,8 @@ import {
   Users,
   FileCheck,
   Coffee,
+  Sun,
+  X,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +49,30 @@ interface DashboardStats {
   }>;
 }
 
+interface MyShift {
+  id: string;
+  name: string;
+  displayLabel: string;
+  usCoverage: string;
+  istStart: string;
+  istEnd: string;
+  isDst: boolean;
+  scheduledHours: number;
+  dstTransition: { date: string; newStart: string; newEnd: string } | null;
+}
+
+interface BreakStatusForDashboard {
+  lunchCount: number;
+  teaCount: number;
+}
+
+function formatHHMMShift(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 interface LeaveType {
   id: string;
   name: string;
@@ -57,6 +83,7 @@ export default function HRDashboard() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
+  const [lunchReminderDismissed, setLunchReminderDismissed] = useState(false);
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -166,6 +193,25 @@ export default function HRDashboard() {
   const dayComplete = stats?.todayStatus === "completed";
 
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
+  const isEmployeeOnly = !isManagerRole;
+
+  const { data: myShift } = useQuery<MyShift | null>({
+    queryKey: ["/api/hr/my-shift"],
+    enabled: isAuthenticated && isEmployeeOnly,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: breakStatusForDash } = useQuery<BreakStatusForDashboard>({
+    queryKey: ["/api/hr/attendance/breaks/today"],
+    enabled: isAuthenticated && punchedIn,
+    refetchInterval: 60000,
+    select: (d: any) => ({ lunchCount: d.lunchCount ?? 0, teaCount: d.teaCount ?? 0 }),
+  });
+
+  const hoursWorked = stats?.punchInTime
+    ? (Date.now() - new Date(stats.punchInTime).getTime()) / (1000 * 60 * 60)
+    : 0;
+  const showLunchReminder = punchedIn && !lunchReminderDismissed && hoursWorked >= 5 && (breakStatusForDash?.lunchCount ?? 0) === 0;
 
   const { data: teamTodayData } = useQuery<{
     presentCount: number; absentCount: number; onLeaveCount: number; totalCount: number;
@@ -221,6 +267,27 @@ export default function HRDashboard() {
             {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
+
+        {/* 5-hour lunch reminder banner */}
+        {showLunchReminder && (
+          <Alert className="flex items-center justify-between gap-4 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700" data-testid="banner-lunch-reminder">
+            <div className="flex items-center gap-3">
+              <Coffee className="h-5 w-5 shrink-0 text-amber-600" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                You've been working for {Math.floor(hoursWorked)}+ hours — time for your 30-min lunch break.
+              </AlertDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-amber-700 hover:text-amber-900"
+              onClick={() => setLunchReminderDismissed(true)}
+              data-testid="button-dismiss-lunch-reminder"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
+        )}
 
         {/* Training alert banner */}
         {(trainingAlerts?.total ?? 0) > 0 && (
@@ -297,6 +364,37 @@ export default function HRDashboard() {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* My Shift card — employee only */}
+        {isEmployeeOnly && myShift && (
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20" data-testid="card-my-shift">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Sun className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span className="text-sm font-semibold text-blue-900 dark:text-blue-100" data-testid="text-shift-name">{myShift.name}</span>
+                  </div>
+                  <p className="text-base font-mono font-bold text-foreground ml-6" data-testid="text-shift-timing">
+                    {formatHHMMShift(myShift.istStart)} – {formatHHMMShift(myShift.istEnd)} IST
+                  </p>
+                  {myShift.usCoverage && (
+                    <p className="text-xs text-muted-foreground ml-6" data-testid="text-shift-us-coverage">
+                      US coverage: {myShift.usCoverage}
+                    </p>
+                  )}
+                  {myShift.dstTransition && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 ml-6 flex items-center gap-1" data-testid="text-shift-dst-notice">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      Timing changes to {formatHHMMShift(myShift.dstTransition.newStart)} on{" "}
+                      {new Date(myShift.dstTransition.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
