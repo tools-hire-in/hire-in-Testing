@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -144,6 +145,11 @@ export default function AdminUsers() {
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [shiftUser, setShiftUser] = useState<AdminUser | null>(null);
+  const [selectedShiftId, setSelectedShiftId] = useState("");
+  const [shiftReason, setShiftReason] = useState("");
+
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [hForm, setHForm] = useState({
@@ -156,6 +162,28 @@ export default function AdminUsers() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable" | "relieve" | "left_company_exit"; user: AdminUser } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | "relieved" | "left_company" | "deleted">("active");
+
+  interface ShiftDef {
+    id: string;
+    name: string;
+    displayLabel: string;
+    usCoverage: string;
+    istStart: string;
+    istEnd: string;
+    isDst: boolean;
+  }
+
+  interface ShiftHistoryEntry {
+    id: string;
+    changed_at: string;
+    reason: string;
+    old_shift_id: string | null;
+    new_shift_id: string | null;
+    changed_by_name: string;
+    changed_by_email: string;
+    old_shift_label: string | null;
+    new_shift_label: string | null;
+  }
 
   const { data: usersResponse, isLoading } = useQuery<AdminUsersResponse>({
     queryKey: ["/api/admin/users", statusFilter],
@@ -173,6 +201,22 @@ export default function AdminUsers() {
   const { data: deptList } = useQuery<Department[]>({
     queryKey: ["/api/departments"],
     enabled: isAuthenticated,
+  });
+
+  const { data: shiftDefs } = useQuery<ShiftDef[]>({
+    queryKey: ["/api/hr/shifts"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: shiftHistory } = useQuery<ShiftHistoryEntry[]>({
+    queryKey: ["/api/hr/users", shiftUser?.id, "shift-history"],
+    queryFn: async () => {
+      if (!shiftUser?.id) return [];
+      const res = await fetch(`/api/hr/users/${shiftUser.id}/shift-history`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!shiftUser?.id && shiftOpen,
   });
 
   const inviteMutation = useMutation({
@@ -365,6 +409,22 @@ export default function AdminUsers() {
     },
     onError: (error: any) => {
       toast({ title: "Failed to reset password", description: error?.message || "You may not have permission.", variant: "destructive" });
+    },
+  });
+
+  const assignShiftMutation = useMutation({
+    mutationFn: async ({ id, shiftId, reason }: { id: string; shiftId: string; reason: string }) => {
+      return apiRequest("PATCH", `/api/hr/users/${id}/shift`, { shiftId, reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/users", shiftUser?.id, "shift-history"] });
+      toast({ title: "Shift assigned", description: "The employee's shift has been updated." });
+      setSelectedShiftId("");
+      setShiftReason("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to assign shift", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -632,6 +692,20 @@ export default function AdminUsers() {
                                   <DropdownMenuItem onClick={() => openHierarchyDialog(adminUser)} data-testid={`menu-edit-hierarchy-${adminUser.id}`}>
                                     <Network className="h-4 w-4 mr-2" />
                                     Edit Hierarchy
+                                  </DropdownMenuItem>
+                                )}
+                                {(isSuperAdmin || isAdmin || user?.role === "hr") && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setShiftUser(adminUser);
+                                      setSelectedShiftId(adminUser.shiftId || "");
+                                      setShiftReason("");
+                                      setShiftOpen(true);
+                                    }}
+                                    data-testid={`menu-assign-shift-${adminUser.id}`}
+                                  >
+                                    <Clock className="h-4 w-4 mr-2" />
+                                    Assign Shift
                                   </DropdownMenuItem>
                                 )}
                                 {canResetPassword(adminUser) && (
@@ -1046,6 +1120,94 @@ export default function AdminUsers() {
                 data-testid="button-save-hierarchy"
               >
                 {hierarchyMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign Shift Dialog */}
+        <Dialog open={shiftOpen} onOpenChange={(open) => { setShiftOpen(open); if (!open) { setShiftUser(null); setSelectedShiftId(""); setShiftReason(""); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Clock className="h-4 w-4" /> Assign Shift
+              </DialogTitle>
+              <DialogDescription>
+                {shiftUser ? `Updating shift for ${shiftUser.firstName} ${shiftUser.lastName}` : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {shiftUser && shiftUser.shiftId && (
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg text-sm flex-wrap">
+                  <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Current shift:</span>
+                  <Badge variant="secondary" data-testid="badge-current-shift-admin">
+                    {shiftDefs?.find(s => s.id === shiftUser.shiftId!)?.displayLabel || shiftUser.shiftId}
+                  </Badge>
+                  {(() => {
+                    const s = shiftDefs?.find(s => s.id === shiftUser.shiftId!);
+                    if (!s) return null;
+                    return <span className="text-xs text-muted-foreground ml-1">IST {s.istStart}–{s.istEnd} ({s.isDst ? "DST" : "STD"})</span>;
+                  })()}
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="shift-select">New Shift *</Label>
+                <Select value={selectedShiftId} onValueChange={setSelectedShiftId}>
+                  <SelectTrigger data-testid="select-shift" id="shift-select">
+                    <SelectValue placeholder="Select a shift..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(shiftDefs || []).map(s => (
+                      <SelectItem key={s.id} value={s.id} data-testid={`shift-option-${s.id}`}>
+                        {s.displayLabel} — IST {s.istStart}–{s.istEnd} ({s.isDst ? "DST" : "STD"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shift-reason">Reason for change *</Label>
+                <Textarea
+                  id="shift-reason"
+                  data-testid="input-shift-reason"
+                  value={shiftReason}
+                  onChange={e => setShiftReason(e.target.value)}
+                  placeholder="Why is the shift being changed?"
+                  rows={3}
+                />
+              </div>
+              {shiftHistory && shiftHistory.length > 0 && (
+                <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <History className="h-3 w-3" /> Recent shift changes
+                  </p>
+                  {shiftHistory.slice(0, 5).map(entry => (
+                    <div key={entry.id} className="text-xs border-b last:border-0 pb-2 last:pb-0" data-testid={`shift-history-entry-${entry.id}`}>
+                      <div className="flex gap-1 items-center flex-wrap">
+                        <span className="text-muted-foreground">{entry.old_shift_label || "None"}</span>
+                        <span>→</span>
+                        <span className="font-medium">{entry.new_shift_label || "None"}</span>
+                      </div>
+                      <p className="text-muted-foreground">{new Date(entry.changed_at).toLocaleDateString()} · {entry.changed_by_name}</p>
+                      <p className="italic truncate">"{entry.reason}"</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShiftOpen(false)} data-testid="button-cancel-shift">Cancel</Button>
+              <Button
+                data-testid="button-save-shift"
+                disabled={!selectedShiftId || !shiftReason.trim() || assignShiftMutation.isPending}
+                onClick={() => {
+                  if (shiftUser && selectedShiftId && shiftReason.trim()) {
+                    assignShiftMutation.mutate({ id: shiftUser.id, shiftId: selectedShiftId, reason: shiftReason.trim() });
+                  }
+                }}
+              >
+                {assignShiftMutation.isPending ? "Saving..." : "Assign Shift"}
               </Button>
             </DialogFooter>
           </DialogContent>

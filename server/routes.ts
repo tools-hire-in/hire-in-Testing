@@ -7,7 +7,8 @@ import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
@@ -5256,6 +5257,9 @@ export async function registerRoutes(
           leaveTypeName: leaveTypes.find(lt => lt.id === lr.leaveTypeId)?.name || "Unknown",
         }));
 
+      const userShiftId = (user as AdminUser & { shiftId?: string | null }).shiftId || null;
+      const shiftTiming = userShiftId ? await getCurrentShiftTiming(userShiftId) : null;
+
       res.json({
         user: {
           id: user.id,
@@ -5272,6 +5276,10 @@ export async function registerRoutes(
           joiningDate: user.joiningDate,
           isActive: user.isActive,
           salary: user.salary || null,
+          shiftId: userShiftId,
+          shiftTiming: shiftTiming
+            ? { istStart: shiftTiming.istStart, istEnd: shiftTiming.istEnd, isDst: shiftTiming.isDst }
+            : null,
         },
         attendance: attendanceRecords,
         emergencyContacts,
@@ -6506,6 +6514,104 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // ==========================================
+  // SHIFT SYSTEM ROUTES
+  // ==========================================
+
+  app.get("/api/hr/shifts", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const shifts = await getAllShiftsWithTiming();
+      res.json(shifts);
+    } catch (error) {
+      console.error("Get shifts error:", error);
+      res.status(500).json({ error: "Failed to fetch shifts" });
+    }
+  });
+
+  app.get("/api/hr/shifts/current-timing/:shiftId", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const timing = await getCurrentShiftTiming(req.params.shiftId);
+      if (!timing) return res.status(404).json({ error: "Shift not found" });
+      res.json(timing);
+    } catch (error) {
+      console.error("Get shift timing error:", error);
+      res.status(500).json({ error: "Failed to fetch shift timing" });
+    }
+  });
+
+  app.patch("/api/hr/users/:id/shift", requireRole("hr"), async (req, res) => {
+    try {
+      const { shiftId, reason } = req.body;
+      if (!shiftId || typeof shiftId !== "string") {
+        return res.status(400).json({ error: "shiftId is required" });
+      }
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: "reason is required" });
+      }
+
+      const user = await storage.getAdminUser(req.params.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const allShifts = await db.execute(sql`SELECT id FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1`);
+      if (allShifts.rows.length === 0) {
+        return res.status(400).json({ error: "Invalid shift ID" });
+      }
+
+      const typedUser = user as AdminUser & { shiftId?: string | null };
+      const oldShiftId = typedUser.shiftId || null;
+
+      await db.execute(sql`UPDATE admin_users SET shift_id = ${shiftId}, updated_at = NOW() WHERE id = ${req.params.id}`);
+
+      await db.execute(sql`
+        INSERT INTO shift_assignment_log (user_id, changed_by_id, old_shift_id, new_shift_id, reason)
+        VALUES (${req.params.id}, ${req.session.userId!}, ${oldShiftId}, ${shiftId}, ${reason.trim()})
+      `);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: req.params.id,
+        action: "shift_assignment",
+        changes: { oldShiftId, newShiftId: shiftId, reason: reason.trim() },
+      });
+
+      const updatedUser = await storage.getAdminUser(req.params.id);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Update shift error:", error);
+      res.status(500).json({ error: "Failed to update shift" });
+    }
+  });
+
+  app.get("/api/hr/users/:id/shift-history", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const hasAccess = await validateMyTeamAccess(req, res, req.params.id);
+      if (!hasAccess) return;
+      const rows = await db.execute(sql`
+        SELECT
+          sal.id,
+          sal.user_id,
+          sal.changed_at,
+          sal.reason,
+          sal.old_shift_id,
+          sal.new_shift_id,
+          cb.first_name || ' ' || cb.last_name AS changed_by_name,
+          cb.email AS changed_by_email,
+          os.display_label AS old_shift_label,
+          ns.display_label AS new_shift_label
+        FROM shift_assignment_log sal
+        JOIN admin_users cb ON cb.id = sal.changed_by_id
+        LEFT JOIN shifts os ON os.id = sal.old_shift_id
+        LEFT JOIN shifts ns ON ns.id = sal.new_shift_id
+        WHERE sal.user_id = ${req.params.id}
+        ORDER BY sal.changed_at DESC
+      `);
+      res.json(rows.rows);
+    } catch (error) {
+      console.error("Get shift history error:", error);
+      res.status(500).json({ error: "Failed to fetch shift history" });
     }
   });
 

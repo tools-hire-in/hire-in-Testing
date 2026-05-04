@@ -49,6 +49,7 @@ export const adminUsers = pgTable("admin_users", {
   passwordResetToken: varchar("password_reset_token"),
   passwordResetExpiry: timestamp("password_reset_expiry"),
   deletedAt: timestamp("deleted_at"),
+  shiftId: varchar("shift_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1258,6 +1259,80 @@ export type PerformanceFeedback = typeof performanceFeedback.$inferSelect;
 export type InsertPerformanceFeedback = z.infer<typeof insertPerformanceFeedbackSchema>;
 export type HrLetter = typeof hrLetters.$inferSelect;
 export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
+
+// ==========================================
+// SHIFT SYSTEM
+// ==========================================
+
+export const shifts = pgTable("shifts", {
+  id: varchar("id").primaryKey(),
+  name: varchar("name").notNull(),
+  displayLabel: varchar("display_label").notNull(),
+  usCoverage: varchar("us_coverage").notNull(),
+  istStartDst: varchar("ist_start_dst").notNull(),
+  istEndDst: varchar("ist_end_dst").notNull(),
+  istStartStd: varchar("ist_start_std").notNull(),
+  istEndStd: varchar("ist_end_std").notNull(),
+  scheduledHours: integer("scheduled_hours").notNull().default(9),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const dstConfig = pgTable("dst_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  year: integer("year").notNull().unique(),
+  springForwardDate: varchar("spring_forward_date").notNull(),
+  fallBackDate: varchar("fall_back_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const shiftAssignmentLog = pgTable("shift_assignment_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  changedById: varchar("changed_by_id").notNull().references(() => adminUsers.id),
+  oldShiftId: varchar("old_shift_id").references(() => shifts.id),
+  newShiftId: varchar("new_shift_id").references(() => shifts.id),
+  reason: text("reason").notNull(),
+  changedAt: timestamp("changed_at").defaultNow(),
+});
+
+export const shiftsRelations = relations(shifts, ({ many }) => ({
+  assignmentLogs: many(shiftAssignmentLog),
+}));
+
+export const dstConfigRelations = relations(dstConfig, ({ }) => ({}));
+
+export const shiftAssignmentLogRelations = relations(shiftAssignmentLog, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [shiftAssignmentLog.userId],
+    references: [adminUsers.id],
+    relationName: "shiftLogUser",
+  }),
+  changedBy: one(adminUsers, {
+    fields: [shiftAssignmentLog.changedById],
+    references: [adminUsers.id],
+    relationName: "shiftLogChanger",
+  }),
+  oldShift: one(shifts, {
+    fields: [shiftAssignmentLog.oldShiftId],
+    references: [shifts.id],
+    relationName: "shiftLogOld",
+  }),
+  newShift: one(shifts, {
+    fields: [shiftAssignmentLog.newShiftId],
+    references: [shifts.id],
+    relationName: "shiftLogNew",
+  }),
+}));
+
+export const insertShiftAssignmentLogSchema = createInsertSchema(shiftAssignmentLog).omit({
+  id: true,
+  changedAt: true,
+});
+export type Shift = typeof shifts.$inferSelect;
+export type DstConfig = typeof dstConfig.$inferSelect;
+export type ShiftAssignmentLog = typeof shiftAssignmentLog.$inferSelect;
+export type InsertShiftAssignmentLog = z.infer<typeof insertShiftAssignmentLogSchema>;
 
 // ==========================================
 // BREAK RECORDS (for punch/break system)

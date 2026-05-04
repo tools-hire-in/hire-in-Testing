@@ -465,6 +465,81 @@ async function backfillHrLetterNames() {
   }
 }
 
+async function ensureShiftTables() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS shifts (
+        id VARCHAR PRIMARY KEY,
+        name VARCHAR NOT NULL,
+        display_label VARCHAR NOT NULL,
+        us_coverage VARCHAR NOT NULL,
+        ist_start_dst VARCHAR NOT NULL,
+        ist_end_dst VARCHAR NOT NULL,
+        ist_start_std VARCHAR NOT NULL,
+        ist_end_std VARCHAR NOT NULL,
+        scheduled_hours INTEGER NOT NULL DEFAULT 9,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS dst_config (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        year INTEGER NOT NULL UNIQUE,
+        spring_forward_date VARCHAR NOT NULL,
+        fall_back_date VARCHAR NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS shift_id VARCHAR REFERENCES shifts(id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS shift_assignment_log (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        changed_by_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        old_shift_id VARCHAR REFERENCES shifts(id),
+        new_shift_id VARCHAR REFERENCES shifts(id),
+        reason TEXT NOT NULL,
+        changed_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    log("Shift tables ensured");
+  } catch (err) {
+    console.error("Shift tables migration error:", err);
+  }
+}
+
+async function seedShiftData() {
+  try {
+    await db.execute(sql`
+      INSERT INTO shifts (id, name, display_label, us_coverage, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std, scheduled_hours)
+      VALUES
+        ('SHIFT_A', 'SHIFT_A', 'Shift A – East Coast', 'East Coast', '18:30', '03:30', '19:30', '04:30', 9),
+        ('SHIFT_B', 'SHIFT_B', 'Shift B – West Coast', 'West Coast', '20:30', '05:30', '21:30', '06:30', 9),
+        ('SHIFT_C', 'SHIFT_C', 'Shift C – Dual Coast', 'Dual Coast', '19:30', '04:30', '20:30', '05:30', 9)
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    const dstYears = [
+      { year: 2026, spring: "2026-03-08", fall: "2026-11-01" },
+      { year: 2027, spring: "2027-03-14", fall: "2027-11-07" },
+      { year: 2028, spring: "2028-03-12", fall: "2028-11-05" },
+      { year: 2029, spring: "2029-03-11", fall: "2029-11-04" },
+      { year: 2030, spring: "2030-03-10", fall: "2030-11-03" },
+    ];
+    for (const d of dstYears) {
+      await db.execute(sql`
+        INSERT INTO dst_config (year, spring_forward_date, fall_back_date)
+        VALUES (${d.year}, ${d.spring}, ${d.fall})
+        ON CONFLICT (year) DO NOTHING
+      `);
+    }
+    log("Shift seed data ensured");
+  } catch (err) {
+    console.error("Shift seed data error:", err);
+  }
+}
+
 async function backfillHolidayAttendance() {
   try {
     const currentYear = new Date().getFullYear();
@@ -585,6 +660,8 @@ async function backfillHolidayAttendance() {
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();
+  await ensureShiftTables();
+  await seedShiftData();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

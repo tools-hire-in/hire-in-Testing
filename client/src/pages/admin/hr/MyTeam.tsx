@@ -30,6 +30,7 @@ import {
   History,
   CheckCircle,
   XCircle,
+  Timer,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +68,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
+interface ShiftTimingInfo {
+  istStart: string;
+  istEnd: string;
+  isDst: boolean;
+}
+
 interface TeamMember {
   id: string;
   employeeId: string | null;
@@ -81,6 +88,8 @@ interface TeamMember {
   isActive: boolean;
   hierarchyLevel: string | null;
   isDirect: boolean;
+  shiftId: string | null;
+  shiftTiming: ShiftTimingInfo | null;
 }
 
 interface TeamResponse {
@@ -200,7 +209,7 @@ interface ResolvedHoliday {
 }
 
 interface EmployeeDetails {
-  user: TeamMember & { joiningDate: string | null; managerId: string | null; salary?: string | null };
+  user: TeamMember & { joiningDate: string | null; managerId: string | null; salary?: string | null; shiftTiming?: ShiftTimingInfo | null };
   salary?: { currentSalary: string | null; slips: SalarySlip[] };
   attendance: AttendanceRecord[];
   emergencyContacts: EmergencyContact[];
@@ -597,6 +606,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-tickets" value="tickets" className="gap-1">
             <FileText className="h-4 w-4" /> Tickets
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-shift" value="shift" className="gap-1">
+            <Timer className="h-4 w-4" /> Shift
+          </TabsTrigger>
           <TabsTrigger data-testid="tab-history" value="history" className="gap-1">
             <History className="h-4 w-4" /> Change History
           </TabsTrigger>
@@ -636,10 +648,124 @@ function EmployeeDetailView({
         <TabsContent value="tickets">
           <TicketsTab tickets={data.tickets} onReview={onReviewTicket} />
         </TabsContent>
+        <TabsContent value="shift">
+          <ShiftTab userId={userId} />
+        </TabsContent>
         <TabsContent value="history">
           <ChangeHistoryTab auditQuery={auditQuery} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+interface ShiftHistoryEntry {
+  id: string;
+  changed_at: string;
+  reason: string;
+  old_shift_id: string | null;
+  new_shift_id: string | null;
+  changed_by_name: string;
+  changed_by_email: string;
+  old_shift_label: string | null;
+  new_shift_label: string | null;
+}
+
+interface ShiftInfo {
+  id: string;
+  name: string;
+  displayLabel: string;
+  usCoverage: string;
+  istStart: string;
+  istEnd: string;
+  isDst: boolean;
+}
+
+function ShiftTab({ userId }: { userId: string }) {
+  const historyQuery = useQuery<ShiftHistoryEntry[]>({
+    queryKey: ["/api/hr/users", userId, "shift-history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/users/${userId}/shift-history`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const detailsQuery = useQuery<EmployeeDetails>({
+    queryKey: ["/api/admin/my-team", userId, "details"],
+  });
+
+  const currentShiftId = detailsQuery.data?.user?.shiftId ?? null;
+  const shiftTiming = detailsQuery.data?.user?.shiftTiming ?? null;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Current Shift
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!currentShiftId ? (
+            <p className="text-sm text-muted-foreground">No shift assigned.</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" data-testid="badge-current-shift">
+                  {currentShiftId}
+                </Badge>
+                {shiftTiming?.isDst && (
+                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">DST Active</Badge>
+                )}
+              </div>
+              {shiftTiming && (
+                <p className="text-sm text-muted-foreground">
+                  IST: <span className="font-medium text-foreground">{shiftTiming.istStart} – {shiftTiming.istEnd}</span>
+                  {" "}({shiftTiming.isDst ? "DST" : "Standard"} timing)
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <History className="h-4 w-4" /> Shift Change History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {historyQuery.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !historyQuery.data || historyQuery.data.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No shift changes recorded.</p>
+          ) : (
+            <div className="space-y-3">
+              {historyQuery.data.map(entry => (
+                <div key={entry.id} className="border rounded-lg p-3 text-sm" data-testid={`shift-history-${entry.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-muted-foreground">{entry.old_shift_label || "No shift"}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-medium">{entry.new_shift_label || "No shift"}</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        By {entry.changed_by_name} · {new Date(entry.changed_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                      <p className="text-xs italic">"{entry.reason}"</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
