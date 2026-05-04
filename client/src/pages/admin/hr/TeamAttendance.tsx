@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface TeamMember {
   id: string;
@@ -138,6 +144,7 @@ export default function TeamAttendance() {
   if (authLoading || !isAuthenticated) return null;
 
   const canDownload = user && ["super_admin", "admin", "hr", "manager", "operations"].includes(user.role);
+  const canCorrect = user && ["super_admin", "admin"].includes(user.role);
 
   const changeDate = (days: number) => {
     const d = new Date(selectedDate);
@@ -169,7 +176,6 @@ export default function TeamAttendance() {
       return hours >= 8 ? "present" : "absent";
     }
     if (att.punchIn && !att.punchOut) {
-      // Check if on break
       if (userId && teamBreakStatus?.[userId]?.activeBreak) {
         const breakType = teamBreakStatus[userId].activeBreak!.breakType;
         return breakType === "lunch" ? "on_lunch" : "on_tea";
@@ -443,10 +449,13 @@ export default function TeamAttendance() {
           </DialogHeader>
           {selectedMember && (
             <MemberMonthlyCalendar
+              member={selectedMember}
               records={memberData?.attendance || []}
               isLoading={memberLoading}
               month={memberMonth}
               onMonthChange={setMemberMonth}
+              canCorrect={!!canCorrect}
+              memberQueryKey={["/api/hr/attendance/member", selectedMember?.id, "range", { startDate: memberStartDate, endDate: memberEndDate }]}
             />
           )}
         </DialogContent>
@@ -480,21 +489,58 @@ export default function TeamAttendance() {
 }
 
 function MemberMonthlyCalendar({
+  member,
   records,
   isLoading,
   month,
   onMonthChange,
+  canCorrect,
+  memberQueryKey,
 }: {
+  member: TeamMember;
   records: AttendanceRecord[];
   isLoading: boolean;
   month: string;
   onMonthChange: (m: string) => void;
+  canCorrect: boolean;
+  memberQueryKey: unknown[];
 }) {
+  const { toast } = useToast();
   const [year, mon] = month.split("-").map(Number);
   const lastDay = new Date(year, mon, 0).getDate();
   const firstDayOfWeek = new Date(year, mon - 1, 1).getDay();
   const todayStr = new Date().toISOString().split("T")[0];
   const monthName = new Date(year, mon - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
+  const [editDate, setEditDate] = useState<string>("");
+  const [editPunchIn, setEditPunchIn] = useState("");
+  const [editPunchOut, setEditPunchOut] = useState("");
+  const [editTotalHours, setEditTotalHours] = useState("");
+  const [editComment, setEditComment] = useState("");
+
+  const correctMutation = useMutation({
+    mutationFn: async (payload: {
+      id: string;
+      punchIn?: string | null;
+      punchOut?: string | null;
+      totalHours?: string | null;
+      correctionComment: string;
+    }) => {
+      const { id, ...body } = payload;
+      return apiRequest("PATCH", `/api/hr/attendance/${id}`, body);
+    },
+    onSuccess: () => {
+      toast({ title: "Attendance corrected", description: "The record has been updated and logged." });
+      queryClient.invalidateQueries({ queryKey: memberQueryKey });
+      setEditRecord(null);
+      setSelectedDay(null);
+    },
+    onError: (err: Error) => {
+      const message = err?.message || "Failed to update attendance record";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    },
+  });
 
   const prevMonth = () => {
     const d = new Date(year, mon - 2, 1);
@@ -528,6 +574,40 @@ function MemberMonthlyCalendar({
     if (wh === 0) return `${mins}m`;
     if (mins === 0) return `${wh}h`;
     return `${wh}h ${mins}m`;
+  };
+
+  const toLocalTimeInput = (ts: string | null): string => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const buildTimestamp = (dateStr: string, timeStr: string): string | null => {
+    if (!timeStr) return null;
+    const [h, m] = timeStr.split(":").map(Number);
+    const d = new Date(`${dateStr}T00:00:00`);
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+
+  const openEdit = (record: AttendanceRecord, dateStr: string) => {
+    setEditRecord(record);
+    setEditDate(dateStr);
+    setEditPunchIn(toLocalTimeInput(record.punchIn));
+    setEditPunchOut(toLocalTimeInput(record.punchOut));
+    setEditTotalHours(record.totalHours || "");
+    setEditComment("");
+  };
+
+  const handleSave = () => {
+    if (!editRecord || !editComment.trim()) return;
+    correctMutation.mutate({
+      id: editRecord.id,
+      punchIn: editPunchIn ? buildTimestamp(editDate, editPunchIn) : null,
+      punchOut: editPunchOut ? buildTimestamp(editDate, editPunchOut) : null,
+      totalHours: editTotalHours || null,
+      correctionComment: editComment.trim(),
+    });
   };
 
   const allDays = Array.from({ length: lastDay }, (_, i) => {
@@ -637,22 +717,35 @@ function MemberMonthlyCalendar({
                 weekday: "short", month: "short", day: "numeric"
               })}
             </p>
-            <Badge variant="secondary" className={statusColors[selectedDay.status] || ""}>
-              {statusLabels[selectedDay.status] || selectedDay.status || "N/A"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className={statusColors[selectedDay.status] || ""}>
+                {statusLabels[selectedDay.status] || selectedDay.status || "N/A"}
+              </Badge>
+              {canCorrect && selectedDay.record && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEdit(selectedDay.record!, selectedDay.dateStr)}
+                  data-testid="button-correct-attendance"
+                >
+                  <Pencil className="h-3 w-3 mr-1" />
+                  Correct
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground uppercase mb-1">Punch In</p>
-              <p className="text-sm font-medium">{formatTime(selectedDay.record?.punchIn || null)}</p>
+              <p className="text-sm font-medium" data-testid="text-member-punch-in">{formatTime(selectedDay.record?.punchIn || null)}</p>
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground uppercase mb-1">Punch Out</p>
-              <p className="text-sm font-medium">{formatTime(selectedDay.record?.punchOut || null)}</p>
+              <p className="text-sm font-medium" data-testid="text-member-punch-out">{formatTime(selectedDay.record?.punchOut || null)}</p>
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground uppercase mb-1">Duration</p>
-              <p className="text-sm font-medium">{formatDuration(selectedDay.record?.totalHours || null)}</p>
+              <p className="text-sm font-medium" data-testid="text-member-duration">{formatDuration(selectedDay.record?.totalHours || null)}</p>
             </div>
           </div>
           {selectedDay.record?.notes && (
@@ -660,6 +753,91 @@ function MemberMonthlyCalendar({
           )}
         </div>
       )}
+
+      <Dialog open={!!editRecord} onOpenChange={(open) => !open && setEditRecord(null)}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-correct-attendance">
+          <DialogHeader>
+            <DialogTitle>Correct Attendance Hours</DialogTitle>
+          </DialogHeader>
+          {editRecord && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Editing record for <span className="font-medium text-foreground">{member.firstName} {member.lastName}</span> on{" "}
+                <span className="font-medium text-foreground">
+                  {new Date(editDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                </span>
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-punch-in">Punch In</Label>
+                  <Input
+                    id="edit-punch-in"
+                    type="time"
+                    value={editPunchIn}
+                    onChange={(e) => setEditPunchIn(e.target.value)}
+                    data-testid="input-edit-punch-in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-punch-out">Punch Out</Label>
+                  <Input
+                    id="edit-punch-out"
+                    type="time"
+                    value={editPunchOut}
+                    onChange={(e) => setEditPunchOut(e.target.value)}
+                    data-testid="input-edit-punch-out"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-total-hours">Total Hours (decimal)</Label>
+                <Input
+                  id="edit-total-hours"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="24"
+                  placeholder="e.g. 8.5"
+                  value={editTotalHours}
+                  onChange={(e) => setEditTotalHours(e.target.value)}
+                  data-testid="input-edit-total-hours"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-comment">
+                  Reason for Correction <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="edit-comment"
+                  placeholder="Explain why this record is being corrected..."
+                  value={editComment}
+                  onChange={(e) => setEditComment(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-correction-comment"
+                />
+                {!editComment.trim() && (
+                  <p className="text-xs text-muted-foreground">A reason is required before saving.</p>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditRecord(null)} data-testid="button-cancel-correction">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!editComment.trim() || correctMutation.isPending}
+              data-testid="button-save-correction"
+            >
+              {correctMutation.isPending ? "Saving..." : "Save Correction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

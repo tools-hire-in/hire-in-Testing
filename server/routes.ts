@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray, sql } from "drizzle-orm";
@@ -2058,8 +2058,39 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/attendance/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/attendance/:id", requireRole("hr", "admin", "super_admin"), async (req, res) => {
     try {
+      const isAdminOrSuperAdmin = ["admin", "super_admin"].includes(req.session.role!);
+
+      if (isAdminOrSuperAdmin) {
+        const { correctionComment } = req.body;
+        if (!correctionComment || typeof correctionComment !== "string" || !correctionComment.trim()) {
+          return res.status(400).json({ error: "A correction comment is required" });
+        }
+
+        const [existing] = await db.select().from(attendance).where(eq(attendance.id, req.params.id as string));
+        if (!existing) return res.status(404).json({ error: "Attendance record not found" });
+
+        const { correctionComment: _omit, ...updateFields } = req.body;
+        const record = await storage.updateAttendance(req.params.id as string, updateFields);
+        if (!record) return res.status(404).json({ error: "Attendance record not found" });
+
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: existing.userId,
+          action: "correct_attendance_hours",
+          changes: {
+            attendanceId: existing.id,
+            date: existing.date,
+            old: { punchIn: existing.punchIn, punchOut: existing.punchOut, totalHours: existing.totalHours },
+            new: { punchIn: record.punchIn, punchOut: record.punchOut, totalHours: record.totalHours },
+            correctionComment: correctionComment.trim(),
+          },
+        });
+
+        return res.json(record);
+      }
+
       const record = await storage.updateAttendance(req.params.id as string, req.body);
       if (!record) return res.status(404).json({ error: "Attendance record not found" });
       res.json(record);
@@ -2624,7 +2655,7 @@ export async function registerRoutes(
   });
 
   // --- Manager: Team Attendance ---
-  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -2686,7 +2717,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -2723,7 +2754,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/member/:memberId/range", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/hr/attendance/member/:memberId/range", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const memberId = req.params.memberId;
       const startDate = req.query.startDate as string;
