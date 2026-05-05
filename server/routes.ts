@@ -5155,11 +5155,11 @@ export async function registerRoutes(
           ), 0) AS training_pct
         FROM admin_users u
         LEFT JOIN departments d ON d.id = u.department_id
-        WHERE u.joining_date >= CURRENT_DATE - INTERVAL '90 days'
+        WHERE (u.joining_date IS NULL OR u.joining_date >= CURRENT_DATE - INTERVAL '90 days')
           AND u.is_active = true
           AND u.deleted_at IS NULL
-          AND u.role = 'employee'
-        ORDER BY u.joining_date DESC
+          AND u.role NOT IN ('super_admin', 'admin')
+        ORDER BY u.joining_date DESC NULLS LAST
       `);
       res.json(result.rows);
     } catch (err: any) {

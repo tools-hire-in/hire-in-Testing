@@ -5,10 +5,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, FileText, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, FileText, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { OfferLetterGenerator, OfferLettersDashboard } from "@/pages/admin/hr/HRTools";
+import type { AdminUsersResponse } from "@shared/schema";
 
 interface NewHire {
   id: string;
@@ -17,7 +19,7 @@ interface NewHire {
   email: string;
   employee_id: string | null;
   designation: string | null;
-  joining_date: string;
+  joining_date: string | null;
   role: string;
   department_name: string | null;
   document_count: number;
@@ -25,6 +27,24 @@ interface NewHire {
   has_ns_consent: boolean;
   training_pct: number;
 }
+
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  hr: "HR",
+  operations: "Operations",
+  manager: "Manager",
+  employee: "Employee",
+};
+
+const roleColors: Record<string, string> = {
+  super_admin: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  admin: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  hr: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  operations: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  manager: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  employee: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+};
 
 function StatusChip({ ok, label, na }: { ok: boolean; label: string; na?: boolean }) {
   if (na) {
@@ -58,6 +78,13 @@ function TrainingBar({ pct }: { pct: number }) {
   );
 }
 
+function formatJoiningDate(date: string | null): string {
+  if (!date) return "Not set";
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "Not set";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 function OnboardingTab() {
   const [, setLocation] = useLocation();
   const { data: hires, isLoading } = useQuery<NewHire[]>({
@@ -77,8 +104,8 @@ function OnboardingTab() {
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
           <Users className="h-10 w-10 text-muted-foreground/40" />
-          <p className="font-medium text-muted-foreground">No new hires in the last 90 days</p>
-          <p className="text-sm text-muted-foreground">Employees who join within 90 days of today will appear here with their setup status.</p>
+          <p className="font-medium text-muted-foreground">No recent hires found</p>
+          <p className="text-sm text-muted-foreground">Employees who joined within the last 90 days, or whose joining date has not been set yet, will appear here with their setup status.</p>
         </CardContent>
       </Card>
     );
@@ -87,7 +114,7 @@ function OnboardingTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Showing <strong>{hires.length}</strong> employee{hires.length !== 1 ? "s" : ""} who joined in the last 90 days.
+        Showing <strong>{hires.length}</strong> employee{hires.length !== 1 ? "s" : ""} who joined in the last 90 days or have no joining date set.
       </p>
 
       <div className="rounded-md border overflow-x-auto">
@@ -120,7 +147,14 @@ function OnboardingTab() {
                     </div>
                   </td>
                   <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                    {new Date(h.joining_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                    {h.joining_date ? (
+                      formatJoiningDate(h.joining_date)
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <AlertCircle className="h-3 w-3" />
+                        Not set
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <TrainingBar pct={h.training_pct} />
@@ -152,6 +186,148 @@ function OnboardingTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+interface Department {
+  id: string;
+  name: string;
+}
+
+function UsersTab() {
+  const [, setLocation] = useLocation();
+  const [search, setSearch] = useState("");
+
+  const { data: usersResponse, isLoading } = useQuery<AdminUsersResponse>({
+    queryKey: ["/api/admin/users", "active"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=active", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+
+  const { data: departments } = useQuery<Department[]>({
+    queryKey: ["/api/departments"],
+  });
+
+  const deptMap = new Map((departments ?? []).map((d) => [d.id, d.name]));
+
+  const users = usersResponse?.users ?? [];
+
+  const filtered = search.trim()
+    ? users.filter((u) => {
+        const q = search.toLowerCase();
+        return (
+          `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q) ||
+          (u.employeeId || "").toLowerCase().includes(q) ||
+          (u.designation || "").toLowerCase().includes(q)
+        );
+      })
+    : users;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, email, or ID…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-10"
+          data-testid="input-search-users-tab"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
+            <Users className="h-10 w-10 text-muted-foreground/40" />
+            <p className="font-medium text-muted-foreground">No users found</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Department</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Joining Date</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((u, i) => (
+                <tr
+                  key={u.id}
+                  className={`border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                  onClick={() => setLocation(`/admin/hr/people?tab=users&userId=${u.id}`)}
+                  data-testid={`row-user-${u.id}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-medium flex items-center gap-1">
+                      {u.firstName} {u.lastName}
+                      {u.role === "super_admin" && <Shield className="h-3 w-3 text-purple-600" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {u.employeeId ? `${u.employeeId} · ` : ""}{u.email}
+                      {u.designation ? ` · ${u.designation}` : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[u.role] || roleColors.employee}`}>
+                      {roleLabels[u.role] || u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {u.departmentId ? (deptMap.get(u.departmentId) ?? "—") : "—"}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                    {u.joiningDate ? (
+                      new Date(u.joiningDate + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <AlertCircle className="h-3 w-3" />
+                        Not set
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={u.isActive ? "default" : "secondary"} data-testid={`badge-status-${u.id}`}>
+                      {u.isActive ? "Active" : "Disabled"}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={(e) => { e.stopPropagation(); setLocation(`/admin/hr/people?tab=users&userId=${u.id}`); }}
+                      data-testid={`button-view-user-${u.id}`}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -205,6 +381,10 @@ export default function NewHire() {
               <Users className="h-4 w-4 mr-2" />
               Onboarding
             </TabsTrigger>
+            <TabsTrigger value="users" data-testid="tab-new-hire-users">
+              <UserCog className="h-4 w-4 mr-2" />
+              Users
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="offer-letters" className="space-y-8">
@@ -216,6 +396,10 @@ export default function NewHire() {
 
           <TabsContent value="onboarding">
             <OnboardingTab />
+          </TabsContent>
+
+          <TabsContent value="users">
+            <UsersTab />
           </TabsContent>
         </Tabs>
       </div>
