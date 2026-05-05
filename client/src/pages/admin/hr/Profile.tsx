@@ -92,10 +92,6 @@ function MyShiftCard() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PATCH", "/api/hr/my-shift", { shiftId: selectedShiftId, reason });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to update shift");
-      }
       return res.json();
     },
     onSuccess: () => {

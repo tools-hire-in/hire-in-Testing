@@ -18,6 +18,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   UserPlus,
+  HelpCircle,
+  Clock,
+  ArrowRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -191,6 +194,19 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       return stored === null ? true : stored !== "false";
     } catch { return true; }
   });
+
+  // App tour
+  const [showTour, setShowTour] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const seen = localStorage.getItem("hr_portal_tour_seen");
+      if (!seen) {
+        setShowTour(true);
+        localStorage.setItem("hr_portal_tour_seen", "1");
+      }
+    } catch {}
+  }, [user?.id]);
 
   const handleSidebarOpenChange = (open: boolean) => {
     setSidebarOpen(open);
@@ -552,6 +568,20 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 <Badge variant="outline" className="text-xs hidden sm:flex">
                   {roleInfo.label}
                 </Badge>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground"
+                      onClick={() => setShowTour(true)}
+                      data-testid="button-help-tour"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Portal guide</TooltipContent>
+                </Tooltip>
               </div>
             </header>
 
@@ -580,6 +610,119 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
             </main>
           </div>
         </div>
+
+        {/* ── APP TOUR DIALOG ── */}
+        <Dialog open={showTour} onOpenChange={setShowTour}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-app-tour">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <HelpCircle className="h-5 w-5 text-primary" />
+                Welcome to Hire'in Solutions Portal
+              </DialogTitle>
+              <DialogDescription>
+                Here's a quick guide to what's where. Click any section to go there.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2 py-1">
+              {[
+                {
+                  icon: LayoutDashboard,
+                  label: "My Work",
+                  href: "/admin/hr",
+                  desc: "Your daily hub — Dashboard, Attendance (punch in/out, breaks), Leaves, and Holidays.",
+                  tip: "Start here every day to punch in and track your time.",
+                  show: true,
+                  tipColor: "text-blue-600 dark:text-blue-400",
+                },
+                {
+                  icon: UserCircle,
+                  label: "My Profile",
+                  href: "/admin/profile",
+                  desc: "Personal details, shift selection, documents, salary slips, and org chart.",
+                  tip: "⚠️ Set your shift here first — required for attendance tracking.",
+                  show: true,
+                  tipColor: "text-amber-600 dark:text-amber-400",
+                },
+                {
+                  icon: GraduationCap,
+                  label: "My Growth",
+                  href: "/admin/growth",
+                  desc: "Training tracks, policy acknowledgements, and performance reviews.",
+                  tip: undefined,
+                  show: hasGrowthAccess,
+                  tipColor: "",
+                },
+                {
+                  icon: Users,
+                  label: "My Team",
+                  href: "/admin/hr/my-team",
+                  desc: "Team attendance overview, leave approvals, and training progress.",
+                  tip: undefined,
+                  show: hasTeamAccess,
+                  tipColor: "",
+                },
+                {
+                  icon: Briefcase,
+                  label: "Recruitment",
+                  href: "/admin/recruitment",
+                  desc: "Job postings, candidate applications, and the hiring pipeline.",
+                  tip: undefined,
+                  show: hasRecruitmentAccess,
+                  tipColor: "",
+                },
+                {
+                  icon: UserPlus,
+                  label: "New Hire",
+                  href: "/admin/new-hire",
+                  desc: "Offer letters and onboarding status for recently joined employees.",
+                  tip: undefined,
+                  show: hasNewHireAccess,
+                  tipColor: "",
+                },
+                {
+                  icon: Settings,
+                  label: "People & HR",
+                  href: "/admin/hr/people",
+                  desc: "Employee management, HR settings, leave types, and compliance reports.",
+                  tip: undefined,
+                  show: hasHRAccess,
+                  tipColor: "",
+                },
+              ].filter(s => s.show).map((step) => (
+                <button
+                  key={step.href}
+                  className="w-full text-left flex items-start gap-3 p-3 rounded-lg border hover:bg-accent hover:border-primary/30 transition-colors group"
+                  onClick={() => { setShowTour(false); setLocation(step.href); }}
+                  data-testid={`tour-step-${step.label.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  <div className="mt-0.5 p-1.5 rounded-md bg-primary/10 group-hover:bg-primary/15 transition-colors shrink-0">
+                    <step.icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">{step.label}</span>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{step.desc}</p>
+                    {step.tip && (
+                      <p className={`text-xs mt-1 font-medium ${step.tipColor}`}>{step.tip}</p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <DialogFooter className="pt-2">
+              <p className="text-xs text-muted-foreground flex-1">
+                Open this guide anytime via the <HelpCircle className="inline h-3 w-3 mx-0.5" /> button in the top-right.
+              </p>
+              <Button onClick={() => setShowTour(false)} data-testid="button-close-tour">
+                Got it
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showWarning} onOpenChange={() => dismissWarning()}>
           <DialogContent className="sm:max-w-md" data-testid="dialog-session-timeout">
