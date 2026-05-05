@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { UserCircle, Mail, Shield, Calendar, KeyRound, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import { UserCircle, Mail, Shield, Calendar, KeyRound, Loader2, ShieldCheck, ShieldOff, Clock, History } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +34,234 @@ interface AttendanceRecord {
   date: string;
   status: string;
   totalHours: string | null;
+}
+
+interface ShiftOption {
+  id: string;
+  name: string;
+  displayLabel: string;
+  istStartStd: string;
+  istEndStd: string;
+  istStartDst: string;
+  istEndDst: string;
+  scheduledHours: number;
+}
+
+interface MyShift {
+  id: string;
+  name: string;
+  displayLabel: string;
+  istStart: string;
+  istEnd: string;
+  isDst: boolean;
+  scheduledHours: number;
+}
+
+interface ShiftHistoryEntry {
+  id: string;
+  changed_at: string;
+  reason: string;
+  old_shift_label: string | null;
+  new_shift_label: string | null;
+  changed_by_name: string;
+}
+
+function MyShiftCard() {
+  const { toast } = useToast();
+  const [selectedShiftId, setSelectedShiftId] = useState<string>("");
+  const [reason, setReason] = useState("");
+
+  const { data: currentShift, isLoading: shiftLoading } = useQuery<MyShift | null>({
+    queryKey: ["/api/hr/my-shift"],
+  });
+
+  const { data: allShifts, isLoading: shiftsLoading } = useQuery<ShiftOption[]>({
+    queryKey: ["/api/hr/shifts"],
+  });
+
+  const { data: history, isLoading: historyLoading } = useQuery<ShiftHistoryEntry[]>({
+    queryKey: ["/api/hr/my-shift-history"],
+  });
+
+  useEffect(() => {
+    if (currentShift?.id && !selectedShiftId) {
+      setSelectedShiftId(currentShift.id);
+    }
+  }, [currentShift, selectedShiftId]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/hr/my-shift", { shiftId: selectedShiftId, reason });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update shift");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Shift updated", description: "Your shift has been updated successfully." });
+      setReason("");
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/my-shift"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/my-shift-history"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update shift", variant: "destructive" });
+    },
+  });
+
+  if (shiftLoading || shiftsLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="h-32 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const selectedShift = allShifts?.find(s => s.id === selectedShiftId);
+  const isChanged = selectedShiftId && selectedShiftId !== (currentShift?.id ?? "");
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            <CardTitle className="text-base">My Shift</CardTitle>
+          </div>
+          <CardDescription>View and update your current shift assignment</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {currentShift ? (
+            <div className="rounded-md bg-muted/50 p-3 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium">{currentShift.displayLabel || currentShift.name}</span>
+                {currentShift.isDst && (
+                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">DST Active</Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                <div>
+                  <span className="block font-medium text-foreground">Standard</span>
+                  {currentShift.isDst ? (
+                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartStd ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndStd ?? "—"}</span>
+                  ) : (
+                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd}</span>
+                  )}
+                </div>
+                <div>
+                  <span className="block font-medium text-foreground">DST</span>
+                  {currentShift.isDst ? (
+                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd}</span>
+                  ) : (
+                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartDst ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndDst ?? "—"}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No shift currently assigned.</p>
+          )}
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="shift-select">Select Shift</Label>
+              <Select
+                value={selectedShiftId}
+                onValueChange={setSelectedShiftId}
+              >
+                <SelectTrigger id="shift-select" data-testid="select-my-shift">
+                  <SelectValue placeholder="Choose a shift…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allShifts?.map(s => (
+                    <SelectItem key={s.id} value={s.id} data-testid={`option-shift-${s.id}`}>
+                      {s.displayLabel || s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedShift && selectedShiftId !== currentShift?.id && (
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground grid grid-cols-2 gap-2">
+                <div>
+                  <span className="block font-medium text-foreground">Std: </span>
+                  {selectedShift.istStartStd} – {selectedShift.istEndStd}
+                </div>
+                <div>
+                  <span className="block font-medium text-foreground">DST: </span>
+                  {selectedShift.istStartDst} – {selectedShift.istEndDst}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="shift-reason">Reason (optional)</Label>
+              <Textarea
+                id="shift-reason"
+                placeholder="Brief reason for the change…"
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                rows={2}
+                data-testid="input-shift-reason"
+              />
+            </div>
+
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!selectedShiftId || !isChanged || saveMutation.isPending}
+              data-testid="button-save-shift"
+            >
+              {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save Shift
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            <CardTitle className="text-base">Shift Change History</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {historyLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !history || history.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No shift changes recorded.</p>
+          ) : (
+            <div className="space-y-3">
+              {history.map(entry => (
+                <div key={entry.id} className="border rounded-lg p-3 text-sm" data-testid={`shift-history-${entry.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-muted-foreground">{entry.old_shift_label || "No shift"}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-medium">{entry.new_shift_label || "No shift"}</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        By {entry.changed_by_name} · {new Date(entry.changed_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                      {entry.reason && (
+                        <p className="text-xs italic">"{entry.reason}"</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
 }
 
 function TwoFactorSection() {
@@ -464,6 +694,8 @@ export default function Profile() {
                 )}
               </CardContent>
             </Card>
+
+            <MyShiftCard />
 
             <TwoFactorSection />
           </div>

@@ -7076,13 +7076,80 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/shifts", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/shifts", requireAuth, async (req, res) => {
     try {
       const shifts = await getAllShiftsWithTiming();
       res.json(shifts);
     } catch (error) {
       console.error("Get shifts error:", error);
       res.status(500).json({ error: "Failed to fetch shifts" });
+    }
+  });
+
+  app.patch("/api/hr/my-shift", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { shiftId, reason } = req.body;
+      if (!shiftId || typeof shiftId !== "string") {
+        return res.status(400).json({ error: "shiftId is required" });
+      }
+
+      const shiftRows = await db.execute(sql`SELECT id FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1`);
+      if (shiftRows.rows.length === 0) {
+        return res.status(400).json({ error: "Invalid or inactive shift" });
+      }
+
+      const userRows = await db.execute(sql`SELECT shift_id FROM admin_users WHERE id = ${userId} LIMIT 1`);
+      const oldShiftId = userRows.rows.length > 0 ? ((userRows.rows[0] as any).shift_id as string | null) : null;
+
+      await db.execute(sql`UPDATE admin_users SET shift_id = ${shiftId}, updated_at = NOW() WHERE id = ${userId}`);
+
+      const trimmedReason = reason && reason.trim() ? reason.trim() : "Self-selected";
+      await db.execute(sql`
+        INSERT INTO shift_assignment_log (user_id, changed_by_id, old_shift_id, new_shift_id, reason)
+        VALUES (${userId}, ${userId}, ${oldShiftId}, ${shiftId}, ${trimmedReason})
+      `);
+
+      await storage.createAuditLog({
+        actorId: userId,
+        targetId: userId,
+        action: "shift_assignment",
+        changes: { oldShiftId, newShiftId: shiftId, reason: trimmedReason, selfAssigned: true },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Update my-shift error:", error);
+      res.status(500).json({ error: "Failed to update shift" });
+    }
+  });
+
+  app.get("/api/hr/my-shift-history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db.execute(sql`
+        SELECT
+          sal.id,
+          sal.user_id,
+          sal.changed_at,
+          sal.reason,
+          sal.old_shift_id,
+          sal.new_shift_id,
+          cb.first_name || ' ' || cb.last_name AS changed_by_name,
+          cb.email AS changed_by_email,
+          os.display_label AS old_shift_label,
+          ns.display_label AS new_shift_label
+        FROM shift_assignment_log sal
+        JOIN admin_users cb ON cb.id = sal.changed_by_id
+        LEFT JOIN shifts os ON os.id = sal.old_shift_id
+        LEFT JOIN shifts ns ON ns.id = sal.new_shift_id
+        WHERE sal.user_id = ${userId}
+        ORDER BY sal.changed_at DESC
+      `);
+      res.json(rows.rows);
+    } catch (error) {
+      console.error("Get my shift history error:", error);
+      res.status(500).json({ error: "Failed to fetch shift history" });
     }
   });
 
