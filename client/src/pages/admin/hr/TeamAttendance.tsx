@@ -50,6 +50,7 @@ interface AttendanceRecord {
 interface TeamAttendanceResponse {
   members: TeamMember[];
   attendance: AttendanceRecord[];
+  noTeamAssigned?: boolean;
 }
 
 interface MemberAttendanceResponse {
@@ -445,8 +446,17 @@ export default function TeamAttendance() {
             ) : (
               <div className="text-center py-8">
                 <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No team members found</p>
-                <p className="text-xs text-muted-foreground mt-1">Assign direct reports to see their attendance here</p>
+                {data?.noTeamAssigned ? (
+                  <>
+                    <p className="text-muted-foreground" data-testid="text-no-team-assigned">No direct reports assigned</p>
+                    <p className="text-xs text-muted-foreground mt-1">Ask an admin to assign employees to your team to see their attendance here</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground" data-testid="text-no-members">No team members found</p>
+                    <p className="text-xs text-muted-foreground mt-1">No active employees are registered in the system</p>
+                  </>
+                )}
               </div>
             )}
           </CardContent>

@@ -2914,18 +2914,24 @@ export async function registerRoutes(
       const userRole = req.session.role;
       const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
 
+      const isPrivilegedRole = ["super_admin", "admin", "hr", "operations"].includes(userRole!);
       let teamMembers: AdminUser[];
-      if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
-        teamMembers = await storage.getAdminUsers();
+      if (isPrivilegedRole) {
+        teamMembers = await storage.getAllActiveEmployees();
       } else {
         teamMembers = await storage.getTeamMembers(userId);
       }
 
-      if (teamMembers.length === 0) {
-        return res.json({ members: [], attendance: [] });
+      const memberIds = teamMembers.map(m => m.id);
+
+      if (memberIds.length === 0) {
+        return res.json({
+          members: [],
+          attendance: [],
+          noTeamAssigned: !isPrivilegedRole,
+        });
       }
 
-      const memberIds = teamMembers.map(m => m.id);
       const attendanceRecords = await storage.getAttendanceByTeam(memberIds, date);
 
       // Fetch shift info for all team members in one query
@@ -2940,7 +2946,7 @@ export async function registerRoutes(
         isDstTeam = todayStr >= dr.spring_forward_date && todayStr < dr.fall_back_date;
       }
       const shiftMap: Record<string, { shiftName: string; expectedStart: string }> = {};
-      if (memberIds.length > 0) {
+      try {
         const shiftRows = await db.execute(sql`
           SELECT u.id as user_id, s.name as shift_name,
                  s.ist_start_dst, s.ist_start_std
@@ -2950,20 +2956,23 @@ export async function registerRoutes(
         `);
         for (const row of shiftRows.rows as any[]) {
           shiftMap[row.user_id] = {
-            shiftName: row.shift_name,
-            expectedStart: isDstTeam ? row.ist_start_dst : row.ist_start_std,
+            shiftName: row.shift_name ?? null,
+            expectedStart: (isDstTeam ? row.ist_start_dst : row.ist_start_std) ?? null,
           };
         }
+      } catch (_shiftErr) {
+        // Non-fatal: shift data missing; continue without shift info
       }
 
       res.json({
         members: teamMembers.map(m => ({
           id: m.id, firstName: m.firstName, lastName: m.lastName, email: m.email,
           designation: m.designation, departmentId: m.departmentId,
-          shiftName: shiftMap[m.id]?.shiftName || null,
-          expectedStart: shiftMap[m.id]?.expectedStart || null,
+          shiftName: shiftMap[m.id]?.shiftName ?? null,
+          expectedStart: shiftMap[m.id]?.expectedStart ?? null,
         })),
-        attendance: attendanceRecords
+        attendance: attendanceRecords,
+        noTeamAssigned: false,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch team attendance" });

@@ -106,6 +106,7 @@ export interface IStorage {
 
   // Admin Users
   getAdminUsers(): Promise<AdminUser[]>;
+  getAllActiveEmployees(): Promise<AdminUser[]>;
   getAllAdminUsersIncludingDeleted(): Promise<AdminUser[]>;
   getAdminUser(id: string): Promise<AdminUser | undefined>;
   getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
@@ -482,6 +483,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(adminUsers).where(isNull(adminUsers.deletedAt)).orderBy(adminUsers.email);
   }
 
+  async getAllActiveEmployees(): Promise<AdminUser[]> {
+    return db.select().from(adminUsers)
+      .where(and(
+        isNull(adminUsers.deletedAt),
+        eq(adminUsers.role, "employee"),
+        eq(adminUsers.isActive, true),
+        eq(adminUsers.employmentStatus, "active"),
+      ))
+      .orderBy(adminUsers.firstName);
+  }
+
   async getAllAdminUsersIncludingDeleted(): Promise<AdminUser[]> {
     return db.select().from(adminUsers).orderBy(adminUsers.email);
   }
@@ -746,8 +758,12 @@ export class DatabaseStorage implements IStorage {
 
   async getAttendanceByTeam(userIds: string[], date: string): Promise<Attendance[]> {
     if (userIds.length === 0) return [];
+    const normalizedDate = date.slice(0, 10);
     return db.select().from(attendance)
-      .where(and(inArray(attendance.userId, userIds), eq(attendance.date, date)))
+      .where(and(
+        inArray(attendance.userId, userIds),
+        sql`LEFT(${attendance.date}, 10) = ${normalizedDate}`,
+      ))
       .orderBy(attendance.userId);
   }
 
