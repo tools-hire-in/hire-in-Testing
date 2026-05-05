@@ -1,0 +1,166 @@
+
+
+
+
+Overview
+
+Logs
+
+Analytics
+
+Resources
+
+Domains
+
+Manage
+Search
+
+
+Errors only
+
+Date
+Time
+Deployment
+Source
+Log
+2026-05-05 09:05:49.47
+4e2a9b17
+User
+at async /home/runner/workspace/dist/index.cjs:2776:72380 {
+2026-05-05 09:14:21.87
+50775d33
+User
+4:14:21 PM [express] serving on port 5000
+2026-05-05 09:14:21.89
+50775d33
+User
+- Salary report: last day of month at 6 PM CST
+2026-05-05 09:14:21.89
+50775d33
+User
+- Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)
+2026-05-05 09:14:21.89
+50775d33
+User
+[scheduler] All cron jobs scheduled:
+2026-05-05 09:14:21.89
+50775d33
+User
+- Night shift consent expiry check: daily at 8 AM IST
+2026-05-05 09:16:36.38
+4e2a9b17
+System
+system: received signal terminated
+2026-05-05 09:16:36.39
+4e2a9b17
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+2026-05-05 09:16:36.43
+4e2a9b17
+System
+main done, exiting
+2026-05-05 09:23:28.48
+50775d33
+User
+4:23:28 PM [express] POST /api/auth/logout 200 in 998ms :: {"message":"Logged out successfully"}
+2026-05-05 09:23:31.23
+50775d33
+User
+4:23:31 PM [express] GET /api/auth/me 401 in 35ms :: {"message":"Not authenticated"}
+2026-05-05 09:29:11.09
+50775d33
+User
+4:29:11 PM [express] GET /api/auth/me 401 in 1ms :: {"message":"Not authenticated"}
+2026-05-05 09:29:15.24
+50775d33
+User
+4:29:15 PM [express] POST /api/auth/login 200 in 1464ms :: {"totpRequired":true}
+2026-05-05 09:29:18.69
+50775d33
+System
+system: received signal terminated
+2026-05-05 09:29:18.70
+50775d33
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+2026-05-05 09:29:18.75
+50775d33
+System
+main done, exiting
+2026-05-05 09:29:29.55
+50775d33
+User
+4:29:29 PM [express] POST /api/auth/login 200 in 1044ms :: {"id":"b47fa964-e045-4c01-8e2f-dc4ff3400046","email":"shane.scott@hire-in.com","firstName":"Mohd","lastName":"Shafique Beg","role":"manager","isActive":true,"totpEnabled":true}
+2026-05-05 09:29:30.25
+50775d33
+User
+4:29:30 PM [express] GET /api/hr/leave-types 500 in 275ms :: {"error":"Failed to fetch leave types"}
+2026-05-05 09:29:30.36
+50775d33
+User
+at /home/runner/workspace/dist/index.cjs:206:13359
+2026-05-05 09:29:30.36
+50775d33
+User
+column: undefined,
+2026-05-05 09:29:30.36
+50775d33
+User
+routine: 'parserOpenTable'
+
+2026-05-05 09:29:30.36
+50775d33
+User
+length: 127,
+2026-05-05 09:29:30.36
+50775d33
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-05-05 09:29:30.36
+50775d33
+User
+constraint: undefined,
+2026-05-05 09:29:30.36
+50775d33
+User
+}
+2026-05-05 09:29:30.36
+50775d33
+User
+error: relation "training_extension_requests" does not exist
+2026-05-05 09:29:30.36
+50775d33
+User
+code: '42P01',
+2026-05-05 09:29:30.36
+50775d33
+User
+hint: undefined,
+2026-05-05 09:29:30.36
+50775d33
+User
+at async /home/runner/workspace/dist/index.cjs:2776:5164 {
+2026-05-05 09:29:30.36
+50775d33
+User
+detail: undefined,
+2026-05-05 09:29:30.36
+50775d33
+User
+file: 'parse_relation.c',
+2026-05-05 09:29:30.36
+50775d33
+User
+at async /home/runner/workspace/dist/index.cjs:212:38229
+2026-05-05 09:29:30.36
+50775d33
+User
+dataType: undefined,
+2026-05-05 09:29:30.36
+50775d33
+User
+severity: 'ERROR',
+2026-05-05 09:29:30.36
+50775d33
+User
+line: '1449',

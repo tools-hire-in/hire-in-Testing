@@ -661,9 +661,55 @@ async function backfillHolidayAttendance() {
   try {
     await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_conditional BOOLEAN NOT NULL DEFAULT TRUE`);
     await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS carry_forward_cap INTEGER DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS occurrence_based BOOLEAN NOT NULL DEFAULT FALSE`);
     log("Ensured leave_types extra columns exist");
   } catch (err) {
     console.error("leave_types migration error:", err);
+  }
+
+  try {
+    await db.execute(sql`ALTER TABLE leave_accruals ADD COLUMN IF NOT EXISTS accrual_type TEXT DEFAULT 'monthly'`);
+    await db.execute(sql`ALTER TABLE leave_accruals ADD COLUMN IF NOT EXISTS skip_reason TEXT`);
+    log("Ensured leave_accruals extra columns exist");
+  } catch (err) {
+    console.error("leave_accruals migration error:", err);
+  }
+
+  try {
+    await db.execute(sql`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS half_day BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS half_day_part TEXT`);
+    await db.execute(sql`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS split_paid_days NUMERIC`);
+    await db.execute(sql`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS split_lwp_days NUMERIC`);
+    log("Ensured leave_requests extra columns exist");
+  } catch (err) {
+    console.error("leave_requests migration error:", err);
+  }
+
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE break_type AS ENUM ('lunch', 'tea');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS break_records (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        attendance_id VARCHAR REFERENCES attendance(id),
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        date VARCHAR NOT NULL,
+        break_type break_type NOT NULL,
+        started_at TIMESTAMP NOT NULL,
+        ended_at TIMESTAMP,
+        duration_minutes NUMERIC,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS break_records_user_date_idx ON break_records (user_id, date)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS break_records_attendance_idx ON break_records (attendance_id)`);
+    log("Ensured break_records table and indexes exist");
+  } catch (err) {
+    console.error("break_records migration error:", err);
   }
 
   try {
