@@ -272,7 +272,7 @@ export default function Attendance() {
                   <div className="px-5 py-4">
                     {isLoading ? (
                       <Skeleton className="h-12 w-full" />
-                    ) : stats?.todayStatus === "not_punched" ? (
+                    ) : !stats || stats.todayStatus === "not_punched" ? (
                       <Button
                         className="w-full h-12 text-base font-semibold gap-2"
                         onClick={() => punchInMutation.mutate()}
