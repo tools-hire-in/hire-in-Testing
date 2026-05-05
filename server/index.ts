@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { db, runMigrations } from "./db";
+import { seedUniversalPolicies } from "./onboardingSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
@@ -738,6 +739,23 @@ async function backfillHolidayAttendance() {
   await backfillHolidayAttendance();
   await ensureShiftTables();
   await seedShiftData();
+
+  try {
+    const [firstAdmin] = await db.select({ id: adminUsers.id })
+      .from(adminUsers)
+      .where(eq(adminUsers.isActive, true))
+      .limit(1);
+    const seedAs = firstAdmin?.id ?? "system";
+    const result = await seedUniversalPolicies(seedAs);
+    if (result.created.length > 0) {
+      log(`Universal policy tracks created: ${result.created.join(", ")} — assigned to ${result.assigned} user(s)`);
+    } else {
+      log(`Universal policy tracks already present (${result.skipped.length} existing, ${result.assigned} new assignment(s))`);
+    }
+  } catch (err) {
+    console.error("Universal policy seeding error (non-fatal):", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

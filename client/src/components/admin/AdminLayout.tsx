@@ -21,6 +21,8 @@ import {
   HelpCircle,
   Clock,
   ArrowRight,
+  CalendarOff,
+  MessageCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -620,88 +622,84 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 Welcome to Hire'in Solutions Portal
               </DialogTitle>
               <DialogDescription>
-                Here's a quick guide to what's where. Click any section to go there.
+                Your quick-start checklist. Click any step to go there directly.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2 py-1">
               {[
                 {
-                  icon: LayoutDashboard,
-                  label: "My Work",
-                  href: "/admin/hr",
-                  desc: "Your daily hub — Dashboard, Attendance (punch in/out, breaks), Leaves, and Holidays.",
-                  tip: "Start here every day to punch in and track your time.",
-                  show: true,
-                  tipColor: "text-blue-600 dark:text-blue-400",
-                },
-                {
+                  num: 1,
                   icon: UserCircle,
-                  label: "My Profile",
+                  label: "Set your Shift",
                   href: "/admin/profile",
-                  desc: "Personal details, shift selection, documents, salary slips, and org chart.",
-                  tip: "⚠️ Set your shift here first — required for attendance tracking.",
-                  show: true,
+                  desc: "Go to My Profile → Shift section and pick the shift that matches your working hours (e.g. General 9 AM – 6 PM). Do this before your first punch-in.",
+                  tip: "Required — your shift determines how daily hours are calculated.",
                   tipColor: "text-amber-600 dark:text-amber-400",
+                  show: true,
                 },
                 {
+                  num: 2,
+                  icon: Clock,
+                  label: "Punch In, Punch Out & Breaks",
+                  href: "/admin/hr",
+                  desc: "My Work → Attendance tab. Hit Punch In to start your day. Once punched in, you can log a Lunch break (30 min) and up to 2 Tea breaks (15 min each).",
+                  tip: "Punch in every working day — late arrivals are visible to your manager.",
+                  tipColor: "text-blue-600 dark:text-blue-400",
+                  show: true,
+                },
+                {
+                  num: 3,
+                  icon: CalendarOff,
+                  label: "Apply for Leave",
+                  href: "/admin/hr",
+                  desc: "My Work → Leaves tab shows your EL / SL balance and lets you submit a leave request. Your manager is notified to approve or reject it.",
+                  tip: (user?.role === "manager" || user?.role === "hr" || user?.role === "operations")
+                    ? "You can also approve your team's requests from this tab."
+                    : undefined,
+                  tipColor: "text-green-600 dark:text-green-400",
+                  show: true,
+                },
+                {
+                  num: 4,
                   icon: GraduationCap,
-                  label: "My Growth",
+                  label: "Complete your Training",
                   href: "/admin/growth",
-                  desc: "Training tracks, policy acknowledgements, and performance reviews.",
-                  tip: undefined,
+                  desc: "My Growth → Training has all your assigned policy documents to read and sign, plus learning modules. Overdue training locks portal access until completed.",
+                  tip: user?.role === "manager"
+                    ? "My Team → Training tab shows your whole team's completion status."
+                    : undefined,
+                  tipColor: "text-purple-600 dark:text-purple-400",
                   show: hasGrowthAccess,
-                  tipColor: "",
                 },
                 {
-                  icon: Users,
-                  label: "My Team",
-                  href: "/admin/hr/my-team",
-                  desc: "Team attendance overview, leave approvals, and training progress.",
+                  num: 5,
+                  icon: MessageCircle,
+                  label: "Attendance Issue? Raise a Ticket",
+                  href: "/admin/hr",
+                  desc: "If a punch was missed or recorded incorrectly, go to My Work → Tickets tab and submit a correction request. Your manager will review and approve it.",
                   tip: undefined,
-                  show: hasTeamAccess,
                   tipColor: "",
-                },
-                {
-                  icon: Briefcase,
-                  label: "Recruitment",
-                  href: "/admin/recruitment",
-                  desc: "Job postings, candidate applications, and the hiring pipeline.",
-                  tip: undefined,
-                  show: hasRecruitmentAccess,
-                  tipColor: "",
-                },
-                {
-                  icon: UserPlus,
-                  label: "New Hire",
-                  href: "/admin/new-hire",
-                  desc: "Offer letters and onboarding status for recently joined employees.",
-                  tip: undefined,
-                  show: hasNewHireAccess,
-                  tipColor: "",
-                },
-                {
-                  icon: Settings,
-                  label: "People & HR",
-                  href: "/admin/hr/people",
-                  desc: "Employee management, HR settings, leave types, and compliance reports.",
-                  tip: undefined,
-                  show: hasHRAccess,
-                  tipColor: "",
+                  show: true,
                 },
               ].filter(s => s.show).map((step) => (
                 <button
-                  key={step.href}
+                  key={step.num}
                   className="w-full text-left flex items-start gap-3 p-3 rounded-lg border hover:bg-accent hover:border-primary/30 transition-colors group"
                   onClick={() => { setShowTour(false); setLocation(step.href); }}
-                  data-testid={`tour-step-${step.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  data-testid={`tour-step-${step.num}`}
                 >
-                  <div className="mt-0.5 p-1.5 rounded-md bg-primary/10 group-hover:bg-primary/15 transition-colors shrink-0">
-                    <step.icon className="h-4 w-4 text-primary" />
+                  <div className="shrink-0 flex flex-col items-center pt-0.5">
+                    <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center group-hover:bg-primary/25 transition-colors">
+                      {step.num}
+                    </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{step.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <step.icon className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="text-sm font-semibold">{step.label}</span>
+                      </div>
                       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{step.desc}</p>
