@@ -241,7 +241,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   const userNeeds2FASetup = user && !user.totpEnabled;
 
-  const POLICY_GATE_EXEMPT = ["super_admin", "admin"];
+  const POLICY_GATE_EXEMPT = ["admin"];
   const isPolicyGateExempt = POLICY_GATE_EXEMPT.includes(user?.role || "");
 
   const { data: policyGateStatus } = useQuery<{ hasPendingPolicies: boolean; policies: any[] }>({

@@ -1653,15 +1653,15 @@ export function registerOnboardingRoutes(app: Express) {
   app.get("/api/onboarding/policy-gate-status", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const POLICY_GATE_EXEMPT = ["super_admin", "admin"];
+    const POLICY_GATE_EXEMPT = ["admin"];
     const isExemptRole = POLICY_GATE_EXEMPT.includes(req.session.role!);
 
     try {
       const userId = req.session.userId;
 
       // Get all published policy tracks assigned to this user.
-      // For exempt roles (super_admin, admin): only include tracks marked isUniversal.
-      // For all other roles: include all policy tracks.
+      // For exempt roles (admin): only include tracks marked isUniversal.
+      // For all other roles (including super_admin): include all policy tracks.
       const allAssignments = await db.select({
         assignment: trackAssignments,
         track: learningTracks,
@@ -1711,7 +1711,7 @@ export function registerOnboardingRoutes(app: Express) {
       const pendingPolicies = pending.filter(Boolean);
 
       // Night Shift Consent check: Female employees must have a valid (non-expired) consent.
-      // Exempt roles (admin, super_admin) are never gated by Night Shift Consent.
+      // Exempt roles (admin) are never gated by Night Shift Consent.
       let nightShiftPending = false;
       let nightShiftConsent: any = null;
       try {
