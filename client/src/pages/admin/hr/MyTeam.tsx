@@ -621,7 +621,7 @@ function EmployeeDetailView({
           <SalaryTab salary={data.salary} />
         </TabsContent>
         <TabsContent value="attendance">
-          <AttendanceTab records={data.attendance} onEdit={onEditAttendance} />
+          <AttendanceTab records={data.attendance} onEdit={onEditAttendance} shiftTiming={data.user.shiftTiming ?? null} />
         </TabsContent>
         <TabsContent value="holidays">
           <HolidaysTab
@@ -867,7 +867,25 @@ function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
   );
 }
 
-function AttendanceTab({ records, onEdit }: { records: AttendanceRecord[]; onEdit?: (record: AttendanceRecord) => void }) {
+function getPunchInOffsetLabel(punchIn: string, shiftStart: string): string {
+  const punchDate = new Date(punchIn);
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const punchIST = new Date(punchDate.getTime() + IST_OFFSET_MS);
+  const punchMin = punchIST.getUTCHours() * 60 + punchIST.getUTCMinutes();
+  const [sh, sm] = shiftStart.split(":").map(Number);
+  const shiftMin = sh * 60 + sm;
+  const diff = punchMin - shiftMin;
+  if (Math.abs(diff) < 5) return "On time";
+  const abs = Math.abs(diff);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  const label = h > 0
+    ? (m > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`)
+    : `${m} min`;
+  return diff < 0 ? `Punched in ${label} early` : `Punched in ${label} late`;
+}
+
+function AttendanceTab({ records, onEdit, shiftTiming }: { records: AttendanceRecord[]; onEdit?: (record: AttendanceRecord) => void; shiftTiming?: ShiftTimingInfo | null }) {
   return (
     <Card>
       <CardHeader>
@@ -900,7 +918,16 @@ function AttendanceTab({ records, onEdit }: { records: AttendanceRecord[]; onEdi
                         {r.status.replace("_", " ")}
                       </Badge>
                     </td>
-                    <td className="py-2">{formatTime(r.punchIn)}</td>
+                    <td className="py-2">
+                      <div>
+                        <span>{formatTime(r.punchIn)}</span>
+                        {r.punchIn && shiftTiming?.istStart && (
+                          <p className="text-xs text-muted-foreground mt-0.5" data-testid={`text-punch-offset-${r.id}`}>
+                            {getPunchInOffsetLabel(r.punchIn, shiftTiming.istStart)}
+                          </p>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2">{formatTime(r.punchOut)}</td>
                     <td className="text-right py-2">{r.totalHours ? parseFloat(r.totalHours).toFixed(1) : "—"}</td>
                     {onEdit && (

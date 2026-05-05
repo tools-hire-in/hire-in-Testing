@@ -1,12 +1,11 @@
 import { useEffect, useState, useRef } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   LogIn,
   LogOut as LogOutIcon,
   CheckCircle2,
   Coffee,
-  AlertCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +58,13 @@ function formatTime(ts: string | null): string {
   return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatShiftTime(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   present:   { label: "Present",   cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
   absent:    { label: "Absent",    cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
@@ -97,7 +103,7 @@ export default function Attendance() {
     refetchInterval: 60000,
   });
 
-  const { data: myShift } = useQuery<{ id: string; name: string } | null>({
+  const { data: myShift } = useQuery<{ id: string; name: string; istStart: string; istEnd: string } | null>({
     queryKey: ["/api/hr/my-shift"],
     enabled: isAuthenticated,
   });
@@ -183,28 +189,6 @@ export default function Attendance() {
           <PillTabsContent value="attendance">
             <div className="space-y-4 max-w-xl">
 
-              {/* ── NO SHIFT BANNER ── */}
-              {myShift === null && !isLoading && (
-                <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-4">
-                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                      No shift selected
-                    </p>
-                    <p className="text-sm text-amber-800 dark:text-amber-300 mt-0.5">
-                      You need to select a shift before attendance tracking can work correctly. Go to{" "}
-                      <Link
-                        href="/admin/profile"
-                        className="underline underline-offset-2 font-medium hover:text-amber-900 dark:hover:text-amber-100"
-                      >
-                        My Profile → My Shift
-                      </Link>{" "}
-                      to choose your shift.
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* ── TODAY'S TIME CARD ── */}
               <Card className="overflow-hidden border-2 border-border">
                 <CardContent className="p-0">
@@ -216,6 +200,11 @@ export default function Attendance() {
                         {todayDate}
                       </p>
                       <p className="text-sm font-semibold mt-0.5 text-foreground">Today's Time Card</p>
+                      {myShift && myShift.istStart && myShift.istEnd && (
+                        <p className="text-xs text-muted-foreground mt-1" data-testid="text-shift-info">
+                          Shift: {myShift.name} · {formatShiftTime(myShift.istStart)} – {formatShiftTime(myShift.istEnd)}
+                        </p>
+                      )}
                     </div>
                     {isLoading ? (
                       <Skeleton className="h-6 w-20" />
