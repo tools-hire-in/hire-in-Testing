@@ -1419,6 +1419,7 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const todayRecord = await storage.getTodayAttendance(userId);
       const now = new Date();
+      const today = now.toISOString().split("T")[0];
       const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
       const monthRecords = await storage.getAttendanceByUser(userId, monthStart, monthEnd);
@@ -2879,44 +2880,6 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to review ticket" });
-    }
-  });
-
-  // --- HR Dashboard Stats ---
-  app.get("/api/hr/dashboard-stats", requireAuth, async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const today = new Date().toISOString().split("T")[0];
-      const year = new Date().getFullYear();
-      const monthStart = `${today.substring(0, 7)}-01`;
-
-      const todayAttendance = await storage.getTodayAttendance(userId);
-      const monthRecords = await storage.getAttendanceByUser(userId, monthStart, today);
-      const pendingLeaves = await storage.getLeaveRequests({ userId, status: "pending" });
-      let leaveBalances = await storage.getLeaveBalances(userId, year);
-      if (leaveBalances.length === 0) {
-        leaveBalances = await storage.initLeaveBalances(userId, year);
-      }
-      const activeLeaveTypes = await storage.getLeaveTypes();
-      const activeTypeIds = new Set(activeLeaveTypes.filter(lt => lt.isActive).map(lt => lt.id));
-      leaveBalances = leaveBalances.filter(lb => activeTypeIds.has(lb.leaveTypeId));
-
-      const presentDays = monthRecords.filter(r => r.status === "present" || r.status === "half_day" || r.status === "late").length;
-      const totalHoursMonth = monthRecords.reduce((sum, r) => sum + parseFloat(r.totalHours || "0"), 0);
-      const correctionsThisMonth = monthRecords.filter(r => r.isCorrect).length;
-
-      res.json({
-        todayStatus: todayAttendance ? (todayAttendance.punchOut ? "completed" : "punched_in") : "not_punched",
-        punchInTime: todayAttendance?.punchIn || null,
-        punchOutTime: todayAttendance?.punchOut || null,
-        presentDaysThisMonth: presentDays,
-        totalHoursThisMonth: totalHoursMonth.toFixed(1),
-        pendingLeaveRequests: pendingLeaves.length,
-        correctionsThisMonth,
-        leaveBalances,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch dashboard stats" });
     }
   });
 

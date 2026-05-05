@@ -1,22 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { Clock, ChevronLeft, ChevronRight, X, CalendarDays, List } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import {
+  LogIn,
+  LogOut as LogOutIcon,
+  CheckCircle2,
+  Coffee,
+} from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
-import { PortalHeader } from "@/components/ui/portal-header";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { BreakWidget } from "@/components/admin/BreakWidget";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { TicketsContent } from "./Tickets";
+import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
+
+interface DashboardStats {
+  todayStatus: "not_punched" | "punched_in" | "completed";
+  punchInTime: string | null;
+  punchOutTime: string | null;
+  presentDaysThisMonth: number;
+  totalHoursThisMonth: string;
+  pendingLeaveRequests: number;
+  productiveHoursToday: string | null;
+  correctionsThisMonth: number;
+}
 
 interface AttendanceRecord {
   id: string;
@@ -27,442 +40,354 @@ interface AttendanceRecord {
   totalHours: string | null;
   status: string;
   notes: string | null;
+  isCorrect?: boolean;
 }
 
-const statusColors: Record<string, string> = {
-  present: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  absent: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  half_day: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  late: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  on_leave: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  holiday: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  weekend: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+const TARGET_HOURS = 8;
+
+function formatElapsed(ms: number): string {
+  if (ms <= 0) return "0h 00m";
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+function formatTime(ts: string | null): string {
+  if (!ts) return "--:--";
+  return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
+const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  present:   { label: "Present",   cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  absent:    { label: "Absent",    cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  half_day:  { label: "Half Day",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  late:      { label: "Late",      cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  on_leave:  { label: "On Leave",  cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  holiday:   { label: "Holiday",   cls: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+  weekend:   { label: "Weekend",   cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  corrected: { label: "Corrected", cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
 };
 
-const statusDotColors: Record<string, string> = {
-  present: "bg-green-500",
-  absent: "bg-red-500",
-  half_day: "bg-yellow-500",
-  late: "bg-orange-500",
-  on_leave: "bg-blue-500",
-  holiday: "bg-purple-500",
-  weekend: "bg-gray-400",
-};
-
-const statusLabels: Record<string, string> = {
-  present: "Present",
-  absent: "Absent",
-  half_day: "Half Day",
-  late: "Late",
-  on_leave: "On Leave",
-  holiday: "Holiday",
-  weekend: "Weekend",
-};
+function StatusBadge({ status, isCorrect }: { status: string; isCorrect?: boolean }) {
+  const key = isCorrect && status === "present" ? "corrected" : (status || "absent");
+  const cfg = STATUS_STYLE[key] || { label: status, cls: "" };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
 
 export default function Attendance() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
+  const [liveMs, setLiveMs] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
-  const validTabs = ["attendance", "tickets"];
-  const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
-  const [activeTab, setActiveTab] = useState(initialTab);
-  const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
-  const [selectedDay, setSelectedDay] = useState<{
-    dateStr: string;
-    record: AttendanceRecord | undefined;
-    isWeekend: boolean;
-  } | null>(null);
+  const [activeTab, setActiveTab] = useState(requestedTab === "tickets" ? "tickets" : "attendance");
 
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const { data: stats, isLoading } = useQuery<DashboardStats>({
+    queryKey: ["/api/hr/dashboard-stats"],
+    enabled: isAuthenticated,
+    refetchInterval: 60000,
   });
 
-  const startDate = `${currentMonth}-01`;
-  const [year, month] = currentMonth.split("-").map(Number);
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${currentMonth}-${lastDay}`;
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
-  const { data: records, isLoading } = useQuery<AttendanceRecord[]>({
-    queryKey: ["/api/hr/attendance/my", { startDate, endDate }],
+  const { data: records } = useQuery<AttendanceRecord[]>({
+    queryKey: ["/api/hr/attendance/my", { startDate: monthStart, endDate: todayStr }],
     enabled: isAuthenticated,
   });
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      setLocation("/admin/login");
+    if (stats?.punchInTime && stats.todayStatus === "punched_in") {
+      const tick = () => setLiveMs(Date.now() - new Date(stats.punchInTime!).getTime());
+      tick();
+      timerRef.current = setInterval(tick, 30000);
+    } else if (stats?.punchInTime && stats?.punchOutTime) {
+      setLiveMs(new Date(stats.punchOutTime).getTime() - new Date(stats.punchInTime).getTime());
+      if (timerRef.current) clearInterval(timerRef.current);
+    } else {
+      setLiveMs(0);
+      if (timerRef.current) clearInterval(timerRef.current);
     }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [stats?.punchInTime, stats?.punchOutTime, stats?.todayStatus]);
+
+  const punchInMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-in"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/my"] });
+      toast({ title: "Punched In", description: "Your attendance has been recorded." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to punch in", variant: "destructive" });
+    },
+  });
+
+  const punchOutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-out"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/my"] });
+      toast({ title: "Punched Out", description: "See you next shift!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to punch out", variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
 
   if (authLoading || !isAuthenticated) return null;
 
-  const prevMonth = () => {
-    const d = new Date(year, month - 2, 1);
-    setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  };
-
-  const nextMonth = () => {
-    const d = new Date(year, month, 1);
-    setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  };
-
-  const formatTime = (dateStr: string | null) => {
-    if (!dateStr) return "--:--";
-    return new Date(dateStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-  };
-
-  const todayStr = new Date().toISOString().split("T")[0];
-  const firstDayOfWeek = new Date(year, month - 1, 1).getDay();
-
-  const allDays = Array.from({ length: lastDay }, (_, i) => {
-    const dayNum = i + 1;
-    const dateStr = `${currentMonth}-${String(dayNum).padStart(2, "0")}`;
-    const record = records?.find(r => r.date === dateStr);
-    const dayOfWeek = new Date(year, month - 1, dayNum).getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    return { dayNum, dateStr, record, isWeekend, dayOfWeek };
-  });
-
-  const totalPresent = records?.filter(r => ["present", "late", "half_day"].includes(r.status)).length || 0;
-  const totalHours = records?.reduce((sum, r) => sum + parseFloat(r.totalHours || "0"), 0) || 0;
-  const monthName = new Date(year, month - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
-
-  const handleDayClick = (day: typeof allDays[0]) => {
-    setSelectedDay({ dateStr: day.dateStr, record: day.record, isWeekend: day.isWeekend });
-  };
-
-  const getStatusForDay = (day: typeof allDays[0]) => {
-    if (day.record?.status) return day.record.status;
-    if (day.isWeekend) return "weekend";
-    if (day.dateStr > todayStr) return "";
-    return "absent";
-  };
-
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     const url = new URL(window.location.href);
-    if (value === "attendance") {
-      url.searchParams.delete("tab");
-    } else {
-      url.searchParams.set("tab", value);
-    }
+    if (value === "attendance") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", value);
     window.history.replaceState({}, "", url.toString());
   };
 
+  const punchedIn = stats?.todayStatus === "punched_in";
+  const dayComplete = stats?.todayStatus === "completed";
+  const progressPct = Math.min(100, (liveMs / (TARGET_HOURS * 3600000)) * 100);
+  const todayDate = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const recentRecords = [...(records || [])].sort((a, b) => b.date.localeCompare(a.date));
+
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <PortalHeader
-          label="HR Portal"
-          title="Attendance"
-          subtitle="Your attendance and regularization requests"
-          data-testid="text-attendance-title"
-        />
+      <div className="space-y-5">
         <PillTabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
           <PillTabsList>
             <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
-            <PillTabsTrigger value="tickets" data-testid="tab-tickets">Regularization Requests</PillTabsTrigger>
+            <PillTabsTrigger value="tickets" data-testid="tab-tickets">Regularization</PillTabsTrigger>
           </PillTabsList>
+
           <PillTabsContent value="attendance">
-            <div className="space-y-6">
-        <div className="flex items-center justify-end flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center border rounded-md overflow-hidden mr-2">
-              <Button
-                variant={viewMode === "calendar" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("calendar")}
-                className="rounded-none h-8"
-                data-testid="button-calendar-view"
-              >
-                <CalendarDays className="h-4 w-4 mr-1" />
-                Calendar
-              </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("list")}
-                className="rounded-none h-8"
-                data-testid="button-list-view"
-              >
-                <List className="h-4 w-4 mr-1" />
-                List
-              </Button>
-            </div>
-            <Button variant="outline" size="icon" onClick={prevMonth} data-testid="button-prev-month">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-current-month">{monthName}</span>
-            <Button variant="outline" size="icon" onClick={nextMonth} data-testid="button-next-month">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+            <div className="space-y-4 max-w-xl">
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-mono font-bold" data-testid="text-total-present">{totalPresent}</div>
-              <p className="text-sm text-muted-foreground">Days Present</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-mono font-bold">{totalHours.toFixed(1)}</div>
-              <p className="text-sm text-muted-foreground">Total Hours</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-mono font-bold">{totalPresent > 0 ? (totalHours / totalPresent).toFixed(1) : "0"}</div>
-              <p className="text-sm text-muted-foreground">Avg Hours/Day</p>
-            </CardContent>
-          </Card>
-        </div>
+              {/* ── TODAY'S TIME CARD ── */}
+              <Card className="overflow-hidden border-2 border-border">
+                <CardContent className="p-0">
 
-        {viewMode === "calendar" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Monthly Calendar</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : (
-                <>
-                  <div className="grid grid-cols-7 gap-1 mb-2">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-                      <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
-                        {d}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1" data-testid="calendar-grid">
-                    {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-                      <div key={`empty-${i}`} className="aspect-square" />
-                    ))}
-                    {allDays.map((day) => {
-                      const status = getStatusForDay(day);
-                      const isFuture = day.dateStr > todayStr;
-                      const isToday = day.dateStr === todayStr;
-                      const dotColor = status ? statusDotColors[status] : "";
-
-                      return (
-                        <button
-                          key={day.dateStr}
-                          onClick={() => !isFuture && handleDayClick(day)}
-                          disabled={isFuture}
-                          className={`
-                            aspect-square rounded-lg border flex flex-col items-center justify-center gap-1
-                            text-sm transition-all relative
-                            ${isFuture ? "opacity-30 cursor-not-allowed" : "cursor-pointer hover:border-primary hover:shadow-sm"}
-                            ${isToday ? "border-primary border-2 font-bold" : "border-border"}
-                            ${day.isWeekend && !isFuture ? "bg-muted/40" : ""}
-                            ${selectedDay?.dateStr === day.dateStr ? "ring-2 ring-primary" : ""}
-                          `}
-                          data-testid={`calendar-day-${day.dateStr}`}
-                        >
-                          <span className={isToday ? "text-primary" : ""}>{day.dayNum}</span>
-                          {status && dotColor && (
-                            <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-                          )}
-                        </button>
-                      );
-                    })}
+                  {/* Header */}
+                  <div className="flex items-start justify-between px-5 pt-5 pb-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                        {todayDate}
+                      </p>
+                      <p className="text-sm font-semibold mt-0.5 text-foreground">Today's Time Card</p>
+                    </div>
+                    {isLoading ? (
+                      <Skeleton className="h-6 w-20" />
+                    ) : (
+                      <Badge
+                        variant={dayComplete ? "default" : punchedIn ? "secondary" : "outline"}
+                        className="text-xs"
+                        data-testid="badge-attendance-status"
+                      >
+                        {dayComplete ? "Day Complete" : punchedIn ? "● Working" : "Not Started"}
+                      </Badge>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
-                    {Object.entries(statusLabels).map(([key, label]) => (
-                      <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className={`h-2.5 w-2.5 rounded-full ${statusDotColors[key]}`} />
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Daily Records</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-2">
-                  {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Day</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch In</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Punch Out</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hours</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allDays.map(({ dayNum, dateStr, record, isWeekend, dayOfWeek }) => {
-                        const dayName = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dayOfWeek];
-                        const status = record?.status || (isWeekend ? "weekend" : "");
-                        const isFuture = dateStr > todayStr;
-                        return (
-                          <tr
-                            key={dateStr}
-                            className={`border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors ${isWeekend ? "bg-muted/30" : ""} ${isFuture ? "opacity-40" : ""}`}
-                            onClick={() => !isFuture && handleDayClick({ dayNum, dateStr, record, isWeekend, dayOfWeek })}
-                            data-testid={`attendance-row-${dateStr}`}
+                  {/* Live hours + progress */}
+                  <div className="px-5 pb-4 space-y-2">
+                    {isLoading ? (
+                      <Skeleton className="h-12 w-full" />
+                    ) : (
+                      <>
+                        <div className="flex items-end justify-between">
+                          <span
+                            className={`text-4xl font-mono font-bold tracking-tight ${punchedIn ? "text-foreground" : "text-muted-foreground"}`}
+                            data-testid="text-hours-worked"
                           >
-                            <td className="py-2 px-2">{dateStr}</td>
-                            <td className="py-2 px-2">{dayName}</td>
-                            <td className="py-2 px-2">{formatTime(record?.punchIn || null)}</td>
-                            <td className="py-2 px-2">{formatTime(record?.punchOut || null)}</td>
-                            <td className="py-2 px-2">{record?.totalHours ? `${parseFloat(record.totalHours).toFixed(1)}h` : "-"}</td>
-                            <td className="py-2 px-2">
-                              {status && (
-                                <Badge variant="secondary" className={statusColors[status] || ""}>
-                                  {statusLabels[status] || status.replace("_", " ")}
-                                </Badge>
-                              )}
+                            {(punchedIn || dayComplete) ? formatElapsed(liveMs) : "—h ——m"}
+                          </span>
+                          <span className="text-sm text-muted-foreground mb-1">of {TARGET_HOURS}h target</span>
+                        </div>
+                        {(punchedIn || dayComplete) && (
+                          <Progress value={progressPct} className="h-2.5" data-testid="progress-hours" />
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* In / Out times */}
+                  <div className="grid grid-cols-2 gap-px bg-border mx-5 rounded-lg overflow-hidden">
+                    <div className="bg-muted/40 p-3 text-center">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Punch In</p>
+                      <p className="text-base font-semibold font-mono" data-testid="text-punch-in-time">
+                        {formatTime(stats?.punchInTime || null)}
+                      </p>
+                    </div>
+                    <div className="bg-muted/40 p-3 text-center">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Punch Out</p>
+                      <p className="text-base font-semibold font-mono" data-testid="text-punch-out-time">
+                        {formatTime(stats?.punchOutTime || null)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Main action button */}
+                  <div className="px-5 py-4">
+                    {isLoading ? (
+                      <Skeleton className="h-12 w-full" />
+                    ) : stats?.todayStatus === "not_punched" ? (
+                      <Button
+                        className="w-full h-12 text-base font-semibold gap-2"
+                        onClick={() => punchInMutation.mutate()}
+                        disabled={punchInMutation.isPending}
+                        data-testid="button-punch-in"
+                      >
+                        <LogIn className="h-5 w-5" />
+                        {punchInMutation.isPending ? "Starting your day…" : "Punch In"}
+                      </Button>
+                    ) : stats?.todayStatus === "punched_in" ? (
+                      <Button
+                        className="w-full h-12 text-base font-semibold gap-2"
+                        variant="secondary"
+                        onClick={() => punchOutMutation.mutate()}
+                        disabled={punchOutMutation.isPending}
+                        data-testid="button-punch-out"
+                      >
+                        <LogOutIcon className="h-5 w-5" />
+                        {punchOutMutation.isPending ? "Wrapping up…" : "Punch Out"}
+                      </Button>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 py-2 text-green-600 dark:text-green-400">
+                        <CheckCircle2 className="h-5 w-5" />
+                        <span className="text-sm font-medium">
+                          {stats?.productiveHoursToday
+                            ? `${stats.productiveHoursToday} productive — great work!`
+                            : "Attendance recorded for today"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* ── BREAKS (only when punched in) ── */}
+              {punchedIn && (
+                <Card>
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Coffee className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Breaks</span>
+                    </div>
+                    <BreakWidget punchedIn={punchedIn} />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── MONTH SUMMARY ── */}
+              <div className="grid grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-mono font-bold" data-testid="text-days-present">
+                      {isLoading ? <Skeleton className="h-8 w-12 mx-auto" /> : (stats?.presentDaysThisMonth ?? 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Days Present</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-mono font-bold">
+                      {isLoading ? <Skeleton className="h-8 w-12 mx-auto" /> : (stats?.totalHoursThisMonth ?? "0")}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Hours This Month</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-mono font-bold">
+                      {isLoading ? <Skeleton className="h-8 w-12 mx-auto" /> : (
+                        stats?.presentDaysThisMonth && stats.totalHoursThisMonth
+                          ? (parseFloat(stats.totalHoursThisMonth) / stats.presentDaysThisMonth).toFixed(1)
+                          : "0"
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Avg Hrs / Day</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* ── RECENT RECORDS ── */}
+              <Card>
+                <CardContent className="p-0">
+                  <div className="px-5 py-3.5 border-b">
+                    <h3 className="text-sm font-semibold">Recent Records</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Date</th>
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">In</th>
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Out</th>
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Hours</th>
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentRecords.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
+                              No records this month yet
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                        ) : recentRecords.map((r) => {
+                          const d = new Date(r.date + "T12:00:00");
+                          const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+                          const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                          const isToday = r.date === todayStr;
+                          return (
+                            <tr
+                              key={r.date}
+                              className={`border-b last:border-0 transition-colors ${isToday ? "bg-primary/5 font-medium" : "hover:bg-muted/30"}`}
+                              data-testid={`attendance-row-${r.date}`}
+                            >
+                              <td className="py-3 px-4">
+                                <span className="font-medium">{dateLabel}</span>
+                                <span className="text-xs text-muted-foreground ml-1.5">{dayName}</span>
+                              </td>
+                              <td className="py-3 px-4 font-mono text-sm">{formatTime(r.punchIn)}</td>
+                              <td className="py-3 px-4 font-mono text-sm">{formatTime(r.punchOut)}</td>
+                              <td className="py-3 px-4 font-mono text-sm">
+                                {r.totalHours ? `${parseFloat(r.totalHours).toFixed(1)}h` : "—"}
+                              </td>
+                              <td className="py-3 px-4">
+                                <StatusBadge status={r.status} isCorrect={r.isCorrect} />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
 
-      <Dialog open={!!selectedDay} onOpenChange={(open) => !open && setSelectedDay(null)}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-day-detail">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedDay && new Date(selectedDay.dateStr + "T12:00:00").toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedDay && (
-            <DayDetailContent
-              dateStr={selectedDay.dateStr}
-              record={selectedDay.record}
-              isWeekend={selectedDay.isWeekend}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+            </div>
           </PillTabsContent>
+
           <PillTabsContent value="tickets">
             <TicketsContent />
           </PillTabsContent>
         </PillTabs>
       </div>
     </AdminLayout>
-  );
-}
-
-function DayDetailContent({
-  dateStr,
-  record,
-  isWeekend,
-}: {
-  dateStr: string;
-  record: AttendanceRecord | undefined;
-  isWeekend: boolean;
-}) {
-  const status = record?.status || (isWeekend ? "weekend" : "absent");
-  const todayStr = new Date().toISOString().split("T")[0];
-  const isFuture = dateStr > todayStr;
-
-  const formatTime = (ts: string | null) => {
-    if (!ts) return "--:--";
-    return new Date(ts).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  };
-
-  const formatDuration = (hours: string | null) => {
-    if (!hours) return "-";
-    const h = parseFloat(hours);
-    const wholeHours = Math.floor(h);
-    const minutes = Math.round((h - wholeHours) * 60);
-    if (wholeHours === 0) return `${minutes}m`;
-    if (minutes === 0) return `${wholeHours}h`;
-    return `${wholeHours}h ${minutes}m`;
-  };
-
-  if (isFuture) {
-    return (
-      <div className="text-center py-6 text-muted-foreground">
-        <Clock className="h-10 w-10 mx-auto mb-2 opacity-40" />
-        <p>Future date - no data available</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4" data-testid="day-detail-content">
-      <div className="flex items-center justify-center">
-        <Badge variant="secondary" className={`text-sm px-4 py-1.5 ${statusColors[status] || ""}`}>
-          {statusLabels[status] || status.replace("_", " ")}
-        </Badge>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-muted/50 rounded-lg p-4 text-center">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Punch In</p>
-          <p className="text-lg font-semibold" data-testid="text-detail-punch-in">
-            {formatTime(record?.punchIn || null)}
-          </p>
-        </div>
-        <div className="bg-muted/50 rounded-lg p-4 text-center">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Punch Out</p>
-          <p className="text-lg font-semibold" data-testid="text-detail-punch-out">
-            {formatTime(record?.punchOut || null)}
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-muted/50 rounded-lg p-4 text-center">
-        <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Total Hours Worked</p>
-        <p className="text-2xl font-bold" data-testid="text-detail-hours">
-          {formatDuration(record?.totalHours || null)}
-        </p>
-        {record?.totalHours && (
-          <p className="text-xs text-muted-foreground mt-1">
-            ({parseFloat(record.totalHours).toFixed(2)} decimal hours)
-          </p>
-        )}
-      </div>
-
-      {record?.notes && (
-        <div className="bg-muted/50 rounded-lg p-4">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Notes</p>
-          <p className="text-sm" data-testid="text-detail-notes">{record.notes}</p>
-        </div>
-      )}
-
-      {!record && !isWeekend && (
-        <p className="text-center text-sm text-muted-foreground">
-          No attendance record for this day.
-        </p>
-      )}
-    </div>
   );
 }
