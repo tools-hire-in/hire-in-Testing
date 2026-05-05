@@ -41,6 +41,10 @@ interface AttendanceRecord {
   totalHours: string | null;
   status: string;
   notes: string | null;
+  isCorrect?: boolean;
+  correctionNote?: string | null;
+  correctedByName?: string | null;
+  updatedAt?: string | null;
 }
 
 interface TeamAttendanceResponse {
@@ -80,6 +84,7 @@ const statusDotColors: Record<string, string> = {
   on_leave: "bg-blue-500",
   holiday: "bg-purple-500",
   weekend: "bg-gray-400",
+  corrected: "bg-amber-500",
 };
 
 const statusLabels: Record<string, string> = {
@@ -92,6 +97,7 @@ const statusLabels: Record<string, string> = {
   weekend: "Weekend",
   on_lunch: "On Lunch",
   on_tea: "Tea Break",
+  corrected: "Corrected",
 };
 
 export default function TeamAttendance() {
@@ -144,7 +150,7 @@ export default function TeamAttendance() {
   if (authLoading || !isAuthenticated) return null;
 
   const canDownload = user && ["super_admin", "admin", "hr", "manager", "operations"].includes(user.role);
-  const canCorrect = user && ["super_admin", "admin"].includes(user.role);
+  const canCorrect = user && ["super_admin", "admin", "hr", "manager"].includes(user.role);
 
   const changeDate = (days: number) => {
     const d = new Date(selectedDate);
@@ -400,12 +406,19 @@ export default function TeamAttendance() {
                           )}
                           <td className="py-2 px-2">
                             <div className="space-y-1">
+                              <div className="flex flex-wrap gap-1">
                               <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
                                 {effectiveStatus === "working" && "Working"}
                                 {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
                                 {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
                                 {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
                               </Badge>
+                              {att?.isCorrect && (
+                                <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px]" data-testid={`badge-corrected-${member.id}`}>
+                                  Corrected
+                                </Badge>
+                              )}
+                              </div>
                               {isToday && effectiveStatus === "absent" && member.expectedStart && !att?.punchIn && (() => {
                                 const [h, m] = member.expectedStart.split(":").map(Number);
                                 const expectedMins = h * 60 + m;
@@ -513,6 +526,7 @@ function MemberMonthlyCalendar({
   const monthName = new Date(year, mon - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
 
   const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
+  const [editAbsentDate, setEditAbsentDate] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>("");
   const [editPunchIn, setEditPunchIn] = useState("");
   const [editPunchOut, setEditPunchOut] = useState("");
@@ -521,19 +535,34 @@ function MemberMonthlyCalendar({
 
   const correctMutation = useMutation({
     mutationFn: async (payload: {
-      id: string;
+      id?: string;
+      userId?: string;
+      date?: string;
       punchIn?: string | null;
       punchOut?: string | null;
       totalHours?: string | null;
-      correctionComment: string;
+      correctionComment?: string;
+      correctionNote?: string;
     }) => {
-      const { id, ...body } = payload;
-      return apiRequest("PATCH", `/api/hr/attendance/${id}`, body);
+      if (payload.id) {
+        const { id, ...body } = payload;
+        return apiRequest("PATCH", `/api/hr/attendance/${id}`, { ...body, correctionComment: body.correctionComment });
+      } else {
+        return apiRequest("POST", `/api/hr/attendance/admin-correction`, {
+          userId: payload.userId,
+          date: payload.date,
+          punchIn: payload.punchIn ? payload.punchIn.substring(11, 16) : null,
+          punchOut: payload.punchOut ? payload.punchOut.substring(11, 16) : null,
+          totalHours: payload.totalHours,
+          correctionNote: payload.correctionNote,
+        });
+      }
     },
     onSuccess: () => {
       toast({ title: "Attendance corrected", description: "The record has been updated and logged." });
       queryClient.invalidateQueries({ queryKey: memberQueryKey });
       setEditRecord(null);
+      setEditAbsentDate(null);
       setSelectedDay(null);
     },
     onError: (err: Error) => {
@@ -590,24 +619,41 @@ function MemberMonthlyCalendar({
     return d.toISOString();
   };
 
-  const openEdit = (record: AttendanceRecord, dateStr: string) => {
-    setEditRecord(record);
+  const openEdit = (record: AttendanceRecord | null, dateStr: string) => {
+    if (record) {
+      setEditRecord(record);
+      setEditAbsentDate(null);
+    } else {
+      setEditRecord(null);
+      setEditAbsentDate(dateStr);
+    }
     setEditDate(dateStr);
-    setEditPunchIn(toLocalTimeInput(record.punchIn));
-    setEditPunchOut(toLocalTimeInput(record.punchOut));
-    setEditTotalHours(record.totalHours || "");
+    setEditPunchIn(record ? toLocalTimeInput(record.punchIn) : "");
+    setEditPunchOut(record ? toLocalTimeInput(record.punchOut) : "");
+    setEditTotalHours(record?.totalHours || "");
     setEditComment("");
   };
 
   const handleSave = () => {
-    if (!editRecord || !editComment.trim()) return;
-    correctMutation.mutate({
-      id: editRecord.id,
-      punchIn: editPunchIn ? buildTimestamp(editDate, editPunchIn) : null,
-      punchOut: editPunchOut ? buildTimestamp(editDate, editPunchOut) : null,
-      totalHours: editTotalHours || null,
-      correctionComment: editComment.trim(),
-    });
+    if (!editComment.trim()) return;
+    if (editRecord) {
+      correctMutation.mutate({
+        id: editRecord.id,
+        punchIn: editPunchIn ? buildTimestamp(editDate, editPunchIn) : null,
+        punchOut: editPunchOut ? buildTimestamp(editDate, editPunchOut) : null,
+        totalHours: editTotalHours || null,
+        correctionComment: editComment.trim(),
+      });
+    } else {
+      correctMutation.mutate({
+        userId: member.id,
+        date: editDate,
+        punchIn: editPunchIn ? buildTimestamp(editDate, editPunchIn) : null,
+        punchOut: editPunchOut ? buildTimestamp(editDate, editPunchOut) : null,
+        totalHours: editTotalHours || null,
+        correctionNote: editComment.trim(),
+      });
+    }
   };
 
   const allDays = Array.from({ length: lastDay }, (_, i) => {
@@ -618,7 +664,8 @@ function MemberMonthlyCalendar({
     const isFuture = dateStr > todayStr;
     const record = records.find(r => r.date === dateStr);
     const status = isFuture ? "" : getEffectiveStatus(record, isWeekend);
-    return { dayNum, dateStr, dayOfWeek, isWeekend, isFuture, record, status };
+    const isRecordCorrected = !!(record?.isCorrect);
+    return { dayNum, dateStr, dayOfWeek, isWeekend, isFuture, record, status, isRecordCorrected };
   });
 
   const totalPresent = allDays.filter(d => d.status === "present").length;
@@ -674,7 +721,7 @@ function MemberMonthlyCalendar({
         ))}
         {allDays.map((day) => {
           const isToday = day.dateStr === todayStr;
-          const dotColor = day.status ? (statusDotColors[day.status] || "") : "";
+          const dotColor = day.isRecordCorrected ? "bg-amber-500" : (day.status ? (statusDotColors[day.status] || "") : "");
 
           return (
             <button
@@ -692,7 +739,7 @@ function MemberMonthlyCalendar({
               data-testid={`member-cal-day-${day.dateStr}`}
             >
               <span className={`text-[11px] ${isToday ? "text-primary" : ""}`}>{day.dayNum}</span>
-              {day.status && dotColor && (
+              {!day.isFuture && dotColor && (
                 <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
               )}
             </button>
@@ -701,12 +748,16 @@ function MemberMonthlyCalendar({
       </div>
 
       <div className="flex flex-wrap gap-3 pt-2 border-t">
-        {Object.entries(statusLabels).map(([key, label]) => (
+        {Object.entries(statusLabels).filter(([key]) => !["on_lunch", "on_tea", "corrected"].includes(key)).map(([key, label]) => (
           <div key={key} className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <span className={`h-2 w-2 rounded-full ${statusDotColors[key]}`} />
             {label}
           </div>
         ))}
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          Corrected
+        </div>
       </div>
 
       {selectedDay && (
@@ -721,11 +772,16 @@ function MemberMonthlyCalendar({
               <Badge variant="secondary" className={statusColors[selectedDay.status] || ""}>
                 {statusLabels[selectedDay.status] || selectedDay.status || "N/A"}
               </Badge>
-              {canCorrect && selectedDay.record && (
+              {selectedDay.isRecordCorrected && (
+                <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200" data-testid="badge-corrected-status">
+                  Corrected
+                </Badge>
+              )}
+              {canCorrect && !selectedDay.isWeekend && !selectedDay.isFuture && selectedDay.status !== "on_leave" && selectedDay.status !== "holiday" && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openEdit(selectedDay.record!, selectedDay.dateStr)}
+                  onClick={() => openEdit(selectedDay.record || null, selectedDay.dateStr)}
                   data-testid="button-correct-attendance"
                 >
                   <Pencil className="h-3 w-3 mr-1" />
@@ -734,6 +790,16 @@ function MemberMonthlyCalendar({
               )}
             </div>
           </div>
+          {selectedDay.isRecordCorrected && selectedDay.record && (
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-200" data-testid="banner-corrected-day">
+              <span className="font-semibold">Corrected</span>
+              {selectedDay.record.correctedByName && ` by ${selectedDay.record.correctedByName}`}
+              {selectedDay.record.updatedAt && ` on ${new Date(selectedDay.record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+              {selectedDay.record.correctionNote && (
+                <p className="mt-1 text-amber-700 dark:text-amber-300">{selectedDay.record.correctionNote}</p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground uppercase mb-1">Punch In</p>
@@ -754,18 +820,22 @@ function MemberMonthlyCalendar({
         </div>
       )}
 
-      <Dialog open={!!editRecord} onOpenChange={(open) => !open && setEditRecord(null)}>
+      <Dialog open={!!(editRecord || editAbsentDate)} onOpenChange={(open) => { if (!open) { setEditRecord(null); setEditAbsentDate(null); } }}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-correct-attendance">
           <DialogHeader>
             <DialogTitle>Correct Attendance Hours</DialogTitle>
           </DialogHeader>
-          {editRecord && (
+          {(editRecord || editAbsentDate) && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Editing record for <span className="font-medium text-foreground">{member.firstName} {member.lastName}</span> on{" "}
+                {editAbsentDate ? "Adding attendance record for " : "Editing record for "}
+                <span className="font-medium text-foreground">{member.firstName} {member.lastName}</span> on{" "}
                 <span className="font-medium text-foreground">
                   {new Date(editDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
                 </span>
+                {editAbsentDate && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400 font-medium">(absent day)</span>
+                )}
               </p>
 
               <div className="grid grid-cols-2 gap-4">
@@ -825,7 +895,7 @@ function MemberMonthlyCalendar({
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditRecord(null)} data-testid="button-cancel-correction">
+            <Button variant="outline" onClick={() => { setEditRecord(null); setEditAbsentDate(null); }} data-testid="button-cancel-correction">
               Cancel
             </Button>
             <Button

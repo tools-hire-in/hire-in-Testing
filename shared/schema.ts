@@ -142,6 +142,10 @@ export const attendance = pgTable("attendance", {
   totalHours: numeric("total_hours"),
   status: attendanceStatusEnum("status").notNull().default("present"),
   notes: text("notes"),
+  isCorrect: boolean("is_corrected").notNull().default(false),
+  correctionSource: varchar("correction_source"),
+  correctedById: varchar("corrected_by_id").references(() => adminUsers.id),
+  correctionNote: text("correction_note"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

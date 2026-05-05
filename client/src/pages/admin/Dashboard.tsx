@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Briefcase, Users, FileText, Mail, TrendingUp, Clock } from "lucide-react";
+import { Briefcase, Users, FileText, Mail, TrendingUp, Clock, PencilLine } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
@@ -17,6 +17,12 @@ interface DashboardStats {
   newContacts: number;
 }
 
+interface CorrectionsSummary {
+  totalCorrections: number;
+  affectedCount: number;
+  perEmployee: Array<{ name: string; email: string; correctedDays: number }>;
+}
+
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -24,6 +30,16 @@ export default function AdminDashboard() {
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/admin/stats"],
     enabled: isAuthenticated,
+  });
+
+  const today = new Date().toISOString().split("T")[0];
+  const monthStart = today.substring(0, 7) + "-01";
+  const isHrLike = ["super_admin", "admin"].includes(user?.role || "");
+
+  const { data: corrSummary, isLoading: corrLoading } = useQuery<CorrectionsSummary>({
+    queryKey: ["/api/hr/attendance/corrections-summary", monthStart, today],
+    queryFn: () => fetch(`/api/hr/attendance/corrections-summary?startDate=${monthStart}&endDate=${today}`, { credentials: "include" }).then(r => r.json()),
+    enabled: isAuthenticated && isHrLike,
   });
 
   const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager"].includes(user?.role || "");
@@ -100,6 +116,28 @@ export default function AdminDashboard() {
             </Link>
           ))}
         </div>
+
+        {/* Attendance Corrections This Month */}
+        {isHrLike && (
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Attendance Corrections</h2>
+            {corrLoading ? (
+              <Card><CardContent className="p-5"><Skeleton className="h-16 w-full" /></CardContent></Card>
+            ) : (
+              <Link href="/admin/hr/my-team?tab=attendance">
+                <StatCard
+                  label="Attendance Corrections This Month"
+                  value={corrSummary?.totalCorrections ?? 0}
+                  subvalue={corrSummary?.affectedCount ? `${corrSummary.affectedCount} employee${corrSummary.affectedCount !== 1 ? "s" : ""} affected` : "No corrections this month"}
+                  icon={<PencilLine className="h-5 w-5" />}
+                  accentColour="text-amber-600"
+                  className="hover-elevate cursor-pointer transition-all max-w-sm"
+                  data-testid="stat-attendance-corrections"
+                />
+              </Link>
+            )}
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div>

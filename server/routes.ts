@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
 import { eq, and, inArray, sql } from "drizzle-orm";
@@ -1460,6 +1460,8 @@ export async function registerRoutes(
         productiveHoursToday = `${wholeH}h ${mins}m`;
       }
 
+      const correctionsThisMonthForUser = monthRecords.filter(r => r.isCorrect).length;
+
       res.json({
         todayStatus,
         punchInTime: todayRecord?.punchIn || null,
@@ -1469,6 +1471,7 @@ export async function registerRoutes(
         pendingLeaveRequests: pendingCount,
         leaveBalances: activeBalances,
         productiveHoursToday,
+        correctionsThisMonth: correctionsThisMonthForUser,
       });
     } catch (error) {
       console.error("Dashboard stats error:", error);
@@ -2058,9 +2061,61 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/attendance/:id", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.patch("/api/hr/attendance/:id", requireRole("hr", "admin", "super_admin", "manager"), async (req, res) => {
     try {
       const isAdminOrSuperAdmin = ["admin", "super_admin"].includes(req.session.role!);
+      const actorRole = req.session.role!;
+      const actorId = req.session.userId!;
+
+      // Shared guards: fetch record first, then validate date constraints
+      const [guardRecord] = await db.select().from(attendance).where(eq(attendance.id, req.params.id as string));
+      if (!guardRecord) return res.status(404).json({ error: "Attendance record not found" });
+
+      const todayGuard = new Date().toISOString().split("T")[0];
+      if (guardRecord.date > todayGuard) {
+        return res.status(400).json({ error: "Cannot correct a future date" });
+      }
+      const dow = new Date(guardRecord.date + "T12:00:00").getDay();
+      if (dow === 0 || dow === 6) {
+        return res.status(400).json({ error: "Cannot correct a weekend" });
+      }
+      if (guardRecord.status === "on_leave" || guardRecord.status === "holiday") {
+        return res.status(400).json({ error: `Cannot correct a day with status: ${guardRecord.status}` });
+      }
+
+      // Manager: validate they can only correct their own direct reports
+      if (actorRole === "manager") {
+        const existing = guardRecord;
+        const reporteeIds = await getAllReporteeIds(actorId);
+        if (!reporteeIds.includes(existing.userId)) {
+          return res.status(403).json({ error: "You do not have permission to correct this employee's attendance" });
+        }
+        const { correctionComment: mgrNote, ...mgrUpdateFields } = req.body;
+        if (!mgrNote || !mgrNote.trim()) {
+          return res.status(400).json({ error: "A correction comment is required" });
+        }
+        const record = await storage.updateAttendance(req.params.id as string, {
+          ...mgrUpdateFields,
+          isCorrect: true,
+          correctionSource: "manager",
+          correctedById: actorId,
+          correctionNote: mgrNote.trim(),
+        });
+        if (!record) return res.status(404).json({ error: "Attendance record not found" });
+        await storage.createAuditLog({
+          actorId,
+          targetId: existing.userId,
+          action: "correct_attendance_hours",
+          changes: {
+            attendanceId: existing.id,
+            date: existing.date,
+            old: { punchIn: existing.punchIn, punchOut: existing.punchOut, totalHours: existing.totalHours },
+            new: { punchIn: record.punchIn, punchOut: record.punchOut, totalHours: record.totalHours },
+            correctionComment: mgrNote.trim(),
+          },
+        });
+        return res.json(record);
+      }
 
       if (isAdminOrSuperAdmin) {
         const { correctionComment } = req.body;
@@ -2068,15 +2123,20 @@ export async function registerRoutes(
           return res.status(400).json({ error: "A correction comment is required" });
         }
 
-        const [existing] = await db.select().from(attendance).where(eq(attendance.id, req.params.id as string));
-        if (!existing) return res.status(404).json({ error: "Attendance record not found" });
+        const existing = guardRecord;
 
         const { correctionComment: _omit, ...updateFields } = req.body;
-        const record = await storage.updateAttendance(req.params.id as string, updateFields);
+        const record = await storage.updateAttendance(req.params.id as string, {
+          ...updateFields,
+          isCorrect: true,
+          correctionSource: actorRole,
+          correctedById: actorId,
+          correctionNote: correctionComment.trim(),
+        });
         if (!record) return res.status(404).json({ error: "Attendance record not found" });
 
         await storage.createAuditLog({
-          actorId: req.session.userId!,
+          actorId,
           targetId: existing.userId,
           action: "correct_attendance_hours",
           changes: {
@@ -2091,11 +2151,239 @@ export async function registerRoutes(
         return res.json(record);
       }
 
-      const record = await storage.updateAttendance(req.params.id as string, req.body);
+      // HR role: also set correction metadata
+      const { correctionComment: hrNote, ...hrUpdateFields } = req.body;
+      if (!hrNote || !hrNote.trim()) {
+        return res.status(400).json({ error: "A correction comment is required" });
+      }
+      const hrExisting = guardRecord;
+      const record = await storage.updateAttendance(req.params.id as string, {
+        ...hrUpdateFields,
+        isCorrect: true,
+        correctionSource: "hr",
+        correctedById: actorId,
+        correctionNote: hrNote.trim(),
+      });
       if (!record) return res.status(404).json({ error: "Attendance record not found" });
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: hrExisting.userId,
+        action: "correct_attendance_hours",
+        changes: {
+          attendanceId: hrExisting.id,
+          date: hrExisting.date,
+          old: { punchIn: hrExisting.punchIn, punchOut: hrExisting.punchOut, totalHours: hrExisting.totalHours },
+          new: { punchIn: record.punchIn, punchOut: record.punchOut, totalHours: record.totalHours },
+          correctionComment: hrNote.trim(),
+        },
+      });
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to update attendance" });
+    }
+  });
+
+  // --- Admin Correction Upsert (absent days + existing records) ---
+  app.post("/api/hr/attendance/admin-correction", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+    try {
+      const actorRole = req.session.role!;
+      const actorId = req.session.userId!;
+      const { userId, date, punchIn, punchOut, totalHours, correctionNote } = req.body;
+
+      if (!userId || !date || !correctionNote || !correctionNote.trim()) {
+        return res.status(400).json({ error: "userId, date, and correctionNote are required" });
+      }
+
+      // Validate date is not future
+      const todayStr = new Date().toISOString().split("T")[0];
+      if (date > todayStr) {
+        return res.status(400).json({ error: "Cannot correct a future date" });
+      }
+
+      // Validate not a weekend
+      const dayOfWeek = new Date(date + "T12:00:00").getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        return res.status(400).json({ error: "Cannot correct a weekend" });
+      }
+
+      // Check if date is on_leave or holiday
+      const [existingRecord] = await db.select().from(attendance)
+        .where(and(eq(attendance.userId, userId), eq(attendance.date, date)));
+
+      if (existingRecord && (existingRecord.status === "on_leave" || existingRecord.status === "holiday")) {
+        return res.status(400).json({ error: `Cannot correct a day with status: ${existingRecord.status}` });
+      }
+
+      // Manager: validate team access
+      if (actorRole === "manager") {
+        const reporteeIds = await getAllReporteeIds(actorId);
+        if (!reporteeIds.includes(userId)) {
+          return res.status(403).json({ error: "You do not have permission to correct this employee's attendance" });
+        }
+      }
+
+      // For no-record case (absent day), also check holidays table and approved leave
+      if (!existingRecord) {
+        const [holidayRow] = await db.execute(sql`
+          SELECT id FROM holidays WHERE date = ${date} LIMIT 1
+        `).then(r => r.rows as { id: string }[]);
+        if (holidayRow) {
+          return res.status(400).json({ error: "Cannot correct a day that is a public holiday" });
+        }
+        const approvedLeave = await db.execute(sql`
+          SELECT id FROM leave_requests
+          WHERE user_id = ${userId}
+            AND status = 'approved'
+            AND start_date <= ${date}
+            AND end_date >= ${date}
+          LIMIT 1
+        `).then(r => r.rows as { id: string }[]);
+        if (approvedLeave.length > 0) {
+          return res.status(400).json({ error: "Cannot correct a day that is covered by an approved leave" });
+        }
+      }
+
+      const punchInTs = punchIn ? new Date(`${date}T${punchIn}:00`) : null;
+      const punchOutTs = punchOut ? new Date(`${date}T${punchOut}:00`) : null;
+      let computedHours = totalHours ? String(totalHours) : null;
+      if (punchInTs && punchOutTs && !computedHours) {
+        computedHours = ((punchOutTs.getTime() - punchInTs.getTime()) / (1000 * 60 * 60)).toFixed(2);
+      }
+
+      const correctionData = {
+        userId,
+        date,
+        punchIn: punchInTs,
+        punchOut: punchOutTs,
+        totalHours: computedHours,
+        status: "present" as const,
+        isCorrect: true,
+        correctionSource: actorRole,
+        correctedById: actorId,
+        correctionNote: correctionNote.trim(),
+      };
+
+      const oldValues = existingRecord
+        ? { punchIn: existingRecord.punchIn, punchOut: existingRecord.punchOut, totalHours: existingRecord.totalHours, status: existingRecord.status }
+        : null;
+
+      let record: Attendance;
+      if (existingRecord) {
+        const updated = await storage.updateAttendance(existingRecord.id, correctionData);
+        if (!updated) return res.status(404).json({ error: "Attendance record not found after update" });
+        record = updated;
+      } else {
+        record = await storage.createAttendance(correctionData);
+      }
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: userId,
+        action: "admin_correction_attendance",
+        changes: {
+          date,
+          old: oldValues || "no_record",
+          new: { punchIn: punchInTs, punchOut: punchOutTs, totalHours: computedHours, status: "present" },
+          correctionNote: correctionNote.trim(),
+          correctionSource: actorRole,
+        },
+      });
+
+      res.json(record);
+    } catch (error) {
+      console.error("Admin correction error:", error);
+      res.status(500).json({ error: "Failed to save attendance correction" });
+    }
+  });
+
+  // --- Corrections Summary ---
+  app.get("/api/hr/attendance/corrections-summary", requireRole("admin", "super_admin", "hr", "operations", "manager"), async (req, res) => {
+    try {
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      interface CorrectionRow {
+        corrected_by_id: string | null;
+        user_id: string;
+        date: string;
+        employee_name: string;
+        employee_email: string;
+        corrected_by_name: string | null;
+      }
+
+      const actorRole = req.session.role!;
+      const actorId = req.session.userId!;
+
+      // Manager: restrict to direct reportees only
+      let userIdFilter: string[] | null = null;
+      if (actorRole === "manager") {
+        userIdFilter = await getAllReporteeIds(actorId);
+        if (userIdFilter.length === 0) {
+          return res.json({ totalCorrections: 0, affectedCount: 0, perEmployee: [] });
+        }
+      }
+
+      const baseQuery = userIdFilter
+        ? sql`
+          SELECT
+            a.corrected_by_id,
+            a.user_id,
+            a.date,
+            u.first_name || ' ' || u.last_name AS employee_name,
+            u.email AS employee_email,
+            cb.first_name || ' ' || cb.last_name AS corrected_by_name
+          FROM attendance a
+          JOIN admin_users u ON u.id = a.user_id
+          LEFT JOIN admin_users cb ON cb.id = a.corrected_by_id
+          WHERE a.is_corrected = TRUE
+            AND a.date >= ${startDate}
+            AND a.date <= ${endDate}
+            AND a.user_id = ANY(${userIdFilter})
+          ORDER BY a.date DESC`
+        : sql`
+          SELECT
+            a.corrected_by_id,
+            a.user_id,
+            a.date,
+            u.first_name || ' ' || u.last_name AS employee_name,
+            u.email AS employee_email,
+            cb.first_name || ' ' || cb.last_name AS corrected_by_name
+          FROM attendance a
+          JOIN admin_users u ON u.id = a.user_id
+          LEFT JOIN admin_users cb ON cb.id = a.corrected_by_id
+          WHERE a.is_corrected = TRUE
+            AND a.date >= ${startDate}
+            AND a.date <= ${endDate}
+          ORDER BY a.date DESC`;
+
+      const rows = await db.execute(baseQuery);
+      const corrections = rows.rows as CorrectionRow[];
+      const totalCorrections = corrections.length;
+      const affectedEmployeeIds = new Set(corrections.map(r => r.user_id));
+      const affectedCount = affectedEmployeeIds.size;
+
+      const employeeMap = new Map<string, { name: string; email: string; correctedDays: number }>();
+      for (const row of corrections) {
+        const key = row.user_id;
+        if (!employeeMap.has(key)) {
+          employeeMap.set(key, { name: row.employee_name, email: row.employee_email, correctedDays: 0 });
+        }
+        employeeMap.get(key)!.correctedDays++;
+      }
+
+      res.json({
+        totalCorrections,
+        affectedCount,
+        perEmployee: Array.from(employeeMap.values()),
+      });
+    } catch (error) {
+      console.error("Corrections summary error:", error);
+      res.status(500).json({ error: "Failed to fetch corrections summary" });
     }
   });
 
@@ -2615,6 +2903,7 @@ export async function registerRoutes(
 
       const presentDays = monthRecords.filter(r => r.status === "present" || r.status === "half_day" || r.status === "late").length;
       const totalHoursMonth = monthRecords.reduce((sum, r) => sum + parseFloat(r.totalHours || "0"), 0);
+      const correctionsThisMonth = monthRecords.filter(r => r.isCorrect).length;
 
       res.json({
         todayStatus: todayAttendance ? (todayAttendance.punchOut ? "completed" : "punched_in") : "not_punched",
@@ -2623,6 +2912,7 @@ export async function registerRoutes(
         presentDaysThisMonth: presentDays,
         totalHoursThisMonth: totalHoursMonth.toFixed(1),
         pendingLeaveRequests: pendingLeaves.length,
+        correctionsThisMonth,
         leaveBalances,
       });
     } catch (error) {
@@ -2767,19 +3057,33 @@ export async function registerRoutes(
       const records = await storage.getAttendanceByUser(memberId, startDate, endDate);
       const member = await storage.getAdminUser(memberId);
 
+      // Enrich corrected records with corrector name
+      const correctorIds = [...new Set(records.filter(r => r.correctedById).map(r => r.correctedById!))];
+      const correctorMap = new Map<string, string>();
+      if (correctorIds.length > 0) {
+        const correctors = await db.select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers).where(inArray(adminUsers.id, correctorIds));
+        for (const c of correctors) correctorMap.set(c.id, `${c.firstName} ${c.lastName}`);
+      }
+
+      const enrichedRecords = records.map(r => ({
+        ...r,
+        correctedByName: r.correctedById ? (correctorMap.get(r.correctedById) || null) : null,
+      }));
+
       res.json({
         member: member ? {
           id: member.id, firstName: member.firstName, lastName: member.lastName,
           email: member.email, designation: member.designation, departmentId: member.departmentId
         } : null,
-        attendance: records
+        attendance: enrichedRecords
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch member attendance" });
     }
   });
 
-  app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const ExcelJSModule = await import("exceljs");
       const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule;
@@ -2841,6 +3145,11 @@ export async function registerRoutes(
         punchOut: string;
         hours: number;
         status: string;
+        isCorrect: boolean;
+        correctionNote: string;
+        correctedBy: string;
+        correctedAt: string;
+        originalStatus: string;
       }
 
       const allRowData: DayData[] = [];
@@ -2848,12 +3157,22 @@ export async function registerRoutes(
         name: string; email: string; designation: string;
         totalWorkingDays: number; present: number; absent: number;
         holidays: number; leaves: number; totalHours: number; avgHours: number;
+        correctedDays: number;
       }[] = [];
+
+      // Build corrector name map for all records
+      const allCorrectorIds = [...new Set(records.filter((r: any) => r.correctedById).map((r: any) => r.correctedById as string))];
+      const correctorNameMap = new Map<string, string>();
+      if (allCorrectorIds.length > 0) {
+        const correctorRows = await db.select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers).where(inArray(adminUsers.id, allCorrectorIds));
+        for (const c of correctorRows) correctorNameMap.set(c.id, `${c.firstName} ${c.lastName}`);
+      }
 
       for (const member of teamMembers) {
         const name = `${member.firstName} ${member.lastName}`;
         const userRecords = recordsByUser.get(member.id) || new Map();
-        let present = 0, absent = 0, holidayCount = 0, leaveCount = 0, totalHours = 0;
+        let present = 0, absent = 0, holidayCount = 0, leaveCount = 0, totalHours = 0, correctedDays = 0;
 
         for (const date of allDates) {
           const record = userRecords.get(date);
@@ -2861,12 +3180,20 @@ export async function registerRoutes(
           let punchIn = "";
           let punchOut = "";
           let hours = 0;
+          let isCorrect = false;
+          let correctionNote = "";
+          let correctedBy = "";
+          let correctedAt = "";
 
           if (record) {
             status = getEffectiveStatus(record);
             punchIn = record.punchIn ? new Date(record.punchIn).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
             punchOut = record.punchOut ? new Date(record.punchOut).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "";
             hours = record.totalHours ? parseFloat(record.totalHours as string) : 0;
+            isCorrect = !!record.isCorrect;
+            correctionNote = record.correctionNote || "";
+            correctedBy = record.correctedById ? (correctorNameMap.get(record.correctedById) || "") : "";
+            correctedAt = record.updatedAt ? new Date(record.updatedAt).toLocaleDateString("en-US") : "";
           } else if (date > todayStr) {
             status = "-";
           }
@@ -2875,11 +3202,14 @@ export async function registerRoutes(
           else if (status === "absent") absent++;
           else if (status === "holiday") holidayCount++;
           else if (status === "leave") leaveCount++;
+          if (isCorrect) correctedDays++;
           totalHours += hours;
 
           allRowData.push({
             name, email: member.email, designation: member.designation || "",
             date, punchIn, punchOut, hours, status,
+            isCorrect, correctionNote, correctedBy, correctedAt,
+            originalStatus: record ? record.status : "absent",
           });
         }
 
@@ -2889,6 +3219,7 @@ export async function registerRoutes(
           totalWorkingDays, present, absent, holidays: holidayCount, leaves: leaveCount,
           totalHours: Math.round(totalHours * 100) / 100,
           avgHours: present > 0 ? Math.round((totalHours / present) * 100) / 100 : 0,
+          correctedDays,
         });
       }
 
@@ -2906,6 +3237,7 @@ export async function registerRoutes(
         { header: "Leaves", key: "leaves", width: 10 },
         { header: "Total Hours", key: "totalHours", width: 12 },
         { header: "Avg Hours/Day", key: "avgHours", width: 14 },
+        { header: "Corrected Days", key: "correctedDays", width: 14 },
       ];
       summarySheet.getRow(1).font = { bold: true };
       summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
@@ -2913,6 +3245,12 @@ export async function registerRoutes(
       for (const row of summaryData) {
         summarySheet.addRow(row);
       }
+      // Footer: total corrections
+      const totalCorrectionsInSummary = summaryData.reduce((s, r) => s + r.correctedDays, 0);
+      const footerRow = summarySheet.addRow(["", "", "", "", "", "", "", "", "", "Total Corrections:", totalCorrectionsInSummary]);
+      footerRow.font = { bold: true };
+      footerRow.getCell(10).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
+      footerRow.getCell(11).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
 
       const calendarSheet = workbook.addWorksheet("Calendar Grid");
       const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -2938,6 +3276,7 @@ export async function registerRoutes(
       const statusColors: Record<string, string> = {
         present: "FF92D050", absent: "FFFF6B6B", holiday: "FF5B9BD5",
         leave: "FFFFC000", weekend: "FFD9D9D9", "-": "FFF2F2F2",
+        corrected: "FFFFC000",
       };
       const statusCodes: Record<string, string> = {
         present: "P", absent: "A", holiday: "H", leave: "L", weekend: "W", "-": "-",
@@ -2947,7 +3286,9 @@ export async function registerRoutes(
         const name = `${member.firstName} ${member.lastName}`;
         const userRecords = recordsByUser.get(member.id) || new Map();
         const rowValues: string[] = [name];
+        const correctedCells: Set<number> = new Set();
         let pCount = 0, aCount = 0, hCount = 0, lCount = 0;
+        let colIdx = 2;
 
         for (const cd of allCalendarDates) {
           if (cd.dayOfWeek === 0 || cd.dayOfWeek === 6) {
@@ -2957,21 +3298,31 @@ export async function registerRoutes(
           } else {
             const record = userRecords.get(cd.date);
             const status = record ? getEffectiveStatus(record) : "absent";
-            rowValues.push(statusCodes[status] || "A");
+            const isRecordCorrected = record && record.isCorrect;
+            const cellVal = isRecordCorrected ? `${statusCodes[status] || "A"}*` : (statusCodes[status] || "A");
+            rowValues.push(cellVal);
+            if (isRecordCorrected) correctedCells.add(colIdx);
             if (status === "present") pCount++;
             else if (status === "absent") aCount++;
             else if (status === "holiday") hCount++;
             else if (status === "leave") lCount++;
           }
+          colIdx++;
         }
         rowValues.push(String(pCount), String(aCount), String(hCount), String(lCount));
 
         const row = calendarSheet.addRow(rowValues);
         row.font = { size: 9 };
         for (let i = 2; i <= allCalendarDates.length + 1; i++) {
-          const cellValue = row.getCell(i).value as string;
+          const cellRaw = row.getCell(i).value as string;
+          const isCorrected = correctedCells.has(i);
+          const cellValue = isCorrected ? cellRaw.replace("*", "") : cellRaw;
           const statusKey = Object.entries(statusCodes).find(([, v]) => v === cellValue)?.[0] || "";
-          if (statusColors[statusKey]) {
+          if (isCorrected) {
+            row.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
+            row.getCell(i).alignment = { horizontal: "center" };
+            row.getCell(i).font = { size: 9, bold: true, color: { argb: "FF000000" } };
+          } else if (statusColors[statusKey]) {
             row.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusColors[statusKey] } };
             row.getCell(i).alignment = { horizontal: "center" };
             row.getCell(i).font = { size: 9, bold: true, color: { argb: statusKey === "weekend" || statusKey === "-" ? "FF666666" : "FFFFFFFF" } };
@@ -2979,8 +3330,8 @@ export async function registerRoutes(
         }
       }
 
-      const legendRow = calendarSheet.addRow([]);
-      calendarSheet.addRow(["Legend:", "P = Present", "A = Absent", "H = Holiday", "L = Leave", "W = Weekend"]);
+      calendarSheet.addRow([]);
+      calendarSheet.addRow(["Legend:", "P = Present", "A = Absent", "H = Holiday", "L = Leave", "W = Weekend", "P* / A* = Corrected (amber)"]);
 
       const detailSheet = workbook.addWorksheet("Daily Detail");
       detailSheet.columns = [
@@ -2992,6 +3343,9 @@ export async function registerRoutes(
         { header: "Punch Out", key: "punchOut", width: 12 },
         { header: "Duration (Hours)", key: "hours", width: 16 },
         { header: "Status", key: "status", width: 12 },
+        { header: "Corrected (Y/N)", key: "correctedYN", width: 14 },
+        { header: "Correction Note", key: "correctionNote", width: 30 },
+        { header: "Corrected By", key: "correctedBy", width: 20 },
       ];
       detailSheet.getRow(1).font = { bold: true };
       detailSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
@@ -3001,8 +3355,40 @@ export async function registerRoutes(
           detailSheet.addRow({
             ...row,
             hours: row.hours.toFixed(2),
+            correctedYN: row.isCorrect ? "Y" : "N",
           });
         }
+      }
+
+      // Corrections Log sheet
+      const correctionsLog = workbook.addWorksheet("Corrections Log");
+      correctionsLog.columns = [
+        { header: "Employee", key: "employee", width: 25 },
+        { header: "Date", key: "date", width: 12 },
+        { header: "Original Status", key: "originalStatus", width: 16 },
+        { header: "Corrected By", key: "correctedBy", width: 20 },
+        { header: "Corrected At", key: "correctedAt", width: 16 },
+        { header: "Punch In", key: "punchIn", width: 12 },
+        { header: "Punch Out", key: "punchOut", width: 12 },
+        { header: "Hours", key: "hours", width: 10 },
+        { header: "Note", key: "note", width: 40 },
+      ];
+      correctionsLog.getRow(1).font = { bold: true };
+      correctionsLog.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
+      correctionsLog.getRow(1).font = { bold: true, color: { argb: "FF000000" } };
+      const correctionLogRows = allRowData.filter(r => r.isCorrect).sort((a, b) => b.date.localeCompare(a.date));
+      for (const row of correctionLogRows) {
+        correctionsLog.addRow({
+          employee: row.name,
+          date: row.date,
+          originalStatus: row.originalStatus,
+          correctedBy: row.correctedBy,
+          correctedAt: row.correctedAt,
+          punchIn: row.punchIn,
+          punchOut: row.punchOut,
+          hours: row.hours.toFixed(2),
+          note: row.correctionNote,
+        });
       }
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

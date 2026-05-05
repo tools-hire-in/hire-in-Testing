@@ -646,6 +646,16 @@ async function backfillHolidayAttendance() {
     console.error("admin_users employment_status migration error:", err);
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS is_corrected BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS correction_source VARCHAR`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS corrected_by_id VARCHAR REFERENCES admin_users(id)`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS correction_note TEXT`);
+    log("Ensured attendance correction columns exist");
+  } catch (err) {
+    console.error("Attendance correction columns migration error:", err);
+  }
+
   await runMigrations();
   await ensurePerformanceTables();
   await ensureHrLettersTables();

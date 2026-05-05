@@ -41,6 +41,7 @@ interface DashboardStats {
   totalHoursThisMonth: string;
   pendingLeaveRequests: number;
   productiveHoursToday: string | null;
+  correctionsThisMonth: number;
   leaveBalances: Array<{
     id: string;
     leaveTypeId: string;
@@ -109,6 +110,15 @@ export default function HRDashboard() {
   const { data: leaveTypes } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
     enabled: isAuthenticated,
+  });
+
+  const isManagerOrAbove = user && ["super_admin", "admin", "hr", "manager", "operations"].includes(user.role);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const monthStart = todayStr.substring(0, 7) + "-01";
+  const { data: corrSummaryHR } = useQuery<{ totalCorrections: number; affectedCount: number; perEmployee: Array<{ name: string; email: string; correctedDays: number }> }>({
+    queryKey: ["/api/hr/attendance/corrections-summary", monthStart, todayStr],
+    queryFn: () => fetch(`/api/hr/attendance/corrections-summary?startDate=${monthStart}&endDate=${todayStr}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!(isAuthenticated && isManagerOrAbove),
   });
 
   const currentYear = new Date().getFullYear();
@@ -363,6 +373,18 @@ export default function HRDashboard() {
                     Review →
                   </Button>
                 </div>
+              )}
+              {corrSummaryHR !== undefined && (
+                <button
+                  type="button"
+                  className="mt-2 w-full flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-lg p-2 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors text-left"
+                  onClick={() => setLocation("/admin/hr/my-team?tab=attendance")}
+                  data-testid="text-team-corrections-this-month"
+                >
+                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>Corrections this month: <span className="font-semibold">{corrSummaryHR.totalCorrections}</span></span>
+                  <span className="ml-auto">→</span>
+                </button>
               )}
             </CardContent>
           </Card>
