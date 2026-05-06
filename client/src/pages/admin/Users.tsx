@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History, FolderOpen } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { EmployeeDossierSheet } from "@/components/admin/EmployeeDossierSheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -162,6 +163,7 @@ export default function AdminUsers() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disable" | "enable" | "relieve" | "left_company_exit"; user: AdminUser } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | "relieved" | "left_company" | "deleted">("active");
+  const [dossierUserId, setDossierUserId] = useState<string | null>(null);
 
   interface ShiftDef {
     id: string;
@@ -611,7 +613,15 @@ export default function AdminUsers() {
                     ))
                   ) : filteredUsers && filteredUsers.length > 0 ? (
                     filteredUsers.map((adminUser) => (
-                      <TableRow key={adminUser.id} data-testid={`user-row-${adminUser.id}`} className={statusFilter === "deleted" ? "opacity-60" : ""}>
+                      <TableRow
+                        key={adminUser.id}
+                        data-testid={`user-row-${adminUser.id}`}
+                        className={`${statusFilter === "deleted" ? "opacity-60" : ""} ${(isSuperAdmin || isAdmin) ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                        onClick={(isSuperAdmin || isAdmin) ? (e) => {
+                          if ((e.target as HTMLElement).closest("[data-dropdown-ignore]")) return;
+                          setDossierUserId(adminUser.id);
+                        } : undefined}
+                      >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {adminUser.firstName} {adminUser.lastName}
@@ -660,13 +670,13 @@ export default function AdminUsers() {
                             </Badge>
                           </TableCell>
                         )}
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" data-dropdown-ignore="true">
                           {statusFilter === "deleted" ? (
                             canEditUser(adminUser) && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => restoreMutation.mutate(adminUser.id)}
+                                onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(adminUser.id); }}
                                 disabled={restoreMutation.isPending}
                                 data-testid={`button-restore-${adminUser.id}`}
                               >
@@ -1480,6 +1490,14 @@ export default function AdminUsers() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Employee Dossier Sheet - super_admin and admin only */}
+      {(isSuperAdmin || isAdmin) && (
+        <EmployeeDossierSheet
+          userId={dossierUserId}
+          onClose={() => setDossierUserId(null)}
+        />
+      )}
     </AdminLayout>
   );
 }

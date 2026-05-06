@@ -4,10 +4,10 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveTypes, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { db } from "./db";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
 import { registerAuthRoutes } from "./authRoutes";
@@ -1239,6 +1239,190 @@ export async function registerRoutes(
       res.json(restored);
     } catch (error) {
       res.status(500).json({ error: "Failed to restore user" });
+    }
+  });
+
+  // ==========================================
+  // EMPLOYEE DOSSIER API ROUTE
+  // ==========================================
+
+  app.get("/api/admin/employees/:userId/dossier", requireAdminLevel, async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const user = await storage.getAdminUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const [allUsers, allDepts, leaveTypesList, allShifts] = await Promise.all([
+        storage.getAdminUsers(),
+        storage.getDepartments(),
+        db.select().from(leaveTypes),
+        db.select({ id: shifts.id, displayLabel: shifts.displayLabel, name: shifts.name }).from(shifts),
+      ]);
+
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+      const deptMap = new Map(allDepts.map(d => [d.id, d]));
+      const leaveTypeMap = new Map(leaveTypesList.map(lt => [lt.id, lt]));
+      const shiftMap = new Map(allShifts.map(s => [s.id, s]));
+
+      const managerUser = user.managerId ? userMap.get(user.managerId) : undefined;
+
+      // Leave balances for current year
+      const currentYear = new Date().getFullYear();
+      const balanceRows = await db.select().from(leaveBalances)
+        .where(and(eq(leaveBalances.userId, userId), eq(leaveBalances.year, currentYear)));
+      const enrichedBalances = balanceRows.map(b => ({
+        ...b,
+        leaveTypeName: leaveTypeMap.get(b.leaveTypeId)?.name || "Unknown",
+      }));
+
+      // Track assignments
+      const assignmentRows = await db.select().from(trackAssignments)
+        .where(eq(trackAssignments.userId, userId));
+
+      const trackIds = assignmentRows.map(a => a.trackId);
+      const trackRows = trackIds.length > 0
+        ? await db.select().from(learningTracks).where(inArray(learningTracks.id, trackIds))
+        : [];
+      const trackMap = new Map(trackRows.map(t => [t.id, t]));
+
+      const enrichedAssignments = await Promise.all(assignmentRows.map(async (a) => {
+        const track = trackMap.get(a.trackId);
+
+        const [allSections, completedProgress, lastProgressRow, completionRow] = await Promise.all([
+          db.select({ id: trackSections.id }).from(trackSections).where(eq(trackSections.trackId, a.trackId)),
+          db.select({ id: sectionProgress.id }).from(sectionProgress)
+            .where(and(eq(sectionProgress.assignmentId, a.id), eq(sectionProgress.status, "completed"))),
+          db.select({ lastViewedAt: sectionProgress.lastViewedAt }).from(sectionProgress)
+            .where(eq(sectionProgress.assignmentId, a.id))
+            .orderBy(desc(sectionProgress.lastViewedAt)).limit(1),
+          db.select().from(trackCompletions).where(eq(trackCompletions.assignmentId, a.id)).limit(1),
+        ]);
+
+        const totalSections = allSections.length;
+        const completedSections = completedProgress.length;
+        const completionPct = totalSections > 0
+          ? Math.round((completedSections / totalSections) * 100)
+          : (a.status === "completed" ? 100 : 0);
+        const isOverdue = !!(a.dueDate && new Date(a.dueDate) < new Date() && a.status !== "completed");
+
+        const completion = completionRow[0];
+        return {
+          assignmentId: a.id,
+          trackId: a.trackId,
+          trackTitle: track?.title || "Unknown Track",
+          isPolicyTrack: track?.isPolicyTrack || false,
+          status: a.status,
+          completionPct,
+          dueDate: a.dueDate,
+          completedAt: a.completedAt,
+          isOverdue,
+          lastActivityAt: lastProgressRow[0]?.lastViewedAt || null,
+          signedVersion: completion?.signedVersion || null,
+          currentVersion: track?.versionNumber || 1,
+        };
+      }));
+
+      const policyTracks = enrichedAssignments.filter(a => a.isPolicyTrack);
+      const trainingTracks = enrichedAssignments.filter(a => !a.isPolicyTrack);
+
+      // Night shift consent (female employees only)
+      type NightShiftConsentSummary = {
+        status: "valid" | "expired" | "expiring_soon" | "not_signed";
+        signedAt?: Date;
+        expiresAt?: Date;
+      };
+      let nightShiftConsent: NightShiftConsentSummary | null = null;
+      if (user.gender === "Female") {
+        const [latestConsent] = await db.select().from(nightShiftConsents)
+          .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)))
+          .orderBy(desc(nightShiftConsents.signedAt)).limit(1);
+        if (latestConsent) {
+          const isExpired = new Date(latestConsent.expiresAt) < new Date();
+          const daysToExpiry = Math.ceil((new Date(latestConsent.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          nightShiftConsent = {
+            signedAt: latestConsent.signedAt,
+            expiresAt: latestConsent.expiresAt,
+            status: isExpired ? "expired" : daysToExpiry <= 30 ? "expiring_soon" : "valid",
+          };
+        } else {
+          nightShiftConsent = { status: "not_signed" };
+        }
+      }
+
+      // HR letters — match by linked userId OR employee full name (for legacy/manual records)
+      const userFullName = `${user.firstName} ${user.lastName}`;
+      const hrLettersList = await db.select({
+        id: hrLetters.id,
+        templateType: hrLetters.templateType,
+        status: hrLetters.status,
+        referenceNumber: hrLetters.referenceNumber,
+        issueDate: hrLetters.issueDate,
+        issuedAt: hrLetters.issuedAt,
+        employeeName: hrLetters.employeeName,
+      }).from(hrLetters)
+        .where(or(
+          eq(hrLetters.employeeId, userId),
+          eq(hrLetters.employeeName, userFullName),
+        ))
+        .orderBy(desc(hrLetters.issuedAt));
+
+      // Offer letters — match by linked userId OR candidate email
+      const offerLettersList = await db.select({
+        id: offerLetters.id,
+        token: offerLetters.token,
+        status: offerLetters.status,
+        candidateName: offerLetters.candidateName,
+        designation: offerLetters.designation,
+        proposedStartDate: offerLetters.proposedStartDate,
+        offerDate: offerLetters.offerDate,
+        acceptedAt: offerLetters.acceptedAt,
+        counterSignedAt: offerLetters.counterSignedAt,
+        createdAt: offerLetters.createdAt,
+      }).from(offerLetters)
+        .where(or(
+          eq(offerLetters.resultingUserId, userId),
+          eq(offerLetters.candidatePersonalEmail, user.email),
+        ))
+        .orderBy(desc(offerLetters.createdAt));
+
+      res.json({
+        profile: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          designation: user.designation,
+          departmentId: user.departmentId,
+          departmentName: user.departmentId ? (deptMap.get(user.departmentId)?.name || null) : null,
+          managerId: user.managerId,
+          managerName: managerUser ? `${managerUser.firstName} ${managerUser.lastName}` : null,
+          joiningDate: user.joiningDate,
+          shiftId: user.shiftId,
+          shiftName: user.shiftId ? (shiftMap.get(user.shiftId)?.displayLabel || shiftMap.get(user.shiftId)?.name || null) : null,
+          gender: user.gender,
+          employmentStatus: user.employmentStatus,
+          isActive: user.isActive,
+          totpEnabled: user.totpEnabled,
+          employeeId: user.employeeId,
+          hierarchyLevel: user.hierarchyLevel,
+          salary: user.salary,
+        },
+        policyCompliance: {
+          tracks: policyTracks,
+          nightShiftConsent,
+        },
+        training: trainingTracks,
+        documents: {
+          offerLetters: offerLettersList,
+          hrLetters: hrLettersList,
+          leaveBalances: enrichedBalances,
+        },
+      });
+    } catch (error) {
+      console.error("Dossier error:", error);
+      res.status(500).json({ error: "Failed to fetch employee dossier" });
     }
   });
 
