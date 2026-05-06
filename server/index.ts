@@ -65,6 +65,15 @@ app.use((req, res, next) => {
 });
 
 async function ensurePerformanceTables() {
+  // Always run signed_version migration regardless of whether performance tables exist
+  try {
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
+    await db.execute(sql`ALTER TABLE track_completions ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
+    log("signed_version columns ensured on track_assignments and track_completions");
+  } catch (err) {
+    console.error("signed_version column migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
@@ -217,13 +226,6 @@ async function ensurePerformanceTables() {
     console.error("Training extension requests table migration error:", err);
   }
 
-  try {
-    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
-    await db.execute(sql`ALTER TABLE track_completions ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
-    log("signed_version columns ensured on track_assignments and track_completions");
-  } catch (err) {
-    console.error("signed_version column migration error:", err);
-  }
 }
 
 async function ensureHrLettersTables() {
