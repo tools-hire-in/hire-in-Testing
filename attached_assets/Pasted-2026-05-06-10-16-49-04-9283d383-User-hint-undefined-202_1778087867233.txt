@@ -1,0 +1,152 @@
+2026-05-06 10:16:49.04
+9283d383
+User
+hint: undefined,
+2026-05-06 10:16:49.04
+9283d383
+User
+at async /home/runner/workspace/dist/index.cjs:212:38229
+2026-05-06 10:16:49.04
+9283d383
+User
+error: column "signed_version" does not exist
+2026-05-06 10:16:49.04
+9283d383
+User
+at async Promise.all (index 2)
+2026-05-06 10:16:49.04
+9283d383
+User
+internalQuery: undefined,
+2026-05-06 10:16:49.04
+9283d383
+User
+at async /home/runner/workspace/dist/index.cjs:2775:5270
+2026-05-06 10:16:49.04
+9283d383
+User
+at async Nj (/home/runner/workspace/dist/index.cjs:2775:5045)
+2026-05-06 10:16:49.04
+9283d383
+User
+severity: 'ERROR',
+2026-05-06 10:16:49.04
+9283d383
+User
+length: 114,
+2026-05-06 10:16:52.73
+9283d383
+User
+5:16:52 PM [express] GET /api/hr/attendance/breaks/team-status 304 in 167ms :: {}
+2026-05-06 10:16:52.79
+9283d383
+User
+5:16:52 PM [express] GET /api/hr/attendance/my-team 304 in 241ms :: {"members":[{"id":"152dbd85-1201-4152-ad27-f15128f80ebf","firstName":"Aditya","lastName":"Gangwar","email":"adi@hire-in.com","designation":"Healthcare Recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","firstName":"Amil","lastName":"Mirza","email":"amil.mirza@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"600a90b6-f62a-4789-ac25-f7c3c9501489","firstName":"Ayushi","lastName":"Tiwari","email":"ayushi.tiwari@hire-in.com","designation":"Healthcare recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"c5b504c5-882e-4ccf-b8a7-8f031b6330a2","firstName":"Chandan Kumar","lastName":"Jha","email":"chandan.jha@hire-in.com","designation":"Delivery manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"752c335e-08bd-4727-9f3f-b0ea974a87c0","firstName":"Jashan","lastName":"Singh","email":"jashan.singh@hire-in.com","designation":"Sourcer","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"29175d5d-d862-48e6-a916-fe465fedbe4a","firstName":"Jasmine","lastName":"Kaur","email":"contact@hire-in.com","designation":"Design Head","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"760f41f8-bde3-43e5-8127-2747f18d6cd8","firstName":"Rahul","lastName":"Kumar","email":"rahul.kumar@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"9b44a01b-e977-41eb-a77c-217131749249","firstName":"Shankar Kumar","lastName":"Thakur","email":"shankar.thakur@hire-in.com","designation":"Team Lead","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"aaa7199d-8985-4cc5-adac-f1e703cbaffa","firstName":"Sushil","lastName":"Kumar","email":"sushil.kumar@hire-in.com","designation":"Sr. Delivery Manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null}],"attendance":[],"noTeamAssigned":false}
+2026-05-06 10:16:52.79
+9283d383
+User
+5:16:52 PM [express] GET /api/hr/attendance/my-team 304 in 241ms :: {"members":[{"id":"152dbd85-1201-4152-ad27-f15128f80ebf","firstName":"Aditya","lastName":"Gangwar","email":"adi@hire-in.com","designation":"Healthcare Recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","firstName":"Amil","lastName":"Mirza","email":"amil.mirza@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"600a90b6-f62a-4789-ac25-f7c3c9501489","firstName":"Ayushi","lastName":"Tiwari","email":"ayushi.tiwari@hire-in.com","designation":"Healthcare recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"c5b504c5-882e-4ccf-b8a7-8f031b6330a2","firstName":"Chandan Kumar","lastName":"Jha","email":"chandan.jha@hire-in.com","designation":"Delivery manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"752c335e-08bd-4727-9f3f-b0ea974a87c0","firstName":"Jashan","lastName":"Singh","email":"jashan.singh@hire-in.com","designation":"Sourcer","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"29175d5d-d862-48e6-a916-fe465fedbe4a","firstName":"Jasmine","lastName":"Kaur","email":"contact@hire-in.com","designation":"Design Head","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"760f41f8-bde3-43e5-8127-2747f18d6cd8","firstName":"Rahul","lastName":"Kumar","email":"rahul.kumar@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"9b44a01b-e977-41eb-a77c-217131749249","firstName":"Shankar Kumar","lastName":"Thakur","email":"shankar.thakur@hire-in.com","designation":"Team Lead","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"aaa7199d-8985-4cc5-adac-f1e703cbaffa","firstName":"Sushil","lastName":"Kumar","email":"sushil.kumar@hire-in.com","designation":"Sr. Delivery Manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null}],"attendance":[],"noTeamAssigned":false}
+2026-05-06 10:17:08.10
+9283d383
+User
+5:17:08 PM [express] GET /api/auth/me 304 in 313ms :: {"id":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","email":"amil.mirza@hire-in.com","firstName":"Amil","lastName":"Mirza","role":"employee","isActive":true,"totpEnabled":true,"employeeId":"HIS-GEN20251118-YXBP","salary":"45000","gender":null}
+2026-05-06 10:17:09.10
+9283d383
+User
+at async Promise.all (index 0)
+2026-05-06 10:17:09.10
+9283d383
+User
+column: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+where: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+error: column "signed_version" does not exist
+2026-05-06 10:17:09.10
+9283d383
+User
+at /home/runner/workspace/dist/index.cjs:206:13359
+2026-05-06 10:17:09.10
+9283d383
+User
+position: '90',
+2026-05-06 10:17:09.10
+9283d383
+User
+length: 114,
+2026-05-06 10:17:09.10
+9283d383
+User
+at async /home/runner/workspace/dist/index.cjs:2776:15468
+2026-05-06 10:17:09.10
+9283d383
+User
+code: '42703',
+2026-05-06 10:17:09.10
+9283d383
+User
+internalPosition: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+severity: 'ERROR',
+2026-05-06 10:17:09.10
+9283d383
+User
+at async /home/runner/workspace/dist/index.cjs:212:38229
+2026-05-06 10:17:09.10
+9283d383
+User
+detail: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+table: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+hint: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-05-06 10:17:09.10
+9283d383
+User
+schema: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+internalQuery: undefined,
+2026-05-06 10:17:09.10
+9283d383
+User
+at async /home/runner/workspace/dist/index.cjs:2776:15405 {
+2026-05-06 10:17:17.00
+9283d383
+User
+5:17:17 PM [express] GET /api/auth/me 401 in 2ms :: {"message":"Not authenticated"}
+2026-05-06 10:17:19.08
+9283d383
+User
+5:17:19 PM [express] POST /api/auth/login 200 in 453ms :: {"totpRequired":true}
+2026-05-06 10:17:23.56
+9283d383
+User
+5:17:23 PM [express] GET /api/hr/attendance/breaks/team-status 304 in 367ms :: {}
+2026-05-06 10:17:25.82
+9283d383
+User
+5:17:25 PM [express] GET /api/hr/attendance/my-team 304 in 231ms :: {"members":[{"id":"152dbd85-1201-4152-ad27-f15128f80ebf","firstName":"Aditya","lastName":"Gangwar","email":"adi@hire-in.com","designation":"Healthcare Recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","firstName":"Amil","lastName":"Mirza","email":"amil.mirza@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"600a90b6-f62a-4789-ac25-f7c3c9501489","firstName":"Ayushi","lastName":"Tiwari","email":"ayushi.tiwari@hire-in.com","designation":"Healthcare recruiter","departmentId":"5ea2cd2c-fc4b-4644-8224-e0ab40aadf89","shiftName":null,"expectedStart":null},{"id":"c5b504c5-882e-4ccf-b8a7-8f031b6330a2","firstName":"Chandan Kumar","lastName":"Jha","email":"chandan.jha@hire-in.com","designation":"Delivery manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"752c335e-08bd-4727-9f3f-b0ea974a87c0","firstName":"Jashan","lastName":"Singh","email":"jashan.singh@hire-in.com","designation":"Sourcer","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"29175d5d-d862-48e6-a916-fe465fedbe4a","firstName":"Jasmine","lastName":"Kaur","email":"contact@hire-in.com","designation":"Design Head","departmentId":"cebb2fd3-6ae7-44c7-85b4-2ffe19c8d282","shiftName":null,"expectedStart":null},{"id":"760f41f8-bde3-43e5-8127-2747f18d6cd8","firstName":"Rahul","lastName":"Kumar","email":"rahul.kumar@hire-in.com","designation":"Recruiter","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"9b44a01b-e977-41eb-a77c-217131749249","firstName":"Shankar Kumar","lastName":"Thakur","email":"shankar.thakur@hire-in.com","designation":"Team Lead","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null},{"id":"aaa7199d-8985-4cc5-adac-f1e703cbaffa","firstName":"Sushil","lastName":"Kumar","email":"sushil.kumar@hire-in.com","designation":"Sr. Delivery Manager","departmentId":"78e62ec5-6210-44b2-9113-81f9f64e7da9","shiftName":null,"expectedStart":null}],"attendance":[{"id":"e8f5a10a-ce2d-4c7a-80dc-8e17573080d5","userId":"752c335e-08bd-4727-9f3f-b0ea974a87c0","date":"2026-05-05","punchIn":"2026-05-05T18:12:01.332Z","punchOut":null,"totalHours":null,"status":"present","notes":null,"isCorrect":false,"correctionSource":null,"correctedById":null,"correctionNote":null,"createdAt":"2026-05-05T18:12:01.349Z","updatedAt":"2026-05-05T18:12:01.349Z"},{"id":"98ce494e-68fd-4446-9d66-229b8f4f5de4","userId":"760f41f8-bde3-43e5-8127-2747f18d6cd8","date":"2026-05-05","punchIn":"2026-05-05T17:00:30.440Z","punchOut":"2026-05-05T22:35:20.296Z","totalHours":"5.58","status":"present","notes":null,"isCorrect":false,"correctionSource":null,"correctedById":null,"correctionNote":null,"createdAt":"2026-05-05T17:00:30.458Z","updatedAt":"2026-05-05T22:35:20.296Z"},{"id":"58d0e77f-e24d-4951-bfd4-10edba816e85","userId":"aaa7199d-8985-4cc5-adac-f1e703cbaffa","date":"2026-05-05","punchIn":"2026-05-05T18:35:39.659Z","punchOut":null,"totalHours":null,"status":"present","notes":null,"isCorrect":false,"correctionSource":null,"correctedById":null,"correctionNote":null,"createdAt":"2026-05-05T18:35:39.676Z","updatedAt":"2026-05-05T18:35:39.676Z"},{"id":"f806490a-9e53-4de3-8545-9f12dde8b375","userId":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","date":"2026-05-05","punchIn":"2026-05-05T17:23:24.970Z","punchOut":"2026-05-05T22:33:30.740Z","totalHours":"5.17","status":"present","notes":null,"isCorrect":false,"correctionSource":null,"correctedById":null,"correctionNote":null,"createdAt":"2026-05-05T17:23:24.990Z","updatedAt":"2026-05-05T22:33:30.740Z"}],"noTeamAssigned":false}
+
+Collapse
+
+Wrap
+
+Colors
+
+Li
