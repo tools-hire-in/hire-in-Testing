@@ -69,7 +69,8 @@ async function ensurePerformanceTables() {
   try {
     await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
     await db.execute(sql`ALTER TABLE track_completions ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
-    log("signed_version columns ensured on track_assignments and track_completions");
+    await db.execute(sql`ALTER TABLE section_acknowledgements ADD COLUMN IF NOT EXISTS signed_version INTEGER`);
+    log("signed_version columns ensured on track_assignments, track_completions, section_acknowledgements");
   } catch (err) {
     console.error("signed_version column migration error:", err);
   }
