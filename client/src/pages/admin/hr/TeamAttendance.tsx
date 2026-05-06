@@ -30,6 +30,7 @@ interface TeamMember {
   departmentId: string | null;
   shiftName: string | null;
   expectedStart: string | null;
+  attendanceExempt?: boolean;
 }
 
 interface AttendanceRecord {
@@ -198,19 +199,20 @@ export default function TeamAttendance() {
   const attendanceRecords = data?.attendance || [];
   const getMemberAttendance = (id: string) => attendanceRecords.find(a => a.userId === id);
 
-  const presentCount = members.filter(m => {
+  const nonExemptMembers = members.filter(m => !m.attendanceExempt);
+  const presentCount = nonExemptMembers.filter(m => {
     const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "present" || eff === "working" || eff === "on_lunch" || eff === "on_tea";
   }).length;
-  const absentCount = members.filter(m => {
+  const absentCount = nonExemptMembers.filter(m => {
     const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "absent";
   }).length;
-  const onLeaveCount = members.filter(m => {
+  const onLeaveCount = nonExemptMembers.filter(m => {
     const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "on_leave";
   }).length;
-  const onBreakCount = members.filter(m => {
+  const onBreakCount = nonExemptMembers.filter(m => {
     const eff = getEffectiveStatus(getMemberAttendance(m.id), m.id);
     return eff === "on_lunch" || eff === "on_tea";
   }).length;
@@ -271,7 +273,7 @@ export default function TeamAttendance() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Present</p>
-                <p className="text-base font-semibold" data-testid="text-present-count">{presentCount} / {members.length}</p>
+                <p className="text-base font-semibold" data-testid="text-present-count">{presentCount} / {nonExemptMembers.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -343,6 +345,7 @@ export default function TeamAttendance() {
                       const att = getMemberAttendance(member.id);
                       const effectiveStatus = getEffectiveStatus(att, member.id);
                       const isWorking = effectiveStatus === "working" || effectiveStatus === "on_lunch" || effectiveStatus === "on_tea";
+                      const isExempt = member.attendanceExempt === true;
                       return (
                         <tr
                           key={member.id}
@@ -368,25 +371,25 @@ export default function TeamAttendance() {
                             ) : <span className="text-muted-foreground text-xs">—</span>}
                           </td>
                           <td className="py-2 px-2">
-                            {att?.punchIn ? (
+                            {isExempt ? <span className="text-muted-foreground text-xs">—</span> : att?.punchIn ? (
                               <span className="text-green-600 dark:text-green-400 font-medium">{formatTime(att.punchIn)}</span>
                             ) : "-"}
                           </td>
                           <td className="py-2 px-2">
-                            {att?.punchOut ? (
+                            {isExempt ? <span className="text-muted-foreground text-xs">—</span> : att?.punchOut ? (
                               <span className="text-orange-600 dark:text-orange-400 font-medium">{formatTime(att.punchOut)}</span>
                             ) : isWorking ? (
                               <span className="text-xs text-muted-foreground italic">Working...</span>
                             ) : "-"}
                           </td>
                           <td className="py-2 px-2">
-                            {att?.totalHours ? (
+                            {!isExempt && att?.totalHours ? (
                               <span className="font-medium">{formatDuration(att.totalHours)}</span>
                             ) : "-"}
                           </td>
                           {isToday && (
                             <td className="py-2 px-2">
-                              {(() => {
+                              {isExempt ? <span className="text-muted-foreground text-xs">—</span> : (() => {
                                 const memberBreak = teamBreakStatus?.[member.id];
                                 if (!memberBreak) return <span className="text-muted-foreground text-xs">—</span>;
                                 const activeBreak = memberBreak.activeBreak;
@@ -408,19 +411,25 @@ export default function TeamAttendance() {
                           <td className="py-2 px-2">
                             <div className="space-y-1">
                               <div className="flex flex-wrap gap-1">
-                              <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
-                                {effectiveStatus === "working" && "Working"}
-                                {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
-                                {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
-                                {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
-                              </Badge>
+                              {isExempt ? (
+                                <Badge variant="secondary" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" data-testid={`badge-exempt-${member.id}`}>
+                                  Exempt
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className={statusColors[effectiveStatus === "working" ? "present" : effectiveStatus] || ""}>
+                                  {effectiveStatus === "working" && "Working"}
+                                  {effectiveStatus === "on_lunch" && <span className="flex items-center gap-1"><UtensilsCrossed className="h-3 w-3" /> On Lunch</span>}
+                                  {effectiveStatus === "on_tea" && <span className="flex items-center gap-1"><Coffee className="h-3 w-3" /> Tea Break</span>}
+                                  {effectiveStatus !== "working" && effectiveStatus !== "on_lunch" && effectiveStatus !== "on_tea" && (statusLabels[effectiveStatus] || effectiveStatus)}
+                                </Badge>
+                              )}
                               {att?.isCorrect && (
                                 <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px]" data-testid={`badge-corrected-${member.id}`}>
                                   Corrected
                                 </Badge>
                               )}
                               </div>
-                              {isToday && effectiveStatus === "absent" && member.expectedStart && !att?.punchIn && (() => {
+                              {!isExempt && isToday && effectiveStatus === "absent" && member.expectedStart && !att?.punchIn && (() => {
                                 const [h, m] = member.expectedStart.split(":").map(Number);
                                 const expectedMins = h * 60 + m;
                                 const nowMins = new Date().getHours() * 60 + new Date().getMinutes();

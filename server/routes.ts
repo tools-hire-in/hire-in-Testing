@@ -1601,9 +1601,32 @@ export async function registerRoutes(
   app.get("/api/hr/dashboard-stats", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const todayRecord = await storage.getTodayAttendance(userId);
+      const currentUser = await storage.getAdminUser(userId);
       const now = new Date();
       const today = now.toISOString().split("T")[0];
+
+      // For attendance-exempt users, skip punch/hours calculations
+      if (currentUser?.attendanceExempt) {
+        const leaveRequests = await storage.getLeaveRequests({ userId });
+        const pendingCount = leaveRequests.filter(lr => lr.status === "pending").length;
+        const balances = await storage.getLeaveBalances(userId, now.getFullYear());
+        const allLeaveTypes = await storage.getLeaveTypes();
+        const activeIds = new Set(allLeaveTypes.filter(lt => lt.isActive).map(lt => lt.id));
+        const activeBalances = balances.filter(b => activeIds.has(b.leaveTypeId));
+        return res.json({
+          todayStatus: "exempt",
+          punchInTime: null,
+          punchOutTime: null,
+          presentDaysThisMonth: 0,
+          totalHoursThisMonth: "0.0",
+          pendingLeaveRequests: pendingCount,
+          leaveBalances: activeBalances,
+          productiveHoursToday: null,
+          correctionsThisMonth: 0,
+        });
+      }
+
+      const todayRecord = await storage.getTodayAttendance(userId);
       const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
       const monthRecords = await storage.getAttendanceByUser(userId, monthStart, monthEnd);
@@ -1939,6 +1962,11 @@ export async function registerRoutes(
       const userRole = req.session.role!;
       const today = new Date().toISOString().split("T")[0];
 
+      const currentUser = await storage.getAdminUser(userId);
+      if (currentUser?.attendanceExempt) {
+        return res.status(403).json({ error: "Attendance tracking is not applicable for your account" });
+      }
+
       const compliance = await checkTrainingCompliance(userId, userRole);
       if (compliance.locked) {
         const existingToday = await storage.getTodayAttendance(userId);
@@ -1988,6 +2016,11 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const userRole = req.session.role!;
       const today = new Date().toISOString().split("T")[0];
+
+      const currentUser = await storage.getAdminUser(userId);
+      if (currentUser?.attendanceExempt) {
+        return res.status(403).json({ error: "Attendance tracking is not applicable for your account" });
+      }
 
       const compliance = await checkTrainingCompliance(userId, userRole);
       if (compliance.locked) {
@@ -3154,6 +3187,7 @@ export async function registerRoutes(
           designation: m.designation, departmentId: m.departmentId,
           shiftName: shiftMap[m.id]?.shiftName ?? null,
           expectedStart: shiftMap[m.id]?.expectedStart ?? null,
+          attendanceExempt: m.attendanceExempt ?? false,
         })),
         attendance: attendanceRecords,
         noTeamAssigned: false,
@@ -3191,7 +3225,8 @@ export async function registerRoutes(
       res.json({
         members: teamMembers.map(m => ({
           id: m.id, firstName: m.firstName, lastName: m.lastName, email: m.email,
-          designation: m.designation, departmentId: m.departmentId
+          designation: m.designation, departmentId: m.departmentId,
+          attendanceExempt: m.attendanceExempt ?? false,
         })),
         attendance: attendanceRecords
       });

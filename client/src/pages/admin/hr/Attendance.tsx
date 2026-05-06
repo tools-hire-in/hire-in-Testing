@@ -6,6 +6,7 @@ import {
   LogOut as LogOutIcon,
   CheckCircle2,
   Coffee,
+  ShieldOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +22,7 @@ import { TicketsContent } from "./Tickets";
 import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
 
 interface DashboardStats {
-  todayStatus: "not_punched" | "punched_in" | "completed";
+  todayStatus: "not_punched" | "punched_in" | "completed" | "exempt";
   punchInTime: string | null;
   punchOutTime: string | null;
   presentDaysThisMonth: number;
@@ -172,6 +173,7 @@ export default function Attendance() {
 
   const punchedIn = stats?.todayStatus === "punched_in";
   const dayComplete = stats?.todayStatus === "completed";
+  const isExempt = stats?.todayStatus === "exempt";
   const progressPct = Math.min(100, (liveMs / (TARGET_HOURS * 3600000)) * 100);
   const todayDate = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -189,8 +191,26 @@ export default function Attendance() {
           <PillTabsContent value="attendance">
             <div className="space-y-4 max-w-xl">
 
-              {/* ── TODAY'S TIME CARD ── */}
-              <Card className="overflow-hidden border-2 border-border">
+              {/* ── ATTENDANCE EXEMPT NOTICE ── */}
+              {isExempt && (
+                <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30" data-testid="card-attendance-exempt">
+                  <CardContent className="p-5">
+                    <div className="flex items-start gap-3">
+                      <ShieldOff className="h-6 w-6 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                      <div>
+                        <h3 className="font-semibold text-blue-800 dark:text-blue-300 text-base">Attendance Exempt</h3>
+                        <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                          Your account is marked as attendance exempt. You are not required to punch in or out.
+                          Leave balances and accruals continue to work normally for your account.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── TODAY'S TIME CARD (hidden for exempt users) ── */}
+              {!isExempt && <Card className="overflow-hidden border-2 border-border">
                 <CardContent className="p-0">
 
                   {/* Header */}
@@ -294,7 +314,7 @@ export default function Attendance() {
                     )}
                   </div>
                 </CardContent>
-              </Card>
+              </Card>}
 
               {/* ── BREAKS (only when punched in) ── */}
               {punchedIn && (

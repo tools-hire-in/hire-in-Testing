@@ -949,21 +949,23 @@ export class DatabaseStorage implements IStorage {
         let accrualType = "monthly";
 
         if (lt.isConditional) {
-          // EL: conditional on hours worked threshold
-          const minHours = parseFloat(lt.minHoursForAccrual || "128");
-          if (hoursWorked < minHours) {
-            skippedUsers.push({
-              name: userName,
-              reason: `Hours worked (${hoursWorked}h) below required (${minHours}h)`,
-              leaveTypeName: lt.name,
-            });
-            await db.insert(leaveAccruals).values({
-              userId: user.id, leaveTypeId: lt.id, year, month,
-              accruedDays: "0", hoursWorked: String(hoursWorked),
-              qualified: false, accrualType: "monthly",
-              skipReason: `Hours ${hoursWorked}h < ${minHours}h threshold`,
-            }).onConflictDoNothing();
-            continue;
+          // EL: conditional on hours worked threshold (exempt users bypass this check)
+          if (!user.attendanceExempt) {
+            const minHours = parseFloat(lt.minHoursForAccrual || "128");
+            if (hoursWorked < minHours) {
+              skippedUsers.push({
+                name: userName,
+                reason: `Hours worked (${hoursWorked}h) below required (${minHours}h)`,
+                leaveTypeName: lt.name,
+              });
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: lt.id, year, month,
+                accruedDays: "0", hoursWorked: String(hoursWorked),
+                qualified: false, accrualType: "monthly",
+                skipReason: `Hours ${hoursWorked}h < ${minHours}h threshold`,
+              }).onConflictDoNothing();
+              continue;
+            }
           }
           // EL bonus months: Jan(1), May(5), Sep(9) get +1 extra day
           if (EL_BONUS_MONTHS.includes(month)) {

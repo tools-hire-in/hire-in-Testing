@@ -767,6 +767,13 @@ async function backfillHolidayAttendance() {
     console.error("Universal policy seeding error (non-fatal):", err);
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS attendance_exempt BOOLEAN NOT NULL DEFAULT FALSE`);
+    log("Ensured attendance_exempt column on admin_users");
+  } catch (err) {
+    console.error("attendance_exempt column migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

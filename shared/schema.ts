@@ -50,6 +50,7 @@ export const adminUsers = pgTable("admin_users", {
   passwordResetExpiry: timestamp("password_reset_expiry"),
   deletedAt: timestamp("deleted_at"),
   shiftId: varchar("shift_id"),
+  attendanceExempt: boolean("attendance_exempt").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

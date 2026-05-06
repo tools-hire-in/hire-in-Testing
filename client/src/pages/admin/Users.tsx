@@ -136,7 +136,7 @@ export default function AdminUsers() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false });
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -476,6 +476,7 @@ export default function AdminUsers() {
       departmentId: adminUser.departmentId || "",
       joiningDate: adminUser.joiningDate || "",
       salary: adminUser.salary || "",
+      attendanceExempt: adminUser.attendanceExempt ?? false,
     });
     setEditOpen(true);
   };
@@ -1018,6 +1019,24 @@ export default function AdminUsers() {
                 <Label>Joining Date</Label>
                 <Input type="date" value={editForm.joiningDate} onChange={(e) => setEditForm(prev => ({ ...prev, joiningDate: e.target.value }))} data-testid="input-edit-joining-date" />
               </div>
+              {(isSuperAdmin || isAdmin || user?.role === "hr") && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <Label className="text-sm font-medium">Attendance Exempt</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements. Leave accrual continues normally.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editForm.attendanceExempt}
+                    onClick={() => setEditForm(prev => ({ ...prev, attendanceExempt: !prev.attendanceExempt }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editForm.attendanceExempt ? "bg-primary" : "bg-input"}`}
+                    data-testid="toggle-attendance-exempt"
+                  >
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.attendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -1033,6 +1052,7 @@ export default function AdminUsers() {
                       departmentId: editForm.departmentId === "none" ? null : editForm.departmentId || null,
                       joiningDate: editForm.joiningDate || null,
                       salary: editForm.salary || null,
+                      attendanceExempt: editForm.attendanceExempt,
                     },
                   });
                 }}
