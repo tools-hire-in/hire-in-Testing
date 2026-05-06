@@ -487,7 +487,6 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(adminUsers)
       .where(and(
         isNull(adminUsers.deletedAt),
-        eq(adminUsers.role, "employee"),
         eq(adminUsers.isActive, true),
         eq(adminUsers.employmentStatus, "active"),
       ))

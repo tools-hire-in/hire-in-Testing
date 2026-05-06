@@ -3176,7 +3176,7 @@ export async function registerRoutes(
 
       let teamMembers: AdminUser[];
       if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
-        teamMembers = await storage.getAdminUsers();
+        teamMembers = await storage.getAllActiveEmployees();
       } else {
         teamMembers = await storage.getTeamMembers(userId);
       }
