@@ -1653,16 +1653,12 @@ export function registerOnboardingRoutes(app: Express) {
   app.get("/api/onboarding/policy-gate-status", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const POLICY_GATE_EXEMPT = ["admin"];
-    const isExemptRole = POLICY_GATE_EXEMPT.includes(req.session.role!);
-
     try {
       const userId = req.session.userId;
 
       // Get all published policy tracks assigned to this user.
-      // For exempt roles (admin): only include tracks marked isUniversal.
-      // For all other roles (including super_admin): include all policy tracks.
-      const allAssignments = await db.select({
+      // All roles (including admin/super_admin) must sign their assigned policy tracks.
+      const assignments = await db.select({
         assignment: trackAssignments,
         track: learningTracks,
       }).from(trackAssignments)
@@ -1672,16 +1668,6 @@ export function registerOnboardingRoutes(app: Express) {
           eq(learningTracks.isPolicyTrack, true),
           eq(learningTracks.status, "published"),
         ));
-
-      // Filter: exempt roles only see universal tracks
-      const assignments = isExemptRole
-        ? allAssignments.filter(({ track }) => track.isUniversal)
-        : allAssignments;
-
-      // If exempt role has no universal tracks pending, skip night shift check too
-      if (isExemptRole && assignments.length === 0) {
-        return res.json({ hasPendingPolicies: false, policies: [], nightShiftPending: false, nightShiftConsent: null });
-      }
 
       const pending = await Promise.all(assignments.map(async ({ assignment, track }) => {
         // Check if completed with current version
@@ -1710,15 +1696,17 @@ export function registerOnboardingRoutes(app: Express) {
 
       const pendingPolicies = pending.filter(Boolean);
 
-      // Night Shift Consent check: Female employees must have a valid (non-expired) consent.
-      // Exempt roles (admin) are never gated by Night Shift Consent.
+      // Night Shift Consent check: Female employees/operations must have a valid (non-expired) consent.
+      // Admin/super_admin/hr/manager roles are not gated by Night Shift Consent.
+      const NIGHT_SHIFT_EXEMPT_ROLES = ["admin", "super_admin", "hr", "manager"];
+      const isNightShiftExempt = NIGHT_SHIFT_EXEMPT_ROLES.includes(req.session.role!);
       let nightShiftPending = false;
       let nightShiftConsent: any = null;
       try {
         const [userRecord] = await db.select({ gender: adminUsers.gender, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
           .from(adminUsers).where(eq(adminUsers.id, userId));
 
-        if (!isExemptRole && userRecord?.gender === "Female") {
+        if (!isNightShiftExempt && userRecord?.gender === "Female") {
           const [latestConsent] = await db.select().from(nightShiftConsents)
             .where(and(eq(nightShiftConsents.userId, userId), eq(nightShiftConsents.isActive, true)))
             .orderBy(desc(nightShiftConsents.signedAt))
