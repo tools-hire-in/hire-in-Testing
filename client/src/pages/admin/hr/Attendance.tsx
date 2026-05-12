@@ -7,9 +7,12 @@ import {
   CheckCircle2,
   Coffee,
   ShieldOff,
+  Clock4,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +45,16 @@ interface AttendanceRecord {
   status: string;
   notes: string | null;
   isCorrect?: boolean;
+}
+
+interface GraceUsageRow {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  department: string;
+  shift: string;
+  lateCount: number;
 }
 
 const TARGET_HOURS = 8;
@@ -87,16 +100,124 @@ function StatusBadge({ status, isCorrect }: { status: string; isCorrect?: boolea
   );
 }
 
+function GracePeriodUsageTab({ userRole }: { userRole: string }) {
+  const now = new Date();
+  const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+
+  const { data: rows, isLoading } = useQuery<GraceUsageRow[]>({
+    queryKey: ["/api/hr/attendance/grace-usage", { month }],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/attendance/grace-usage?month=${month}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: ["hr", "admin", "super_admin", "manager"].includes(userRole),
+  });
+
+  const sorted = [...(rows || [])].sort((a, b) =>
+    sortDir === "desc" ? b.lateCount - a.lateCount : a.lateCount - b.lateCount
+  );
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-base font-semibold">Grace Period Usage</h2>
+          <p className="text-xs text-muted-foreground">Employees who punched in during the grace window (marked Late)</p>
+        </div>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          data-testid="input-grace-month"
+        />
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="text-center py-10">
+              <Clock4 className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">No late punches recorded for this period.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">Employee</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">Department</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">Shift</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
+                        data-testid="button-sort-late-count"
+                      >
+                        Late Punches
+                        {sortDir === "desc" ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((r) => (
+                    <tr
+                      key={r.userId}
+                      className="border-b last:border-0 hover:bg-muted/30 transition-colors"
+                      data-testid={`grace-row-${r.userId}`}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{r.firstName} {r.lastName}</div>
+                        <div className="text-xs text-muted-foreground">{r.email}</div>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground">{r.department}</td>
+                      <td className="py-3 px-4 text-muted-foreground">{r.shift}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            r.lateCount >= 5
+                              ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                              : r.lateCount >= 3
+                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300"
+                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"
+                          }`}
+                          data-testid={`text-late-count-${r.userId}`}
+                        >
+                          {r.lateCount}×
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function Attendance() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
-  const [activeTab, setActiveTab] = useState(requestedTab === "tickets" ? "tickets" : "attendance");
+  const canSeeGrace = ["hr", "admin", "super_admin", "manager"].includes(user?.role || "");
+  const validTabs = ["attendance", "tickets", ...(canSeeGrace ? ["grace"] : [])];
+  const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -186,6 +307,9 @@ export default function Attendance() {
           <PillTabsList>
             <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
             <PillTabsTrigger value="tickets" data-testid="tab-tickets">Regularization</PillTabsTrigger>
+            {canSeeGrace && (
+              <PillTabsTrigger value="grace" data-testid="tab-grace">Grace Period Usage</PillTabsTrigger>
+            )}
           </PillTabsList>
 
           <PillTabsContent value="attendance">
@@ -423,6 +547,12 @@ export default function Attendance() {
           <PillTabsContent value="tickets">
             <TicketsContent />
           </PillTabsContent>
+
+          {canSeeGrace && (
+            <PillTabsContent value="grace">
+              <GracePeriodUsageTab userRole={user?.role || ""} />
+            </PillTabsContent>
+          )}
         </PillTabs>
       </div>
     </AdminLayout>

@@ -539,6 +539,137 @@ function LetterTemplatesSection() {
   );
 }
 
+interface ShiftInfo {
+  id: string;
+  name: string;
+  displayLabel: string;
+  scheduledHours: number;
+  gracePeriodMinutes: number;
+  istStart: string;
+  istEnd: string;
+}
+
+function ShiftsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+
+  const { data: shifts, isLoading, refetch } = useQuery<ShiftInfo[]>({
+    queryKey: ["/api/hr/shifts"],
+    enabled: isHrOrAbove,
+  });
+
+  const graceMutation = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: number }) =>
+      apiRequest("PATCH", `/api/hr/admin/shifts/${id}/grace-period`, { gracePeriodMinutes: value }),
+    onSuccess: () => {
+      refetch();
+      setEditingId(null);
+      toast({ title: "Grace period updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update", description: err.message || "Error", variant: "destructive" });
+    },
+  });
+
+  if (!isHrOrAbove) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Shifts & Grace Periods
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground mb-3">
+          Configure the grace window for each shift. Employees punching in after the shift start + grace period are automatically marked as <strong>Late</strong>.
+        </p>
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : shifts && shifts.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-3 px-2 font-medium text-muted-foreground">Shift</th>
+                  <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hours</th>
+                  <th className="text-left py-3 px-2 font-medium text-muted-foreground">Start Time</th>
+                  <th className="text-left py-3 px-2 font-medium text-muted-foreground">Grace Period (min)</th>
+                  <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shifts.map((s) => (
+                  <tr key={s.id} className="border-b last:border-0" data-testid={`shift-row-${s.id}`}>
+                    <td className="py-3 px-2 font-medium">{s.displayLabel || s.name}</td>
+                    <td className="py-3 px-2">{s.scheduledHours}h</td>
+                    <td className="py-3 px-2 font-mono">{s.istStart}</td>
+                    <td className="py-3 px-2">
+                      {editingId === s.id ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            value={editValue}
+                            min={0}
+                            max={120}
+                            className="h-7 w-20 text-sm"
+                            onChange={(e) => setEditValue(e.target.value)}
+                            data-testid={`input-grace-period-${s.id}`}
+                          />
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => graceMutation.mutate({ id: s.id, value: parseInt(editValue, 10) })}
+                            disabled={graceMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => setEditingId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="font-mono" data-testid={`text-grace-period-${s.id}`}>{s.gracePeriodMinutes ?? 15} min</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-2">
+                      {editingId !== s.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7"
+                          onClick={() => {
+                            setEditingId(s.id);
+                            setEditValue(String(s.gracePeriodMinutes ?? 15));
+                          }}
+                          data-testid={`button-edit-grace-${s.id}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No active shifts found.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -1122,6 +1253,8 @@ export default function HRSettings() {
             </div>
           </CardContent>
         </Card>
+
+        <ShiftsSection />
 
         <Dialog open={showLeaveType} onOpenChange={setShowLeaveType}>
           <DialogContent>

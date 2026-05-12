@@ -1990,20 +1990,57 @@ export async function registerRoutes(
       const existing = await storage.getTodayAttendance(userId);
       if (existing) {
         if (!existing.punchIn && existing.status === "absent" && existing.notes?.includes("[Training non-compliance]")) {
+          // Determine late/present status for this corrected punch-in
+          const punchInTime = new Date();
+          let punchStatus: "present" | "late" = "present";
+          let noteStr: string | null = null;
+          const typedUser2 = currentUser as AdminUser & { shiftId?: string | null };
+          if (typedUser2.shiftId) {
+            try {
+              const { computeLateStatus } = await import("./attendancePolicy");
+              const result = await computeLateStatus(typedUser2.shiftId, punchInTime);
+              if (result) {
+                punchStatus = result.status;
+                noteStr = result.notes;
+              }
+            } catch (policyErr) {
+              console.error("[punch-in correction] Late-status computation failed:", policyErr);
+            }
+          }
           const record = await storage.updateAttendance(existing.id, {
-            punchIn: new Date(),
-            status: "present",
-            notes: null,
+            punchIn: punchInTime,
+            status: punchStatus,
+            notes: noteStr,
           });
           return res.status(200).json(record);
         }
         return res.status(400).json({ error: "Already punched in today" });
       }
+
+      // Determine if punch-in is late (after shift start + grace period)
+      const punchInTime = new Date();
+      let punchStatus: "present" | "late" = "present";
+      let graceNote: string | null = null;
+      const typedUserForShift = currentUser as AdminUser & { shiftId?: string | null };
+      if (typedUserForShift.shiftId) {
+        try {
+          const { computeLateStatus } = await import("./attendancePolicy");
+          const result = await computeLateStatus(typedUserForShift.shiftId, punchInTime);
+          if (result) {
+            punchStatus = result.status;
+            graceNote = result.notes;
+          }
+        } catch (policyErr) {
+          console.error("[punch-in] Late-status computation failed:", policyErr);
+        }
+      }
+
       const record = await storage.createAttendance({
         userId,
         date: today,
-        punchIn: new Date(),
-        status: "present",
+        punchIn: punchInTime,
+        status: punchStatus,
+        notes: graceNote,
       });
       res.status(201).json(record);
     } catch (error) {
@@ -2050,11 +2087,35 @@ export async function registerRoutes(
       const punchOut = new Date();
       const punchIn = existing.punchIn ? new Date(existing.punchIn) : punchOut;
       const diffMs = punchOut.getTime() - punchIn.getTime();
-      const totalHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
-      const record = await storage.updateAttendance(existing.id, {
-        punchOut,
-        totalHours,
-      });
+      const totalHoursNum = diffMs / (1000 * 60 * 60);
+      const totalHours = totalHoursNum.toFixed(2);
+
+      // Auto half-day detection: if worked hours < half of scheduled hours
+      const currentStatus = existing.status as string;
+      let updatedStatus: string | undefined;
+      let halfDayNote: string | undefined;
+      const typedUserOut = await storage.getAdminUser(userId) as AdminUser & { shiftId?: string | null };
+      if (typedUserOut?.shiftId) {
+        try {
+          const { computeHalfDayStatus } = await import("./attendancePolicy");
+          const result = await computeHalfDayStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
+          if (result.status !== currentStatus) {
+            updatedStatus = result.status;
+            halfDayNote = result.notes;
+          }
+        } catch (policyErr) {
+          console.error("[punch-out] Half-day computation failed:", policyErr);
+        }
+      }
+
+      const updatePayload: Partial<typeof existing> & { punchOut: Date; totalHours: string; status?: string; notes?: string } = { punchOut, totalHours };
+      if (updatedStatus) {
+        updatePayload.status = updatedStatus;
+        const existingNotes = existing.notes ? `${existing.notes}; ` : "";
+        updatePayload.notes = existingNotes + halfDayNote;
+      }
+
+      const record = await storage.updateAttendance(existing.id, updatePayload);
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch out" });
@@ -3060,6 +3121,29 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: "Invalid ticket data", details: result.error.issues });
       }
+
+      // Regularization window enforcement: max 3 working days back
+      const ticketDate = result.data.date as string;
+      if (ticketDate && result.data.type === "regularization") {
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+        const todayIST = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+        if (ticketDate > todayIST) {
+          return res.status(400).json({ error: "Regularisation date cannot be in the future" });
+        }
+        if (ticketDate < todayIST) {
+          const workingDaysBack = await storage.countLeaveDays(ticketDate, todayIST);
+          // countLeaveDays includes both start and end dates, so subtract 1 for "days back"
+          const daysBack = workingDaysBack - 1;
+          if (daysBack > 3) {
+            return res.status(400).json({
+              error: "Regularisation must be raised within 3 working days of the incident",
+              daysBack,
+              cutoffExceeded: true,
+            });
+          }
+        }
+      }
+
       const ticket = await storage.createTicket(result.data);
       res.status(201).json(ticket);
     } catch (error) {
@@ -3097,6 +3181,25 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to review ticket" });
+    }
+  });
+
+  // --- Grace Period Usage Report ---
+  app.get("/api/hr/attendance/grace-usage", requireRole("hr", "admin", "super_admin", "manager"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      const rawMonth = (req.query.month as string) || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(rawMonth)) {
+        return res.status(400).json({ error: "month must be in YYYY-MM format" });
+      }
+      const month = rawMonth;
+      const { queryGraceUsage } = await import("./attendancePolicy");
+      const rows = await queryGraceUsage(userRole, userId, month);
+      res.json(rows);
+    } catch (error) {
+      console.error("Grace usage report error:", error);
+      res.status(500).json({ error: "Failed to fetch grace period usage" });
     }
   });
 
@@ -7378,6 +7481,29 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get my shift history error:", error);
       res.status(500).json({ error: "Failed to fetch shift history" });
+    }
+  });
+
+  // Update grace period minutes for a shift
+  app.patch("/api/hr/admin/shifts/:id/grace-period", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const { gracePeriodMinutes } = req.body;
+      const val = parseInt(gracePeriodMinutes, 10);
+      if (isNaN(val) || val < 0 || val > 120) {
+        return res.status(400).json({ error: "gracePeriodMinutes must be an integer between 0 and 120" });
+      }
+      await db.execute(sql`
+        UPDATE shifts SET grace_period_minutes = ${val} WHERE id = ${req.params.id} AND is_active = true
+      `);
+      const updated = await db.execute(sql`
+        SELECT id, name, display_label, scheduled_hours, grace_period_minutes
+        FROM shifts WHERE id = ${req.params.id} LIMIT 1
+      `);
+      if (updated.rows.length === 0) return res.status(404).json({ error: "Shift not found" });
+      res.json(updated.rows[0]);
+    } catch (error) {
+      console.error("Update shift grace period error:", error);
+      res.status(500).json({ error: "Failed to update grace period" });
     }
   });
 

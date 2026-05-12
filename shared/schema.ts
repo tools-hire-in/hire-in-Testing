@@ -1280,6 +1280,7 @@ export const shifts = pgTable("shifts", {
   istStartStd: varchar("ist_start_std").notNull(),
   istEndStd: varchar("ist_end_std").notNull(),
   scheduledHours: integer("scheduled_hours").notNull().default(9),
+  gracePeriodMinutes: integer("grace_period_minutes").default(15),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });

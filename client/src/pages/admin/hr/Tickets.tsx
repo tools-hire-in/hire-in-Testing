@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Ticket as TicketIcon, Plus } from "lucide-react";
+import { Ticket as TicketIcon, Plus, Info } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,26 @@ interface TicketData {
   createdAt: string;
 }
 
+/**
+ * Client-side approximation of the 3-working-day regularization cutoff (IST-anchored,
+ * weekends excluded). Holidays are not excluded here — the server enforces the
+ * authoritative check and returns a 400 if the window is exceeded.
+ */
+function getEarliestAllowedDate(): string {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIST = new Date(Date.now() + IST_OFFSET_MS);
+  let workingDaysBack = 0;
+  const cursor = new Date(nowIST);
+  while (workingDaysBack < 3) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const dow = cursor.getUTCDay();
+    if (dow !== 0 && dow !== 6) {
+      workingDaysBack++;
+    }
+  }
+  return cursor.toISOString().slice(0, 10);
+}
+
 export function TicketsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -40,6 +60,9 @@ export function TicketsContent() {
     requestedPunchIn: "",
     requestedPunchOut: "",
   });
+
+  const earliestAllowed = getEarliestAllowedDate();
+  const todayStr = new Date().toISOString().split("T")[0];
 
   const { data: tickets, isLoading } = useQuery<TicketData[]>({
     queryKey: ["/api/hr/tickets/my"],
@@ -156,9 +179,18 @@ export function TicketsContent() {
                 <Input
                   type="date"
                   value={formData.date}
+                  min={earliestAllowed}
+                  max={todayStr}
                   onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
                   data-testid="input-ticket-date"
                 />
+                <div className="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="text-ticket-date-hint">
+                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+                  <span>
+                    Regularisation can only be raised within <strong>3 working days</strong> of the incident.
+                    Earliest allowed date: <strong>{earliestAllowed}</strong>.
+                  </span>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

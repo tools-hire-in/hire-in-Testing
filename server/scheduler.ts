@@ -3,8 +3,8 @@ import { generateMonthlySalaryReport } from "./salaryReport";
 import { sendSalaryReport, sendLeaveAccrualEmail, sendLeaveYearEndEmail } from "./email";
 import { storage } from "./storage";
 import { db } from "./db";
-import { nightShiftConsents, adminUsers } from "@shared/schema";
-import { eq, and, lt, gt, isNull } from "drizzle-orm";
+import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests } from "@shared/schema";
+import { eq, and, lt, gt, isNull, sql } from "drizzle-orm";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -23,6 +23,110 @@ function getIstDateTime(): { year: number; month: number; day: number } {
     month: nowIst.getUTCMonth() + 1, // 1-indexed
     day: nowIst.getUTCDate(),
   };
+}
+
+export interface AbsentSweepResult {
+  date: string;
+  created: number;
+  skipped: number;
+  skippedWeekend?: boolean;
+  skippedHoliday?: string;
+}
+
+/**
+ * Core absent-sweep logic, extracted so it can be called from integration tests.
+ * Pass `overrideDate` to run against a specific date (bypasses weekend/holiday check when
+ * `skipGuards` is true — used in tests to exercise the per-user logic directly).
+ */
+export async function runAbsentSweep(
+  overrideDate: string,
+  skipGuards = false,
+): Promise<AbsentSweepResult> {
+  const todayStr = overrideDate;
+
+  if (!skipGuards) {
+    const dayOfWeek = new Date(todayStr + "T12:00:00Z").getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return { date: todayStr, created: 0, skipped: 0, skippedWeekend: true };
+    }
+
+    const todayHolidays = await db.select().from(holidays)
+      .where(and(eq(holidays.date, todayStr), eq(holidays.isOptional, false)));
+    if (todayHolidays.length > 0) {
+      return { date: todayStr, created: 0, skipped: 0, skippedHoliday: todayHolidays[0].name };
+    }
+  }
+
+  const activeUsers = await db.select({
+    id: adminUsers.id,
+    shiftId: adminUsers.shiftId,
+    attendanceExempt: adminUsers.attendanceExempt,
+  }).from(adminUsers)
+    .where(and(
+      isNull(adminUsers.deletedAt),
+      eq(adminUsers.isActive, true),
+      eq(adminUsers.employmentStatus, "active"),
+      eq(adminUsers.attendanceExempt, false),
+    ));
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const user of activeUsers) {
+    try {
+      if (user.shiftId) {
+        const shiftRow = await db.execute(sql`
+          SELECT ist_start_std, ist_end_std FROM shifts WHERE id = ${user.shiftId} AND is_active = true LIMIT 1
+        `);
+        if (shiftRow.rows.length > 0) {
+          const sr = shiftRow.rows[0] as { ist_start_std: string; ist_end_std: string };
+          const [startH, startM] = sr.ist_start_std.split(":").map(Number);
+          const [endH, endM] = sr.ist_end_std.split(":").map(Number);
+          const shiftStartMin = startH * 60 + startM;
+          const shiftEndMin = endH * 60 + endM;
+          const isOvernightShift = shiftStartMin > shiftEndMin;
+          if (isOvernightShift || shiftEndMin >= 23 * 60 + 59) {
+            skipped++;
+            continue;
+          }
+        }
+      }
+
+      const existingRows = await db.select({ id: attendance.id })
+        .from(attendance)
+        .where(and(eq(attendance.userId, user.id), eq(attendance.date, todayStr)))
+        .limit(1);
+      if (existingRows.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      const leaveRows = await db.select({ id: leaveRequests.id })
+        .from(leaveRequests)
+        .where(and(
+          eq(leaveRequests.userId, user.id),
+          eq(leaveRequests.status, "approved"),
+          sql`${leaveRequests.startDate} <= ${todayStr}`,
+          sql`${leaveRequests.endDate} >= ${todayStr}`,
+        ))
+        .limit(1);
+      if (leaveRows.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      await db.execute(sql`
+        INSERT INTO attendance (user_id, date, status, notes)
+        VALUES (${user.id}, ${todayStr}, 'absent', '[Auto] No punch-in recorded')
+        ON CONFLICT DO NOTHING
+      `);
+      created++;
+    } catch (userErr) {
+      console.error(`[scheduler] Absent sweep failed for user ${user.id}:`, userErr);
+    }
+  }
+
+  return { date: todayStr, created, skipped };
 }
 
 export function startScheduler() {
@@ -273,8 +377,33 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
+  // End-of-day absent sweep: runs at 23:59 IST every day
+  cron.schedule("59 23 * * *", async () => {
+    const { year, month, day } = getIstDateTime();
+    const todayStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    console.log(`[scheduler] Running end-of-day absent sweep for ${todayStr}...`);
+    try {
+      const result = await runAbsentSweep(todayStr);
+      if (result.skippedWeekend) {
+        console.log(`[scheduler] Absent sweep skipped — weekend (${todayStr})`);
+      } else if (result.skippedHoliday) {
+        console.log(`[scheduler] Absent sweep skipped — public holiday: ${result.skippedHoliday}`);
+      } else {
+        console.log(`[scheduler] Absent sweep complete for ${todayStr}: ${result.created} absent records created, ${result.skipped} skipped.`);
+      }
+    } catch (error) {
+      console.error("[scheduler] Absent sweep failed:", error);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
+  // Admin route to update shift grace period: handled in routes.ts
+  // (PATCH /api/hr/admin/shifts/:id/grace-period)
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report: last day of month at 6 PM CST");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
+  console.log("  - End-of-day absent sweep: daily at 23:59 IST");
 }

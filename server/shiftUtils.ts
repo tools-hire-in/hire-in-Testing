@@ -6,6 +6,8 @@ export interface ShiftTiming {
   istStart: string;
   istEnd: string;
   isDst: boolean;
+  scheduledHours: number;
+  gracePeriodMinutes: number;
 }
 
 /** Return today's date string in IST (UTC+5:30) to avoid UTC boundary errors on DST transition days. */
@@ -34,7 +36,8 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
   }
 
   const shiftRows = await db.execute(sql`
-    SELECT id, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std
+    SELECT id, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std,
+           scheduled_hours, grace_period_minutes
     FROM shifts
     WHERE id = ${shiftId} AND is_active = true
     LIMIT 1
@@ -48,6 +51,8 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
     ist_end_dst: string;
     ist_start_std: string;
     ist_end_std: string;
+    scheduled_hours: number;
+    grace_period_minutes: number | null;
   };
 
   return {
@@ -55,6 +60,8 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
     istStart: isDst ? shift.ist_start_dst : shift.ist_start_std,
     istEnd: isDst ? shift.ist_end_dst : shift.ist_end_std,
     isDst,
+    scheduledHours: shift.scheduled_hours ?? 9,
+    gracePeriodMinutes: shift.grace_period_minutes ?? 15,
   };
 }
 
@@ -68,6 +75,7 @@ interface ShiftRow {
   ist_start_std: string;
   ist_end_std: string;
   scheduled_hours: number;
+  grace_period_minutes: number | null;
   is_active: boolean;
 }
 
@@ -87,7 +95,7 @@ export async function getAllShiftsWithTiming() {
   const shiftRows = await db.execute(sql`
     SELECT id, name, display_label, us_coverage,
            ist_start_dst, ist_end_dst, ist_start_std, ist_end_std,
-           scheduled_hours, is_active
+           scheduled_hours, grace_period_minutes, is_active
     FROM shifts
     WHERE is_active = true
     ORDER BY id
@@ -105,6 +113,26 @@ export async function getAllShiftsWithTiming() {
     istStartStd: s.ist_start_std,
     istEndStd: s.ist_end_std,
     scheduledHours: s.scheduled_hours,
+    gracePeriodMinutes: s.grace_period_minutes ?? 15,
     isDst,
   }));
+}
+
+/**
+ * Determine IST time-of-day in minutes from midnight for a given UTC Date object.
+ * Returns the number of minutes elapsed since 00:00 IST.
+ */
+export function utcToIstMinutes(utcDate: Date): number {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istMs = utcDate.getTime() + IST_OFFSET_MS;
+  const istDate = new Date(istMs);
+  return istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+}
+
+/**
+ * Parse an HH:MM shift-start string into minutes from midnight.
+ */
+export function shiftTimeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
 }
