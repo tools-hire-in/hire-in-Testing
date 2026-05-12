@@ -149,6 +149,10 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
     });
 
     if (!res.ok) {
+      if (res.status === 404) {
+        console.log(`[ceipal] Page ${page} returned 404 — reached end of results`);
+        break;
+      }
       const errText = await res.text();
       throw new Error(`Ceipal jobs fetch failed: ${res.status} - ${errText}`);
     }
