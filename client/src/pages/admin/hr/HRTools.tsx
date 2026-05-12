@@ -1458,6 +1458,7 @@ export function OfferLettersDashboard() {
   }
 
   const isHrOrAdmin = user && ["hr", "admin", "super_admin"].includes(user.role ?? "");
+  const canApproveOfferLetter = user?.role === "super_admin";
   const pendingLetters = letters?.filter((l: any) => l.status === "pending_approval") ?? [];
   const filteredLetters = activeFilter === "pending_approval"
     ? pendingLetters
@@ -1579,7 +1580,7 @@ export function OfferLettersDashboard() {
                                   View
                                 </Button>
                               )}
-                              {isPending && isHrOrAdmin && (
+                              {isPending && canApproveOfferLetter && (
                                 <>
                                   <Button
                                     size="sm"

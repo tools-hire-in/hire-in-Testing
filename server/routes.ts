@@ -4420,9 +4420,10 @@ export async function registerRoutes(
 
       const actorId = req.session.userId!;
       const actorUser = await storage.getAdminUser(actorId);
-      const isManager = actorUser?.role === "manager";
+      // Only super_admin can send directly; all other roles require super_admin approval
+      const canSendDirectly = actorUser?.role === "super_admin";
 
-      const offerStatus = isManager ? "pending_approval" : "sent";
+      const offerStatus = canSendDirectly ? "sent" : "pending_approval";
 
       const offerLetter = await storage.createOfferLetter({
         token,
@@ -4452,35 +4453,36 @@ export async function registerRoutes(
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
 
-      if (isManager) {
-        // Manager flow: notify HR, do not send to candidate yet
-        const reviewUrl = `${protocol}://${host}/admin/hr-tools`;
-        const managerName = actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "A manager";
+      if (!canSendDirectly) {
+        // Non-super_admin flow: route to super_admin for approval, do not send to candidate yet
+        const reviewUrl = `${protocol}://${host}/admin/new-hire`;
+        const creatorName = actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "A team member";
+        const creatorRole = actorUser?.role ?? "unknown";
 
-        // Send notification email to HR addresses
-        const hrNotifyEmails = ["hr@hire-in.com", "simranjeet@hire-in.com"];
+        // Notify super_admin email addresses
+        const superAdminNotifyEmails = ["simranjeet@hire-in.com"];
         await sendOfferLetterPendingApprovalEmail({
-          to: hrNotifyEmails,
-          managerName,
+          to: superAdminNotifyEmails,
+          managerName: `${creatorName} (${creatorRole})`,
           candidateName,
           designation,
           salary: salary || null,
           reviewUrl,
         });
 
-        // Create in-app notifications for all HR users
+        // Create in-app notifications for super_admin users only
         try {
           const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
           const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
           if (featureFlags.notifications_enabled) {
             const allUsers = await storage.getAdminUsers();
-            const hrUsers = allUsers.filter(u => ["hr", "admin", "super_admin"].includes(u.role ?? "") && u.isActive);
-            for (const hrUser of hrUsers) {
+            const superAdmins = allUsers.filter(u => u.role === "super_admin" && u.isActive);
+            for (const sa of superAdmins) {
               await storage.createNotification({
-                userId: hrUser.id,
+                userId: sa.id,
                 type: "offer_letter_pending_approval",
                 title: "Offer Letter Pending Approval",
-                message: `${managerName} submitted an offer letter for ${candidateName} (${designation}) — awaiting your review.`,
+                message: `${creatorName} submitted an offer letter for ${candidateName} (${designation}) — awaiting your approval.`,
                 isRead: false,
                 metadata: { offerId: offerLetter.id, candidateName, designation },
               });
@@ -4500,7 +4502,7 @@ export async function registerRoutes(
         return res.json({ ...offerLetterWithoutToken, emailSent: false, pendingApproval: true });
       }
 
-      // HR/Admin flow: send directly to candidate
+      // super_admin flow: send directly to candidate
       const acceptUrl = `${protocol}://${host}/onboard/${token}`;
 
       const parsedCcEmails = Array.isArray(ccEmails)
@@ -4564,7 +4566,7 @@ export async function registerRoutes(
   });
 
   // Approve a pending offer letter
-  app.patch("/api/hr/tools/offer-letters/:id/approve", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/tools/offer-letters/:id/approve", requireAuth, requireRole("super_admin"), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const actorId = req.session.userId!;
@@ -4639,7 +4641,7 @@ export async function registerRoutes(
   });
 
   // Reject a pending offer letter
-  app.patch("/api/hr/tools/offer-letters/:id/reject", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/tools/offer-letters/:id/reject", requireAuth, requireRole("super_admin"), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { reason } = req.body;
