@@ -237,6 +237,29 @@ export class ObjectStorageService {
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
   }
+
+  // Upload a buffer directly to object storage, returns the stored path.
+  // storagePath should be a full path like /<bucket>/<object> or a relative
+  // path that will be resolved under PRIVATE_OBJECT_DIR.
+  async uploadBuffer(buffer: Buffer, relativePath: string, mimeType: string): Promise<string> {
+    const privateDir = this.getPrivateObjectDir();
+    const fullPath = `${privateDir.replace(/\/$/, "")}/${relativePath.replace(/^\//, "")}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType: mimeType, resumable: false });
+    // Return a normalised internal path: /<bucket>/<object>
+    return `/${bucketName}/${objectName}`;
+  }
+
+  // Download an object stored at storedPath (as returned by uploadBuffer) into a Buffer.
+  async downloadBuffer(storedPath: string): Promise<Buffer> {
+    const { bucketName, objectName } = parseObjectPath(storedPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    const [data] = await file.download();
+    return data as Buffer;
+  }
 }
 
 function parseObjectPath(path: string): {

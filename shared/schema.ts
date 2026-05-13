@@ -1271,6 +1271,153 @@ export type HrLetter = typeof hrLetters.$inferSelect;
 export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
 
 // ==========================================
+// CLIENT CONTRACT GENERATION MODULE
+// ==========================================
+
+export const contractStatusEnum = pgEnum("contract_status", [
+  "draft",
+  "sent",
+  "client_signed",
+  "countersigned",
+  "cancelled",
+]);
+
+export const contractSourceEnum = pgEnum("contract_source", [
+  "generated",
+  "imported",
+]);
+
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "scheduled",
+  "sent",
+  "paid",
+  "overdue",
+  "cancelled",
+]);
+
+export const contractClients = pgTable("contract_clients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  address: text("address"),
+  signatoryName: varchar("signatory_name"),
+  signatoryTitle: varchar("signatory_title"),
+  email: varchar("email"),
+  phone: varchar("phone"),
+  website: varchar("website"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const contractTemplates = pgTable("contract_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  filePath: varchar("file_path").notNull(),
+  placeholderList: jsonb("placeholder_list").notNull().default(sql`'[]'::jsonb`),
+  uploadedBy: varchar("uploaded_by").references(() => adminUsers.id),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const contracts = pgTable("contracts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  source: contractSourceEnum("source").notNull().default("generated"),
+  templateId: varchar("template_id").references(() => contractTemplates.id),
+  clientId: varchar("client_id").references(() => contractClients.id),
+  templateName: varchar("template_name"),
+  clientName: varchar("client_name").notNull(),
+  candidateName: varchar("candidate_name"),
+  candidateRole: varchar("candidate_role"),
+  variableValues: jsonb("variable_values").notNull().default(sql`'{}'::jsonb`),
+  docxPath: varchar("docx_path"),
+  // For imported contracts: store the uploaded file path
+  uploadedDocPath: varchar("uploaded_doc_path"),
+  // Contract dates & commercial terms
+  contractStartDate: date("contract_start_date"),
+  contractEndDate: date("contract_end_date"),
+  marginPerHour: varchar("margin_per_hour"),
+  paymentTermsDays: integer("payment_terms_days"), // e.g. 30 for Net 30
+  billingFrequency: varchar("billing_frequency"), // weekly | bi_weekly | monthly | milestone
+  notes: text("notes"),
+  status: contractStatusEnum("status").notNull().default("draft"),
+  signingToken: varchar("signing_token").unique(),
+  documentHash: varchar("document_hash"),
+  authCode: varchar("auth_code"),
+  clientSignedAt: timestamp("client_signed_at"),
+  clientSignedIp: varchar("client_signed_ip"),
+  countersignedBy: varchar("countersigned_by").references(() => adminUsers.id),
+  countersignedAt: timestamp("countersigned_at"),
+  sentAt: timestamp("sent_at"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Invoice tracking — one record per scheduled/sent invoice per contract
+export const contractInvoices = pgTable("contract_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").notNull().references(() => contracts.id),
+  invoiceNumber: varchar("invoice_number"),
+  periodStart: date("period_start"),
+  periodEnd: date("period_end"),
+  dueDate: date("due_date"),
+  amount: numeric("amount"),
+  currency: varchar("currency").notNull().default("USD"),
+  status: invoiceStatusEnum("status").notNull().default("scheduled"),
+  sentAt: timestamp("sent_at"),
+  paidAt: timestamp("paid_at"),
+  reminderSentAt: timestamp("reminder_sent_at"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertContractClientSchema = createInsertSchema(contractClients).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertContractTemplateSchema = createInsertSchema(contractTemplates).omit({
+  id: true,
+  createdAt: true,
+  usageCount: true,
+});
+
+export const insertContractSchema = createInsertSchema(contracts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  signingToken: true,
+  documentHash: true,
+  authCode: true,
+  clientSignedAt: true,
+  clientSignedIp: true,
+  countersignedBy: true,
+  countersignedAt: true,
+  sentAt: true,
+});
+
+export const insertContractInvoiceSchema = createInsertSchema(contractInvoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+  paidAt: true,
+  reminderSentAt: true,
+});
+
+export type ContractClient = typeof contractClients.$inferSelect;
+export type InsertContractClient = z.infer<typeof insertContractClientSchema>;
+export type ContractTemplate = typeof contractTemplates.$inferSelect;
+export type InsertContractTemplate = z.infer<typeof insertContractTemplateSchema>;
+export type Contract = typeof contracts.$inferSelect;
+export type InsertContract = z.infer<typeof insertContractSchema>;
+export type ContractInvoice = typeof contractInvoices.$inferSelect;
+export type InsertContractInvoice = z.infer<typeof insertContractInvoiceSchema>;
+
+// ==========================================
 // SHIFT SYSTEM
 // ==========================================
 

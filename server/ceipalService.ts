@@ -330,6 +330,56 @@ export async function syncCeipalJobs(): Promise<{ created: number; updated: numb
   }
 }
 
+// Searches Ceipal for candidates matching the query string.
+// Falls back gracefully if Ceipal is not configured or the endpoint is unavailable.
+export async function searchCeipalCandidates(q: string): Promise<{
+  candidates: Array<{ name: string; email?: string; phone?: string; skills?: string }>;
+  ceipal_unavailable?: boolean;
+  message?: string;
+}> {
+  if (!q || q.trim().length < 2) return { candidates: [] };
+
+  const email = process.env.CEIPAL_EMAIL;
+  const password = process.env.CEIPAL_PASSWORD;
+  const apiKey = process.env.CEIPAL_API_KEY;
+  if (!email || !password || !apiKey) {
+    return { candidates: [], ceipal_unavailable: true, message: "Ceipal is not configured in this environment." };
+  }
+
+  try {
+    const token = await authenticate();
+    const url = `https://api.ceipal.com/v1/getCandidates/?search=${encodeURIComponent(q.trim())}&page=1&page_size=10`;
+    const res = await fetch(url, {
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      console.warn(`[ceipal] Candidate search returned ${res.status} — endpoint may not be supported`);
+      return { candidates: [], ceipal_unavailable: true, message: "Candidate search is not available in this ATS configuration." };
+    }
+
+    const data = await res.json();
+    const list: any[] = Array.isArray(data?.results) ? data.results
+      : Array.isArray(data?.candidates) ? data.candidates
+      : Array.isArray(data?.data) ? data.data
+      : Array.isArray(data) ? data : [];
+
+    const candidates = list
+      .map((c: any) => ({
+        name: `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.name || c.candidate_name || "",
+        email: c.email_address || c.email || "",
+        phone: c.mobile_number || c.phone || "",
+        skills: c.primary_skills || c.skills || "",
+      }))
+      .filter((c: any) => c.name);
+
+    return { candidates };
+  } catch (err: any) {
+    console.warn("[ceipal] searchCeipalCandidates error:", err.message);
+    return { candidates: [], ceipal_unavailable: true, message: "Ceipal candidate search is temporarily unavailable." };
+  }
+}
+
 export async function pushApplicantToCeipal(applicationId: string): Promise<{ success: boolean; ceipalId?: string; error?: string }> {
   const endpoint = process.env.CEIPAL_APPLICANT_ENDPOINT;
   if (!endpoint) {

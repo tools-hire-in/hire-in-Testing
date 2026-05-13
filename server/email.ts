@@ -1447,3 +1447,93 @@ export async function sendTrainingRequestEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendContractSigningEmail(options: {
+  to: string;
+  clientName: string;
+  candidateName?: string;
+  signingUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Action Required: Please sign your staffing contract`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2d5aa0 100%);padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Rayomind Solutions LLP</h1>
+            <p style="color:#bfdbfe;margin:8px 0 0;font-size:14px;">Contract Signing</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1e293b;margin:0 0 16px;font-size:20px;">Dear ${options.clientName},</h2>
+            <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+              A staffing services contract${options.candidateName ? ` for <strong>${options.candidateName}</strong>` : ""} is ready for your review and signature.
+            </p>
+            <p style="color:#475569;line-height:1.6;margin:0 0 24px;">Please click the button below to review and sign the contract:</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.signingUrl}" style="background:#F47C20;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-weight:600;font-size:16px;display:inline-block;">
+                Review & Sign Contract
+              </a>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;margin:24px 0 0;">If you did not expect this email, please ignore it. The link is secure and unique to you.</p>
+          </div>
+          <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.clientName},\n\nA staffing services contract${options.candidateName ? ` for ${options.candidateName}` : ""} is ready for your signature.\n\nSign here: ${options.signingUrl}\n\nRayomind Solutions LLP`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send contract signing email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendContractCountersignEmail(options: {
+  to: string;
+  clientName: string;
+  candidateName?: string;
+  authCode: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: `Contract fully executed — your verification code`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2d5aa0 100%);padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Rayomind Solutions LLP</h1>
+            <p style="color:#bfdbfe;margin:8px 0 0;font-size:14px;">Contract Confirmation</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1e293b;margin:0 0 16px;font-size:20px;">Contract Fully Executed</h2>
+            <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+              Dear ${options.clientName}, your staffing contract${options.candidateName ? ` for <strong>${options.candidateName}</strong>` : ""} has been countersigned by Rayomind Solutions LLP and is now fully executed.
+            </p>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin:20px 0;text-align:center;">
+              <p style="color:#475569;font-size:13px;margin:0 0 8px;">Your verification auth code:</p>
+              <p style="color:#15803d;font-size:28px;font-weight:700;font-family:monospace;margin:0;letter-spacing:4px;">${options.authCode}</p>
+            </div>
+            <p style="color:#475569;line-height:1.6;font-size:13px;">Keep this code safe. You can use it at any time to verify the authenticity of your contract on our portal.</p>
+          </div>
+          <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.clientName},\n\nYour contract has been fully executed. Your verification auth code is: ${options.authCode}\n\nRayomind Solutions LLP`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send countersign email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

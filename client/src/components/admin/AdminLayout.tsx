@@ -23,6 +23,7 @@ import {
   ArrowRight,
   CalendarOff,
   MessageCircle,
+  FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -465,6 +466,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badge: peopleHRBadge > 0 ? peopleHRBadge : undefined,
       badgeColor: "bg-amber-500",
     }] : []),
+  ...(hasRecruitmentAccess ? [{
+      href: "/admin/finance",
+      label: "Finance & Contracts",
+      icon: FileText,
+      roles: ["super_admin", "admin", "hr", "operations"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -476,6 +483,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
+    if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     return location.startsWith(href);
   };
 

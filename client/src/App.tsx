@@ -62,6 +62,8 @@ import Reviews from "@/pages/admin/performance/Reviews";
 import PerformanceFeedback from "@/pages/admin/performance/Feedback";
 import PolicyGate from "@/pages/admin/PolicyGate";
 import NewHire from "@/pages/admin/NewHire";
+import ContractsHub from "@/pages/admin/finance/ContractsHub";
+import ContractSign from "@/pages/ContractSign";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -154,6 +156,12 @@ function PublicRouter() {
       <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
 
+      {/* Finance & Contracts */}
+      <Route path="/admin/finance" component={ContractsHub} />
+
+      {/* Public contract signing */}
+      <Route path="/contracts/sign/:token" component={ContractSign} />
+
       {/* Performance pages */}
       <Route path="/admin/performance/goals" component={Goals} />
       <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
@@ -228,6 +236,12 @@ function EmployeeRouter() {
       <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
+
+      {/* Finance & Contracts */}
+      <Route path="/admin/finance" component={ContractsHub} />
+
+      {/* Public contract signing */}
+      <Route path="/contracts/sign/:token" component={ContractSign} />
 
       {/* Performance pages */}
       <Route path="/admin/performance/goals" component={Goals} />

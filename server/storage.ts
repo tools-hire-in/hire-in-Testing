@@ -26,6 +26,18 @@ import {
   systemSettings,
   letterTemplateSentences,
   roleSummaryTemplates,
+  contractClients,
+  contractTemplates,
+  contracts,
+  contractInvoices,
+  type ContractClient,
+  type InsertContractClient,
+  type ContractTemplate,
+  type InsertContractTemplate,
+  type Contract,
+  type InsertContract,
+  type ContractInvoice,
+  type InsertContractInvoice,
   type Job,
   type InsertJob,
   type Application,
@@ -1853,6 +1865,138 @@ export class DatabaseStorage implements IStorage {
       return results.filter(r => r.vertical === filters.vertical);
     }
     return results;
+  }
+
+  // ==========================================
+  // CONTRACT CLIENTS
+  // ==========================================
+  async getContractClients(): Promise<ContractClient[]> {
+    return db.select().from(contractClients).orderBy(asc(contractClients.name));
+  }
+
+  async getContractClient(id: string): Promise<ContractClient | undefined> {
+    const [c] = await db.select().from(contractClients).where(eq(contractClients.id, id));
+    return c;
+  }
+
+  async createContractClient(data: InsertContractClient): Promise<ContractClient> {
+    const [c] = await db.insert(contractClients).values(data).returning();
+    return c;
+  }
+
+  async updateContractClient(id: string, data: Partial<InsertContractClient>): Promise<ContractClient | undefined> {
+    const [c] = await db.update(contractClients)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contractClients.id, id))
+      .returning();
+    return c;
+  }
+
+  async deleteContractClient(id: string): Promise<boolean> {
+    await db.delete(contractClients).where(eq(contractClients.id, id));
+    return true;
+  }
+
+  // ==========================================
+  // CONTRACT TEMPLATES
+  // ==========================================
+  async getContractTemplates(): Promise<ContractTemplate[]> {
+    return db.select().from(contractTemplates).orderBy(desc(contractTemplates.createdAt));
+  }
+
+  async getContractTemplate(id: string): Promise<ContractTemplate | undefined> {
+    const [t] = await db.select().from(contractTemplates).where(eq(contractTemplates.id, id));
+    return t;
+  }
+
+  async createContractTemplate(data: InsertContractTemplate): Promise<ContractTemplate> {
+    const [t] = await db.insert(contractTemplates).values(data).returning();
+    return t;
+  }
+
+  async deleteContractTemplate(id: string): Promise<boolean> {
+    await db.delete(contractTemplates).where(eq(contractTemplates.id, id));
+    return true;
+  }
+
+  async incrementContractTemplateUsage(id: string): Promise<void> {
+    await db.update(contractTemplates)
+      .set({ usageCount: sql`${contractTemplates.usageCount} + 1` })
+      .where(eq(contractTemplates.id, id));
+  }
+
+  // ==========================================
+  // CONTRACTS
+  // ==========================================
+  async getContracts(filters?: { clientId?: string; status?: string; search?: string }): Promise<Contract[]> {
+    let results = await db.select().from(contracts).orderBy(desc(contracts.createdAt));
+    if (filters?.clientId) results = results.filter(c => c.clientId === filters.clientId);
+    if (filters?.status) results = results.filter(c => c.status === filters.status);
+    if (filters?.search) {
+      const s = filters.search.toLowerCase();
+      results = results.filter(c =>
+        c.clientName.toLowerCase().includes(s) ||
+        c.candidateName?.toLowerCase().includes(s) ||
+        c.templateName?.toLowerCase().includes(s)
+      );
+    }
+    return results;
+  }
+
+  async getContract(id: string): Promise<Contract | undefined> {
+    const [c] = await db.select().from(contracts).where(eq(contracts.id, id));
+    return c;
+  }
+
+  async getContractByToken(token: string): Promise<Contract | undefined> {
+    const [c] = await db.select().from(contracts).where(eq(contracts.signingToken, token));
+    return c;
+  }
+
+  async createContract(data: InsertContract): Promise<Contract> {
+    const [c] = await db.insert(contracts).values(data).returning();
+    return c;
+  }
+
+  async updateContract(id: string, updates: Partial<Contract>): Promise<Contract | undefined> {
+    const [c] = await db.update(contracts)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contracts.id, id))
+      .returning();
+    return c;
+  }
+
+  // ==========================================
+  // CONTRACT INVOICES
+  // ==========================================
+  async getContractInvoices(contractId: string): Promise<import("@shared/schema").ContractInvoice[]> {
+    return db.select().from(contractInvoices)
+      .where(eq(contractInvoices.contractId, contractId))
+      .orderBy(asc(contractInvoices.dueDate));
+  }
+
+  async getAllInvoices(filters?: { status?: string }): Promise<import("@shared/schema").ContractInvoice[]> {
+    let results = await db.select().from(contractInvoices).orderBy(asc(contractInvoices.dueDate));
+    if (filters?.status) results = results.filter(i => i.status === filters.status);
+    return results;
+  }
+
+  async createContractInvoice(data: import("@shared/schema").InsertContractInvoice): Promise<import("@shared/schema").ContractInvoice> {
+    const [i] = await db.insert(contractInvoices).values(data).returning();
+    return i;
+  }
+
+  async updateContractInvoice(id: string, updates: Partial<import("@shared/schema").ContractInvoice>): Promise<import("@shared/schema").ContractInvoice | undefined> {
+    const [i] = await db.update(contractInvoices)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contractInvoices.id, id))
+      .returning();
+    return i;
+  }
+
+  async deleteContractInvoice(id: string): Promise<boolean> {
+    await db.delete(contractInvoices).where(eq(contractInvoices.id, id));
+    return true;
   }
 }
 
