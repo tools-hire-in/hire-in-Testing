@@ -1,0 +1,136 @@
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+dataType: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+at async o (/home/runner/workspace/dist/index.cjs:2822:1235)
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+hint: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+at async /home/runner/workspace/dist/index.cjs:212:38225
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+column: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+schema: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+table: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+detail: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+position: '48',
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+where: undefined,
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+code: '42703',
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-05-13 15:34:14.31
+e33e4bf5
+User
+severity: 'ERROR',
+2026-05-13 15:34:23.94
+e33e4bf5
+User
+10:34:23 PM [express] GET /api/auth/me 304 in 92ms :: {"id":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","email":"amil.mirza@hire-in.com","firstName":"Amil","lastName":"Mirza","role":"employee","isActive":true,"totpEnabled":true,"employeeId":"HIS-GEN20251118-YXBP","salary":"45000","gender":null}
+2026-05-13 15:34:24.72
+e33e4bf5
+User
+10:34:24 PM [express] GET /api/hr/regional-holiday-selections 304 in 121ms :: [{"id":"9b6099db-6dc4-448c-b20f-8a0b4de17ac3","userId":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","holidayId":"6212f193-e51c-4b0c-9e52-f15ba151c474","year":2026,"createdAt":"2026-03-03T22:51:04.682Z"},{"id":"dd32ded0-8538-4ac2-a841-1f6f082b8c79","userId":"bfee6cd6-3e13-417c-a7ad-d184671bf13a","holidayId":"a829a81f-de3d-4ecd-b950-4ba0e699d7c3","year":2026,"createdAt":"2026-03-13T22:41:15.096Z"}]
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+10:34:24 PM [express] GET /api/onboarding/my-training-alerts 500 in 310ms :: {"error":"Failed to fetch training alerts"}
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+detail: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+internalQuery: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+column: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+at async /home/runner/workspace/dist/index.cjs:2822:2479 {
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+table: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+length: 120,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+severity: 'ERROR',
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+internalPosition: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+error: column "exception_granted_at" does not exist
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+at async /home/runner/workspace/dist/index.cjs:212:38225
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+at /home/runner/workspace/dist/index.cjs:206:13359
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+code: '42703',
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+position: '48',
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+where: undefined,
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+at async o (/home/runner/workspace/dist/index.cjs:2822:1235)
+2026-05-13 15:34:24.91
+e33e4bf5
+User
+hint: undefined,
+2026-05-13 15:34:25.17
+e33e4bf5
+User
+10:34:25 PM [express] GET /api/hr/my-shift 304 in 571ms :: {"id":"SHIFT_A","name":"SHIFT_A","displayLabel":"Shift A – East Coast","usCoverage":"East Coast","istStart":"18:30","istEnd":"03:30","isDst":true,"scheduledHours":9,"dstTransition":null}
