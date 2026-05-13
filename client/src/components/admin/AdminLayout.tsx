@@ -387,7 +387,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
   const hasHRAccess = ["super_admin", "admin", "hr", "operations"].includes(userRole);
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
-  const hasGrowthAccess = trainingEnabled || perfEnabled;
+  const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth
   const growthBadge = (trainingAlerts?.total ?? 0) + (perfAlerts?.total ?? 0);
@@ -548,7 +548,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                         key={item.href}
                         item={item}
                         isActive={isNavActive(item)}
-                        isLocked={isComplianceLocked && item.href !== "/admin/growth"}
+                        isLocked={isComplianceLocked && item.href !== "/admin/growth" && item.href !== "/admin/profile"}
                       />
                     ))}
                   </SidebarMenu>
