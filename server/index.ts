@@ -499,6 +499,7 @@ async function ensureShiftTables() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 15`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS dst_config (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -523,6 +524,30 @@ async function ensureShiftTables() {
     log("Shift tables ensured");
   } catch (err) {
     console.error("Shift tables migration error:", err);
+  }
+}
+
+async function ensureNightShiftConsentsTable() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS night_shift_consents (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        signed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL,
+        typed_name VARCHAR NOT NULL,
+        ip_address VARCHAR,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        document_hash VARCHAR,
+        created_at TIMESTAMP DEFAULT NOW(),
+        status VARCHAR NOT NULL DEFAULT 'active',
+        withdrawn_at TIMESTAMP,
+        version INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+    log("night_shift_consents table ensured");
+  } catch (err) {
+    console.error("night_shift_consents migration error:", err);
   }
 }
 
@@ -754,6 +779,7 @@ async function backfillHolidayAttendance() {
   await backfillHrLetterNames();
   await backfillHolidayAttendance();
   await ensureShiftTables();
+  await ensureNightShiftConsentsTable();
   await seedShiftData();
 
   try {
