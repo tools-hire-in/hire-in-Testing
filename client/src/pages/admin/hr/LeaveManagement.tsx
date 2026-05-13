@@ -17,7 +17,6 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PortalHeader } from "@/components/ui/portal-header";
 import { LeaveBalanceCard } from "@/components/hr/leave-balance-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -407,34 +406,36 @@ export default function LeaveManagement() {
   return (
     <AdminLayout>
       <div className="space-y-6 max-w-4xl">
-        <PortalHeader
-          label="Employee Portal"
-          title={user ? `${user.firstName} ${user.lastName}` : "Leave Management"}
-          subtitle={headerSubtitle}
-          action={
-            <div className="flex flex-col items-end gap-2">
-              {formattedCTC && (
-                <span
-                  className="inline-flex items-center px-3 py-1 rounded-full border border-white/30 bg-white/10 text-white text-xs font-semibold tracking-wide"
-                  data-testid="badge-monthly-ctc"
-                >
-                  MONTHLY CTC {formattedCTC}
-                </span>
-              )}
-              <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-                <SelectTrigger className="w-[110px] bg-white/10 border-white/20 text-white" data-testid="select-leave-year">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          }
-          data-testid="text-leave-management-title"
-        />
+        <div className="flex items-start justify-between gap-4" data-testid="text-leave-management-title">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold leading-tight">
+              {user ? `${user.firstName} ${user.lastName}` : "Leave Management"}
+            </h1>
+            {headerSubtitle && (
+              <p className="text-sm text-muted-foreground mt-0.5">{headerSubtitle}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {formattedCTC && (
+              <span
+                className="inline-flex items-center px-3 py-1 rounded-full border border-border bg-muted text-xs font-semibold tracking-wide"
+                data-testid="badge-monthly-ctc"
+              >
+                MONTHLY CTC {formattedCTC}
+              </span>
+            )}
+            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+              <SelectTrigger className="w-[110px]" data-testid="select-leave-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         {/* Custom tab bar */}
         <div>

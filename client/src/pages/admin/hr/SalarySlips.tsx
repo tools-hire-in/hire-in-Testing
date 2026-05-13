@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PortalHeader } from "@/components/ui/portal-header";
 import { useAuth } from "@/hooks/use-auth";
 
 interface SalarySlip {
@@ -207,24 +206,22 @@ export default function SalarySlips() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <PortalHeader
-          label="HR Portal"
-          title="My Salary Slips"
-          subtitle="View and download your monthly salary slips"
-          action={
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-32 bg-white/10 border-white/20 text-white" data-testid="select-year">
-                <SelectValue placeholder="Year" />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={y} value={y}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          }
-          data-testid="text-salary-slips-title"
-        />
+        <div className="flex items-start justify-between gap-4" data-testid="text-salary-slips-title">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold leading-tight">My Salary Slips</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">View and download your monthly salary slips</p>
+          </div>
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger className="w-32 shrink-0" data-testid="select-year">
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((y) => (
+                <SelectItem key={y} value={y}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

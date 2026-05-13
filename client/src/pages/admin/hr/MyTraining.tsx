@@ -16,7 +16,6 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PortalHeader } from "@/components/ui/portal-header";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -823,21 +822,21 @@ export default function MyTraining() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
-        <PortalHeader
-          label="HR Portal"
-          title="My Training"
-          subtitle="Complete your assigned learning tracks and earn your acknowledgements"
-          action={
-            <Button
-              onClick={() => window.open("https://rayo.academy", "_blank")}
-              className="bg-white/15 hover:bg-white/25 text-white border border-white/20"
-              data-testid="button-open-rayo-academy"
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Open Rayo Academy
-            </Button>
-          }
-        />
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold leading-tight">My Training</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Complete your assigned learning tracks and earn your acknowledgements</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => window.open("https://rayo.academy", "_blank")}
+            className="shrink-0"
+            data-testid="button-open-rayo-academy"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Open Rayo Academy
+          </Button>
+        </div>
 
         {showFallbackBanner && (
           <Alert variant="warning" data-testid="banner-rayo-fallback">
