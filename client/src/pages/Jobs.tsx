@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight } from "lucide-react";
+import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,36 +16,78 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationModal } from "@/components/jobs/ApplicationModal";
+import { INDUSTRIES, getSpecialtiesForIndustry, getCleanDescriptionSnippet } from "@/lib/jobUtils";
+import type { Industry } from "@/lib/jobUtils";
 import type { Job } from "@shared/schema";
+
+const PAGE_SIZE = 12;
 
 export default function Jobs() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [industry, setIndustry] = useState<Industry>("All");
   const [specialty, setSpecialty] = useState<string>("");
   const [state, setState] = useState<string>("");
   const [jobType, setJobType] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [applicationOpen, setApplicationOpen] = useState(false);
 
-  const { data: jobs, isLoading } = useQuery<Job[]>({
-    queryKey: ["/api/jobs", { search, specialty, state, jobType }],
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, industry, specialty, state, jobType]);
+
+  const queryParams = new URLSearchParams();
+  if (debouncedSearch) queryParams.set("search", debouncedSearch);
+  if (industry !== "All") queryParams.set("industry", industry);
+  if (specialty) queryParams.set("specialty", specialty);
+  if (state) queryParams.set("state", state);
+  if (jobType) queryParams.set("jobType", jobType);
+  queryParams.set("page", String(page));
+  queryParams.set("pageSize", String(PAGE_SIZE));
+
+  const { data: jobsData, isLoading } = useQuery<{ jobs: Job[]; total: number }>({
+    queryKey: ["/api/jobs", { search: debouncedSearch, industry, specialty, state, jobType, page }],
+    queryFn: () => fetch(`/api/jobs?${queryParams.toString()}`).then((r) => r.json()),
   });
+
+  const jobs = jobsData?.jobs ?? [];
+  const total = jobsData?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const showingFrom = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const showingTo = Math.min(page * PAGE_SIZE, total);
+
+  const filtersQueryParams = new URLSearchParams();
+  if (industry !== "All") filtersQueryParams.set("industry", industry);
 
   const { data: filters } = useQuery<{
     specialties: string[];
     states: string[];
     jobTypes: string[];
   }>({
-    queryKey: ["/api/jobs/filters"],
+    queryKey: ["/api/jobs/filters", { industry }],
+    queryFn: () => fetch(`/api/jobs/filters?${filtersQueryParams.toString()}`).then((r) => r.json()),
   });
+
+  const industrySpecialties = getSpecialtiesForIndustry(industry);
+  const visibleSpecialties = filters?.specialties ?? [];
 
   const clearFilters = () => {
     setSearch("");
+    setDebouncedSearch("");
+    setIndustry("All");
     setSpecialty("");
     setState("");
     setJobType("");
+    setPage(1);
   };
 
-  const hasFilters = search || specialty || state || jobType;
+  const hasFilters = search || industry !== "All" || specialty || state || jobType;
 
   const openApplication = (job: Job) => {
     setSelectedJob(job);
@@ -62,13 +104,38 @@ export default function Jobs() {
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Find your next career opportunity with Hire'in Solutions. Browse our current
-            openings across Healthcare, IT, and Professional Services.
+            openings across Healthcare, IT, Engineering, and Professional Services.
           </p>
         </div>
       </section>
 
+      {/* Industry filter bar */}
+      <section className="px-4 lg:px-6 border-b bg-muted/30">
+        <div className="container mx-auto max-w-6xl">
+          <div className="flex gap-1 overflow-x-auto py-3" data-testid="industry-filter-bar">
+            {INDUSTRIES.map((ind) => (
+              <button
+                key={ind}
+                onClick={() => {
+                  setIndustry(ind);
+                  setSpecialty("");
+                }}
+                data-testid={`pill-industry-${ind.replace(/\s+/g, "-")}`}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                  industry === ind
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground border border-border"
+                }`}
+              >
+                {ind}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Filters */}
-      <section className="py-8 px-4 lg:px-6 border-b">
+      <section className="py-6 px-4 lg:px-6 border-b">
         <div className="container mx-auto max-w-6xl">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
@@ -82,12 +149,15 @@ export default function Jobs() {
               />
             </div>
             <div className="flex flex-wrap gap-3">
-              <Select value={specialty} onValueChange={setSpecialty}>
+              <Select
+                value={specialty}
+                onValueChange={setSpecialty}
+              >
                 <SelectTrigger className="w-[180px]" data-testid="select-specialty">
                   <SelectValue placeholder="Specialty" />
                 </SelectTrigger>
                 <SelectContent>
-                  {filters?.specialties.map((s) => (
+                  {visibleSpecialties.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s}
                     </SelectItem>
@@ -153,10 +223,10 @@ export default function Jobs() {
                 </Card>
               ))}
             </div>
-          ) : jobs && jobs.length > 0 ? (
+          ) : jobs.length > 0 ? (
             <>
-              <p className="text-muted-foreground mb-6">
-                Showing {jobs.length} position{jobs.length !== 1 ? "s" : ""}
+              <p className="text-muted-foreground mb-6" data-testid="text-results-count">
+                Showing {showingFrom}–{showingTo} of {total} position{total !== 1 ? "s" : ""}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {jobs.map((job) => (
@@ -205,7 +275,7 @@ export default function Jobs() {
                       )}
                       {job.description && (
                         <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1">
-                          {job.description.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")}
+                          {getCleanDescriptionSnippet(job.description)}
                         </p>
                       )}
                       <div className="flex gap-2 mt-auto">
@@ -231,6 +301,35 @@ export default function Jobs() {
                   </Card>
                 ))}
               </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-10" data-testid="pagination-controls">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    data-testid="button-prev-page"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground" data-testid="text-page-info">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    data-testid="button-next-page"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <div className="text-center py-16">

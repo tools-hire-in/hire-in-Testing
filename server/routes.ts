@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveTypes, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
+import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
@@ -245,15 +246,37 @@ export async function registerRoutes(
   // Get active jobs (public)
   app.get("/api/jobs", async (req, res) => {
     try {
-      const { search, specialty, state, jobType } = req.query;
-      const jobs = await storage.getActiveJobs({
-        search: search as string,
-        specialty: specialty as string,
-        state: state as string,
-        jobType: jobType as string,
+      const { search, specialty, state, jobType, industry, page, pageSize, limit } = req.query;
+
+      let industrySpecialties: string[] | undefined;
+      if (industry && industry !== "All") {
+        industrySpecialties = INDUSTRY_SPECIALTY_MAP[industry as string] ?? undefined;
+      }
+
+      const parsedPage = page ? parseInt(page as string, 10) : undefined;
+      const parsedPageSize = pageSize ? parseInt(pageSize as string, 10) : undefined;
+      const parsedLimit = limit ? parseInt(limit as string, 10) : undefined;
+
+      if ((parsedPage !== undefined && isNaN(parsedPage)) ||
+          (parsedPageSize !== undefined && (isNaN(parsedPageSize) || parsedPageSize < 1 || parsedPageSize > 100)) ||
+          (parsedLimit !== undefined && (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100))) {
+        return res.status(400).json({ error: "Invalid pagination parameters" });
+      }
+
+      const result = await storage.getActiveJobs({
+        search: search as string | undefined,
+        specialty: specialty as string | undefined,
+        state: state as string | undefined,
+        jobType: jobType as string | undefined,
+        industrySpecialties,
+        page: parsedPage,
+        pageSize: parsedPageSize,
+        limit: parsedLimit,
       });
-      res.json(jobs.map(sanitizePublicJob));
+
+      res.json({ jobs: result.jobs.map(sanitizePublicJob), total: result.total });
     } catch (error) {
+      console.error("Failed to fetch jobs:", error);
       res.status(500).json({ error: "Failed to fetch jobs" });
     }
   });
@@ -261,7 +284,12 @@ export async function registerRoutes(
   // Get job filters (public)
   app.get("/api/jobs/filters", async (req, res) => {
     try {
-      const filters = await storage.getJobFilters();
+      const { industry } = req.query;
+      let industrySpecialties: string[] | undefined;
+      if (industry && industry !== "All") {
+        industrySpecialties = INDUSTRY_SPECIALTY_MAP[industry as string] ?? undefined;
+      }
+      const filters = await storage.getJobFilters(industrySpecialties);
       res.json(filters);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch filters" });

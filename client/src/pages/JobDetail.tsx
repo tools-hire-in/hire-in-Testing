@@ -22,15 +22,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationModal } from "@/components/jobs/ApplicationModal";
 import { useToast } from "@/hooks/use-toast";
+import { stripHtmlEntities, DUPLICATE_LABEL_RE } from "@/lib/jobUtils";
 import type { Job } from "@shared/schema";
 
 type DescriptionSegment =
   | { type: "heading"; content: string }
   | { type: "paragraph"; content: string }
   | { type: "bullets"; content: string[] };
-
-const DUPLICATE_LABEL_RE =
-  /^(job\s*title|location|employment\s*type|duration|shift|pay\s*rate|start\s*date)\s*:/i;
 
 const KNOWN_HEADINGS = [
   "requirements",
@@ -51,19 +49,6 @@ const KNOWN_HEADINGS = [
   "experience",
   "skills",
 ];
-
-function stripHtmlEntities(text: string): string {
-  return text
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
-}
 
 function isBullet(line: string): boolean {
   return /^[\s]*([•\-*]|\d+\.)\s+/.test(line);
@@ -263,12 +248,14 @@ export default function JobDetail() {
 
   const jobExtra = (job ?? {}) as Record<string, any>;
 
-  const { data: similarJobsRaw } = useQuery<Job[]>({
-    queryKey: ["/api/jobs", { specialty: job?.specialty, limit: 4 }],
+  const { data: similarJobsData } = useQuery<{ jobs: Job[]; total: number }>({
+    queryKey: ["/api/jobs", { specialty: job?.specialty, limit: 5 }],
+    queryFn: () =>
+      fetch(`/api/jobs?specialty=${encodeURIComponent(job?.specialty ?? "")}&limit=5`).then((r) => r.json()),
     enabled: !!job?.specialty,
   });
 
-  const similarJobs = (similarJobsRaw ?? [])
+  const similarJobs = (similarJobsData?.jobs ?? [])
     .filter((j) => j.id !== job?.id)
     .slice(0, 4);
 
