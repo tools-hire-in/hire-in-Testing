@@ -971,8 +971,11 @@ export const trackAssignments = pgTable("track_assignments", {
   assignedBy: varchar("assigned_by").references(() => adminUsers.id),
   assignedAt: timestamp("assigned_at").defaultNow(),
   dueDate: timestamp("due_date"),
-  status: varchar("status").notNull().default("not_started"), // not_started | in_progress | completed
+  status: varchar("status").notNull().default("not_started"), // not_started | in_progress | completed | excepted
   completedAt: timestamp("completed_at"),
+  exceptionGrantedById: varchar("exception_granted_by_id").references(() => adminUsers.id),
+  exceptionGrantedAt: timestamp("exception_granted_at"),
+  exceptionReason: text("exception_reason"),
 });
 
 // Per-section progress for an assignment
@@ -1050,6 +1053,7 @@ export const trainingExtensionRequests = pgTable("training_extension_requests", 
   requestedById: varchar("requested_by_id").notNull().references(() => adminUsers.id),
   reason: text("reason").notNull(),
   newDueDate: timestamp("new_due_date").notNull(),
+  requestType: varchar("request_type").notNull().default("extension"), // extension | exception
   status: varchar("status").notNull().default("pending"), // pending | endorsed | approved | rejected
   endorsedById: varchar("endorsed_by_id").references(() => adminUsers.id),
   endorsedAt: timestamp("endorsed_at"),

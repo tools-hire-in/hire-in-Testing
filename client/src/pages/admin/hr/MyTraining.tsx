@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
   Loader2, AlertCircle, Trophy, Download, ArrowLeft, X, AlertTriangle,
-  ShieldAlert, CalendarPlus, Send, ExternalLink, Award, WifiOff,
+  ShieldAlert, CalendarPlus, Send, ExternalLink, Award, WifiOff, ShieldCheck,
+  FileQuestion, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -562,44 +563,67 @@ function TrackPlayer({
   );
 }
 
-function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue }: {
+function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue, requestType = "extension" }: {
   assignmentId: string;
   trackTitle: string;
   onSubmitted: () => void;
   isOverdue?: boolean;
+  requestType?: "extension" | "exception";
 }) {
   const { toast } = useToast();
   const [nonCompletionReason, setNonCompletionReason] = useState("");
   const [extensionReason, setExtensionReason] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
 
-  const combinedReason = isOverdue
+  const isException = requestType === "exception";
+
+  const combinedReason = isOverdue && !isException
     ? `[Why not completed] ${nonCompletionReason.trim()}\n[Why extension needed] ${extensionReason.trim()}`
-    : `[Why extension needed] ${extensionReason.trim()}`;
+    : extensionReason.trim();
+
+  // For exceptions, auto-set newDueDate to 1 year from now if not provided
+  const effectiveNewDueDate = isException && !newDueDate
+    ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+    : newDueDate;
 
   const submitMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/onboarding/extension-requests", {
-      assignmentId, reason: combinedReason, newDueDate,
+      assignmentId,
+      reason: combinedReason,
+      newDueDate: effectiveNewDueDate,
+      requestType,
     }),
     onSuccess: () => {
-      toast({ title: "Extension request submitted" });
+      toast({ title: isException ? "Exception request submitted" : "Extension request submitted" });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/my"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
       onSubmitted();
     },
-    onError: () => toast({ title: "Failed to submit request", variant: "destructive" }),
+    onError: (err: any) => toast({ title: err?.message || "Failed to submit request", variant: "destructive" }),
   });
 
   const minDate = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-  const isValid = (isOverdue ? nonCompletionReason.trim().length > 0 : true) && extensionReason.trim().length > 0 && !!newDueDate;
+  const isValid = (isOverdue && !isException ? nonCompletionReason.trim().length > 0 : true)
+    && extensionReason.trim().length > 0
+    && (isException || !!newDueDate);
 
   return (
-    <div className="border rounded-lg p-4 space-y-3 bg-white dark:bg-card" data-testid={`form-extension-${assignmentId}`}>
+    <div
+      className={`border rounded-lg p-4 space-y-3 bg-white dark:bg-card ${isException ? "border-purple-200 bg-purple-50 dark:bg-purple-950/20" : ""}`}
+      data-testid={`form-${isException ? "exception" : "extension"}-${assignmentId}`}
+    >
       <p className="text-sm font-semibold flex items-center gap-2">
-        <CalendarPlus className="h-4 w-4 text-blue-600" />
-        Request Due Date Extension — {trackTitle}
+        {isException
+          ? <><ShieldCheck className="h-4 w-4 text-purple-600" /> Request Training Exception — {trackTitle}</>
+          : <><CalendarPlus className="h-4 w-4 text-blue-600" /> Request Due Date Extension — {trackTitle}</>
+        }
       </p>
-      {isOverdue && (
+      {isException && (
+        <p className="text-xs text-muted-foreground bg-purple-100 dark:bg-purple-900/30 rounded p-2">
+          An exception request asks HR/Admin to formally waive the training requirement for you. This is for cases such as role change, medical circumstances, or an equivalent external certification.
+        </p>
+      )}
+      {isOverdue && !isException && (
         <div className="space-y-2">
           <Label>Why were you unable to complete the training on time?</Label>
           <Textarea
@@ -612,33 +636,38 @@ function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue
         </div>
       )}
       <div className="space-y-2">
-        <Label>Why do you need an extension?</Label>
+        <Label>{isException ? "Reason for exception" : "Why do you need an extension?"}</Label>
         <Textarea
           value={extensionReason}
           onChange={e => setExtensionReason(e.target.value)}
-          placeholder="e.g. Need additional time to review materials thoroughly..."
+          placeholder={isException
+            ? "e.g. Role change, medical leave, equivalent external certification..."
+            : "e.g. Need additional time to review materials thoroughly..."}
           rows={2}
           data-testid="input-extension-reason"
         />
       </div>
-      <div className="space-y-2">
-        <Label>Requested new due date</Label>
-        <Input
-          type="date"
-          value={newDueDate}
-          min={minDate}
-          onChange={e => setNewDueDate(e.target.value)}
-          data-testid="input-extension-due-date"
-        />
-      </div>
+      {!isException && (
+        <div className="space-y-2">
+          <Label>Requested new due date</Label>
+          <Input
+            type="date"
+            value={newDueDate}
+            min={minDate}
+            onChange={e => setNewDueDate(e.target.value)}
+            data-testid="input-extension-due-date"
+          />
+        </div>
+      )}
       <Button
         size="sm"
+        className={isException ? "bg-purple-700 hover:bg-purple-800" : ""}
         onClick={() => submitMutation.mutate()}
         disabled={!isValid || submitMutation.isPending}
         data-testid="button-submit-extension"
       >
         {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-        Submit Extension Request
+        {isException ? "Submit Exception Request" : "Submit Extension Request"}
       </Button>
     </div>
   );
@@ -650,6 +679,8 @@ export default function MyTraining() {
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showExtensionFor, setShowExtensionFor] = useState<string | null>(null);
+  const [showExceptionFor, setShowExceptionFor] = useState<string | null>(null);
+  const [showRequestsCard, setShowRequestsCard] = useState(false);
 
   const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
     queryKey: ["/api/rayo-academy/status"],
@@ -866,6 +897,65 @@ export default function MyTraining() {
           </Alert>
         )}
 
+        {/* Your Requests card */}
+        {myExtensionRequests.length > 0 && (
+          <Card data-testid="card-your-requests">
+            <CardHeader className="pb-2">
+              <button
+                className="flex items-center gap-2 w-full text-left"
+                onClick={() => setShowRequestsCard(v => !v)}
+                data-testid="button-toggle-your-requests"
+              >
+                <FileQuestion className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base flex-1">Your Requests</CardTitle>
+                <span className="text-xs text-muted-foreground mr-2">{myExtensionRequests.length} request{myExtensionRequests.length !== 1 ? "s" : ""}</span>
+                {showRequestsCard ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+            </CardHeader>
+            {showRequestsCard && (
+              <CardContent>
+                <div className="space-y-2">
+                  {myExtensionRequests.map((r: any) => {
+                    const statusColors: Record<string, string> = {
+                      pending: "bg-amber-100 text-amber-700",
+                      endorsed: "bg-blue-100 text-blue-700",
+                      approved: "bg-green-100 text-green-700",
+                      rejected: "bg-red-100 text-red-700",
+                    };
+                    return (
+                      <div key={r.id} className="flex items-start justify-between border rounded-md p-3 text-sm gap-3" data-testid={`row-request-${r.id}`}>
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <p className="font-medium truncate">{r.trackTitle || "Training request"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {r.requestType === "exception" ? "Exception" : "Extension"} — Requested: {formatDate(r.createdAt)}
+                          </p>
+                          {r.status === "approved" && r.resolverComment && (
+                            <p className="text-xs text-green-600">Comment: "{r.resolverComment}"</p>
+                          )}
+                          {r.status === "rejected" && r.resolverComment && (
+                            <p className="text-xs text-red-600">Reason: "{r.resolverComment}"</p>
+                          )}
+                          {r.status === "endorsed" && r.endorserName && (
+                            <p className="text-xs text-blue-600">Endorsed by {r.endorserName} — awaiting final approval</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[r.status] || "bg-gray-100 text-gray-600"}`}>
+                            {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                          </span>
+                          {r.requestType === "exception" && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Exception</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
         {isLoading && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1028,24 +1118,53 @@ export default function MyTraining() {
                   )}
                   {!hasPending && (
                     <>
-                      {showExtensionFor === a.id ? (
+                      {showExceptionFor === a.id ? (
+                        <ExtensionRequestForm
+                          assignmentId={a.id}
+                          trackTitle={a.track?.title || ""}
+                          onSubmitted={() => setShowExceptionFor(null)}
+                          isOverdue={isOverdue}
+                          requestType="exception"
+                        />
+                      ) : showExtensionFor === a.id ? (
                         <ExtensionRequestForm
                           assignmentId={a.id}
                           trackTitle={a.track?.title || ""}
                           onSubmitted={() => setShowExtensionFor(null)}
                           isOverdue={isOverdue}
+                          requestType="extension"
                         />
                       ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full text-blue-700 border-blue-300 hover:bg-blue-50"
-                          onClick={(e) => { e.stopPropagation(); setShowExtensionFor(a.id); }}
-                          data-testid={`button-apply-extension-${a.id}`}
-                        >
-                          <CalendarPlus className="h-4 w-4 mr-2" />
-                          {a.dueDate ? "Apply for Due Date Extension" : "Request Due Date"}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowExtensionFor(a.id);
+                              setShowExceptionFor(null);
+                            }}
+                            data-testid={`button-apply-extension-${a.id}`}
+                          >
+                            <CalendarPlus className="h-4 w-4 mr-2" />
+                            {a.dueDate ? "Request Extension" : "Request Due Date"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-purple-700 border-purple-300 hover:bg-purple-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowExceptionFor(a.id);
+                              setShowExtensionFor(null);
+                            }}
+                            data-testid={`button-request-exception-${a.id}`}
+                          >
+                            <ShieldCheck className="h-4 w-4 mr-1" />
+                            Exception
+                          </Button>
+                        </div>
                       )}
                     </>
                   )}

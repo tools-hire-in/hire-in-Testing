@@ -5,7 +5,9 @@ import {
   trackAssignments, sectionProgress, sectionAcknowledgements, trackCompletions, onboardingAuditEvents,
   systemSettings, trainingExtensionRequests, adminUsers, attendance, nightShiftConsents,
 } from "@shared/schema";
-import { eq, and, inArray, sql, isNull, lt, ne, desc } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull, lt, ne, desc, isNotNull } from "drizzle-orm";
+import { storage } from "./storage";
+import { sendTrainingRequestEmail } from "./email";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions, seedUniversalPolicies } from "./onboardingSeed";
 import {
@@ -985,7 +987,7 @@ export function registerOnboardingRoutes(app: Express) {
   const LOCKABLE_ROLES = ["hr", "manager", "operations", "employee"];
 
   const ENDORSER_ROLES: Record<string, string[]> = {
-    employee: ["manager"],
+    employee: ["manager", "hr", "admin"], // hr/admin act as fallback when employee has no manager
     manager: ["hr", "admin"],
     hr: ["admin"],
     operations: ["admin"],
@@ -1002,10 +1004,11 @@ export function registerOnboardingRoutes(app: Express) {
       trackId: trackAssignments.trackId,
       status: trackAssignments.status,
       dueDate: trackAssignments.dueDate,
+      exceptionGrantedAt: trackAssignments.exceptionGrantedAt,
     }).from(trackAssignments).where(eq(trackAssignments.userId, userId));
 
     const overdueAssignments = assignments.filter(a =>
-      a.status !== "completed" && a.dueDate && new Date(a.dueDate) < now
+      a.status !== "completed" && a.status !== "excepted" && !a.exceptionGrantedAt && a.dueDate && new Date(a.dueDate) < now
     );
 
     if (overdueAssignments.length === 0) {
@@ -1049,11 +1052,20 @@ export function registerOnboardingRoutes(app: Express) {
         eq(trainingExtensionRequests.status, "pending"),
       ));
 
+    // Build overdue assignment list with track titles for client use
+    const overdueAssignmentDetails = stillOverdue.map(a => ({
+      id: a.id,
+      trackId: a.trackId,
+      dueDate: a.dueDate,
+      trackTitle: tracks.find(t => t.id === a.trackId)?.title || "",
+    }));
+
     return {
       locked: true,
       overdueCount: stillOverdue.length,
       trackTitles,
       pendingExtensions: pendingExts,
+      overdueAssignments: overdueAssignmentDetails,
     };
   }
 
@@ -1069,12 +1081,13 @@ export function registerOnboardingRoutes(app: Express) {
     }
   });
 
-  // Create extension request (locked user submits)
+  // Create extension or exception request
   app.post("/api/onboarding/extension-requests", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
 
     try {
-      const { assignmentId, reason, newDueDate } = req.body;
+      const { assignmentId, reason, newDueDate, requestType: rawRequestType } = req.body;
+      const requestType = rawRequestType === "exception" ? "exception" : "extension";
       if (!assignmentId || !reason || !newDueDate) {
         return res.status(400).json({ error: "assignmentId, reason, and newDueDate are required" });
       }
@@ -1115,15 +1128,108 @@ export function registerOnboardingRoutes(app: Express) {
         requestedById: req.session.userId,
         reason,
         newDueDate: new Date(newDueDate),
+        requestType,
         status: "pending",
       }).returning();
 
-      await appendAuditEvent(req.session.userId, "extension_requested", {
+      await appendAuditEvent(req.session.userId, `${requestType}_requested`, {
         assignmentId,
         extensionRequestId: request.id,
         newDueDate,
         reason,
+        requestType,
       });
+
+      // Fire notification: notify manager (or HR if no manager) about the request
+      const [requester] = await db.select({
+        firstName: adminUsers.firstName,
+        lastName: adminUsers.lastName,
+        email: adminUsers.email,
+        managerId: adminUsers.managerId,
+        role: adminUsers.role,
+      }).from(adminUsers).where(eq(adminUsers.id, req.session.userId!));
+
+      const [track] = await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+      const trackTitle = track?.title || "Training track";
+      const reqLabel = requestType === "exception" ? "Exception" : "Extension";
+
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+
+      if (requester) {
+        // Find manager/HR to notify
+        let managerInfo: { id: string; email: string | null; firstName: string; lastName: string } | null = null;
+        if (requester.managerId) {
+          const [mgr] = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(eq(adminUsers.id, requester.managerId));
+          managerInfo = mgr || null;
+        }
+        if (!managerInfo) {
+          const [hrUser] = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(and(eq(adminUsers.role, "hr"), isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
+          managerInfo = hrUser || null;
+        }
+
+        const notifyBody = `${requester.firstName} ${requester.lastName} has submitted a training ${requestType} request for "${trackTitle}".\n\nReason: ${reason}`;
+        const notifySubject = `Training ${reqLabel} Request — ${trackTitle}`;
+
+        if (managerInfo) {
+          if (notificationsEnabled) {
+            await storage.createNotification({
+              userId: managerInfo.id,
+              type: `training_${requestType}_request`,
+              title: `Training ${reqLabel} Request`,
+              message: `${requester.firstName} ${requester.lastName} has submitted a training ${requestType} request for "${trackTitle}".`,
+              isRead: false,
+              metadata: { requestId: request.id, requestType, assignmentId, trackTitle },
+            }).catch(err => console.error("[onboarding] Extension notify failed:", err));
+          }
+          if (managerInfo.email) {
+            sendTrainingRequestEmail({
+              to: managerInfo.email,
+              employeeName: `${managerInfo.firstName} ${managerInfo.lastName}`,
+              subject: notifySubject,
+              heading: `Training ${reqLabel} Request — Action Required`,
+              body: notifyBody,
+            }).catch(err => console.error("[onboarding] Extension email to manager failed:", err));
+          }
+        }
+
+        // Exception requests also notify all HR/Admin with email
+        if (requestType === "exception") {
+          const hrAdmins = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(and(
+              inArray(adminUsers.role, ["hr", "admin", "super_admin"]),
+              isNull(adminUsers.deletedAt),
+              eq(adminUsers.isActive, true),
+            ));
+          for (const u of hrAdmins) {
+            if (u.id !== managerInfo?.id) {
+              if (notificationsEnabled) {
+                await storage.createNotification({
+                  userId: u.id,
+                  type: "training_exception_request",
+                  title: "Training Exception Request",
+                  message: `${requester.firstName} ${requester.lastName} has submitted a training exception request for "${trackTitle}".`,
+                  isRead: false,
+                  metadata: { requestId: request.id, requestType, assignmentId, trackTitle },
+                }).catch(err => console.error("[onboarding] Exception notify HR failed:", err));
+              }
+              if (u.email) {
+                sendTrainingRequestEmail({
+                  to: u.email,
+                  employeeName: `${u.firstName} ${u.lastName}`,
+                  subject: notifySubject,
+                  heading: "Training Exception Request — Review Required",
+                  body: notifyBody,
+                }).catch(err => console.error("[onboarding] Exception email to HR failed:", err));
+              }
+            }
+          }
+        }
+      }
 
       res.status(201).json(request);
     } catch (error) {
@@ -1171,14 +1277,66 @@ export function registerOnboardingRoutes(app: Express) {
     }
   });
 
+  // Get all extension/exception requests for a specific user — for HR/Admin/Manager review
+  app.get("/api/onboarding/extension-requests/for-user/:userId", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+    if (!["hr", "admin", "super_admin", "manager"].includes(myRole)) return res.status(403).json({ error: "Insufficient role" });
+
+    try {
+      const { userId } = req.params;
+
+      // Scope enforcement: managers can only query their direct reports
+      if (myRole === "manager") {
+        const [targetUser] = await db.select({ managerId: adminUsers.managerId })
+          .from(adminUsers).where(eq(adminUsers.id, userId));
+        if (!targetUser || targetUser.managerId !== req.session.userId!) {
+          return res.status(403).json({ error: "You can only view requests for your direct reports" });
+        }
+      }
+      // HR/admin/super_admin can query any user — no additional check needed
+
+      const requests = await db.select().from(trainingExtensionRequests)
+        .where(eq(trainingExtensionRequests.userId, userId))
+        .orderBy(trainingExtensionRequests.createdAt);
+
+      const enriched = await Promise.all(requests.map(async (r) => {
+        const [assignment] = await db.select({ trackId: trackAssignments.trackId })
+          .from(trackAssignments).where(eq(trackAssignments.id, r.assignmentId));
+        let trackTitle = "";
+        if (assignment) {
+          const [track] = await db.select({ title: learningTracks.title })
+            .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+          trackTitle = track?.title || "";
+        }
+        return { ...r, trackTitle };
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch user requests" });
+    }
+  });
+
   const ENDORSER_ALLOWED_ROLES = ["manager", "hr", "admin"];
 
   function canEndorseRequest(endorserRole: string, endorserId: string, requesterRole: string, requesterManagerId: string | null): boolean {
     const endorserRolesForRequester = ENDORSER_ROLES[requesterRole] || [];
     if (!endorserRolesForRequester.includes(endorserRole)) return false;
-    if (requesterRole === "employee" && endorserRole === "manager") {
-      return requesterManagerId === endorserId;
+
+    if (requesterRole === "employee") {
+      if (requesterManagerId) {
+        // Employee has a manager — only that specific manager can endorse
+        return endorserRole === "manager" && requesterManagerId === endorserId;
+      } else {
+        // Employee has no manager — HR/admin act as fallback endorsers
+        return ["hr", "admin"].includes(endorserRole);
+      }
     }
+
+    // For non-employee requesters, any role in the allowed list can endorse
+    if (requesterRole === "manager" && endorserRole === "manager") return false; // managers don't endorse peers
     return true;
   }
 
@@ -1252,13 +1410,25 @@ export function registerOnboardingRoutes(app: Express) {
       if (!request) return res.status(404).json({ error: "Extension request not found" });
       if (request.status !== "pending") return res.status(400).json({ error: "Request is no longer pending" });
 
-      const [requester] = await db.select({ role: adminUsers.role, managerId: adminUsers.managerId })
+      const [requester] = await db.select({ role: adminUsers.role, managerId: adminUsers.managerId, firstName: adminUsers.firstName, lastName: adminUsers.lastName, email: adminUsers.email })
         .from(adminUsers).where(eq(adminUsers.id, request.userId));
       if (!requester) return res.status(404).json({ error: "Requester not found" });
 
       if (!canEndorseRequest(myRole, req.session.userId!, requester.role, requester.managerId)) {
         return res.status(403).json({ error: "You are not authorized to endorse this request" });
       }
+
+      const [assignment] = await db.select({ trackId: trackAssignments.trackId })
+        .from(trackAssignments).where(eq(trackAssignments.id, request.assignmentId));
+      const [track] = assignment ? await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId)) : [null];
+      const trackTitle = track?.title || "Training track";
+      const reqType = request.requestType || "extension";
+      const reqLabel = reqType === "exception" ? "Exception" : "Extension";
+
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const notificationsEnabled = featureFlags.notifications_enabled !== false;
 
       const { action } = req.body;
       const isManagerDirectReport = myRole === "manager" && requester.role === "employee" && requester.managerId === req.session.userId!;
@@ -1276,12 +1446,16 @@ export function registerOnboardingRoutes(app: Express) {
         }).where(eq(trainingExtensionRequests.id, id)).returning();
 
         if (finalStatus === "approved") {
-          await db.update(trackAssignments).set({
-            dueDate: new Date(request.newDueDate),
-          }).where(eq(trackAssignments.id, request.assignmentId));
+          if (reqType === "exception") {
+            await grantExceptionOnAssignment(request.assignmentId, req.session.userId!, comment || "Approved by manager");
+          } else {
+            await db.update(trackAssignments).set({
+              dueDate: new Date(request.newDueDate),
+            }).where(eq(trackAssignments.id, request.assignmentId));
+          }
         }
 
-        await appendAuditEvent(req.session.userId, `extension_${finalStatus}`, {
+        await appendAuditEvent(req.session.userId, `${reqType}_${finalStatus}`, {
           extensionRequestId: id,
           assignmentId: request.assignmentId,
           userId: request.userId,
@@ -1289,6 +1463,28 @@ export function registerOnboardingRoutes(app: Express) {
           newDueDate: request.newDueDate,
           managerDirectApproval: true,
         });
+
+        // Notify employee
+        if (notificationsEnabled) {
+          await storage.createNotification({
+            userId: request.userId,
+            type: `training_${reqType}_${finalStatus}`,
+            title: `Training ${reqLabel} ${finalStatus === "approved" ? "Approved" : "Rejected"}`,
+            message: `Your training ${reqType} request for "${trackTitle}" has been ${finalStatus}.${comment ? ` Comment: "${comment}"` : ""}`,
+            isRead: false,
+            metadata: { requestId: id, requestType: reqType, trackTitle, finalStatus, comment },
+          }).catch(err => console.error("[onboarding] Notify employee failed:", err));
+        }
+        if (requester.email) {
+          sendTrainingRequestEmail({
+            to: requester.email,
+            employeeName: `${requester.firstName} ${requester.lastName}`,
+            subject: `Training ${reqLabel} ${finalStatus === "approved" ? "Approved" : "Rejected"} — ${trackTitle}`,
+            heading: `Training ${reqLabel} ${finalStatus === "approved" ? "Approved" : "Rejected"}`,
+            body: `Your training ${reqType} request for "${trackTitle}" has been ${finalStatus}.`,
+            comment: comment || undefined,
+          }).catch(err => console.error("[onboarding] Email employee failed:", err));
+        }
 
         res.json(updated);
       } else {
@@ -1299,12 +1495,38 @@ export function registerOnboardingRoutes(app: Express) {
           endorserComment: comment || null,
         }).where(eq(trainingExtensionRequests.id, id)).returning();
 
-        await appendAuditEvent(req.session.userId, "extension_endorsed", {
+        await appendAuditEvent(req.session.userId, `${reqType}_endorsed`, {
           extensionRequestId: id,
           assignmentId: request.assignmentId,
           userId: request.userId,
           comment: comment || null,
         });
+
+        // Notify Super Admin about endorsed request — in-app + email
+        const superAdmins = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers).where(and(eq(adminUsers.role, "super_admin"), isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
+        for (const sa of superAdmins) {
+          if (notificationsEnabled) {
+            await storage.createNotification({
+              userId: sa.id,
+              type: `training_${reqType}_endorsed`,
+              title: `Training ${reqLabel} Endorsed — Action Required`,
+              message: `${requester.firstName} ${requester.lastName}'s training ${reqType} request for "${trackTitle}" has been endorsed and needs your final approval.`,
+              isRead: false,
+              metadata: { requestId: id, requestType: reqType, trackTitle },
+            }).catch(err => console.error("[onboarding] Notify super admin failed:", err));
+          }
+          if (sa.email) {
+            sendTrainingRequestEmail({
+              to: sa.email,
+              employeeName: `${sa.firstName} ${sa.lastName}`,
+              subject: `Training ${reqLabel} Endorsed — Final Approval Required`,
+              heading: `Training ${reqLabel} Request — Final Approval Required`,
+              body: `${requester.firstName} ${requester.lastName}'s training ${reqType} request for "${trackTitle}" has been endorsed by a manager/HR and is waiting for your final approval.\n\nRequested reason: ${request.reason}`,
+              comment: comment || undefined,
+            }).catch(err => console.error("[onboarding] Email super admin failed:", err));
+          }
+        }
 
         res.json(updated);
       }
@@ -1364,7 +1586,7 @@ export function registerOnboardingRoutes(app: Express) {
     }
   });
 
-  // Approve or reject extension request (super_admin — requires endorsement first)
+  // Approve or reject extension/exception request (super_admin — requires endorsement first)
   app.patch("/api/onboarding/extension-requests/:id", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
     if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
@@ -1382,6 +1604,9 @@ export function registerOnboardingRoutes(app: Express) {
       if (!request) return res.status(404).json({ error: "Extension request not found" });
       if (request.status !== "endorsed") return res.status(400).json({ error: "Request must be endorsed by a manager/admin before final approval" });
 
+      const reqType = request.requestType || "extension";
+      const reqLabel = reqType === "exception" ? "Exception" : "Extension";
+
       const [updated] = await db.update(trainingExtensionRequests).set({
         status,
         resolvedById: req.session.userId,
@@ -1390,18 +1615,74 @@ export function registerOnboardingRoutes(app: Express) {
       }).where(eq(trainingExtensionRequests.id, id)).returning();
 
       if (status === "approved") {
-        await db.update(trackAssignments).set({
-          dueDate: new Date(request.newDueDate),
-        }).where(eq(trackAssignments.id, request.assignmentId));
+        if (reqType === "exception") {
+          await grantExceptionOnAssignment(request.assignmentId, req.session.userId!, comment || "Approved by Super Admin");
+        } else {
+          await db.update(trackAssignments).set({
+            dueDate: new Date(request.newDueDate),
+          }).where(eq(trackAssignments.id, request.assignmentId));
+        }
       }
 
-      await appendAuditEvent(req.session.userId, `extension_${status}`, {
+      await appendAuditEvent(req.session.userId, `${reqType}_${status}`, {
         extensionRequestId: id,
         assignmentId: request.assignmentId,
         userId: request.userId,
         comment: comment || null,
         newDueDate: request.newDueDate,
       });
+
+      // Notify employee
+      const [employee] = await db.select({
+        id: adminUsers.id,
+        email: adminUsers.email,
+        firstName: adminUsers.firstName,
+        lastName: adminUsers.lastName,
+      }).from(adminUsers).where(eq(adminUsers.id, request.userId));
+
+      const [assignment] = await db.select({ trackId: trackAssignments.trackId })
+        .from(trackAssignments).where(eq(trackAssignments.id, request.assignmentId));
+      const [track] = assignment ? await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId)) : [null];
+      const trackTitle = track?.title || "Training track";
+
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+
+      if (employee && notificationsEnabled) {
+        await storage.createNotification({
+          userId: employee.id,
+          type: `training_${reqType}_${status}`,
+          title: `Training ${reqLabel} ${status === "approved" ? "Approved" : "Rejected"}`,
+          message: `Your training ${reqType} request for "${trackTitle}" has been ${status}.${comment ? ` Comment: "${comment}"` : ""}`,
+          isRead: false,
+          metadata: { requestId: id, requestType: reqType, trackTitle, finalStatus: status, comment },
+        }).catch(err => console.error("[onboarding] Notify employee failed:", err));
+      }
+
+      if (employee?.email) {
+        sendTrainingRequestEmail({
+          to: employee.email,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          subject: `Training ${reqLabel} ${status === "approved" ? "Approved" : "Rejected"} — ${trackTitle}`,
+          heading: `Training ${reqLabel} ${status === "approved" ? "Approved" : "Rejected"}`,
+          body: `Your training ${reqType} request for "${trackTitle}" has been ${status}.`,
+          comment: comment || undefined,
+        }).catch(err => console.error("[onboarding] Email employee failed:", err));
+      }
+
+      // Also notify the endorsing manager if resolved
+      if (request.endorsedById && notificationsEnabled) {
+        await storage.createNotification({
+          userId: request.endorsedById,
+          type: `training_${reqType}_resolved`,
+          title: `Training ${reqLabel} ${status === "approved" ? "Approved" : "Rejected"} by Super Admin`,
+          message: `The training ${reqType} request you endorsed for "${trackTitle}" has been ${status} by Super Admin.`,
+          isRead: false,
+          metadata: { requestId: id, requestType: reqType, trackTitle, finalStatus: status },
+        }).catch(err => console.error("[onboarding] Notify endorser failed:", err));
+      }
 
       res.json(updated);
     } catch (error) {
@@ -2211,6 +2492,161 @@ export function registerOnboardingRoutes(app: Express) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to fetch night shift consents" });
+    }
+  });
+
+  // ==========================================
+  // EXCEPTION GRANT (direct HR/Admin/Super Admin action)
+  // ==========================================
+
+  async function grantExceptionOnAssignment(assignmentId: string, grantedById: string, reason: string) {
+    const [assignment] = await db.select().from(trackAssignments).where(eq(trackAssignments.id, assignmentId));
+    if (!assignment) throw new Error("Assignment not found");
+
+    await db.update(trackAssignments).set({
+      status: "excepted",
+      exceptionGrantedById: grantedById,
+      exceptionGrantedAt: new Date(),
+      exceptionReason: reason,
+    }).where(eq(trackAssignments.id, assignmentId));
+
+    await appendAuditEvent(grantedById, "exception_granted", {
+      assignmentId,
+      reason,
+      grantedById,
+    });
+
+    return assignment;
+  }
+
+  app.patch("/api/onboarding/assignments/:id/grant-exception", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+    if (!HR_ROLES.includes(myRole)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: "A reason is required to grant an exception" });
+      }
+
+      const assignment = await grantExceptionOnAssignment(id, req.session.userId!, reason.trim());
+
+      const [employee] = await db.select({
+        id: adminUsers.id,
+        email: adminUsers.email,
+        firstName: adminUsers.firstName,
+        lastName: adminUsers.lastName,
+      }).from(adminUsers).where(eq(adminUsers.id, assignment.userId));
+
+      const [track] = await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+      const trackTitle = track?.title || "Training track";
+
+      if (employee) {
+        const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+        const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+        const notificationsEnabled = featureFlags.notifications_enabled !== false;
+
+        if (notificationsEnabled) {
+          await storage.createNotification({
+            userId: employee.id,
+            type: "training_exception_granted",
+            title: "Training Exception Granted",
+            message: `An exception has been granted for your assignment "${trackTitle}". Reason: ${reason.trim()}`,
+            isRead: false,
+            metadata: { assignmentId: id, trackTitle, reason: reason.trim() },
+          }).catch(err => console.error("[onboarding] Exception notification failed:", err));
+        }
+
+        if (employee.email) {
+          sendTrainingRequestEmail({
+            to: employee.email,
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            subject: `Training Exception Granted — ${trackTitle}`,
+            heading: "Training Exception Granted",
+            body: `A training exception has been granted for your assignment "${trackTitle}".\n\nReason: ${reason.trim()}`,
+          }).catch(err => console.error("[onboarding] Exception email failed:", err));
+        }
+      }
+
+      res.json({ success: true, assignmentId: id });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message || "Failed to grant exception" });
+    }
+  });
+
+  // Edit due date on an assignment (HR/Admin/Super Admin only)
+  app.patch("/api/onboarding/assignments/:id/due-date", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+    if (!HR_ROLES.includes(myRole)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+
+    try {
+      const { id } = req.params;
+      const { dueDate } = req.body;
+      if (!dueDate) return res.status(400).json({ error: "dueDate is required" });
+
+      const newDate = new Date(dueDate);
+      if (isNaN(newDate.getTime())) return res.status(400).json({ error: "Invalid dueDate" });
+
+      const [assignment] = await db.select().from(trackAssignments).where(eq(trackAssignments.id, id));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      const [updated] = await db.update(trackAssignments).set({ dueDate: newDate })
+        .where(eq(trackAssignments.id, id)).returning();
+
+      await appendAuditEvent(req.session.userId!, "due_date_updated", {
+        assignmentId: id,
+        oldDueDate: assignment.dueDate,
+        newDueDate: newDate,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to update due date" });
+    }
+  });
+
+  // ==========================================
+  // TRAINING REQUESTS COUNT (for sidebar badges)
+  // ==========================================
+
+  app.get("/api/onboarding/training-requests/count", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const myRole = req.session.role!;
+
+    try {
+      let actionable = 0;
+
+      if (myRole === "super_admin") {
+        // Super admin sees endorsed requests waiting for final approval
+        const [row] = await db.select({ count: sql<number>`count(*)::int` })
+          .from(trainingExtensionRequests)
+          .where(eq(trainingExtensionRequests.status, "endorsed"));
+        actionable = row?.count ?? 0;
+      } else if (["manager", "hr", "admin"].includes(myRole)) {
+        // These roles endorse pending requests
+        const pendingRequests = await db.select().from(trainingExtensionRequests)
+          .where(eq(trainingExtensionRequests.status, "pending"));
+
+        for (const r of pendingRequests) {
+          const [requester] = await db.select({ role: adminUsers.role, managerId: adminUsers.managerId })
+            .from(adminUsers).where(eq(adminUsers.id, r.userId));
+          if (!requester) continue;
+          if (canEndorseRequest(myRole, req.session.userId!, requester.role, requester.managerId)) {
+            actionable++;
+          }
+        }
+      }
+
+      res.json({ actionable });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch count" });
     }
   });
 

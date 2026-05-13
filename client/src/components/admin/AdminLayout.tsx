@@ -391,8 +391,29 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   // Training + perf badge total for My Growth
   const growthBadge = (trainingAlerts?.total ?? 0) + (perfAlerts?.total ?? 0);
 
-  // People & HR badge (endorsements)
-  const peopleHRBadge = pendingEndorseCount ?? 0;
+  // Training requests actionable count (for manager/hr/admin/super_admin sidebar badge)
+  const isTrainingRequestRole = ["super_admin", "manager", "hr", "admin"].includes(userRole);
+  const { data: trainingRequestsCount } = useQuery<{ actionable: number }>({
+    queryKey: ["/api/onboarding/training-requests/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/training-requests/count", { credentials: "include" });
+        if (!res.ok) return { actionable: 0 };
+        return res.json();
+      } catch { return { actionable: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && isTrainingRequestRole,
+  });
+  const trainingReqBadge = (trainingRequestsCount?.actionable ?? 0);
+
+  // Combined My Team badge: leave approvals + training requests
+  const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge;
+
+  // People & HR badge: endorsements + training requests actionable by HR/admin/super_admin
+  // (HR/admin/super_admin access training request management from People & HR → Training)
+  const peopleHRTrainingBadge = ["hr", "admin", "super_admin"].includes(userRole) ? trainingReqBadge : 0;
+  const peopleHRBadge = (pendingEndorseCount ?? 0) + peopleHRTrainingBadge;
 
   const navItems: NavItem[] = [
     {
@@ -421,8 +442,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "My Team",
       icon: Users,
       roles: ["super_admin", "admin", "hr", "operations", "manager"],
-      badge: (leaveApprovalsCount ?? 0) > 0 ? leaveApprovalsCount : undefined,
-      badgeColor: "bg-blue-500",
+      badge: myTeamBadge > 0 ? myTeamBadge : undefined,
+      badgeColor: trainingReqBadge > 0 ? "bg-amber-500" : "bg-blue-500",
     }] : []),
     ...(hasRecruitmentAccess ? [{
       href: "/admin/recruitment",

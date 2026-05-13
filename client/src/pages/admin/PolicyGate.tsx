@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, CheckCircle, Clock, FileText, ArrowRight, Loader2, AlertTriangle, Moon } from "lucide-react";
+import { Shield, CheckCircle, Clock, FileText, ArrowRight, Loader2, AlertTriangle, Moon, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,9 +53,50 @@ export default function PolicyGate() {
   const [nsTypedName, setNsTypedName] = useState("");
   const dwellInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Exception request state (for overdue training visible while in policy gate)
+  const [exceptionAssignmentId, setExceptionAssignmentId] = useState<string | null>(null);
+  const [exceptionReason, setExceptionReason] = useState("");
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
+
+  const { data: complianceStatus } = useQuery<{
+    locked: boolean; overdueCount: number; trackTitles: string[];
+    overdueAssignments?: { id: string; trackTitle: string; dueDate: string | null }[];
+    pendingExtensions: any[];
+  }>({
+    queryKey: ["/api/onboarding/compliance-status"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/compliance-status", { credentials: "include" });
+        if (!res.ok) return { locked: false, overdueCount: 0, trackTitles: [], overdueAssignments: [], pendingExtensions: [] };
+        return res.json();
+      } catch { return { locked: false, overdueCount: 0, trackTitles: [], overdueAssignments: [], pendingExtensions: [] }; }
+    },
+    enabled: isAuthenticated,
+  });
+
+  const submitExceptionMutation = useMutation({
+    mutationFn: async ({ assignmentId, reason }: { assignmentId: string; reason: string }) => {
+      const res = await fetch("/api/onboarding/extension-requests", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId, reason, newDueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), requestType: "exception" }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/extension-requests/my"] });
+      toast({ title: "Exception request submitted", description: "Your manager/HR will be notified to review it." });
+      setExceptionAssignmentId(null);
+      setExceptionReason("");
+    },
+    onError: (err: any) => toast({ title: err.message || "Failed to submit exception request", variant: "destructive" }),
+  });
 
   const { data: status, isLoading } = useQuery<PolicyGateStatus>({
     queryKey: ["/api/onboarding/policy-gate-status"],
@@ -376,6 +417,64 @@ export default function PolicyGate() {
               </div>
             )}
           </div>
+
+          {/* Overdue training notice with exception request */}
+          {(complianceStatus?.overdueAssignments?.length ?? 0) > 0 && (
+            <div className="mt-4 border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950/20" data-testid="panel-overdue-training">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertCircle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+                  {complianceStatus!.overdueCount} overdue training {complianceStatus!.overdueCount === 1 ? "track" : "tracks"}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {complianceStatus!.overdueAssignments!.map(a => {
+                  const hasPending = (complianceStatus!.pendingExtensions || []).some((e: any) => e.assignment_id === a.id || e.assignmentId === a.id);
+                  return (
+                    <div key={a.id}>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs text-red-700 dark:text-red-300 truncate">{a.trackTitle}</span>
+                        {!hasPending && (
+                          <button
+                            className="text-xs text-red-700 dark:text-red-300 underline underline-offset-2 whitespace-nowrap shrink-0"
+                            onClick={() => setExceptionAssignmentId(prev => prev === a.id ? null : a.id)}
+                            data-testid={`button-request-exception-${a.id}`}
+                          >
+                            {exceptionAssignmentId === a.id ? "Cancel" : "Request Exception"}
+                          </button>
+                        )}
+                        {hasPending && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap shrink-0">Request pending</span>
+                        )}
+                      </div>
+                      {exceptionAssignmentId === a.id && (
+                        <div className="mt-1.5 space-y-1.5" data-testid={`form-exception-${a.id}`}>
+                          <textarea
+                            className="w-full text-xs rounded border border-red-300 dark:border-red-700 bg-white dark:bg-background p-1.5 resize-none"
+                            rows={2}
+                            placeholder="Reason for exception (e.g. role change, external certification)..."
+                            value={exceptionReason}
+                            onChange={e => setExceptionReason(e.target.value)}
+                            data-testid={`input-exception-reason-${a.id}`}
+                          />
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs w-full bg-red-700 hover:bg-red-800"
+                            disabled={!exceptionReason.trim() || submitExceptionMutation.isPending}
+                            onClick={() => submitExceptionMutation.mutate({ assignmentId: a.id, reason: exceptionReason })}
+                            data-testid={`button-submit-exception-${a.id}`}
+                          >
+                            {submitExceptionMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                            Submit Exception Request
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Main content */}

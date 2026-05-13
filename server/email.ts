@@ -1401,3 +1401,49 @@ export async function sendPolicyUpdateEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendTrainingRequestEmail(options: {
+  to: string;
+  employeeName: string;
+  subject: string;
+  heading: string;
+  body: string;
+  comment?: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const commentBlock = options.comment
+      ? `<div style="background: #f1f5f9; border-left: 4px solid #64748b; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+           <p style="color: #374151; margin: 0; font-style: italic;">"${options.comment}"</p>
+         </div>`
+      : "";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Rayomind Solutions LLP" },
+      subject: options.subject,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Training Portal</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">${options.heading}</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px; white-space: pre-line;">${options.body}</p>
+            ${commentBlock}
+            <p style="color: #475569; line-height: 1.6; margin: 16px 0 0;">Please log in to the portal for more details.</p>
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Rayomind Solutions LLP. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `${options.heading}\n\n${options.body}${options.comment ? `\n\nComment: "${options.comment}"` : ""}\n\nPlease log in to the portal for more details.\n\nRayomind Solutions LLP`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send training request email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
