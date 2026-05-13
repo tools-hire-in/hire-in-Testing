@@ -99,7 +99,7 @@ export default function ContractTemplates({ canManage }: Props) {
         <div />
         <div className="flex gap-2">
           <Button variant="outline" asChild>
-            <a href="/api/contracts/sample-template" download data-testid="button-download-sample">
+            <a href="/api/contracts/sample-template" download="Staffing_Services_Agreement_Sample.docx" data-testid="button-download-sample">
               <Download className="h-4 w-4 mr-2" /> Download Sample Template
             </a>
           </Button>

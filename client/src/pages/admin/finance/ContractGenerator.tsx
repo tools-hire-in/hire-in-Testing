@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronRight, ChevronLeft, Wand2, Search, User, X, Info, AlertCircle } from "lucide-react";
-import type { ContractClient, ContractTemplate } from "@shared/schema";
+import {
+  Loader2, ChevronRight, ChevronLeft, Wand2, Search, User, X, Info,
+  AlertCircle, Plus, Building2, CheckCircle2, ExternalLink
+} from "lucide-react";
+import type { ContractClient, ContractTemplate, InsertContractClient } from "@shared/schema";
 
 interface CandidateSuggestion {
   name: string;
@@ -20,14 +23,16 @@ interface CandidateSuggestion {
 }
 
 interface Props {
-  clients: ContractClient[];
+  clients?: ContractClient[];
   onClose: () => void;
   onCreated: () => void;
+  onGoToClientsTab?: () => void;
 }
 
 interface TemplateField {
   key: string;
   value: string;
+  autoFilled: boolean;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -39,7 +44,11 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export default function ContractGenerator({ clients, onClose, onCreated }: Props) {
+const EMPTY_CLIENT: Partial<InsertContractClient> = {
+  name: "", signatoryName: "", signatoryTitle: "", email: "", address: "",
+};
+
+export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab }: Props) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
 
@@ -54,6 +63,10 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
   const [clientId, setClientId] = useState("");
   const [clientName, setClientName] = useState("");
 
+  // Inline add-client form state
+  const [showInlineAdd, setShowInlineAdd] = useState(false);
+  const [inlineForm, setInlineForm] = useState<Partial<InsertContractClient>>(EMPTY_CLIENT);
+
   // Step 2 — Commercial terms
   const [templateId, setTemplateId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -67,6 +80,11 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
   const [fields, setFields] = useState<TemplateField[]>([]);
 
   const debouncedSearch = useDebounce(candidateSearch, 350);
+
+  // Own clients query so inline creation refreshes the dropdown
+  const { data: clients = [] } = useQuery<ContractClient[]>({
+    queryKey: ["/api/contracts/clients"],
+  });
 
   const { data: templates = [] } = useQuery<ContractTemplate[]>({
     queryKey: ["/api/contracts/templates"],
@@ -90,6 +108,23 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
   const ceipalUnavailable = searchResult?.ceipal_unavailable === true;
   const suggestions = searchResult?.candidates || [];
 
+  // Inline client creation mutation
+  const addClientMutation = useMutation<ContractClient, Error, Partial<InsertContractClient>>({
+    mutationFn: async (data: Partial<InsertContractClient>) => {
+      const res = await apiRequest("POST", "/api/contracts/clients", data);
+      return res.json() as Promise<ContractClient>;
+    },
+    onSuccess: async (created: ContractClient) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/contracts/clients"] });
+      setClientId(created.id);
+      setClientName(created.name);
+      setShowInlineAdd(false);
+      setInlineForm(EMPTY_CLIENT);
+      toast({ title: "Client added", description: `${created.name} saved and selected.` });
+    },
+    onError: (e: Error) => toast({ title: "Error saving client", description: e.message, variant: "destructive" }),
+  });
+
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -102,6 +137,7 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
   }, []);
 
   const selectedTemplate = templates.find(t => t.id === templateId);
+  const selectedClient = clients.find(c => c.id === clientId) || null;
 
   const handleClientChange = (id: string) => {
     setClientId(id);
@@ -137,7 +173,11 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
     if (!tmpl?.placeholderList) return;
     const client = clients.find(c => c.id === clientId) || null;
     const prefill = buildPrefillMap(client);
-    setFields((tmpl.placeholderList as string[]).map(p => ({ key: p, value: prefill[p] || "" })));
+    setFields((tmpl.placeholderList as string[]).map(p => ({
+      key: p,
+      value: prefill[p] || "",
+      autoFilled: !!(prefill[p] && prefill[p].trim() !== ""),
+    })));
   };
 
   const hasPlaceholders = !!templateId && (selectedTemplate?.placeholderList as string[] | null)?.length;
@@ -282,37 +322,186 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
 
             {/* Client section */}
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-sm">Client Details</h3>
-                <Badge variant="outline" className="text-xs">Required</Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Client (from registry)</Label>
-                  <Select value={clientId} onValueChange={handleClientChange}>
-                    <SelectTrigger data-testid="select-client">
-                      <SelectValue placeholder="Select existing client..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.length === 0 && (
-                        <SelectItem value="_none" disabled>No clients in registry yet</SelectItem>
-                      )}
-                      {clients.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-sm">Client Details</h3>
+                  <Badge variant="outline" className="text-xs">Required</Badge>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Client Name *</Label>
-                  <Input
-                    placeholder="Type or auto-filled from registry"
-                    value={clientName}
-                    onChange={e => setClientName(e.target.value)}
-                    data-testid="input-client-name"
-                  />
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setShowInlineAdd(v => !v); }}
+                  data-testid="button-inline-add-client"
+                  className="h-7 text-xs gap-1"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add New Client
+                </Button>
               </div>
+
+              {/* Inline add-client form */}
+              {showInlineAdd && (
+                <div className="border border-primary/20 rounded-lg bg-primary/5 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wide">New Client</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Company Name *</Label>
+                      <Input
+                        placeholder="e.g. Acme Corp"
+                        value={inlineForm.name || ""}
+                        onChange={e => setInlineForm(f => ({ ...f, name: e.target.value }))}
+                        data-testid="input-inline-client-name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Signatory Name</Label>
+                      <Input
+                        placeholder="e.g. Jane Smith"
+                        value={inlineForm.signatoryName || ""}
+                        onChange={e => setInlineForm(f => ({ ...f, signatoryName: e.target.value }))}
+                        data-testid="input-inline-signatory-name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Signatory Title</Label>
+                      <Input
+                        placeholder="e.g. VP of Engineering"
+                        value={inlineForm.signatoryTitle || ""}
+                        onChange={e => setInlineForm(f => ({ ...f, signatoryTitle: e.target.value }))}
+                        data-testid="input-inline-signatory-title"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Email</Label>
+                      <Input
+                        type="email"
+                        placeholder="contact@company.com"
+                        value={inlineForm.email || ""}
+                        onChange={e => setInlineForm(f => ({ ...f, email: e.target.value }))}
+                        data-testid="input-inline-client-email"
+                      />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Address</Label>
+                      <Textarea
+                        placeholder="123 Business St, City, State ZIP"
+                        value={inlineForm.address || ""}
+                        onChange={e => setInlineForm(f => ({ ...f, address: e.target.value }))}
+                        rows={2}
+                        data-testid="textarea-inline-client-address"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setShowInlineAdd(false); setInlineForm(EMPTY_CLIENT); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => addClientMutation.mutate(inlineForm)}
+                      disabled={!inlineForm.name?.trim() || addClientMutation.isPending}
+                      data-testid="button-inline-save-client"
+                    >
+                      {addClientMutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Save & Select
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Client dropdown */}
+              <div className="space-y-1.5">
+                <Label>Select from Registry</Label>
+                <Select value={clientId} onValueChange={handleClientChange}>
+                  <SelectTrigger data-testid="select-client">
+                    <SelectValue placeholder="Select existing client..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Client name override */}
+              <div className="space-y-1.5">
+                <Label>Client Name *</Label>
+                <Input
+                  placeholder="Type or auto-filled from registry"
+                  value={clientName}
+                  onChange={e => setClientName(e.target.value)}
+                  data-testid="input-client-name"
+                />
+              </div>
+
+              {/* Empty registry state */}
+              {clients.length === 0 && !showInlineAdd && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                  <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm text-amber-800 font-medium">No clients saved yet</p>
+                    <p className="text-xs text-amber-700">
+                      Add your first client using the <strong>Add New Client</strong> button above
+                      {onGoToClientsTab && (
+                        <>, or{" "}
+                          <button
+                            className="underline font-medium hover:text-amber-900 inline-flex items-center gap-0.5"
+                            onClick={() => { onClose(); onGoToClientsTab(); }}
+                            data-testid="button-go-to-clients-tab"
+                          >
+                            go to the Clients tab
+                            <ExternalLink className="h-3 w-3" />
+                          </button>
+                          {" "}to manage your registry
+                        </>
+                      )}.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Selected client detail card */}
+              {selectedClient && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <p className="text-xs font-semibold text-green-800 uppercase tracking-wide">Client details — will be merged into contract</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-700">
+                    <div>
+                      <span className="text-muted-foreground">Company</span>
+                      <p className="font-medium">{selectedClient.name}</p>
+                    </div>
+                    {selectedClient.email && (
+                      <div>
+                        <span className="text-muted-foreground">Email</span>
+                        <p className="font-medium">{selectedClient.email}</p>
+                      </div>
+                    )}
+                    {selectedClient.signatoryName && (
+                      <div>
+                        <span className="text-muted-foreground">Signatory</span>
+                        <p className="font-medium">
+                          {selectedClient.signatoryName}
+                          {selectedClient.signatoryTitle && <span className="text-muted-foreground font-normal"> · {selectedClient.signatoryTitle}</span>}
+                        </p>
+                      </div>
+                    )}
+                    {selectedClient.address && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Address</span>
+                        <p className="font-medium whitespace-pre-line">{selectedClient.address}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -383,25 +572,41 @@ export default function ContractGenerator({ clients, onClose, onCreated }: Props
             <div>
               <h3 className="font-semibold text-sm">Fill Template Placeholders</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                These values will be merged into <strong>{selectedTemplate?.name}</strong>. Fields pre-filled from previous steps — complete any blanks.
+                These values will be merged into <strong>{selectedTemplate?.name}</strong>.
+                Fields marked <span className="text-green-700 font-medium">Auto-filled</span> are pre-populated from earlier steps — review and adjust if needed. <span className="text-amber-700 font-medium">Highlighted</span> fields need manual input.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {fields.map((f, i) => (
-                <div key={f.key} className="space-y-1.5">
-                  <Label className="font-mono text-xs text-muted-foreground">{`{{${f.key}}}`}</Label>
-                  <Input
-                    placeholder={f.key.replace(/_/g, " ")}
-                    value={f.value}
-                    onChange={e => {
-                      const updated = [...fields];
-                      updated[i] = { ...f, value: e.target.value };
-                      setFields(updated);
-                    }}
-                    data-testid={`input-field-${f.key}`}
-                  />
-                </div>
-              ))}
+              {fields.map((f, i) => {
+                const isEmpty = !f.value || f.value.trim() === "";
+                return (
+                  <div key={f.key} className={`space-y-1.5 rounded-lg p-2 -m-2 ${isEmpty ? "bg-amber-50 border border-amber-200" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <Label className="font-mono text-xs text-muted-foreground">{`{{${f.key}}}`}</Label>
+                      {f.autoFilled ? (
+                        <Badge className="text-[10px] h-4 px-1.5 bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+                          <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Auto-filled
+                        </Badge>
+                      ) : isEmpty ? (
+                        <Badge className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+                          Needs input
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <Input
+                      placeholder={f.key.replace(/_/g, " ")}
+                      value={f.value}
+                      onChange={e => {
+                        const updated = [...fields];
+                        updated[i] = { ...f, value: e.target.value, autoFilled: false };
+                        setFields(updated);
+                      }}
+                      className={isEmpty ? "border-amber-300 focus-visible:ring-amber-400" : ""}
+                      data-testid={`input-field-${f.key}`}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

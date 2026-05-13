@@ -348,6 +348,7 @@ export default function ContractsHub() {
             setShowGenerator(false);
             queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
           }}
+          onGoToClientsTab={() => setTab("clients")}
         />
       )}
 
