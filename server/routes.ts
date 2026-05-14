@@ -682,7 +682,7 @@ export async function registerRoutes(
   };
 
   // User management routes — accessible to super_admin, admin, and manager
-  app.post("/api/admin/users", requireRole("admin", "manager"), async (req, res) => {
+  app.post("/api/admin/users", requireRole("admin", "manager", "hr"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
@@ -718,7 +718,8 @@ export async function registerRoutes(
       }
       const employeeIdVal = await generateEmployeeId(deptName);
 
-      const { gender } = req.body;
+      const { gender, employeeCategory } = req.body;
+      const categoryVal = ["fresher", "intern", "experienced"].includes(employeeCategory) ? employeeCategory : "experienced";
 
       const user = await storage.createAdminUser({
         email: email.toLowerCase(),
@@ -735,9 +736,10 @@ export async function registerRoutes(
         employeeId: employeeIdVal,
         managerId: managerId || null,
         gender: gender || null,
+        employeeCategory: categoryVal,
       });
 
-      storage.initializeEmployeeDocuments(user.id).catch(err =>
+      storage.initializeEmployeeDocuments(user.id, categoryVal).catch(err =>
         console.error("Failed to initialize documents for user:", err)
       );
 
@@ -966,7 +968,7 @@ export async function registerRoutes(
             employeeId: bulkEmployeeId,
           });
 
-          storage.initializeEmployeeDocuments(newUser.id).catch(err =>
+          storage.initializeEmployeeDocuments(newUser.id, newUser.employeeCategory ?? "experienced").catch(err =>
             console.error(`Failed to init docs for ${email}:`, err)
           );
 
@@ -1010,7 +1012,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id", requireRole("admin", "manager"), async (req, res) => {
+  app.patch("/api/admin/users/:id", requireRole("admin", "manager", "hr"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
@@ -1047,6 +1049,13 @@ export async function registerRoutes(
         updateData.password = await bcrypt.hash(password, 12);
       }
 
+      const VALID_CATEGORIES = ["experienced", "fresher", "intern"];
+      if (updateData.employeeCategory !== undefined) {
+        if (!VALID_CATEGORIES.includes(updateData.employeeCategory)) {
+          updateData.employeeCategory = "experienced";
+        }
+      }
+
       const before: Record<string, any> = {};
       const after: Record<string, any> = {};
       for (const key of Object.keys(updateData)) {
@@ -1062,6 +1071,12 @@ export async function registerRoutes(
       const user = await storage.updateAdminUser(userId, updateData);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      if (updateData.employeeCategory && updateData.employeeCategory !== targetUser.employeeCategory) {
+        storage.updateDocumentRequiredStatusForCategory(userId, updateData.employeeCategory).catch(err =>
+          console.error("Failed to update doc required status for category change:", err)
+        );
       }
 
       await storage.createAuditLog({
@@ -4081,7 +4096,8 @@ export async function registerRoutes(
     try {
       let docs = await storage.getEmployeeDocuments(req.session.userId!);
       if (!docs || docs.length === 0) {
-        await storage.initializeEmployeeDocuments(req.session.userId!);
+        const currentUser = await storage.getAdminUser(req.session.userId!);
+        await storage.initializeEmployeeDocuments(req.session.userId!, currentUser?.employeeCategory ?? "experienced");
         docs = await storage.getEmployeeDocuments(req.session.userId!);
       }
       res.json(docs);
@@ -4236,6 +4252,7 @@ export async function registerRoutes(
             email: user.email,
             employeeId: user.employeeId,
             department: user.departmentId ? deptMap.get(user.departmentId) || null : null,
+            employeeCategory: user.employeeCategory || "experienced",
           },
           docs: [],
           requiredTotal: 0,
@@ -4280,10 +4297,24 @@ export async function registerRoutes(
       if (existing.length > 0) {
         return res.status(400).json({ error: "Documents already initialized for this user" });
       }
-      const docs = await storage.initializeEmployeeDocuments(req.params.userId);
+      const user = await storage.getAdminUser(req.params.userId);
+      const docs = await storage.initializeEmployeeDocuments(req.params.userId, user?.employeeCategory ?? "experienced");
       res.json(docs);
     } catch (error) {
       res.status(500).json({ error: "Failed to initialize documents" });
+    }
+  });
+
+  app.patch("/api/hr/employee-documents/:id/toggle-required", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const doc = await storage.getEmployeeDocument(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const updated = await storage.updateEmployeeDocument(req.params.id, { isRequired: !doc.isRequired });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to toggle required status" });
     }
   });
 
@@ -5412,7 +5443,7 @@ export async function registerRoutes(
         onboardedBy: actorId,
       });
 
-      await storage.initializeEmployeeDocuments(newUser.id);
+      await storage.initializeEmployeeDocuments(newUser.id, newUser.employeeCategory ?? "experienced");
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";

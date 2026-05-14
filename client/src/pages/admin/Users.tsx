@@ -134,9 +134,11 @@ export default function AdminUsers() {
   const [newManagerId, setNewManagerId] = useState("");
   const [newGender, setNewGender] = useState("");
 
+  const [newEmployeeCategory, setNewEmployeeCategory] = useState("experienced");
+
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, employeeCategory: "experienced" });
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -241,7 +243,7 @@ export default function AdminUsers() {
       toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
-      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId("");
+      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced");
     },
     onError: () => {
       toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
@@ -447,7 +449,7 @@ export default function AdminUsers() {
 
   const isSuperAdmin = user?.role === "super_admin";
   const isAdmin = user?.role === "admin";
-  const canManageUsers = isSuperAdmin || isAdmin || user?.role === "manager";
+  const canManageUsers = isSuperAdmin || isAdmin || user?.role === "manager" || user?.role === "hr";
   const canEditHierarchy = isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "manager";
   const currentUserRank = roleRank[user?.role || ""] ?? 0;
 
@@ -477,6 +479,7 @@ export default function AdminUsers() {
       joiningDate: adminUser.joiningDate || "",
       salary: adminUser.salary || "",
       attendanceExempt: adminUser.attendanceExempt ?? false,
+      employeeCategory: adminUser.employeeCategory || "experienced",
     });
     setEditOpen(true);
   };
@@ -909,6 +912,17 @@ export default function AdminUsers() {
                   </Select>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="employeeCategory">Employee Category</Label>
+                <Select value={newEmployeeCategory} onValueChange={setNewEmployeeCategory}>
+                  <SelectTrigger data-testid="select-invite-employee-category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="experienced">Experienced</SelectItem>
+                    <SelectItem value="fresher">Fresher</SelectItem>
+                    <SelectItem value="intern">Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="salary">Salary</Label>
@@ -960,6 +974,7 @@ export default function AdminUsers() {
                   salary: newSalary || undefined,
                   managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
                   gender: newGender || undefined,
+                  employeeCategory: newEmployeeCategory,
                 } as any)}
                 disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || !newDepartmentId || newDepartmentId === "none" || inviteMutation.isPending}
                 data-testid="button-send-invite"
@@ -1019,6 +1034,17 @@ export default function AdminUsers() {
                 <Label>Joining Date</Label>
                 <Input type="date" value={editForm.joiningDate} onChange={(e) => setEditForm(prev => ({ ...prev, joiningDate: e.target.value }))} data-testid="input-edit-joining-date" />
               </div>
+              <div className="space-y-2">
+                <Label>Employee Category</Label>
+                <Select value={editForm.employeeCategory} onValueChange={(v) => setEditForm(prev => ({ ...prev, employeeCategory: v }))}>
+                  <SelectTrigger data-testid="select-edit-employee-category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="experienced">Experienced</SelectItem>
+                    <SelectItem value="fresher">Fresher</SelectItem>
+                    <SelectItem value="intern">Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {(isSuperAdmin || isAdmin || user?.role === "hr") && (
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div>
@@ -1053,6 +1079,7 @@ export default function AdminUsers() {
                       joiningDate: editForm.joiningDate || null,
                       salary: editForm.salary || null,
                       attendanceExempt: editForm.attendanceExempt,
+                      employeeCategory: editForm.employeeCategory,
                     },
                   });
                 }}

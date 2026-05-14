@@ -51,6 +51,7 @@ export const adminUsers = pgTable("admin_users", {
   deletedAt: timestamp("deleted_at"),
   shiftId: varchar("shift_id"),
   attendanceExempt: boolean("attendance_exempt").notNull().default(false),
+  employeeCategory: varchar("employee_category").default("experienced"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

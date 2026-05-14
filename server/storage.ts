@@ -238,7 +238,8 @@ export interface IStorage {
   createEmployeeDocument(doc: InsertEmployeeDocument): Promise<EmployeeDocument>;
   updateEmployeeDocument(id: string, updates: Partial<EmployeeDocument>): Promise<EmployeeDocument | undefined>;
   deleteEmployeeDocument(id: string): Promise<boolean>;
-  initializeEmployeeDocuments(userId: string): Promise<EmployeeDocument[]>;
+  initializeEmployeeDocuments(userId: string, employeeCategory?: string): Promise<EmployeeDocument[]>;
+  updateDocumentRequiredStatusForCategory(userId: string, employeeCategory: string): Promise<void>;
   getAllEmployeeDocuments(): Promise<EmployeeDocument[]>;
 
   // Employee Bank Details
@@ -1574,7 +1575,9 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async initializeEmployeeDocuments(userId: string): Promise<EmployeeDocument[]> {
+  async initializeEmployeeDocuments(userId: string, employeeCategory?: string): Promise<EmployeeDocument[]> {
+    const isNonExperienced = employeeCategory === "fresher" || employeeCategory === "intern";
+
     const docTypes = [
       { category: "identity", documentType: "aadhaar", isRequired: true },
       { category: "identity", documentType: "pan", isRequired: true },
@@ -1584,8 +1587,8 @@ export class DatabaseStorage implements IStorage {
       { category: "education", documentType: "12th_marksheet", isRequired: true },
       { category: "education", documentType: "graduation_cert", isRequired: true },
       { category: "education", documentType: "postgrad_cert", isRequired: false },
-      { category: "employment", documentType: "relieving_letter", isRequired: true },
-      { category: "employment", documentType: "salary_slips_prev", isRequired: true },
+      { category: "employment", documentType: "relieving_letter", isRequired: !isNonExperienced },
+      { category: "employment", documentType: "salary_slips_prev", isRequired: !isNonExperienced },
       { category: "employment", documentType: "form16", isRequired: false },
       { category: "bank", documentType: "cancelled_cheque", isRequired: true },
     ];
@@ -1602,6 +1605,23 @@ export class DatabaseStorage implements IStorage {
       created.push(doc);
     }
     return created;
+  }
+
+  async updateDocumentRequiredStatusForCategory(userId: string, employeeCategory: string): Promise<void> {
+    const isRequired = employeeCategory !== "fresher" && employeeCategory !== "intern";
+    const targetDocTypes = ["relieving_letter", "salary_slips_prev"];
+
+    for (const docType of targetDocTypes) {
+      await db.update(employeeDocuments)
+        .set({ isRequired, updatedAt: new Date() })
+        .where(
+          and(
+            eq(employeeDocuments.userId, userId),
+            eq(employeeDocuments.documentType, docType),
+            eq(employeeDocuments.status, "pending")
+          )
+        );
+    }
   }
 
   async getAllEmployeeDocuments(): Promise<EmployeeDocument[]> {

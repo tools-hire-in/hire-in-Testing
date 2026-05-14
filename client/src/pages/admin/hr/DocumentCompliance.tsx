@@ -48,6 +48,8 @@ import {
   FolderPlus,
   Landmark,
   Phone,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 interface ComplianceUser {
@@ -57,6 +59,7 @@ interface ComplianceUser {
   email: string;
   employeeId: string | null;
   department: string | null;
+  employeeCategory: string | null;
 }
 
 interface ComplianceDoc {
@@ -538,6 +541,18 @@ export function DocumentComplianceContent() {
   );
 }
 
+const CATEGORY_BADGE_COLORS: Record<string, string> = {
+  experienced: "bg-blue-100 text-blue-800",
+  fresher: "bg-green-100 text-green-800",
+  intern: "bg-amber-100 text-amber-800",
+};
+
+const CATEGORY_LABELS_MAP: Record<string, string> = {
+  experienced: "Experienced",
+  fresher: "Fresher",
+  intern: "Intern",
+};
+
 interface EmployeeRowProps {
   emp: ComplianceEmployee;
   isExpanded: boolean;
@@ -556,6 +571,16 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
   const progressPercent = emp.requiredTotal > 0 ? Math.round((emp.requiredUploaded / emp.requiredTotal) * 100) : 0;
   const hasPendingDocs = emp.docs.some((d) => d.isRequired && d.status === "pending");
 
+  const toggleRequiredMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      const res = await apiRequest("PATCH", `/api/hr/employee-documents/${docId}/toggle-required`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/document-compliance"] });
+    },
+  });
+
   const docsByCategory = emp.docs.reduce<Record<string, ComplianceDoc[]>>((acc, doc) => {
     if (!acc[doc.category]) acc[doc.category] = [];
     acc[doc.category].push(doc);
@@ -567,9 +592,19 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
       <TableRow className="cursor-pointer" onClick={onToggle} data-testid={`row-employee-${emp.user.id}`}>
         <TableCell>
           <div>
-            <span className="font-medium" data-testid={`text-employee-name-${emp.user.id}`}>
-              {emp.user.firstName} {emp.user.lastName}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium" data-testid={`text-employee-name-${emp.user.id}`}>
+                {emp.user.firstName} {emp.user.lastName}
+              </span>
+              {emp.user.employeeCategory && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_BADGE_COLORS[emp.user.employeeCategory] || CATEGORY_BADGE_COLORS.experienced}`}
+                  data-testid={`badge-category-${emp.user.id}`}
+                >
+                  {CATEGORY_LABELS_MAP[emp.user.employeeCategory] || emp.user.employeeCategory}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">{emp.user.email}</p>
           </div>
         </TableCell>
@@ -678,6 +713,16 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                           </div>
                           <div className="flex items-center gap-2">
                             {getStatusBadge(doc.status)}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title={doc.isRequired ? "Mark as Optional" : "Mark as Required"}
+                              disabled={toggleRequiredMutation.isPending}
+                              onClick={() => toggleRequiredMutation.mutate(doc.id)}
+                              data-testid={`button-toggle-required-${doc.id}`}
+                            >
+                              {doc.isRequired ? <ToggleRight className="h-4 w-4 text-destructive" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                            </Button>
                             {doc.fileUrl && (
                               <>
                                 <Button

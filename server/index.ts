@@ -805,6 +805,13 @@ async function backfillHolidayAttendance() {
     console.error("attendance_exempt column migration error:", err);
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS employee_category VARCHAR DEFAULT 'experienced'`);
+    log("Ensured employee_category column on admin_users");
+  } catch (err) {
+    console.error("employee_category column migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
