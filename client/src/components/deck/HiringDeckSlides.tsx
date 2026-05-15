@@ -144,7 +144,7 @@ function Slide1Cover() {
           <h2 style={{ fontSize: 26, fontWeight: 600, color: ORANGE, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.4, marginBottom: 20 }}>US IT Staffing · Powered by AI</h2>
           <p style={{ fontSize: 16, color: "rgba(255,255,255,0.72)", fontFamily: "'Segoe UI', Arial, sans-serif", fontStyle: "italic", letterSpacing: 0.3 }}>&ldquo;The Right Tech Talent, Right Now&rdquo;</p>
           <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 0", width: "fit-content" }}>
-            {["100+ Successful IT Talent Engagements", "24-Hour First Submissions", "95% Client Retention"].map((stat, i) => (
+            {["AI-Powered Talent Matching", "Coast-to-Coast US Coverage", "Compliance-First Delivery"].map((stat, i) => (
               <Fragment key={i}>
                 {i > 0 && <div style={{ width: 1, height: 20, background: "rgba(244,124,32,0.4)", flexShrink: 0 }} />}
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 11.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.3, padding: "0 16px", whiteSpace: "nowrap" }}>{stat}</span>
@@ -237,17 +237,17 @@ function Slide3About() {
           <div style={{ background: NAVY, borderRadius: 10, padding: "16px 20px", boxShadow: "0 2px 12px rgba(31,58,110,0.12)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Edge</p>
             <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, lineHeight: 1.55, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-              A lean team of <strong style={{ color: ORANGE }}>20+ domain-specialist recruiters</strong> — every one an IT expert. We combine AI-powered tools like <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening with hands-on recruiter expertise. Direct access, no layers, every submission a strong fit.
-              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>San Jose, CA · Serving all 50 US states</span>
+              A lean team of domain-specialist recruiters — every one an IT expert. We combine AI-powered tools like <strong style={{ color: ORANGE }}>Kleriq AI</strong> for job analysis, resume matching, and candidate screening with hands-on recruiter expertise. Direct access, no layers, every submission a strong fit.
+              <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>San Jose, CA · US Headquarters</span>
             </p>
           </div>
         </div>
         <div style={{ flex: 0.8, display: "flex", flexDirection: "column", gap: 10 }}>
           {[
-            { icon: Target, label: "IT-Exclusive Focus", desc: "100% dedicated to technology staffing" },
-            { icon: Brain, label: "AI-Powered Matching", desc: "92% match accuracy via Kleriq AI" },
-            { icon: Users, label: "20+ Domain-Specialist Recruiters", desc: "Direct access, no layers" },
-            { icon: Globe, label: "All 50 US States", desc: "True coast-to-coast talent coverage" },
+            { icon: ShieldCheck, label: "ISO-Aware Compliance Workflows", desc: "I-9, E-Verify, background screening & federal/state employment law — built into every placement" },
+            { icon: Database, label: "Ceipal ATS Integration", desc: "End-to-end pipeline visibility with real-time requisition tracking and applicant data sync" },
+            { icon: Star, label: "Dedicated Client Success Manager", desc: "A named partner for every account — single point of contact from intake through onboarding" },
+            { icon: Zap, label: "Rapid Deployment Protocol", desc: "Bench-ready talent and pre-vetted pipelines enable sub-72-hour placements for urgent roles" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div key={i} style={{ background: WHITE, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 6px rgba(31,58,110,0.07)" }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: LIGHT2, border: `1.5px solid ${ORANGE}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -265,7 +265,50 @@ function Slide3About() {
   );
 }
 
-function Slide4Services() {
+function Slide4AISpecialization() {
+  const disciplines = [
+    { label: "Artificial Intelligence", sub: "AI Strategy & Engineering", color: NAVY },
+    { label: "Machine Learning", sub: "ML Model Development & Ops", color: "#1E5C9C" },
+    { label: "Generative AI", sub: "GenAI Apps & Prompt Engineering", color: "#1A4A8C" },
+    { label: "Agentic AI & AI Agents", sub: "Autonomous Workflow Automation", color: ORANGE },
+    { label: "LLMs", sub: "Large Language Model Fine-Tuning", color: ORANGE2 },
+    { label: "MLOps", sub: "Model Lifecycle & Deployment", color: "#C0601A" },
+    { label: "Data Engineering", sub: "Pipelines, Warehousing & ETL", color: "#283593" },
+    { label: "Data Science", sub: "Analytics, Modeling & Insights", color: "#1565C0" },
+    { label: "AI Automation & Emerging Tech", sub: "RPA, AI Orchestration & Beyond", color: "#4A148C" },
+  ];
+  return (
+    <SlideWrapper bg={NAVY} noFooter>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "18px 36px 10px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
+          <div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(244,124,32,0.2)", border: "1px solid rgba(244,124,32,0.4)", borderRadius: 20, padding: "3px 12px", marginBottom: 7 }}>
+              <Brain size={11} color={ORANGE} />
+              <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>AI & Emerging Tech</span>
+            </div>
+            <h2 style={{ color: WHITE, fontSize: 20, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1, margin: 0 }}>We Place the Roles That Are Hardest to Fill</h2>
+            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 4 }}>Deep sourcing networks, specialist recruiters & AI-assisted pipelines — built for 9 high-demand disciplines</p>
+          </div>
+          <HISLogo size={34} light />
+        </div>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "4px 36px 10px" }}>
+          {disciplines.map(({ label, sub, color }, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${color}55`, borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, borderTop: `3px solid ${color}` }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: `${color}33`, border: `1px solid ${color}66`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Brain size={14} color={color === NAVY || color === "#1E5C9C" || color === "#1A4A8C" || color === "#283593" || color === "#1565C0" ? ORANGE : WHITE} />
+              </div>
+              <p style={{ color: WHITE, fontSize: 12, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.2, margin: 0 }}>{label}</p>
+              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.35, margin: 0 }}>{sub}</p>
+            </div>
+          ))}
+        </div>
+        <SlideFooter />
+      </div>
+    </SlideWrapper>
+  );
+}
+
+function Slide5Services() {
   const services = [
     { icon: UserCheck, title: "Permanent IT Hiring", desc: "Full-time placement of vetted IT professionals matched via AI-powered tools to your exact role requirements.", bullets: ["Culture-fit scoring", "Technical assessment", "End-to-end onboarding"] },
     { icon: Clock, title: "Contract IT Staffing", desc: "Flexible contract talent for project peaks, product launches, or technology transitions.", bullets: ["Short & long-term contracts", "Bench-ready talent", "Rapid deployment"] },
@@ -402,9 +445,9 @@ function Slide6KleriqAI() {
 function Slide7Advantage() {
   const advantages = [
     { icon: Brain, title: "AI-Assisted Matching", desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.", highlight: "70% Faster Shortlisting" },
-    { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "20+ Domain-Specialist Recruiters" },
+    { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "Deep IT Domain Expertise" },
     { icon: ShieldCheck, title: "Compliance-First", desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.", highlight: "Zero-Risk: I-9 + E-Verify" },
-    { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions in as few as 24 hours for most IT roles.", highlight: "First Profiles in 24 Hours" },
+    { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions faster than any traditional staffing firm.", highlight: "SLA-Backed Delivery" },
   ];
   return (
     <SlideWrapper bg={LIGHT_BG}>
@@ -436,106 +479,55 @@ function Slide7Advantage() {
   );
 }
 
-function Slide8Process() {
+function Slide9HowWeDeliver() {
   const steps = [
-    { icon: Building2, label: "Intake", sub: undefined as string | undefined, desc: "Understand role, team, culture & tech stack", color: NAVY },
-    { icon: Brain, label: "AI Sourcing", sub: "AI-powered", desc: "AI-driven sourcing & intelligent matching", color: ORANGE },
-    { icon: UserCheck, label: "Screening", sub: undefined as string | undefined, desc: "Technical + cultural fit validation", color: NAVY },
-    { icon: FileSearch, label: "Submit", sub: undefined as string | undefined, desc: "Curated shortlist with score cards", color: ORANGE },
-    { icon: CheckCircle, label: "Onboard", sub: undefined as string | undefined, desc: "Seamless joining & compliance closure", color: NAVY },
+    { num: "01", icon: Building2, label: "Intake & Discovery", desc: "Deep-dive on role, team culture, tech stack, and business urgency. AI parses JD to extract key skill signals.", aiTag: "AI JD Analysis" },
+    { num: "02", icon: Brain, label: "AI-Powered Sourcing", desc: "Kleriq AI scans 25K+ candidate database, LinkedIn, and niche boards. Semantic matching far beyond keyword search.", aiTag: "Semantic Matching" },
+    { num: "03", icon: UserCheck, label: "Recruiter Screening", desc: "Domain-specialist recruiter validates technical fit, communication, and culture alignment via structured interview.", aiTag: null },
+    { num: "04", icon: FileSearch, label: "Curated Submission", desc: "Shortlist of top 3–5 candidates with AI score cards, skill summaries, and fit rationale delivered to client.", aiTag: "AI Score Cards" },
+    { num: "05", icon: CheckCircle, label: "Offer & Compliance", desc: "End-to-end offer management, I-9/E-Verify, background checks, and seamless onboarding coordination.", aiTag: null },
   ];
   return (
     <SlideWrapper bg={LIGHT_BG}>
       <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Sourcing Process</p>
+          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>How We Deliver</p>
         </div>
         <HISLogo size={32} light />
       </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "20px 36px 12px", gap: 20 }}>
-        <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
-          {steps.map(({ icon: Icon, label, sub, color }, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", flex: 1 }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 60, height: 60, borderRadius: 14, background: color, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 16px ${color}44` }}>
-                  <Icon size={26} color={WHITE} />
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <p style={{ color: NAVY, fontSize: 12, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{label}</p>
-                  {sub && <p style={{ color: ORANGE, fontSize: 9, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{sub}</p>}
-                </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "16px 36px 10px", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {steps.map(({ num, icon: Icon, label, desc, aiTag }, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, background: WHITE, borderRadius: 9, padding: "10px 14px", boxShadow: "0 1px 8px rgba(31,58,110,0.08)", borderLeft: `4px solid ${i % 2 === 0 ? NAVY : ORANGE}` }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: i % 2 === 0 ? NAVY : `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon size={16} color={WHITE} />
               </div>
-              {i < steps.length - 1 && <ChevronRight size={22} color={ORANGE} style={{ flexShrink: 0, opacity: 0.7 }} />}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {steps.map(({ desc, color }, i) => (
-            <div key={i} style={{ flex: 1, background: WHITE, borderRadius: 8, padding: "10px 12px", borderTop: `3px solid ${color}`, boxShadow: "0 1px 6px rgba(31,58,110,0.07)" }}>
-              <p style={{ color: "#374151", fontSize: 9.5, lineHeight: 1.45, fontFamily: "'Segoe UI', Arial, sans-serif", textAlign: "center" }}>{desc}</p>
-            </div>
-          ))}
-        </div>
-        <div style={{ background: NAVY, borderRadius: 8, padding: "10px 18px", display: "flex", alignItems: "center", gap: 8 }}>
-          <Brain size={15} color={ORANGE} />
-          <span style={{ color: "rgba(255,255,255,0.88)", fontSize: 11, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-            <strong style={{ color: ORANGE }}>AI-powered tools</strong> are active throughout the pipeline — continuously scoring, ranking, and surfacing the best-fit candidates automatically.
-          </span>
-        </div>
-      </div>
-    </SlideWrapper>
-  );
-}
-
-function Slide9Fulfillment() {
-  const stages = [
-    { label: "Demand", icon: Building2, desc: "Client raises requisition" },
-    { label: "Review", icon: FileSearch, desc: "JD analysis by talent team" },
-    { label: "Priorities", icon: Target, desc: "Role classification & urgency" },
-    { label: "Allocation", icon: Users, desc: "Recruiter + AI tools assigned" },
-    { label: "Submissions", icon: UserCheck, desc: "Vetted profiles delivered" },
-    { label: "Quality", icon: ShieldCheck, desc: "Score validation & review" },
-    { label: "Client", icon: Star, desc: "Offer & onboarding stage" },
-  ];
-  return (
-    <SlideWrapper bg={LIGHT_BG}>
-      <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div>
-          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Demand Fulfillment</p>
-        </div>
-        <HISLogo size={32} light />
-      </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "16px 36px 12px", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-          {stages.map(({ label, icon: Icon }, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", flex: 1 }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 46, height: 46, borderRadius: 12, background: i % 2 === 0 ? NAVY : `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 10px rgba(31,58,110,0.2)" }}>
-                  <Icon size={20} color={WHITE} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <span style={{ color: i % 2 === 0 ? NAVY : ORANGE, fontSize: 9, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{num}</span>
+                  <p style={{ color: NAVY, fontSize: 12, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>{label}</p>
+                  {aiTag && (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(244,124,32,0.12)", border: "1px solid rgba(244,124,32,0.35)", borderRadius: 4, padding: "1px 7px" }}>
+                      <Brain size={8} color={ORANGE} />
+                      <span style={{ color: ORANGE, fontSize: 8.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{aiTag}</span>
+                    </div>
+                  )}
                 </div>
-                <span style={{ color: NAVY, fontSize: 10, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", textAlign: "center" }}>{label}</span>
+                <p style={{ color: "#6B7280", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.4, margin: 0 }}>{desc}</p>
               </div>
-              {i < stages.length - 1 && <ChevronRight size={16} color={ORANGE} style={{ flexShrink: 0, opacity: 0.6 }} />}
             </div>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-          {stages.map(({ desc }, i) => (
-            <div key={i} style={{ background: WHITE, borderRadius: 7, padding: "8px 8px", textAlign: "center", boxShadow: "0 1px 5px rgba(31,58,110,0.07)" }}>
-              <p style={{ color: "#4B5563", fontSize: 9, lineHeight: 1.4, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{desc}</p>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
           {[
-            { metric: "< 24 hrs", label: "Demand Acknowledgement" },
-            { metric: "< 24 hrs", label: "First Submissions" },
+            { metric: "< 24 hrs", label: "First Submissions SLA" },
             { metric: "≥ 95%", label: "Submission Quality Score" },
             { metric: "100%", label: "Compliance Coverage" },
+            { metric: "< 72 hrs", label: "Urgent Role Deployment" },
           ].map(({ metric, label }, i) => (
-            <div key={i} style={{ background: NAVY, borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1 }}>{metric}</p>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 9, marginTop: 3, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{label}</p>
+            <div key={i} style={{ background: NAVY, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+              <p style={{ color: ORANGE, fontSize: 16, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1, margin: 0 }}>{metric}</p>
+              <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 9, marginTop: 3, fontFamily: "'Segoe UI', Arial, sans-serif", margin: "3px 0 0" }}>{label}</p>
             </div>
           ))}
         </div>
@@ -553,47 +545,49 @@ function Slide10Domains() {
     { icon: Smartphone, label: "Mobility", color: "#1B5E20" },
     { icon: TestTube, label: "QA & Testing", color: "#4A148C" },
     { icon: Monitor, label: "Project Mgmt", color: "#E65100" },
+    { icon: TrendingUp, label: "Business Analyst", color: "#006064" },
+    { icon: Users, label: "BD Manager", color: "#37474F" },
   ];
   const models = ["Permanent", "Contract", "Project", "RPO"];
   const modelColors = [NAVY, "#1E5C9C", ORANGE, ORANGE2];
   return (
     <SlideWrapper bg={LIGHT_BG}>
-      <div style={{ background: NAVY, padding: "16px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+      <div style={{ background: NAVY, padding: "14px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <p style={{ color: ORANGE, fontSize: 18, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT Domains</p>
+          <p style={{ color: ORANGE, fontSize: 16, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>IT & Business Roles We Staff</p>
         </div>
-        <HISLogo size={32} light />
+        <HISLogo size={30} light />
       </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "14px 36px 12px", gap: 12 }}>
-        <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px 36px 10px", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 6 }}>
           {domains.map(({ icon: Icon, label, color }, i) => (
-            <div key={i} style={{ flex: 1, background: WHITE, borderRadius: 8, padding: "10px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, boxShadow: "0 1px 6px rgba(31,58,110,0.08)", borderTop: `3px solid ${color}` }}>
-              <div style={{ width: 34, height: 34, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={16} color={color} />
+            <div key={i} style={{ background: WHITE, borderRadius: 7, padding: "8px 5px", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, boxShadow: "0 1px 5px rgba(31,58,110,0.08)", borderTop: `3px solid ${color}` }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={13} color={color} />
               </div>
-              <span style={{ color: NAVY, fontSize: 9.5, fontWeight: 700, textAlign: "center", fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.3 }}>{label}</span>
+              <span style={{ color: NAVY, fontSize: 8.5, fontWeight: 700, textAlign: "center", fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.3 }}>{label}</span>
             </div>
           ))}
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 6 }}>
-            <div style={{ background: NAVY, borderRadius: 6, padding: "7px 10px", textAlign: "center" }}>
-              <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Domain</span>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr", gap: 5 }}>
+            <div style={{ background: NAVY, borderRadius: 5, padding: "6px 10px", textAlign: "center" }}>
+              <span style={{ color: ORANGE, fontSize: 9, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Domain / Role</span>
             </div>
             {models.map((m, i) => (
-              <div key={i} style={{ background: modelColors[i], borderRadius: 6, padding: "7px 6px", textAlign: "center" }}>
-                <span style={{ color: WHITE, fontSize: 9.5, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{m}</span>
+              <div key={i} style={{ background: modelColors[i], borderRadius: 5, padding: "6px 5px", textAlign: "center" }}>
+                <span style={{ color: WHITE, fontSize: 9, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{m}</span>
               </div>
             ))}
           </div>
           {domains.map(({ label }, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 6 }}>
-              <div style={{ background: WHITE, borderRadius: 5, padding: "5px 10px", display: "flex", alignItems: "center" }}>
-                <span style={{ color: NAVY, fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{label}</span>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr", gap: 5 }}>
+              <div style={{ background: WHITE, borderRadius: 4, padding: "4px 10px", display: "flex", alignItems: "center" }}>
+                <span style={{ color: NAVY, fontSize: 9, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif" }}>{label}</span>
               </div>
               {models.map((_, j) => (
-                <div key={j} style={{ background: WHITE, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: "5px" }}>
-                  <CheckCircle size={13} color={modelColors[j]} />
+                <div key={j} style={{ background: WHITE, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", padding: "4px" }}>
+                  <CheckCircle size={11} color={modelColors[j]} />
                 </div>
               ))}
             </div>
@@ -751,13 +745,13 @@ export const SLIDES = [
   { id: 1, title: "Cover", component: <Slide1Cover /> },
   { id: 2, title: "By the Numbers", component: <Slide2ByTheNumbers /> },
   { id: 3, title: "About Us", component: <Slide3About /> },
-  { id: 4, title: "IT Services", component: <Slide4Services /> },
-  { id: 5, title: "Staffing Models", component: <Slide5Models /> },
-  { id: 6, title: "AI Tools We Leverage", component: <Slide6KleriqAI /> },
-  { id: 7, title: "The Hire'in Advantage", component: <Slide7Advantage /> },
-  { id: 8, title: "Sourcing Process", component: <Slide8Process /> },
-  { id: 9, title: "Demand Fulfillment", component: <Slide9Fulfillment /> },
-  { id: 10, title: "IT Domains", component: <Slide10Domains /> },
+  { id: 4, title: "AI & Emerging Tech", component: <Slide4AISpecialization /> },
+  { id: 5, title: "IT Services", component: <Slide5Services /> },
+  { id: 6, title: "Staffing Models", component: <Slide5Models /> },
+  { id: 7, title: "AI Tools We Leverage", component: <Slide6KleriqAI /> },
+  { id: 8, title: "The Hire'in Advantage", component: <Slide7Advantage /> },
+  { id: 9, title: "How We Deliver", component: <Slide9HowWeDeliver /> },
+  { id: 10, title: "IT & Business Roles", component: <Slide10Domains /> },
   { id: 11, title: "Let's Connect", component: <Slide11Connect /> },
 ];
 
