@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BarChart3, Download, CheckCircle, Clock, AlertCircle, Loader2,
   ChevronRight, User, GraduationCap, CalendarPlus, WifiOff, ExternalLink,
-  ShieldCheck, CalendarDays, Pencil, Info,
+  ShieldCheck, CalendarDays, Pencil, Info, Trash2, ShieldOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +55,13 @@ export default function TrainingProgress() {
   // Due date edit state
   const [dueDateAssignmentId, setDueDateAssignmentId] = useState<string | null>(null);
   const [newDueDate, setNewDueDate] = useState("");
+
+  // Unassign state
+  const [unassignAssignment, setUnassignAssignment] = useState<{ id: string; trackTitle: string } | null>(null);
+
+  // Admin-exempt dialog state
+  const [adminExemptAssignment, setAdminExemptAssignment] = useState<{ id: string; trackTitle: string } | null>(null);
+  const [adminExemptReason, setAdminExemptReason] = useState("");
 
   const endorserRoles = ["manager", "hr", "admin"];
   const hrRoles = ["hr", "admin", "super_admin"];
@@ -138,6 +145,31 @@ export default function TrainingProgress() {
       setNewDueDate("");
     },
     onError: () => toast({ title: "Failed to update due date", variant: "destructive" }),
+  });
+
+  const unassignMutation = useMutation({
+    mutationFn: (assignmentId: string) =>
+      apiRequest("DELETE", `/api/onboarding/assignments/${assignmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/team-progress"] });
+      queryClient.invalidateQueries({ queryKey: [isRayoEnabled ? "/api/rayo-academy/team-progress" : "/api/onboarding/team-progress", "detail", selectedUserId] });
+      toast({ title: "Training unassigned — progress records cleared" });
+      setUnassignAssignment(null);
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to unassign training", variant: "destructive" }),
+  });
+
+  const adminExemptMutation = useMutation({
+    mutationFn: ({ assignmentId, reason }: { assignmentId: string; reason: string }) =>
+      apiRequest("PATCH", `/api/onboarding/assignments/${assignmentId}/exempt`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/team-progress"] });
+      queryClient.invalidateQueries({ queryKey: [isRayoEnabled ? "/api/rayo-academy/team-progress" : "/api/onboarding/team-progress", "detail", selectedUserId] });
+      toast({ title: "Training marked as exempt" });
+      setAdminExemptAssignment(null);
+      setAdminExemptReason("");
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to mark exempt", variant: "destructive" }),
   });
 
   // Fetch all extension/exception requests for the selected user (to show inline notices per assignment)
@@ -436,6 +468,8 @@ export default function TrainingProgress() {
           setExceptionReason("");
           setDueDateAssignmentId(null);
           setNewDueDate("");
+          setAdminExemptAssignment(null);
+          setAdminExemptReason("");
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -498,15 +532,16 @@ export default function TrainingProgress() {
                   </div>
 
                   {/* HR/Admin in-context actions */}
-                  {isHRAdmin && !isCompleted && (
+                  {isHRAdmin && (
                     <div className="flex gap-1.5 ml-2 shrink-0 flex-wrap justify-end">
-                      {!isExcepted && (
+                      {!isExcepted && !isCompleted && (
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs text-purple-700 border-purple-300 hover:bg-purple-50"
                           onClick={() => {
                             setExceptionAssignmentId(prev => prev === assignmentId ? null : assignmentId);
+                            setAdminExemptAssignmentId(null);
                             setDueDateAssignmentId(null);
                             setExceptionReason("");
                           }}
@@ -516,19 +551,47 @@ export default function TrainingProgress() {
                           Grant Exception
                         </Button>
                       )}
+                      {!isCompleted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setDueDateAssignmentId(prev => prev === assignmentId ? null : assignmentId);
+                            setExceptionAssignmentId(null);
+                            setAdminExemptAssignmentId(null);
+                            setNewDueDate(item.assignment.dueDate ? new Date(item.assignment.dueDate).toISOString().split("T")[0] : "");
+                          }}
+                          data-testid={`button-edit-due-date-${assignmentId}`}
+                        >
+                          <Pencil className="h-3 w-3 mr-1" />
+                          Edit Due Date
+                        </Button>
+                      )}
+                      {!isExcepted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs text-orange-700 border-orange-300 hover:bg-orange-50"
+                          onClick={() => {
+                            setAdminExemptAssignment({ id: assignmentId, trackTitle: item.track.title });
+                            setAdminExemptReason("");
+                          }}
+                          data-testid={`button-mark-exempt-${assignmentId}`}
+                        >
+                          <ShieldOff className="h-3 w-3 mr-1" />
+                          Mark Exempt
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setDueDateAssignmentId(prev => prev === assignmentId ? null : assignmentId);
-                          setExceptionAssignmentId(null);
-                          setNewDueDate(item.assignment.dueDate ? new Date(item.assignment.dueDate).toISOString().split("T")[0] : "");
-                        }}
-                        data-testid={`button-edit-due-date-${assignmentId}`}
+                        className="h-7 text-xs text-red-700 border-red-300 hover:bg-red-50"
+                        onClick={() => setUnassignAssignment({ id: assignmentId, trackTitle: item.track.title })}
+                        data-testid={`button-unassign-${assignmentId}`}
                       >
-                        <Pencil className="h-3 w-3 mr-1" />
-                        Edit Due Date
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Unassign
                       </Button>
                     </div>
                   )}
@@ -633,6 +696,82 @@ export default function TrainingProgress() {
               </div>
             );
           })}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Exempt Dialog */}
+      <Dialog open={!!adminExemptAssignment} onOpenChange={v => { if (!v) { setAdminExemptAssignment(null); setAdminExemptReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-700">
+              <ShieldOff className="h-5 w-5" />
+              Mark Training Exempt
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm">
+              Marking <span className="font-semibold">"{adminExemptAssignment?.trackTitle}"</span> as exempt will immediately set the assignment to "Excepted" status — no employee request needed.
+            </p>
+            <div className="space-y-2">
+              <Label className="text-sm">Reason <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={adminExemptReason}
+                onChange={e => setAdminExemptReason(e.target.value)}
+                placeholder="e.g. Tenured employee hired mid-cycle, role change, external certification equivalent..."
+                rows={3}
+                className="text-sm"
+                data-testid="input-admin-exempt-reason-dialog"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => { setAdminExemptAssignment(null); setAdminExemptReason(""); }} data-testid="button-cancel-mark-exempt">
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-700 hover:bg-orange-800"
+              onClick={() => adminExemptAssignment && adminExemptMutation.mutate({ assignmentId: adminExemptAssignment.id, reason: adminExemptReason })}
+              disabled={!adminExemptReason.trim() || adminExemptMutation.isPending}
+              data-testid="button-confirm-mark-exempt"
+            >
+              {adminExemptMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldOff className="h-4 w-4 mr-2" />}
+              Confirm Exemption
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unassign Confirmation Dialog */}
+      <Dialog open={!!unassignAssignment} onOpenChange={v => { if (!v) setUnassignAssignment(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <Trash2 className="h-5 w-5" />
+              Unassign Training
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm">
+              You are about to remove the assignment for <span className="font-semibold">"{unassignAssignment?.trackTitle}"</span>.
+            </p>
+            <div className="rounded-md border border-red-200 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-700">
+              <strong>Warning:</strong> All progress records for this assignment will be permanently deleted. The employee will no longer see this track in their training list. This cannot be undone.
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setUnassignAssignment(null)} data-testid="button-cancel-unassign">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => unassignAssignment && unassignMutation.mutate(unassignAssignment.id)}
+              disabled={unassignMutation.isPending}
+              data-testid="button-confirm-unassign"
+            >
+              {unassignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Yes, Unassign
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </AdminLayout>

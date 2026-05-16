@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
-  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff, Shield,
+  AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff, Shield, ShieldOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,6 +91,11 @@ export default function TrainingManagement() {
   const { data: trackAssignments = [] } = useQuery<any[]>({
     queryKey: ["/api/onboarding/tracks", assignTrackId, "assignments"],
     enabled: !!assignTrackId,
+  });
+
+  const { data: selectedTrackAssignments = [], isLoading: loadingSelectedAssignments } = useQuery<any[]>({
+    queryKey: ["/api/onboarding/tracks", selectedTrackId, "assignments"],
+    enabled: !!selectedTrackId,
   });
 
   const { data: pendingExtensions = [], isLoading: loadingExtensions } = useQuery<any[]>({
@@ -267,6 +272,37 @@ export default function TrainingManagement() {
   const [assignSelectedUsers, setAssignSelectedUsers] = useState<string[]>([]);
   const [assignDueDate, setAssignDueDate] = useState("");
 
+  // Unassign / admin-exempt state for management view
+  const [mgmtUnassignAssignment, setMgmtUnassignAssignment] = useState<{ id: string; trackTitle: string; userName: string } | null>(null);
+  const [mgmtExemptAssignment, setMgmtExemptAssignment] = useState<{ id: string; trackTitle: string; userName: string } | null>(null);
+  const [mgmtExemptReason, setMgmtExemptReason] = useState("");
+
+  const mgmtUnassignMutation = useMutation({
+    mutationFn: (assignmentId: string) =>
+      apiRequest("DELETE", `/api/onboarding/assignments/${assignmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks", selectedTrackId, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/team-progress"] });
+      toast({ title: "Training unassigned — progress records cleared" });
+      setMgmtUnassignAssignment(null);
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to unassign", variant: "destructive" }),
+  });
+
+  const mgmtExemptMutation = useMutation({
+    mutationFn: ({ assignmentId, reason }: { assignmentId: string; reason: string }) =>
+      apiRequest("PATCH", `/api/onboarding/assignments/${assignmentId}/exempt`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks", selectedTrackId, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/team-progress"] });
+      toast({ title: "Training marked as exempt" });
+      setMgmtExemptAssignment(null);
+      setMgmtExemptReason("");
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to mark exempt", variant: "destructive" }),
+  });
+
   const assignTrack = useMutation({
     mutationFn: async () => {
       if (isRayoEnabled) {
@@ -355,6 +391,7 @@ export default function TrainingManagement() {
   };
 
   const canAdmin = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
+  const canHRAdmin = ["super_admin", "admin", "hr"].includes(user?.role || "");
 
   // Quiz validation state for inline feedback
   const hasQuestion = sectionForm.questionText.trim().length > 0;
@@ -898,11 +935,178 @@ export default function TrainingManagement() {
                     </Card>
                   ))}
                 </div>
+
+                {/* Assignments Panel — HR/Admin can Unassign or Mark Exempt */}
+                {canHRAdmin && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                        Current Assignments ({selectedTrackAssignments.length})
+                      </h3>
+                    </div>
+                    {loadingSelectedAssignments && (
+                      <div className="text-muted-foreground text-sm flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading assignments...
+                      </div>
+                    )}
+                    {!loadingSelectedAssignments && selectedTrackAssignments.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No employees assigned to this track yet.</p>
+                    )}
+                    {!loadingSelectedAssignments && selectedTrackAssignments.length > 0 && (
+                      <div className="space-y-2">
+                        {selectedTrackAssignments.map((a: any) => {
+                          const isExcepted = a.assignment.status === "excepted";
+                          const isCompleted = a.assignment.status === "completed";
+                          return (
+                            <div key={a.assignment.id} className="border rounded-lg" data-testid={`mgmt-assignment-${a.assignment.id}`}>
+                              <div className="flex items-center gap-3 px-3 py-2.5">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium">{a.user.firstName} {a.user.lastName}</p>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                      isCompleted ? "bg-green-100 text-green-700"
+                                      : isExcepted ? "bg-purple-100 text-purple-700"
+                                      : a.assignment.status === "overdue" || (a.assignment.dueDate && new Date(a.assignment.dueDate) < new Date() && !isCompleted) ? "bg-red-100 text-red-700"
+                                      : a.assignment.status === "in_progress" ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {isExcepted ? "Exempt" : isCompleted ? "Completed" : a.assignment.status === "in_progress" ? "In Progress" : "Not Started"}
+                                    </span>
+                                    {a.assignment.dueDate && (
+                                      <span className="text-xs text-muted-foreground">Due: {new Date(a.assignment.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                    )}
+                                    {isExcepted && a.assignment.exceptionReason && (
+                                      <span className="text-xs text-purple-600 truncate max-w-xs">Reason: {a.assignment.exceptionReason}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1.5 shrink-0">
+                                  {!isExcepted && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs text-orange-700 border-orange-300 hover:bg-orange-50"
+                                      onClick={() => {
+                                        setMgmtExemptAssignment({
+                                          id: a.assignment.id,
+                                          trackTitle: selectedTrack?.title || "",
+                                          userName: `${a.user.firstName} ${a.user.lastName}`,
+                                        });
+                                        setMgmtExemptReason("");
+                                      }}
+                                      data-testid={`button-mgmt-exempt-${a.assignment.id}`}
+                                    >
+                                      <ShieldOff className="h-3 w-3 mr-1" />
+                                      Mark Exempt
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-red-700 border-red-300 hover:bg-red-50"
+                                    onClick={() => setMgmtUnassignAssignment({
+                                      id: a.assignment.id,
+                                      trackTitle: selectedTrack?.title || "",
+                                      userName: `${a.user.firstName} ${a.user.lastName}`,
+                                    })}
+                                    data-testid={`button-mgmt-unassign-${a.assignment.id}`}
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Unassign
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Mark Exempt Dialog (Management View) */}
+      <Dialog open={!!mgmtExemptAssignment} onOpenChange={v => { if (!v) { setMgmtExemptAssignment(null); setMgmtExemptReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-700">
+              <ShieldOff className="h-5 w-5" />
+              Mark Training Exempt
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm">
+              Marking <span className="font-semibold">{mgmtExemptAssignment?.userName}'s</span> assignment for{" "}
+              <span className="font-semibold">"{mgmtExemptAssignment?.trackTitle}"</span> as exempt will immediately set the status to "Excepted" — no employee request needed.
+            </p>
+            <div className="space-y-2">
+              <Label className="text-sm">Reason <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={mgmtExemptReason}
+                onChange={e => setMgmtExemptReason(e.target.value)}
+                placeholder="e.g. Tenured employee hired mid-cycle, role change, external certification equivalent..."
+                rows={3}
+                className="text-sm"
+                data-testid="input-mgmt-exempt-reason-dialog"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setMgmtExemptAssignment(null); setMgmtExemptReason(""); }} data-testid="button-mgmt-cancel-exempt">
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-700 hover:bg-orange-800"
+              onClick={() => mgmtExemptAssignment && mgmtExemptMutation.mutate({ assignmentId: mgmtExemptAssignment.id, reason: mgmtExemptReason })}
+              disabled={!mgmtExemptReason.trim() || mgmtExemptMutation.isPending}
+              data-testid="button-mgmt-confirm-exempt"
+            >
+              {mgmtExemptMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldOff className="h-4 w-4 mr-2" />}
+              Confirm Exemption
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unassign Confirmation Dialog (Management View) */}
+      <Dialog open={!!mgmtUnassignAssignment} onOpenChange={v => { if (!v) setMgmtUnassignAssignment(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <Trash2 className="h-5 w-5" />
+              Unassign Training
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm">
+              You are about to remove <span className="font-semibold">{mgmtUnassignAssignment?.userName}</span>'s assignment for{" "}
+              <span className="font-semibold">"{mgmtUnassignAssignment?.trackTitle}"</span>.
+            </p>
+            <div className="rounded-md border border-red-200 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-700">
+              <strong>Warning:</strong> All progress records for this assignment will be permanently deleted. This cannot be undone.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMgmtUnassignAssignment(null)} data-testid="button-mgmt-cancel-unassign">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => mgmtUnassignAssignment && mgmtUnassignMutation.mutate(mgmtUnassignAssignment.id)}
+              disabled={mgmtUnassignMutation.isPending}
+              data-testid="button-mgmt-confirm-unassign"
+            >
+              {mgmtUnassignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Yes, Unassign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Track Modal */}
       <Dialog open={showTrackForm} onOpenChange={setShowTrackForm}>

@@ -2578,6 +2578,113 @@ export function registerOnboardingRoutes(app: Express) {
     }
   });
 
+  // DELETE /api/onboarding/assignments/:id — Unassign (HR_ROLES only)
+  app.delete("/api/onboarding/assignments/:id", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+
+    try {
+      const { id } = req.params;
+      const actorId = req.session.userId!;
+
+      const [assignment] = await db.select().from(trackAssignments).where(eq(trackAssignments.id, id));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      const [track] = await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+      const [employee] = await db.select({
+        id: adminUsers.id, email: adminUsers.email,
+        firstName: adminUsers.firstName, lastName: adminUsers.lastName,
+      }).from(adminUsers).where(eq(adminUsers.id, assignment.userId));
+
+      const trackTitle = track?.title || "Training track";
+
+      await db.delete(sectionAcknowledgements).where(eq(sectionAcknowledgements.assignmentId, id));
+      await db.delete(sectionProgress).where(eq(sectionProgress.assignmentId, id));
+      await db.delete(trackAssignments).where(eq(trackAssignments.id, id));
+
+      await appendAuditEvent(actorId, "assignment_unassigned", {
+        assignmentId: id,
+        trackId: assignment.trackId,
+        trackTitle,
+        targetUserId: assignment.userId,
+      });
+
+      if (employee?.email) {
+        sendTrainingRequestEmail({
+          to: employee.email,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          subject: `Training Unassigned — ${trackTitle}`,
+          heading: "Training Assignment Removed",
+          body: `Your training assignment for "${trackTitle}" has been removed by HR/Admin.\n\nAll related progress records have been cleared. You may be re-assigned to this training in the future.`,
+        }).catch(err => console.error("[onboarding] Unassign email failed:", err));
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to unassign training" });
+    }
+  });
+
+  // PATCH /api/onboarding/assignments/:id/exempt — Admin-initiated exemption (HR_ROLES only)
+  app.patch("/api/onboarding/assignments/:id/exempt", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+
+    try {
+      const { id } = req.params;
+      const actorId = req.session.userId!;
+      const { reason } = req.body;
+
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: "A reason is required to mark as exempt" });
+      }
+
+      const [assignment] = await db.select().from(trackAssignments).where(eq(trackAssignments.id, id));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+      const [updated] = await db.update(trackAssignments).set({
+        status: "excepted",
+        exceptionGrantedBy: actorId,
+        exceptionGrantedAt: new Date(),
+        exceptionReason: reason.trim(),
+      }).where(eq(trackAssignments.id, id)).returning();
+
+      const [track] = await db.select({ title: learningTracks.title })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+      const [employee] = await db.select({
+        id: adminUsers.id, email: adminUsers.email,
+        firstName: adminUsers.firstName, lastName: adminUsers.lastName,
+      }).from(adminUsers).where(eq(adminUsers.id, assignment.userId));
+
+      const trackTitle = track?.title || "Training track";
+
+      await appendAuditEvent(actorId, "assignment_admin_exempted", {
+        assignmentId: id,
+        trackId: assignment.trackId,
+        trackTitle,
+        targetUserId: assignment.userId,
+        reason: reason.trim(),
+      });
+
+      if (employee?.email) {
+        sendTrainingRequestEmail({
+          to: employee.email,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          subject: `Training Marked Exempt — ${trackTitle}`,
+          heading: "Training Exemption Applied",
+          body: `Your training assignment for "${trackTitle}" has been marked as exempt by HR/Admin.\n\nReason: ${reason.trim()}\n\nNo further action is required on your part for this training.`,
+        }).catch(err => console.error("[onboarding] Exempt email failed:", err));
+      }
+
+      res.json({ success: true, assignment: updated });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to mark assignment as exempt" });
+    }
+  });
+
   // Edit due date on an assignment (HR/Admin/Super Admin only)
   app.patch("/api/onboarding/assignments/:id/due-date", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
