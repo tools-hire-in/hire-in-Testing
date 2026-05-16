@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Sheet,
@@ -10,6 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
 import {
   User,
   Mail,
@@ -49,6 +54,7 @@ interface DossierData {
     employeeId: string | null;
     hierarchyLevel: string | null;
     salary: string | null;
+    attendanceExempt: boolean;
   };
   policyCompliance: {
     tracks: PolicyTrack[];
@@ -210,6 +216,10 @@ interface Props {
 }
 
 export function EmployeeDossierSheet({ userId, onClose }: Props) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+
   const { data, isLoading } = useQuery<DossierData>({
     queryKey: ["/api/admin/employees", userId, "dossier"],
     queryFn: async () => {
@@ -219,6 +229,36 @@ export function EmployeeDossierSheet({ userId, onClose }: Props) {
     },
     enabled: !!userId,
   });
+
+  const exemptMutation = useMutation({
+    mutationFn: async (newValue: boolean) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}`, { attendanceExempt: newValue });
+    },
+    onMutate: async (newValue: boolean) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/admin/employees", userId, "dossier"] });
+      const previous = queryClient.getQueryData<DossierData>(["/api/admin/employees", userId, "dossier"]);
+      if (previous) {
+        queryClient.setQueryData<DossierData>(["/api/admin/employees", userId, "dossier"], {
+          ...previous,
+          profile: { ...previous.profile, attendanceExempt: newValue },
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _newValue, context: { previous?: DossierData } | undefined) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/admin/employees", userId, "dossier"], context.previous);
+      }
+      toast({ title: "Failed to update attendance exemption", variant: "destructive" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/employees", userId, "dossier"] });
+      toast({ title: "Attendance exemption updated" });
+    },
+  });
+
+  const canToggleExemption = ["super_admin", "admin", "hr"].includes(currentUser?.role ?? "");
 
   const nonCompliantCount = data
     ? data.policyCompliance.tracks.filter(t => {
@@ -393,6 +433,32 @@ export function EmployeeDossierSheet({ userId, onClose }: Props) {
 
               {/* COMPLIANCE TAB */}
               <TabsContent value="compliance" className="p-6 space-y-6">
+                {/* Attendance Exemption — visible to super_admin, admin, hr only */}
+                {canToggleExemption && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Shield className="h-4 w-4" /> Attendance Settings
+                    </h3>
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div>
+                        <Label htmlFor="dossier-attendance-exempt" className="text-sm font-medium cursor-pointer">
+                          Attendance Exempt
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Exempt from punch in/out requirements. Leave accrual continues normally.
+                        </p>
+                      </div>
+                      <Switch
+                        id="dossier-attendance-exempt"
+                        checked={data.profile.attendanceExempt}
+                        onCheckedChange={(checked) => exemptMutation.mutate(checked)}
+                        disabled={exemptMutation.isPending}
+                        data-testid="toggle-dossier-attendance-exempt"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
                     <ClipboardList className="h-4 w-4" /> Policy Documents

@@ -1290,7 +1290,7 @@ export async function registerRoutes(
   // EMPLOYEE DOSSIER API ROUTE
   // ==========================================
 
-  app.get("/api/admin/employees/:userId/dossier", requireAdminLevel, async (req, res) => {
+  app.get("/api/admin/employees/:userId/dossier", requireRole("hr"), async (req, res) => {
     try {
       const { userId } = req.params;
 
@@ -1452,6 +1452,7 @@ export async function registerRoutes(
           employeeId: user.employeeId,
           hierarchyLevel: user.hierarchyLevel,
           salary: user.salary,
+          attendanceExempt: user.attendanceExempt,
         },
         policyCompliance: {
           tracks: policyTracks,
