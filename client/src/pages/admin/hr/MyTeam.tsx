@@ -111,6 +111,11 @@ interface EmployeeProfile {
   isActive: boolean;
   hierarchyLevel: string | null;
   salary: string | null;
+  gender: string | null;
+  employmentType: string | null;
+  attendanceExempt: boolean;
+  trainingExempt: boolean;
+  maternityLeaveEligible: boolean;
 }
 
 interface SalarySlip {
@@ -563,6 +568,11 @@ function EmployeeDetailView({
     isActive: user.isActive,
     hierarchyLevel: user.hierarchyLevel,
     salary: user.salary || null,
+    gender: (user as any).gender ?? null,
+    employmentType: (user as any).employmentType ?? null,
+    attendanceExempt: (user as any).attendanceExempt ?? false,
+    trainingExempt: (user as any).trainingExempt ?? false,
+    maternityLeaveEligible: (user as any).maternityLeaveEligible ?? false,
   };
 
   return (
@@ -612,6 +622,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-history" value="history" className="gap-1">
             <History className="h-4 w-4" /> Change History
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-compliance" value="compliance" className="gap-1">
+            <BadgeCheck className="h-4 w-4" /> Compliance
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -653,6 +666,57 @@ function EmployeeDetailView({
         </TabsContent>
         <TabsContent value="history">
           <ChangeHistoryTab auditQuery={auditQuery} />
+        </TabsContent>
+        <TabsContent value="compliance">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BadgeCheck className="h-4 w-4" /> Compliance & Exemption Flags
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border rounded-lg p-4 space-y-1">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Employment Type</div>
+                  <div className="font-medium">{profile.employmentType || "—"}</div>
+                </div>
+                <div className="border rounded-lg p-4 space-y-1">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Gender</div>
+                  <div className="font-medium">{profile.gender || "—"}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className={`border rounded-lg p-4 ${profile.attendanceExempt ? "bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800" : ""}`}>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Attendance Exempt</div>
+                  <div className={`font-semibold ${profile.attendanceExempt ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"}`}>
+                    {profile.attendanceExempt ? "Yes — Exempt" : "No"}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Skip daily punch-in compliance</div>
+                </div>
+                <div className={`border rounded-lg p-4 ${profile.trainingExempt ? "bg-purple-50 border-purple-200 dark:bg-purple-900/10 dark:border-purple-800" : ""}`}>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Training Exempt</div>
+                  <div className={`font-semibold ${profile.trainingExempt ? "text-purple-700 dark:text-purple-300" : "text-muted-foreground"}`}>
+                    {profile.trainingExempt ? "Yes — Exempt" : "No"}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Skip training compliance lock</div>
+                </div>
+                <div className={`border rounded-lg p-4 ${profile.maternityLeaveEligible ? "bg-pink-50 border-pink-200 dark:bg-pink-900/10 dark:border-pink-800" : ""}`}>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Maternity Leave Eligible</div>
+                  <div className={`font-semibold ${profile.maternityLeaveEligible ? "text-pink-700 dark:text-pink-300" : "text-muted-foreground"}`}>
+                    {profile.maternityLeaveEligible ? "Yes — Eligible" : "No"}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Can apply for maternity leave</div>
+                </div>
+              </div>
+              {onEditProfile && (
+                <div className="pt-2">
+                  <Button variant="outline" size="sm" onClick={onEditProfile} data-testid="button-edit-compliance">
+                    <Edit className="h-4 w-4 mr-1" /> Edit Flags
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
@@ -780,6 +844,8 @@ function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: ()
     { label: "Joining Date", value: formatDate(profile.joiningDate) },
     { label: "Status", value: profile.isActive ? "Active" : "Inactive" },
     { label: "Role", value: profile.role.replace("_", " ") },
+    { label: "Gender", value: profile.gender || "—" },
+    { label: "Employment Type", value: profile.employmentType || "—" },
   ];
 
   return (
@@ -803,6 +869,20 @@ function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: ()
             </div>
           ))}
         </div>
+      <div className="mt-4 border-t pt-4">
+        <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Exemption Flags</div>
+        <div className="flex flex-wrap gap-2">
+          <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${profile.attendanceExempt ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" : "bg-muted text-muted-foreground"}`} data-testid="badge-attendance-exempt">
+            {profile.attendanceExempt ? "✓" : "✗"} Attendance Exempt
+          </span>
+          <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${profile.trainingExempt ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" : "bg-muted text-muted-foreground"}`} data-testid="badge-training-exempt">
+            {profile.trainingExempt ? "✓" : "✗"} Training Exempt
+          </span>
+          <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${profile.maternityLeaveEligible ? "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300" : "bg-muted text-muted-foreground"}`} data-testid="badge-maternity-eligible">
+            {profile.maternityLeaveEligible ? "✓" : "✗"} Maternity Leave Eligible
+          </span>
+        </div>
+      </div>
       </CardContent>
     </Card>
   );
@@ -1755,6 +1835,11 @@ export default function MyTeam() {
   const [formDesignation, setFormDesignation] = useState("");
   const [formDepartmentId, setFormDepartmentId] = useState("");
   const [formHierarchyLevel, setFormHierarchyLevel] = useState("");
+  const [formGender, setFormGender] = useState("");
+  const [formEmploymentType, setFormEmploymentType] = useState("");
+  const [formAttendanceExempt, setFormAttendanceExempt] = useState(false);
+  const [formTrainingExempt, setFormTrainingExempt] = useState(false);
+  const [formMaternityLeaveEligible, setFormMaternityLeaveEligible] = useState(false);
   const [formHolidayId, setFormHolidayId] = useState("");
   const [formContactName, setFormContactName] = useState("");
   const [formContactRelationship, setFormContactRelationship] = useState("");
@@ -1798,7 +1883,7 @@ export default function MyTeam() {
   });
 
   const editProfileMutation = useMutation({
-    mutationFn: async (data: { designation?: string; departmentId?: string; hierarchyLevel?: string; note: string }) => {
+    mutationFn: async (data: { designation?: string; departmentId?: string; hierarchyLevel?: string; gender?: string; employmentType?: string; attendanceExempt?: boolean; trainingExempt?: boolean; maternityLeaveEligible?: boolean; note: string }) => {
       await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/profile`, data);
     },
     onSuccess: () => {
@@ -1912,6 +1997,11 @@ export default function MyTeam() {
     setFormDesignation("");
     setFormDepartmentId("");
     setFormHierarchyLevel("");
+    setFormGender("");
+    setFormEmploymentType("");
+    setFormAttendanceExempt(false);
+    setFormTrainingExempt(false);
+    setFormMaternityLeaveEligible(false);
     setFormHolidayId("");
     setFormContactName("");
     setFormContactRelationship("");
@@ -1938,6 +2028,11 @@ export default function MyTeam() {
     setFormDesignation(user.designation || "");
     setFormDepartmentId(user.departmentId || "");
     setFormHierarchyLevel(user.hierarchyLevel || "");
+    setFormGender((user as any).gender || "");
+    setFormEmploymentType((user as any).employmentType || "");
+    setFormAttendanceExempt((user as any).attendanceExempt ?? false);
+    setFormTrainingExempt((user as any).trainingExempt ?? false);
+    setFormMaternityLeaveEligible((user as any).maternityLeaveEligible ?? false);
     setFormNote("");
     setEditProfileOpen(true);
   }
@@ -2085,6 +2180,53 @@ export default function MyTeam() {
                 </Select>
               </div>
               <div>
+                <label className="text-sm font-medium">Gender</label>
+                <Select value={formGender} onValueChange={v => {
+                  setFormGender(v);
+                  if (v === "Female") setFormMaternityLeaveEligible(true);
+                }}>
+                  <SelectTrigger data-testid="select-profile-gender">
+                    <SelectValue placeholder="Select gender..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Employment Type</label>
+                <Select value={formEmploymentType} onValueChange={setFormEmploymentType}>
+                  <SelectTrigger data-testid="select-profile-employment-type">
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Full-time / Regular">Full-time / Regular</SelectItem>
+                    <SelectItem value="Part-time">Part-time</SelectItem>
+                    <SelectItem value="Contract">Contract</SelectItem>
+                    <SelectItem value="Intern">Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="border rounded-lg p-3 space-y-2">
+                <label className="text-sm font-medium">Exemption Flags</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-attendance-exempt">
+                    <input type="checkbox" checked={formAttendanceExempt} onChange={e => setFormAttendanceExempt(e.target.checked)} className="rounded" />
+                    <span className="text-sm">Attendance Exempt</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-training-exempt">
+                    <input type="checkbox" checked={formTrainingExempt} onChange={e => setFormTrainingExempt(e.target.checked)} className="rounded" />
+                    <span className="text-sm">Training Exempt</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-maternity-eligible">
+                    <input type="checkbox" checked={formMaternityLeaveEligible} onChange={e => setFormMaternityLeaveEligible(e.target.checked)} className="rounded" />
+                    <span className="text-sm">Maternity Leave Eligible</span>
+                  </label>
+                </div>
+              </div>
+              <div>
                 <label className="text-sm font-medium">Reason for change *</label>
                 <Textarea data-testid="input-profile-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you making this change?" />
                 {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
@@ -2100,6 +2242,11 @@ export default function MyTeam() {
                     designation: formDesignation || undefined,
                     departmentId: formDepartmentId || undefined,
                     hierarchyLevel: formHierarchyLevel || undefined,
+                    gender: formGender || undefined,
+                    employmentType: formEmploymentType || undefined,
+                    attendanceExempt: formAttendanceExempt,
+                    trainingExempt: formTrainingExempt,
+                    maternityLeaveEligible: formMaternityLeaveEligible,
                     note: formNote,
                   });
                 }}

@@ -12,6 +12,10 @@ export interface AuthUser {
   employeeId?: string | null;
   salary?: string | null;
   gender?: string | null;
+  attendanceExempt?: boolean;
+  trainingExempt?: boolean;
+  maternityLeaveEligible?: boolean;
+  employmentType?: string | null;
 }
 
 async function fetchUser(): Promise<AuthUser | null> {

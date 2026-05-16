@@ -345,7 +345,12 @@ export default function LeaveManagement() {
   const salaryNum = salary ? Number(salary) : NaN;
   const formattedCTC = Number.isFinite(salaryNum) ? `₹${salaryNum.toLocaleString("en-IN")}` : null;
 
-  const activeLeaveTypes = leaveTypes?.filter(lt => lt.isActive) || [];
+  const activeLeaveTypes = (leaveTypes?.filter(lt => lt.isActive) || []).filter(lt => {
+    if (/maternity/i.test(lt.name)) {
+      return user?.maternityLeaveEligible === true;
+    }
+    return true;
+  });
   const filteredLeaves = (myLeaves || []).filter(lr => {
     const year = parseInt(lr.startDate.split("-")[0]);
     return year === selectedYear;

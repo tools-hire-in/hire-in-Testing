@@ -5434,6 +5434,11 @@ export async function registerRoutes(
         salary: letter.salary || null,
         employeeId,
         managerId: letter.reportingToUserId || null,
+        gender: (letter as any).gender || null,
+        employmentType: (letter as any).employmentType || null,
+        attendanceExempt: (letter as any).attendanceExempt ?? false,
+        trainingExempt: (letter as any).trainingExempt ?? false,
+        maternityLeaveEligible: (letter as any).maternityLeaveEligible ?? false,
       });
 
       await storage.updateOfferLetter(letter.id, {
@@ -5517,6 +5522,11 @@ export async function registerRoutes(
           u.designation,
           u.joining_date,
           u.role,
+          u.gender,
+          u.employment_type,
+          u.attendance_exempt,
+          u.training_exempt,
+          u.maternity_leave_eligible,
           d.name AS department_name,
           COALESCE((
             SELECT COUNT(*)::int FROM employee_documents WHERE user_id = u.id
@@ -5746,7 +5756,7 @@ export async function registerRoutes(
       const hasAccess = await validateMyTeamAccess(req, res, userId);
       if (!hasAccess) return;
 
-      const { designation, departmentId, hierarchyLevel, note } = req.body;
+      const { designation, departmentId, hierarchyLevel, gender, employmentType, attendanceExempt, trainingExempt, maternityLeaveEligible, note } = req.body;
       if (!note || !note.trim()) {
         return res.status(400).json({ error: "Reason for change is required" });
       }
@@ -5774,6 +5784,31 @@ export async function registerRoutes(
         before.hierarchyLevel = targetUser.hierarchyLevel;
         after.hierarchyLevel = hierarchyLevel;
         updateData.hierarchyLevel = hierarchyLevel;
+      }
+      if (gender !== undefined) {
+        before.gender = (targetUser as any).gender;
+        after.gender = gender;
+        updateData.gender = gender;
+      }
+      if (employmentType !== undefined) {
+        before.employmentType = (targetUser as any).employmentType;
+        after.employmentType = employmentType;
+        updateData.employmentType = employmentType;
+      }
+      if (attendanceExempt !== undefined) {
+        before.attendanceExempt = targetUser.attendanceExempt;
+        after.attendanceExempt = attendanceExempt;
+        updateData.attendanceExempt = attendanceExempt;
+      }
+      if (trainingExempt !== undefined) {
+        before.trainingExempt = (targetUser as any).trainingExempt;
+        after.trainingExempt = trainingExempt;
+        updateData.trainingExempt = trainingExempt;
+      }
+      if (maternityLeaveEligible !== undefined) {
+        before.maternityLeaveEligible = (targetUser as any).maternityLeaveEligible;
+        after.maternityLeaveEligible = maternityLeaveEligible;
+        updateData.maternityLeaveEligible = maternityLeaveEligible;
       }
 
       const updated = await storage.updateAdminUser(userId, updateData);
@@ -6145,6 +6180,11 @@ export async function registerRoutes(
           shiftTiming: shiftTiming
             ? { istStart: shiftTiming.istStart, istEnd: shiftTiming.istEnd, isDst: shiftTiming.isDst }
             : null,
+          gender: (user as any).gender ?? null,
+          employmentType: (user as any).employmentType ?? null,
+          attendanceExempt: user.attendanceExempt ?? false,
+          trainingExempt: (user as any).trainingExempt ?? false,
+          maternityLeaveEligible: (user as any).maternityLeaveEligible ?? false,
         },
         attendance: attendanceRecords,
         emergencyContacts,

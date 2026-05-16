@@ -998,6 +998,12 @@ export function registerOnboardingRoutes(app: Express) {
       return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
     }
 
+    // Check if the specific user has been flagged as training-exempt
+    const userRecord = await storage.getAdminUser(userId);
+    if (userRecord && (userRecord as any).trainingExempt === true) {
+      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+    }
+
     const now = new Date();
     const assignments = await db.select({
       id: trackAssignments.id,

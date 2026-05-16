@@ -143,6 +143,10 @@ export async function getCurrentUser(req: Request) {
       employeeId: adminUsers.employeeId,
       salary: adminUsers.salary,
       gender: adminUsers.gender,
+      attendanceExempt: adminUsers.attendanceExempt,
+      trainingExempt: adminUsers.trainingExempt,
+      maternityLeaveEligible: adminUsers.maternityLeaveEligible,
+      employmentType: adminUsers.employmentType,
     })
     .from(adminUsers)
     .where(eq(adminUsers.id, req.session.userId))

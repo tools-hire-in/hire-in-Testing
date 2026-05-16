@@ -651,7 +651,11 @@ interface OfferFormData {
   subjectDesignation: string;
   reportingToUserId: string;
   departmentId: string;
+  gender: string;
   employmentType: string;
+  attendanceExempt: boolean;
+  trainingExempt: boolean;
+  maternityLeaveEligible: boolean;
   proposedStartDate: string;
   salary: number;
   salaryInWords: string;
@@ -673,7 +677,11 @@ function getDefaultOfferData(): OfferFormData {
     subjectDesignation: "",
     reportingToUserId: "",
     departmentId: "",
+    gender: "",
     employmentType: "Full-time / Regular",
+    attendanceExempt: false,
+    trainingExempt: false,
+    maternityLeaveEligible: false,
     proposedStartDate: "",
     salary: 0,
     salaryInWords: "",
@@ -978,6 +986,25 @@ export function OfferLetterGenerator() {
                 </Select>
               </div>
             </div>
+            <div>
+              <Label>Gender</Label>
+              <Select value={formData.gender} onValueChange={v => {
+                setFormData(prev => ({
+                  ...prev,
+                  gender: v,
+                  maternityLeaveEligible: v === "Female" ? true : prev.maternityLeaveEligible,
+                }));
+              }}>
+                <SelectTrigger data-testid="select-offer-gender">
+                  <SelectValue placeholder="Select gender..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
 
@@ -1031,6 +1058,41 @@ export function OfferLetterGenerator() {
               <div>
                 <Label>Offer Date</Label>
                 <Input data-testid="input-offer-date" type="date" value={formData.offerDate} onChange={e => updateField("offerDate", e.target.value)} />
+              </div>
+            </div>
+            <div className="border rounded-lg p-3 space-y-2">
+              <Label className="text-sm font-medium">Exemption Flags</Label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer" data-testid="check-attendance-exempt">
+                  <input
+                    type="checkbox"
+                    checked={formData.attendanceExempt}
+                    onChange={e => updateField("attendanceExempt", e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Attendance Exempt</span>
+                  <span className="text-xs text-muted-foreground">(skip daily punch-in compliance)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer" data-testid="check-training-exempt">
+                  <input
+                    type="checkbox"
+                    checked={formData.trainingExempt}
+                    onChange={e => updateField("trainingExempt", e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Training Exempt</span>
+                  <span className="text-xs text-muted-foreground">(skip training compliance lock)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer" data-testid="check-maternity-eligible">
+                  <input
+                    type="checkbox"
+                    checked={formData.maternityLeaveEligible}
+                    onChange={e => updateField("maternityLeaveEligible", e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Maternity Leave Eligible</span>
+                  <span className="text-xs text-muted-foreground">(auto-set when gender = Female)</span>
+                </label>
               </div>
             </div>
           </CardContent>

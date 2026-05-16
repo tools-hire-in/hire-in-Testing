@@ -26,6 +26,11 @@ interface NewHire {
   has_bank_details: boolean;
   has_ns_consent: boolean;
   training_pct: number;
+  gender: string | null;
+  employment_type: string | null;
+  attendance_exempt: boolean;
+  training_exempt: boolean;
+  maternity_leave_eligible: boolean;
 }
 
 const roleLabels: Record<string, string> = {
@@ -123,10 +128,13 @@ function OnboardingTab() {
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Joined</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Gender</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Training</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Docs</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bank Details</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">NS Consent</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Flags</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -156,8 +164,18 @@ function OnboardingTab() {
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {h.employment_type || <span className="text-muted-foreground/50">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {h.gender || <span className="text-muted-foreground/50">—</span>}
+                  </td>
                   <td className="px-4 py-3">
-                    <TrainingBar pct={h.training_pct} />
+                    {h.training_exempt ? (
+                      <StatusChip ok na label="Exempt" />
+                    ) : (
+                      <TrainingBar pct={h.training_pct} />
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <StatusChip ok={h.document_count > 0} label={h.document_count > 0 ? `${h.document_count} uploaded` : "Missing"} />
@@ -167,6 +185,22 @@ function OnboardingTab() {
                   </td>
                   <td className="px-4 py-3">
                     <StatusChip ok={h.has_ns_consent} label={h.has_ns_consent ? "Signed" : "Pending"} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {h.attendance_exempt && (
+                        <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" title="Attendance Exempt">AEx</span>
+                      )}
+                      {h.training_exempt && (
+                        <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" title="Training Exempt">TEx</span>
+                      )}
+                      {h.maternity_leave_eligible && (
+                        <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" title="Maternity Leave Eligible">Mat</span>
+                      )}
+                      {!h.attendance_exempt && !h.training_exempt && !h.maternity_leave_eligible && (
+                        <span className="text-muted-foreground/50 text-xs">—</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Button
