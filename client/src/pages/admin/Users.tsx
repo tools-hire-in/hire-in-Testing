@@ -60,6 +60,7 @@ const roleLabels: Record<string, string> = {
   hr: "HR",
   operations: "Operations",
   manager: "Manager",
+  recruiter: "Recruiter",
   employee: "Employee",
 };
 
@@ -69,6 +70,7 @@ const roleColors: Record<string, string> = {
   hr: "bg-green-100 text-green-800",
   operations: "bg-orange-100 text-orange-800",
   manager: "bg-violet-100 text-violet-800",
+  recruiter: "bg-cyan-100 text-cyan-800",
   employee: "bg-gray-100 text-gray-800",
 };
 
@@ -85,7 +87,7 @@ const levelLabels: Record<string, string> = {
 const TOP_LEVELS = ["ceo", "vp"];
 
 const roleRank: Record<string, number> = {
-  super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, employee: 1,
+  super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, recruiter: 1.5, employee: 1,
 };
 
 const DESIGNATIONS = [
@@ -773,6 +775,11 @@ export default function AdminUsers() {
                                         Set as Manager
                                       </DropdownMenuItem>
                                     )}
+                                    {currentUserRank > roleRank.recruiter && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "recruiter" })}>
+                                        Set as Recruiter
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>
                                       Set as Employee
                                     </DropdownMenuItem>
@@ -877,6 +884,7 @@ export default function AdminUsers() {
                       {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
                       {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
                       {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
+                      {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}
                       <SelectItem value="employee">Employee</SelectItem>
                     </SelectContent>
                   </Select>

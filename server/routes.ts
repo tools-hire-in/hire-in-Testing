@@ -385,7 +385,7 @@ export async function registerRoutes(
   });
 
   // Admin Jobs CRUD (Operations role can access)
-  app.get("/api/admin/jobs", requireRole("operations"), async (req, res) => {
+  app.get("/api/admin/jobs", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const jobs = await storage.getJobs();
       res.json(jobs);
@@ -394,7 +394,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/jobs", requireRole("operations"), async (req, res) => {
+  app.post("/api/admin/jobs", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const result = insertJobSchema.safeParse(req.body);
       if (!result.success) {
@@ -407,7 +407,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/jobs/:id", requireRole("operations"), async (req, res) => {
+  app.patch("/api/admin/jobs/:id", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const result = insertJobSchema.partial().safeParse(req.body);
       if (!result.success) {
@@ -424,7 +424,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/jobs/:id", requireRole("operations"), async (req, res) => {
+  app.delete("/api/admin/jobs/:id", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const jobId = req.params.id as string;
       await storage.deleteJob(jobId);
@@ -435,7 +435,7 @@ export async function registerRoutes(
   });
 
   // Bulk delete jobs
-  app.post("/api/admin/jobs/bulk-delete", requireRole("operations"), async (req, res) => {
+  app.post("/api/admin/jobs/bulk-delete", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -449,7 +449,7 @@ export async function registerRoutes(
   });
 
   // Bulk update jobs (activate/deactivate only)
-  app.post("/api/admin/jobs/bulk-update", requireRole("operations"), async (req, res) => {
+  app.post("/api/admin/jobs/bulk-update", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const { ids, updates } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -474,7 +474,7 @@ export async function registerRoutes(
   });
 
   // Sync jobs from Ceipal ATS
-  app.post("/api/admin/jobs/sync-ceipal", requireRole("operations"), async (req, res) => {
+  app.post("/api/admin/jobs/sync-ceipal", requireRole("operations", "recruiter"), async (req, res) => {
     try {
       const result = await syncCeipalJobs();
       res.json({
@@ -488,7 +488,7 @@ export async function registerRoutes(
   });
 
   // CSV/XLSX Upload for Jobs
-  app.post("/api/admin/jobs/upload", requireRole("operations"), upload.single("file"), async (req, res) => {
+  app.post("/api/admin/jobs/upload", requireRole("operations", "recruiter"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -571,7 +571,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/applications/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/admin/applications/:id", requireRole("hr", "operations", "recruiter"), async (req, res) => {
     try {
       const applicationId = req.params.id as string;
       const application = await storage.updateApplication(applicationId, req.body);
@@ -584,7 +584,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/applications/:id/retry-ceipal", requireRole("hr", "operations"), async (req, res) => {
+  app.post("/api/admin/applications/:id/retry-ceipal", requireRole("hr", "operations", "recruiter"), async (req, res) => {
     try {
       const applicationId = req.params.id as string;
       const application = await storage.getApplication(applicationId);
@@ -616,7 +616,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/contacts/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/admin/contacts/:id", requireRole("hr", "operations", "recruiter"), async (req, res) => {
     try {
       const contactId = req.params.id as string;
       const contact = await storage.updateContact(contactId, req.body);
@@ -678,6 +678,7 @@ export async function registerRoutes(
     hr: 4,
     operations: 3,
     manager: 2,
+    recruiter: 1.5,
     employee: 1,
   };
 
@@ -921,7 +922,7 @@ export async function registerRoutes(
           continue;
         }
 
-        const validRoles = ["super_admin", "admin", "hr", "operations", "manager", "employee"] as const;
+        const validRoles = ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"] as const;
         const assignedRole = (validRoles as readonly string[]).includes(role) ? role as typeof validRoles[number] : "employee" as const;
         const assignedRank = ROLE_RANK[assignedRole] ?? 0;
         if (actorRank <= assignedRank && actorRole !== "super_admin") {

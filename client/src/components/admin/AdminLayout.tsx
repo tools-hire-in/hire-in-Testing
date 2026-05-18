@@ -46,6 +46,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -70,6 +71,7 @@ const roleLabels: Record<string, { label: string; color: string }> = {
   hr: { label: "HR", color: "bg-green-500 text-white" },
   operations: { label: "Operations", color: "bg-orange-500 text-white" },
   manager: { label: "Manager", color: "bg-purple-500 text-white" },
+  recruiter: { label: "Recruiter", color: "bg-cyan-500 text-white" },
   employee: { label: "Employee", color: "bg-gray-500 text-white" },
 };
 
@@ -383,10 +385,11 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const roleInfo = user?.role ? roleLabels[user.role] : roleLabels.employee;
   const userRole = user?.role || "employee";
 
-  const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager"].includes(userRole);
+  const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager", "recruiter"].includes(userRole);
   const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
-  const hasHRAccess = ["super_admin", "admin", "hr", "operations"].includes(userRole);
+  const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole);
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
+  const hasFinanceAccess = ["super_admin", "admin"].includes(userRole);
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth
@@ -416,41 +419,38 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const peopleHRTrainingBadge = ["hr", "admin", "super_admin"].includes(userRole) ? trainingReqBadge : 0;
   const peopleHRBadge = (pendingEndorseCount ?? 0) + peopleHRTrainingBadge;
 
-  const navItems: NavItem[] = [
+  const personalNavItems: NavItem[] = [
     {
       href: "/admin/hr",
-      label: "My Work",
+      label: "Dashboard",
       icon: LayoutDashboard,
       roles: ["all"],
       badge: undefined,
     },
     {
       href: "/admin/profile",
-      label: "My Profile",
+      label: "Profile",
       icon: UserCircle,
       roles: ["all"],
     },
     ...(hasGrowthAccess ? [{
       href: "/admin/growth",
-      label: "My Growth",
+      label: "Growth & Learning",
       icon: GraduationCap,
       roles: ["all"],
       badge: growthBadge > 0 ? growthBadge : undefined,
       badgeColor: (trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-500" : "bg-amber-500",
     }] : []),
+  ];
+
+  const teamNavItems: NavItem[] = [
     ...(hasTeamAccess ? [{
       href: "/admin/hr/my-team",
-      label: "My Team",
+      label: "Team",
       icon: Users,
       roles: ["super_admin", "admin", "hr", "operations", "manager"],
       badge: myTeamBadge > 0 ? myTeamBadge : undefined,
       badgeColor: trainingReqBadge > 0 ? "bg-amber-500" : "bg-blue-500",
-    }] : []),
-    ...(hasRecruitmentAccess ? [{
-      href: "/admin/recruitment",
-      label: "Recruitment",
-      icon: Briefcase,
-      roles: ["super_admin", "admin", "operations", "manager"],
     }] : []),
     ...(hasNewHireAccess ? [{
       href: "/admin/new-hire",
@@ -458,19 +458,28 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: UserPlus,
       roles: ["super_admin", "admin", "hr", "operations", "manager"],
     }] : []),
+  ];
+
+  const orgNavItems: NavItem[] = [
+    ...(hasRecruitmentAccess ? [{
+      href: "/admin/recruitment",
+      label: "Recruitment",
+      icon: Briefcase,
+      roles: ["super_admin", "admin", "operations", "manager", "recruiter"],
+    }] : []),
     ...(hasHRAccess ? [{
       href: "/admin/hr/people",
       label: "People & HR",
       icon: Settings,
-      roles: ["super_admin", "admin", "hr", "operations"],
+      roles: ["super_admin", "admin", "hr"],
       badge: peopleHRBadge > 0 ? peopleHRBadge : undefined,
       badgeColor: "bg-amber-500",
     }] : []),
-  ...(hasRecruitmentAccess ? [{
+    ...(hasFinanceAccess ? [{
       href: "/admin/finance",
       label: "Finance & Contracts",
       icon: FileText,
-      roles: ["super_admin", "admin", "hr", "operations"],
+      roles: ["super_admin", "admin"],
     }] : []),
   ];
 
@@ -540,10 +549,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
             </SidebarHeader>
 
             <SidebarContent>
+              {/* PERSONAL section — visible to all */}
               <SidebarGroup>
+                <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                  Personal
+                </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {navItems.map((item) => (
+                    {personalNavItems.map((item) => (
                       <NavItemButton
                         key={item.href}
                         item={item}
@@ -554,6 +567,48 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
+
+              {/* TEAM section — manager, operations, hr, admin, super_admin */}
+              {teamNavItems.length > 0 && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    Team
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {teamNavItems.map((item) => (
+                        <NavItemButton
+                          key={item.href}
+                          item={item}
+                          isActive={isNavActive(item)}
+                          isLocked={isComplianceLocked && item.href !== "/admin/growth" && item.href !== "/admin/profile"}
+                        />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
+
+              {/* ORGANISATION section — role-filtered items */}
+              {orgNavItems.length > 0 && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    Organisation
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {orgNavItems.map((item) => (
+                        <NavItemButton
+                          key={item.href}
+                          item={item}
+                          isActive={isNavActive(item)}
+                          isLocked={isComplianceLocked && item.href !== "/admin/growth" && item.href !== "/admin/profile"}
+                        />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
 
               {/* Bottom actions */}
               <SidebarGroup className="mt-auto border-t pt-2">
