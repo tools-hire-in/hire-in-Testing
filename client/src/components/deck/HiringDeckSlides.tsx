@@ -350,7 +350,7 @@ function Slide5Services() {
 
 function Slide5Models() {
   const models = [
-    { name: "Permanent", color: NAVY, benefits: ["Full-time employment", "AI-matched culture fit", "90-day replacement guarantee", "Background verification included"] },
+    { name: "Permanent", color: NAVY, benefits: ["Full-time employment", "Fee-on-placement model", "90-day replacement guarantee", "30–60 day structured placement"] },
     { name: "Contract", color: "#1E5C9C", benefits: ["Flexible contract durations", "Bench-ready talent pool", "Weekly/fortnightly billing", "Rapid < 72-hour deployment"] },
     { name: "Project-Based", color: ORANGE, benefits: ["Dedicated project teams", "Milestone billing model", "Technical lead included", "End-to-end accountability"] },
     { name: "RPO", color: ORANGE2, benefits: ["Full pipeline outsourcing", "SLA-guaranteed delivery", "Dedicated talent desk", "AI-driven automation"] },
@@ -416,7 +416,7 @@ function Slide6KleriqAI() {
               <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>Smarter Hiring</span>
             </div>
             <h2 style={{ color: ORANGE, fontSize: 22, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI Tools We Leverage</h2>
-            <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>Including Kleriq AI for job analysis, matching & screening</p>
+            <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>KlerIQ ingests your job description, breaks it into plain language any recruiter can understand, flags missing or unclear information, and equips your team to probe deeper and answer candidate questions with confidence.</p>
           </div>
           <HISLogo size={34} light />
         </div>
@@ -432,8 +432,8 @@ function Slide6KleriqAI() {
           ))}
           <div style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE2} 100%)`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
             <Zap size={22} color={WHITE} />
-            <h4 style={{ color: WHITE, fontSize: 13, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Why AI-Assisted Hiring Wins</h4>
-            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 10, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>By partnering with leading AI tools, we bring enterprise-grade intelligence to every search — delivering better candidates, faster.</p>
+            <h4 style={{ color: WHITE, fontSize: 13, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Why AI-Enhanced Recruitment Wins</h4>
+            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 10, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>AI-enhanced recruitment doesn't replace great recruiters — it makes them unstoppable. Faster sourcing, smarter screening, and zero blind spots, every search.</p>
           </div>
         </div>
         <SlideFooter />
@@ -444,7 +444,7 @@ function Slide6KleriqAI() {
 
 function Slide7Advantage() {
   const advantages = [
-    { icon: Brain, title: "AI-Assisted Matching", desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.", highlight: "70% Faster Shortlisting" },
+    { icon: Brain, title: "AI-Enhanced Talent Acquisition", desc: "We deploy cutting-edge AI at every stage of the search — from JD analysis and semantic sourcing to fit scoring and bias-free shortlisting — so clients receive only the strongest, most precisely matched candidates.", highlight: "70% Faster Shortlisting" },
     { icon: Code2, title: "IT Domain Experts", desc: "Every recruiter on our team is an IT-specialist. We speak your tech stack fluently — from Java to Kubernetes, from React to SAP.", highlight: "Deep IT Domain Expertise" },
     { icon: ShieldCheck, title: "Compliance-First", desc: "Built-in US compliance workflows covering I-9 verification, E-Verify, background checks, and federal/state employment law — so you hire with zero legal risk.", highlight: "Zero-Risk: I-9 + E-Verify" },
     { icon: Zap, title: "Fastest Time-to-Fill", desc: "With AI-assisted pre-screening running continuously, we deliver qualified submissions faster than any traditional staffing firm.", highlight: "SLA-Backed Delivery" },
@@ -709,6 +709,7 @@ function Slide11Connect() {
               <div>
                 <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn</p>
                 <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Connect with us</p>
+                <p style={{ color: ORANGE, fontSize: 9, fontWeight: 500, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0, marginTop: 1 }}>linkedin.com/company/hirein-solutions</p>
               </div>
             </a>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>

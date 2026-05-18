@@ -978,9 +978,9 @@ function Slide5Models() {
       color: NAVY,
       benefits: [
         "Full-time employment",
-        "AI-matched culture fit",
+        "Fee-on-placement model",
         "90-day replacement guarantee",
-        "Background verification included",
+        "30–60 day structured placement",
       ],
     },
     {
@@ -1275,7 +1275,7 @@ function Slide6KleriqAI() {
                 marginTop: 2,
               }}
             >
-              Including Kleriq AI for job analysis, matching & screening
+              KlerIQ ingests your job description, breaks it into plain language any recruiter can understand, flags missing or unclear information, and equips your team to probe deeper and answer candidate questions with confidence.
             </p>
           </div>
           <HISLogo size={34} light />
@@ -1363,7 +1363,7 @@ function Slide6KleriqAI() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              Why AI-Assisted Hiring Wins
+              Why AI-Enhanced Recruitment Wins
             </h4>
             <p
               style={{
@@ -1373,7 +1373,7 @@ function Slide6KleriqAI() {
                 fontFamily: "'Segoe UI', Arial, sans-serif",
               }}
             >
-              By partnering with leading AI tools, we bring enterprise-grade intelligence to every search — delivering better candidates, faster.
+              AI-enhanced recruitment doesn't replace great recruiters — it makes them unstoppable. Faster sourcing, smarter screening, and zero blind spots, every search.
             </p>
           </div>
         </div>
@@ -1389,8 +1389,8 @@ function Slide7Advantage() {
   const advantages = [
     {
       icon: Brain,
-      title: "AI-Assisted Matching",
-      desc: "We leverage best-in-class AI tools to parse, score, and rank candidates with precision — reducing mis-hires and cutting time-to-shortlist by up to 70%.",
+      title: "AI-Enhanced Talent Acquisition",
+      desc: "We deploy cutting-edge AI at every stage of the search — from JD analysis and semantic sourcing to fit scoring and bias-free shortlisting — so clients receive only the strongest, most precisely matched candidates.",
       highlight: "70% Faster Shortlisting",
     },
     {
@@ -2235,6 +2235,7 @@ function Slide11Connect() {
                 <div>
                   <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>LinkedIn</p>
                   <p style={{ color: WHITE, fontSize: 13, fontWeight: 700, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0 }}>Connect with us</p>
+                  <p style={{ color: ORANGE, fontSize: 9, fontWeight: 500, fontFamily: "'Segoe UI', Arial, sans-serif", margin: 0, marginTop: 1 }}>linkedin.com/company/hirein-solutions</p>
                 </div>
               </a>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginLeft: "auto" }}>
