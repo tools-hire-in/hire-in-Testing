@@ -1413,22 +1413,6 @@ export class DatabaseStorage implements IStorage {
     const SL_ANNUAL_CAP = 8;
     const EL_MIN_HOURS = 128;
 
-    // HR-specific adjustment targets (Approach B — HR directive)
-    // key: "FirstName LastName" (trimmed), value: { elCorrection, slCorrection, year }
-    const HR_ADJUSTMENTS: Record<string, { elCorrection: number; slCorrection: number }> = {
-      "Ayushi Tiwari":   { elCorrection: -8.5,  slCorrection: -3.35 },
-      "Maheep Singh":    { elCorrection: -8.5,  slCorrection: -1.35 },
-      "Aditya Gangwar":  { elCorrection: -5.5,  slCorrection: -1.35 },
-      "Anurag Kumar":    { elCorrection: -7.5,  slCorrection: -3.35 },
-    };
-
-    // Approach A — leave_request inserts (exact dates confirmed)
-    // key: "FirstName LastName", value: array of leave_request specs
-    const LEAVE_REQUEST_INSERTS: Record<string, Array<{ startDate: string; endDate: string; totalDays: number; halfDay: boolean }>> = {
-      "Sharad Kumar":        [{ startDate: "2026-05-06", endDate: "2026-05-08", totalDays: 3.0,  halfDay: false }],
-      "Mohd Shafique Beg":   [{ startDate: "2026-05-16", endDate: "2026-05-16", totalDays: 0.5,  halfDay: true  }],
-    };
-
     // ──── Load data ─────────────────────────────────────────────────
     const allUsers = await db.select().from(adminUsers);
     const activeUsers = allUsers.filter(u => u.isActive && !u.deletedAt);
@@ -1488,9 +1472,6 @@ export class DatabaseStorage implements IStorage {
       // Track in-engine (would-be NEW) 2025 accruals for dry-run carry/lapse simulation
       let el2025AddedInEngine = 0;
       let sl2025AddedInEngine = 0;
-      // Track would-be new Approach A leave request days (not yet in DB) for dry-run balance
-      let approachANewElDays = 0;
-
       // Running SL totals per year (to enforce annual cap during iteration)
       const slAccruedByYear: Record<number, number> = {};
 
@@ -1749,80 +1730,6 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      // ── HR-directed balance adjustments (Approach B) — compute in both modes ──
-      const adj = HR_ADJUSTMENTS[userName];
-      if (adj) {
-        // Check idempotency in both modes to avoid double-counting in dry-run
-        const existingELAdj = await db.select().from(leaveAccruals).where(
-          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
-            eq(leaveAccruals.year, 2026), eq(leaveAccruals.month, 99),
-            sql`${leaveAccruals.accrualType} = 'hr_adjustment'`)
-        ).limit(1);
-        const existingSLAdj = await db.select().from(leaveAccruals).where(
-          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
-            eq(leaveAccruals.year, 2026), eq(leaveAccruals.month, 99),
-            sql`${leaveAccruals.accrualType} = 'hr_adjustment'`)
-        ).limit(1);
-
-        if (existingELAdj.length === 0 && Math.abs(adj.elCorrection) > 0) {
-          if (!dryRun) {
-            await db.insert(leaveAccruals).values({
-              userId: user.id, leaveTypeId: elType.id, year: 2026, month: 99,
-              accruedDays: String(adj.elCorrection), hoursWorked: "0",
-              qualified: true, accrualType: "hr_adjustment",
-              skipReason: "Historical leave balance correction — HR directive",
-            });
-          }
-          elAdded += adj.elCorrection;
-          el2026DeltaForBalance += adj.elCorrection;
-          correctionCount++;
-        }
-        if (existingSLAdj.length === 0 && Math.abs(adj.slCorrection) > 0) {
-          if (!dryRun) {
-            await db.insert(leaveAccruals).values({
-              userId: user.id, leaveTypeId: slType.id, year: 2026, month: 99,
-              accruedDays: String(adj.slCorrection), hoursWorked: "0",
-              qualified: true, accrualType: "hr_adjustment",
-              skipReason: "Historical leave balance correction — HR directive",
-            });
-          }
-          slAdded += adj.slCorrection;
-          sl2026DeltaForBalance += adj.slCorrection;
-          correctionCount++;
-        }
-      }
-
-      // ── Approach A: Insert leave_requests BEFORE balance recomputation ──
-      const leaveReqInserts = LEAVE_REQUEST_INSERTS[userName];
-      if (leaveReqInserts) {
-        for (const req of leaveReqInserts) {
-          const existing = await db.select().from(leaveRequests).where(
-            and(eq(leaveRequests.userId, user.id),
-              eq(leaveRequests.startDate, req.startDate),
-              eq(leaveRequests.endDate, req.endDate),
-              eq(leaveRequests.status, "approved"))
-          ).limit(1);
-
-          if (existing.length === 0) {
-            if (!dryRun) {
-              await db.insert(leaveRequests).values({
-                userId: user.id,
-                leaveTypeId: elType.id,
-                startDate: req.startDate,
-                endDate: req.endDate,
-                totalDays: String(req.totalDays),
-                halfDay: req.halfDay,
-                reason: "Historical leave — imported from attendance record",
-                status: "approved",
-                reviewedAt: new Date(),
-              });
-            }
-            // Track for dry-run balance: these days would be deducted from EL in 2026
-            approachANewElDays += req.totalDays;
-          }
-        }
-      }
-
       // ── Update leave_balances (write mode only — only totalDays is touched; usedDays is never written by backfill) ──
       if (!dryRun) {
         for (const ltId of [elType.id, slType.id]) {
@@ -1877,8 +1784,7 @@ export class DatabaseStorage implements IStorage {
           and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, elType.id), eq(leaveBalances.year, 2026))
         ).limit(1);
         const existing2026ELUsed = existing2026ELBal.length ? parseFloat(existing2026ELBal[0].usedDays) : 0;
-        // Also subtract would-be new Approach A leave requests not yet in DB (tracked above)
-        newELBalance = existing2026ELTotal + el2026DeltaForBalance - existing2026ELUsed - approachANewElDays;
+        newELBalance = existing2026ELTotal + el2026DeltaForBalance - existing2026ELUsed;
 
         const existing2026SLAcc = await db.select().from(leaveAccruals).where(
           and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),

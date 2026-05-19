@@ -582,6 +582,80 @@ async function seedShiftData() {
   }
 }
 
+// One-time idempotent corrections: HR-directed balance adjustments and historical
+// leave request inserts. Previously hardcoded in the backfill engine — moved here
+// so they run automatically on deploy and never need to live in application code again.
+async function applyOneTimeLeaveCorrections() {
+  try {
+    // EL = is_conditional=true, not occurrence_based, not lwp/comp
+    // SL = is_conditional=false, not occurrence_based, not lwp/comp
+    const hrAdjustments = [
+      { firstName: "Ayushi",  lastName: "Tiwari",      elCorrection: "-8.5",  slCorrection: "-3.35" },
+      { firstName: "Maheep",  lastName: "Singh",        elCorrection: "-8.5",  slCorrection: "-1.35" },
+      { firstName: "Aditya",  lastName: "Gangwar",      elCorrection: "-5.5",  slCorrection: "-1.35" },
+      { firstName: "Anurag",  lastName: "Kumar",        elCorrection: "-7.5",  slCorrection: "-3.35" },
+    ];
+
+    for (const adj of hrAdjustments) {
+      // EL adjustment
+      await db.execute(sql`
+        INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+        SELECT u.id, lt.id, 2026, 99, ${adj.elCorrection}, '0', true, 'hr_adjustment', 'Historical leave balance correction — HR directive'
+        FROM admin_users u
+        JOIN leave_types lt ON lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+        WHERE u.first_name = ${adj.firstName} AND u.last_name = ${adj.lastName} AND u.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM leave_accruals la2
+          WHERE la2.user_id = u.id AND la2.leave_type_id = lt.id
+          AND la2.year = 2026 AND la2.month = 99 AND la2.accrual_type = 'hr_adjustment'
+        )
+      `);
+      // SL adjustment
+      await db.execute(sql`
+        INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+        SELECT u.id, lt.id, 2026, 99, ${adj.slCorrection}, '0', true, 'hr_adjustment', 'Historical leave balance correction — HR directive'
+        FROM admin_users u
+        JOIN leave_types lt ON lt.is_conditional = false AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+        WHERE u.first_name = ${adj.firstName} AND u.last_name = ${adj.lastName} AND u.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM leave_accruals la2
+          WHERE la2.user_id = u.id AND la2.leave_type_id = lt.id
+          AND la2.year = 2026 AND la2.month = 99 AND la2.accrual_type = 'hr_adjustment'
+        )
+      `);
+    }
+
+    // Historical leave request inserts (approved leaves missing from records)
+    const historicalLeaves = [
+      { firstName: "Sharad", lastName: "Kumar",       startDate: "2026-05-06", endDate: "2026-05-08", totalDays: "3.0",  halfDay: false },
+      { firstName: "Mohd",   lastName: "Shafique Beg", startDate: "2026-05-16", endDate: "2026-05-16", totalDays: "0.5",  halfDay: true  },
+    ];
+
+    for (const req of historicalLeaves) {
+      await db.execute(sql`
+        INSERT INTO leave_requests (user_id, leave_type_id, start_date, end_date, total_days, half_day, reason, status, reviewed_at)
+        SELECT u.id, lt.id, ${req.startDate}, ${req.endDate}, ${req.totalDays}, ${req.halfDay},
+          'Historical leave — imported from attendance record', 'approved', NOW()
+        FROM admin_users u
+        JOIN leave_types lt ON lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+        WHERE u.first_name = ${req.firstName} AND u.last_name = ${req.lastName} AND u.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM leave_requests lr2
+          WHERE lr2.user_id = u.id AND lr2.start_date = ${req.startDate}
+          AND lr2.end_date = ${req.endDate} AND lr2.status = 'approved'
+        )
+      `);
+    }
+
+    log("One-time leave corrections applied");
+  } catch (err) {
+    console.error("One-time leave corrections error:", err);
+  }
+}
+
 async function backfillHolidayAttendance() {
   try {
     const currentYear = new Date().getFullYear();
@@ -796,6 +870,7 @@ async function backfillHolidayAttendance() {
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();
+  await applyOneTimeLeaveCorrections();
   await ensureShiftTables();
   await ensureNightShiftConsentsTable();
   await seedShiftData();
