@@ -1,0 +1,12 @@
+﻿Employee ID,Name,Department,Designation,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,Total Days,Present,Absent,Leave,HD,% Attendance
+HS00011,Ayushi Tiwari,Healthcare,Recruiter,P,P,P,P,P,R,R,P,P,P,P,CL,R,R,P,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,30,21,0,1,8,
+HS00012,Dimpal Kumar,IT,Recruiter,,,,,,R,R,,,P,P,P,R,R,p,p,p,p,p,R,R,A,p,p,A,A,R,R,A,P,23,11,4,0,8,
+HS00013,Diksha Pandey,Healthcare,Sr. Recruiter,,,,,,R,R,,p,p,p,p,R,R,p,p,p,p,p,R,R,P,P,P,P,P,R,R,P,P,24,16,0,0,8,
+HS00014,Sandhya Singh,Healthcare,Sr. Recruiter,,,,,,R,R,,,,,,R,R,P,P,P,P,P,R,R,A,A,A,A,,R,R,,,17,5,4,0,8,
+HS00015,Lakshya Patel (Ankush),MIS,MIS,,,,,,R,R,,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,24,16,0,0,8,
+,Maheep,Healthcare,Recruiter,P,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,P,P,P,R,R,P,P,30,22,0,0,8,
+HS00016,Surbhi kumari ,Healthcare,Recruiter,,,,,,R,R,,,,,,R,R,,,,,,R,R,,P,P,P,P,R,R,P,P,14,6,0,0,8,
+,,,,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,,,
+,,,,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,,,
+,,,,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,,,
+,,,,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,R,R,,,,,,,,
