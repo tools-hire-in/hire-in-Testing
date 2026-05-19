@@ -46,6 +46,13 @@ function bodyText(text: string, options?: { bold?: boolean; spacing?: { before?:
   });
 }
 
+function subHeading(text: string): Paragraph {
+  return new Paragraph({
+    spacing: { before: 200, after: 80 },
+    children: [new TextRun({ text, bold: true, size: 20 })],
+  });
+}
+
 function noBorderCell(children: (Paragraph)[]) {
   return new TableCell({
     width: { size: 50, type: WidthType.PERCENTAGE },
@@ -238,6 +245,38 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           bodyText(`Reporting To: ${data.reportingTo}`),
           bodyText(`Employment Type: ${data.employmentType}`),
           bodyText(`Proposed Start Date: ${data.proposedStartDate}`),
+
+          heading("2. Probation Period, Leave Entitlement & Holiday Policy"),
+
+          subHeading("2a. Probation Period"),
+          bodyText(
+            "The first three (3) months of your employment shall constitute a probationary period. During this period, your performance and suitability will be assessed. The Company may terminate your employment during probation by giving seven (7) days' written notice or salary in lieu thereof. At the Company's sole discretion, the probation period may be extended by up to a further three (3) months, with written notice provided to you prior to the original probation end date."
+          ),
+
+          subHeading("2b. Earned Leave (EL)"),
+          bodyText(
+            "You are entitled to fifteen (15) days of Earned Leave per calendar year. EL accrues at the rate of 1.25 days per completed calendar month. Accrual commences from the first day of the month immediately following the successful completion of your probation period; no EL accrues during the probation period. EL cannot be taken during probation. Unused EL up to the Company's defined carry-forward cap may be carried over to the following calendar year; any balance in excess of the cap will lapse on 31 December each year."
+          ),
+
+          subHeading("2c. Sick Leave (SL)"),
+          bodyText(
+            "You are entitled to eight (8) days of Sick Leave per calendar year, accruing at approximately 0.67 days per completed calendar month post-probation. SL does not carry forward and any unused balance lapses at the end of each calendar year. A medical certificate from a registered medical practitioner may be required for any absence exceeding two (2) consecutive days."
+          ),
+
+          subHeading("2d. Emergency Leave"),
+          bodyText(
+            "You are entitled to three (3) days of Emergency Leave per calendar year. This is a flat grant — not accrual-based — and becomes available upon confirmation (i.e., after successful completion of probation). Emergency Leave does not carry forward and any unused balance lapses at the end of the calendar year. It is subject to prior manager approval except in genuine emergencies, in which case you must notify your reporting manager at the earliest opportunity."
+          ),
+
+          subHeading("2e. Leave Without Pay (LWP)"),
+          bodyText(
+            "Once all applicable leave balances (EL, SL, and Emergency Leave) have been exhausted, any further approved absence will be treated as Leave Without Pay. LWP days result in a proportional deduction from the monthly salary for the period of absence. LWP requires manager and HR approval and will be reflected in the payroll for the relevant month."
+          ),
+
+          subHeading("2f. Holiday Calendar"),
+          bodyText(
+            "HR will issue an annual holiday calendar at the commencement of each calendar year listing all declared national holidays and applicable state/regional holidays. Saturdays and Sundays, as well as all declared public holidays appearing on the Company's holiday calendar, are treated as non-working days and are therefore excluded from leave day counts. The holiday calendar may be updated during the year to reflect any Government notifications; employees will be informed of any changes promptly."
+          ),
 
           heading("3. Place of Work & Jurisdiction"),
           bodyText(
