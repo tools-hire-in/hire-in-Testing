@@ -1,36 +1,41 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
 import {
   Brain,
-  Code,
   Briefcase,
-  Users,
-  Target,
-  Shield,
-  ArrowRight,
-  Download,
   Building2,
-  Cpu,
-  Stethoscope,
-  Factory,
-  Landmark,
-  ShoppingCart,
-  CheckCircle,
-  TrendingUp,
-  Globe,
-  Clock,
-  FileCheck,
-  Star,
-  Layers,
-  Search,
-  UserCheck,
-  Handshake,
   BadgeCheck,
-  Sparkles,
-  PhoneCall,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Code,
+  Cpu,
+  Download,
+  Expand,
+  Factory,
+  FileCheck,
+  Globe,
+  Handshake,
+  Landmark,
+  Layers,
+  Linkedin,
+  Loader2,
   Mail,
   MapPin,
-  Linkedin,
+  Minimize2,
+  PhoneCall,
+  Search,
+  ShoppingCart,
+  Sparkles,
+  Star,
+  Stethoscope,
+  Shield,
+  Target,
+  TrendingUp,
+  UserCheck,
+  Users,
+  ArrowRight,
   Zap,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -38,6 +43,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { COMPANY, CONTACT, METRICS } from "@/lib/constants";
+import {
+  CAPABILITY_SLIDES,
+  CAPABILITY_TOTAL_SLIDES,
+  CapabilitySlideNumberContext,
+} from "@/components/deck/CapabilityDeckSlides";
 
 const CLIENT_LOGOS = [
   { name: "22nd Century", industry: "Technology" },
@@ -113,20 +123,99 @@ const DIFFERENTIATORS = [
 
 export default function CapabilityDeck() {
   const deckRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const slideContainerRef = useRef<HTMLDivElement>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<number | null>(null);
+  const [pptProgress, setPptProgress] = useState<number | null>(null);
 
   useEffect(() => {
     document.title = "Capability Deck | Hire'in Solutions - AI-Powered Recruitment";
-    let meta = document.querySelector('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.setAttribute("name", "description");
-      document.head.appendChild(meta);
-    }
-    meta.setAttribute("content", "Hire'in Solutions capability deck — AI-powered staffing solutions across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014).");
+    const setMeta = (name: string, content: string, property?: boolean) => {
+      const attr = property ? "property" : "name";
+      let el = document.querySelector(`meta[${attr}="${name}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, name); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", "Hire'in Solutions general capability deck — AI-powered staffing across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014). View our interactive deck and download PDF/PPT.");
+    setMeta("og:title", "Capability Deck | Hire'in Solutions", true);
+    setMeta("og:type", "website", true);
     return () => { document.title = "Hire'in Solutions"; };
   }, []);
 
-  const handleDownloadPDF = () => { window.print(); };
+  const goTo = useCallback((idx: number) => {
+    setCurrentSlide(Math.max(0, Math.min(CAPABILITY_TOTAL_SLIDES - 1, idx)));
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goTo(currentSlide - 1);
+      else if (e.key === "ArrowRight") goTo(currentSlide + 1);
+      else if (e.key === "Escape" && isFullscreen) setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [currentSlide, isFullscreen, goTo]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!isFullscreen) { viewerRef.current?.requestFullscreen?.(); setIsFullscreen(true); }
+    else { document.exitFullscreen?.(); setIsFullscreen(false); }
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const handler = () => { if (!document.fullscreenElement) setIsFullscreen(false); };
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const handleDownloadPDF = async () => {
+    setPdfProgress(0);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1920, 1080] });
+      for (let i = 0; i < CAPABILITY_TOTAL_SLIDES; i++) {
+        setPdfProgress(Math.round((i / CAPABILITY_TOTAL_SLIDES) * 100));
+        setCurrentSlide(i);
+        await new Promise((r) => setTimeout(r, 300));
+        const el = slideContainerRef.current;
+        if (!el) continue;
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null, logging: false });
+        const imgData = canvas.toDataURL("image/png");
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, 0, 1920, 1080);
+      }
+      pdf.save("HireIn_Solutions_Capability_Deck.pdf");
+    } catch (err) { console.error("PDF generation failed:", err); }
+    finally { setPdfProgress(null); }
+  };
+
+  const handleDownloadPPT = async () => {
+    setPptProgress(0);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const pptxgen = (await import("pptxgenjs")).default;
+      const pptx = new pptxgen();
+      pptx.layout = "LAYOUT_WIDE";
+      for (let i = 0; i < CAPABILITY_TOTAL_SLIDES; i++) {
+        setPptProgress(Math.round((i / CAPABILITY_TOTAL_SLIDES) * 100));
+        setCurrentSlide(i);
+        await new Promise((r) => setTimeout(r, 300));
+        const el = slideContainerRef.current;
+        if (!el) continue;
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null, logging: false });
+        const imgData = canvas.toDataURL("image/png");
+        const slide = pptx.addSlide();
+        slide.addImage({ data: imgData, x: 0, y: 0, w: "100%", h: "100%" });
+      }
+      await pptx.writeFile({ fileName: "HireIn_Solutions_Capability_Deck.pptx" });
+    } catch (err) { console.error("PPT generation failed:", err); }
+    finally { setPptProgress(null); }
+  };
+
+  const isDownloading = pdfProgress !== null || pptProgress !== null;
+  const slide = CAPABILITY_SLIDES[currentSlide];
 
   return (
     <Layout hideFooter>
@@ -155,14 +244,12 @@ export default function CapabilityDeck() {
               A tech-forward startup under Rayomind, purpose-built to transform
               the hiring landscape with AI-powered recruitment and human expertise.
             </p>
-            <div className="flex items-center justify-center gap-3">
-              <Button size="lg" asChild data-testid="button-deck-contact">
-                <Link href="/contact">
-                  Get Started <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Link>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              <Button size="lg" onClick={() => document.getElementById("deck-viewer")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-view-deck">
+                View Deck <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
-              <Button size="lg" variant="outline" className="bg-white/5 text-white border-white/15 backdrop-blur-sm" onClick={handleDownloadPDF} data-testid="button-deck-download">
-                <Download className="mr-1.5 h-4 w-4" /> Download PDF
+              <Button size="lg" variant="outline" className="bg-white/5 text-white border-white/15 backdrop-blur-sm" asChild data-testid="button-deck-contact">
+                <Link href="/contact">Contact Us</Link>
               </Button>
             </div>
           </div>
@@ -186,6 +273,99 @@ export default function CapabilityDeck() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* INTERACTIVE SLIDE VIEWER */}
+        <section id="deck-viewer" className="py-12 md:py-16 px-4" data-testid="section-deck-viewer">
+          <div className="container mx-auto max-w-5xl">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-px bg-primary" />
+              <p className="text-primary font-semibold tracking-wider uppercase text-[11px]">Interactive Deck</p>
+            </div>
+            <h2 className="text-2xl md:text-3xl font-bold mb-6 tracking-tight">General Capability Presentation</h2>
+
+            <div ref={viewerRef} className={`relative bg-muted/30 rounded-xl border overflow-hidden ${isFullscreen ? "fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center rounded-none border-none" : ""}`} data-testid="deck-viewer-container">
+              <div className={`relative w-full ${isFullscreen ? "max-w-[90vw] max-h-[85vh]" : ""}`}>
+                <div ref={slideContainerRef} className="w-full">
+                  <CapabilitySlideNumberContext.Provider value={{ slideNumber: slide.id, totalSlides: CAPABILITY_TOTAL_SLIDES }}>
+                    {slide.component}
+                  </CapabilitySlideNumberContext.Provider>
+                </div>
+              </div>
+
+              <div className={`flex items-center justify-between px-4 py-3 ${isFullscreen ? "absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-sm" : "border-t bg-card"}`}>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => goTo(currentSlide - 1)} disabled={currentSlide === 0 || isDownloading} data-testid="button-slide-prev">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className={`text-sm font-medium tabular-nums min-w-[60px] text-center ${isFullscreen ? "text-white" : ""}`} data-testid="text-slide-counter">
+                    {currentSlide + 1} / {CAPABILITY_TOTAL_SLIDES}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => goTo(currentSlide + 1)} disabled={currentSlide === CAPABILITY_TOTAL_SLIDES - 1 || isDownloading} data-testid="button-slide-next">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs hidden sm:inline ${isFullscreen ? "text-white/60" : "text-muted-foreground"}`}>
+                    {slide.title}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={toggleFullscreen} className={isFullscreen ? "text-white hover:text-white/80" : ""} data-testid="button-fullscreen">
+                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-thin" data-testid="slide-thumbnails">
+              {CAPABILITY_SLIDES.map((s, i) => (
+                <button
+                  key={s.id}
+                  onClick={() => goTo(i)}
+                  disabled={isDownloading}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    i === currentSlide ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                  data-testid={`button-slide-thumb-${s.id}`}
+                >
+                  {s.id}. {s.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* DOWNLOAD SECTION */}
+        <section className="py-12 md:py-16 px-4 bg-muted/30" data-testid="section-deck-download">
+          <div className="container mx-auto max-w-3xl text-center">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <div className="w-8 h-px bg-primary" />
+              <p className="text-primary font-semibold tracking-wider uppercase text-[11px]">Download</p>
+              <div className="w-8 h-px bg-primary" />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-bold mb-3 tracking-tight">Get the Full Deck</h2>
+            <p className="text-sm text-muted-foreground mb-8 max-w-lg mx-auto">
+              Download the complete capability presentation in your preferred format. Share with stakeholders, review offline, or use in your own presentations.
+            </p>
+            <div className="flex items-center justify-center gap-4 flex-wrap">
+              <Button size="lg" onClick={handleDownloadPDF} disabled={isDownloading} className="min-w-[180px]" data-testid="button-download-pdf">
+                {pdfProgress !== null ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating... {pdfProgress}%</>
+                ) : (
+                  <><Download className="mr-2 h-4 w-4" />Download PDF</>
+                )}
+              </Button>
+              <Button size="lg" variant="outline" onClick={handleDownloadPPT} disabled={isDownloading} className="min-w-[180px]" data-testid="button-download-ppt">
+                {pptProgress !== null ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating... {pptProgress}%</>
+                ) : (
+                  <><Download className="mr-2 h-4 w-4" />Download PPT</>
+                )}
+              </Button>
+            </div>
+            {isDownloading && (
+              <p className="text-xs text-muted-foreground mt-4">Please wait while slides are being rendered. This may take a moment.</p>
+            )}
           </div>
         </section>
 
@@ -478,6 +658,124 @@ export default function CapabilityDeck() {
                 ))}
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* CEO / FOUNDER */}
+        <section className="py-12 px-4 lg:px-6 bg-muted/30" data-testid="section-deck-ceo">
+          <div className="container mx-auto max-w-5xl">
+            {/* Eyebrow */}
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-px bg-primary" />
+              <p className="text-primary font-semibold tracking-wider uppercase text-[11px]">The Founder</p>
+            </div>
+            <h2 className="text-2xl md:text-3xl font-bold mb-6 tracking-tight" data-testid="text-ceo-headline">
+              Engineered Products. Built Companies. Now Redefining Hiring.
+            </h2>
+
+            {/* Two-column block */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Left: bio, badges, LinkedIn */}
+              <div>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4" data-testid="text-ceo-bio">
+                  <span className="font-semibold text-foreground" data-testid="text-ceo-name">Simranjeet Sidana</span> is a product engineering and program leader with 14+ years of experience building and delivering high-stakes software across regulated medical devices, financial platforms, precision oncology patient care software, enterprise retail, airline technology, and national-scale education infrastructure.
+                </p>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  As Founder of Escanor Technologies and CEO of Hire'in Solutions, he brings the discipline of an engineer, the operating mindset of a builder, and the judgment of a leader who has shipped real products in environments where quality, compliance, reliability, and execution matter.
+                </p>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  His career has been defined by one principle: quality cannot be an afterthought — it must be engineered from the start. That principle now shapes how Hire'in approaches staffing.
+                </p>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  Simranjeet saw that recruitment was not broken because people lacked effort. It was broken because teams were operating with fragmented tools, unclear requirements, inconsistent data, and too many manual quality gaps. So he built the infrastructure to solve it. Under Escanor Technologies, he architected and shipped <strong>KleriQ.ai</strong> — a recruiter intelligence platform that transforms complex job descriptions into plain-language insights, structured intake questions, sourcing logic, role-family intelligence, and recruiter-ready guidance. He also built <strong>proKred.com</strong> — a healthcare credentialing platform designed to simplify credential collection, compliance verification, audit readiness, and secure credential sharing for healthcare professionals, staffing agencies, MSPs, and facilities.
+                </p>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  These are not third-party tools Hire'in licenses from a vendor. They are products Simranjeet personally architected, shaped, and shipped — built with the same engineering discipline he has applied across regulated medical, financial, AI, and enterprise software environments.
+                </p>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mb-5">
+                  When clients work with Hire'in Solutions, they are not working with a traditional staffing firm trying to add technology later. They are working with a company led by a founder who understands product quality, operational rigor, compliance-driven execution, and the cost of a poor match. For Simranjeet, staffing is not about sending resumes — it is about engineering fit.
+                </p>
+
+                {/* Credential badges */}
+                <div className="flex flex-wrap gap-1.5 mb-5">
+                  {["Wharton 2024", "PSM II", "ISTQB Advanced", "14+ Years", "B.E. Computer Science"].map((badge) => (
+                    <Badge key={badge} variant="secondary" className="text-[11px] font-medium">{badge}</Badge>
+                  ))}
+                </div>
+
+                {/* LinkedIn link */}
+                <a
+                  href="https://linkedin.com/in/simranjeetsidana"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+                  data-testid="link-ceo-linkedin"
+                >
+                  <Linkedin className="h-4 w-4" />
+                  Connect on LinkedIn
+                </a>
+              </div>
+
+              {/* Right: 2×2 highlight tiles */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    icon: Cpu,
+                    title: "FDA-Regulated MedTech at Abbott",
+                    desc: "Led quality and release engineering for Abbott Lingo — a CGM bio-wearable aligned to FDA QSR and 21 CFR compliance standards.",
+                    id: 1,
+                  },
+                  {
+                    icon: Landmark,
+                    title: "Industry-First at Wells Fargo",
+                    desc: "Delivered end-to-end engineering validation for the first mobile wallet launched by a major U.S. bank.",
+                    id: 2,
+                  },
+                  {
+                    icon: Users,
+                    title: "500,000-Student Platform at Edmodo",
+                    desc: "Led a 25-person global engineering team supporting national-scale exam infrastructure serving half a million students in Egypt.",
+                    id: 3,
+                  },
+                  {
+                    icon: Brain,
+                    title: "AI & GenAI at the Frontier",
+                    desc: "ML-driven physician note automation and clinical trials management at McKesson; GenAI governance and automation at Mathison and Abbott — all before enterprise AI went mainstream.",
+                    id: 4,
+                  },
+                ].map((tile) => (
+                  <Card key={tile.id} data-testid={`card-ceo-highlight-${tile.id}`}>
+                    <CardContent className="p-4">
+                      <div className="p-2 rounded-md bg-primary/10 w-fit mb-2">
+                        <tile.icon className="h-4 w-4 text-primary" />
+                      </div>
+                      <h3 className="font-semibold text-sm mb-1 leading-snug">{tile.title}</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{tile.desc}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Pull-quote — full width */}
+            <blockquote className="border-l-4 border-primary pl-5 py-1 mb-6" data-testid="text-ceo-quote">
+              <p className="italic text-sm text-muted-foreground leading-relaxed mb-2">
+                "Every placement we make is an engineering decision. You define the requirements. We build the match — with the same precision, accountability, and quality gates I've applied to regulated systems my entire career."
+              </p>
+              <footer className="text-xs text-muted-foreground/70 font-medium not-italic">
+                — Simranjeet Sidana, CEO &amp; Founder, Hire'in Solutions
+              </footer>
+            </blockquote>
+
+            {/* Deck-specific closing line */}
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Hire'in Solutions brings together recruiting expertise, AI-enabled tooling, and founder-led quality discipline to help clients hire with more clarity, speed, and confidence.
+            </p>
           </div>
         </section>
 
