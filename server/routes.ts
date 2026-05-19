@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveTypes, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveTypes, leaveRequests, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
@@ -3082,6 +3082,40 @@ export async function registerRoutes(
       res.json(lr);
 
       (async () => {
+        // Create on_leave attendance records for each working day of the approved leave
+        if (status === "approved") {
+          try {
+            const holidayRows = await db.select({ date: holidays.date })
+              .from(holidays)
+              .where(and(
+                sql`${holidays.date} >= ${lr.startDate}`,
+                sql`${holidays.date} <= ${lr.endDate}`,
+              ));
+            const holidaySet = new Set(holidayRows.map(h => h.date));
+
+            const attStatus = lr.halfDay ? "half_day" : "on_leave";
+            const current = new Date(lr.startDate + "T00:00:00Z");
+            const end = new Date(lr.endDate + "T00:00:00Z");
+
+            while (current <= end) {
+              const dayOfWeek = current.getUTCDay(); // 0 = Sunday
+              const dateStr = current.toISOString().slice(0, 10);
+              if (dayOfWeek !== 0 && !holidaySet.has(dateStr)) {
+                await db.execute(sql`
+                  INSERT INTO attendance (user_id, date, status, notes)
+                  VALUES (${lr.userId}, ${dateStr}, ${attStatus}, 'Approved leave')
+                  ON CONFLICT DO NOTHING
+                `);
+              }
+              current.setUTCDate(current.getUTCDate() + 1);
+            }
+          } catch (leaveAttErr) {
+            console.error("[leave-approval] Failed to create attendance records:", leaveAttErr);
+          }
+        }
+      })();
+
+      (async () => {
         try {
           const employee = await storage.getAdminUser(lr.userId);
           if (!employee || !employee.email) return;
@@ -3300,6 +3334,55 @@ export async function registerRoutes(
 
       const attendanceRecords = await storage.getAttendanceByTeam(memberIds, date);
 
+      // Augment attendance with approved leave data so on-leave employees
+      // don't appear as absent when no attendance record was created.
+      let augmentedAttendance: Attendance[] = [...attendanceRecords];
+      try {
+        const approvedLeaveRows = await db
+          .select({ userId: leaveRequests.userId, halfDay: leaveRequests.halfDay })
+          .from(leaveRequests)
+          .where(and(
+            inArray(leaveRequests.userId, memberIds),
+            eq(leaveRequests.status, "approved"),
+            sql`${leaveRequests.startDate} <= ${date}`,
+            sql`${leaveRequests.endDate} >= ${date}`,
+          ));
+
+        for (const row of approvedLeaveRows) {
+          const leaveStatus: Attendance["status"] = row.halfDay ? "half_day" : "on_leave";
+          const existingIdx = augmentedAttendance.findIndex(a => a.userId === row.userId);
+          if (existingIdx === -1) {
+            const syntheticRecord: Attendance = {
+              id: `leave-synthetic-${row.userId}-${date}`,
+              userId: row.userId,
+              date,
+              punchIn: null,
+              punchOut: null,
+              totalHours: null,
+              status: leaveStatus,
+              notes: "Approved leave",
+              isCorrect: false,
+              correctionSource: null,
+              correctedById: null,
+              correctionNote: null,
+              createdAt: null,
+              updatedAt: null,
+            };
+            augmentedAttendance.push(syntheticRecord);
+          } else if (augmentedAttendance[existingIdx].status === "absent") {
+            augmentedAttendance[existingIdx] = {
+              ...augmentedAttendance[existingIdx],
+              status: leaveStatus,
+              notes: "Approved leave",
+            };
+          }
+        }
+      } catch (leaveAugErr) {
+        console.error("[my-team] Failed to augment leave data:", leaveAugErr);
+        // Non-fatal: fall back to raw attendance records
+        augmentedAttendance = attendanceRecords;
+      }
+
       // Fetch shift info for all team members in one query
       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
       const istNow = new Date(Date.now() + IST_OFFSET_MS);
@@ -3338,7 +3421,7 @@ export async function registerRoutes(
           expectedStart: shiftMap[m.id]?.expectedStart ?? null,
           attendanceExempt: m.attendanceExempt ?? false,
         })),
-        attendance: attendanceRecords,
+        attendance: augmentedAttendance,
         noTeamAssigned: false,
       });
     } catch (error) {
