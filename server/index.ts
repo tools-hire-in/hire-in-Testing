@@ -710,6 +710,24 @@ async function backfillHolidayAttendance() {
   }
 
   try {
+    // Update EL leave type to 1.5/month flat rate (remove old 1.0 + bonus-month approach).
+    // Only updates if still on the old 1.0 rate to avoid overwriting manual HR changes.
+    await db.execute(sql`
+      UPDATE leave_types
+      SET monthly_accrual = 1.5
+      WHERE is_conditional = TRUE
+        AND occurrence_based = FALSE
+        AND monthly_accrual = 1.0
+        AND name NOT ILIKE '%comp%'
+        AND name NOT ILIKE '%lwp%'
+        AND name NOT ILIKE '%loss%'
+    `);
+    log("EL monthly accrual rate ensured at 1.5/month");
+  } catch (err) {
+    console.error("EL rate migration error:", err);
+  }
+
+  try {
     await db.execute(sql`ALTER TABLE leave_accruals ADD COLUMN IF NOT EXISTS accrual_type TEXT DEFAULT 'monthly'`);
     await db.execute(sql`ALTER TABLE leave_accruals ADD COLUMN IF NOT EXISTS skip_reason TEXT`);
     log("Ensured leave_accruals extra columns exist");
@@ -810,6 +828,28 @@ async function backfillHolidayAttendance() {
     log("Ensured employee_category column on admin_users");
   } catch (err) {
     console.error("employee_category column migration error:", err);
+  }
+
+  try {
+    // Seed default probation policy settings (insert only if not already present).
+    // probation_policy_date = today means probation applies to employees hired from today onwards
+    // (does not retroactively affect any existing employee).
+    const todayIso = new Date().toISOString().slice(0, 10); // e.g. "2026-05-19"
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('probation_months', '3'::jsonb),
+             ('probation_policy_date', ${JSON.stringify(todayIso)}::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    // Also correct the placeholder 2099 value if it was previously seeded by mistake
+    await db.execute(sql`
+      UPDATE system_settings
+      SET value = ${JSON.stringify(todayIso)}::jsonb
+      WHERE key = 'probation_policy_date' AND value = '"2099-01-01"'::jsonb
+    `);
+    log(`Probation policy settings ensured (probation_months=3, probation_policy_date=${todayIso})`);
+  } catch (err) {
+    console.error("Probation policy settings seed error (non-fatal):", err);
   }
 
   await registerRoutes(httpServer, app);

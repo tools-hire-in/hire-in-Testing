@@ -549,6 +549,182 @@ interface ShiftInfo {
   istEnd: string;
 }
 
+function DataMaintenanceSection() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pendingDryRun, setPendingDryRun] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<any>(null);
+
+  const backfillMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await apiRequest("POST", "/api/admin/hr/backfill-leave-accruals", { dryRun });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setBackfillResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
+      toast({
+        title: pendingDryRun ? "Dry Run Complete" : "Backfill Complete",
+        description: data.message,
+      });
+      setShowConfirm(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Backfill Failed", description: err.message || "An error occurred", variant: "destructive" });
+      setShowConfirm(false);
+    },
+  });
+
+  if (!isAdmin) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Data Maintenance
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="font-medium text-sm mb-1">Backfill Historical Leave Accruals</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Credits leave from each employee's joining date through May 2026 at the correct rate (1.5 EL/month, 0.67 SL/month).
+            Applies ±corrections to Jan–May 2026 cron months with wrong rates. Inserts missing leave requests and HR-directed
+            balance adjustments for specific employees. Fully idempotent — safe to run multiple times.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setPendingDryRun(true); setShowConfirm(true); }}
+              disabled={backfillMutation.isPending}
+              data-testid="button-backfill-dry-run"
+            >
+              {backfillMutation.isPending && pendingDryRun ? "Running..." : "Dry Run (Preview)"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => { setPendingDryRun(false); setShowConfirm(true); }}
+              disabled={backfillMutation.isPending}
+              data-testid="button-backfill-run"
+            >
+              {backfillMutation.isPending && !pendingDryRun ? "Running..." : "Run Backfill"}
+            </Button>
+          </div>
+        </div>
+
+        {backfillResult && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-4 flex-wrap text-sm">
+              <span className="font-medium">{backfillResult.message}</span>
+            </div>
+            <div className="flex gap-4 flex-wrap text-xs text-muted-foreground">
+              <span>Employees processed: <strong className="text-foreground">{backfillResult.employeesProcessed}</strong></span>
+              <span>Skipped (inactive): <strong className="text-foreground">{backfillResult.skippedInactive}</strong></span>
+              <span>Accrual rows created: <strong className="text-green-700 dark:text-green-400">{backfillResult.accrualRowsCreated}</strong></span>
+              <span>Corrections applied: <strong className="text-amber-600 dark:text-amber-400">{backfillResult.correctionRowsApplied}</strong></span>
+            </div>
+            {backfillResult.details && backfillResult.details.length > 0 && (
+              <div className="max-h-96 overflow-y-auto border rounded-md">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2 font-medium">Employee</th>
+                      <th className="text-left py-2 px-2 font-medium">Joined</th>
+                      <th className="text-left py-2 px-2 font-medium">First Acc</th>
+                      <th className="text-right py-2 px-2 font-medium">EL Added</th>
+                      <th className="text-right py-2 px-2 font-medium">SL Added</th>
+                      <th className="text-right py-2 px-2 font-medium">EL Bal</th>
+                      <th className="text-right py-2 px-2 font-medium">SL Bal</th>
+                      <th className="text-left py-2 px-2 font-medium">Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backfillResult.details.map((d: any, i: number) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-muted/40" data-testid={`backfill-row-${i}`}>
+                        <td className="py-1.5 px-2 font-medium">
+                          {d.name}
+                          {d.isPartTime && <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(PT)</span>}
+                        </td>
+                        <td className="py-1.5 px-2 text-muted-foreground">{d.joiningDate || "—"}</td>
+                        <td className="py-1.5 px-2 text-muted-foreground">{d.firstAccrualMonth || "—"}</td>
+                        <td className="py-1.5 px-2 text-right text-green-700 dark:text-green-400">{d.elAdded >= 0 ? `+${d.elAdded}` : d.elAdded}</td>
+                        <td className="py-1.5 px-2 text-right text-green-700 dark:text-green-400">{d.slAdded >= 0 ? `+${d.slAdded}` : d.slAdded}</td>
+                        <td className="py-1.5 px-2 text-right font-medium">{d.newELBalance}</td>
+                        <td className="py-1.5 px-2 text-right font-medium">{d.newSLBalance}</td>
+                        <td className="py-1.5 px-2">
+                          <div className="flex flex-wrap gap-1">
+                            {d.monthsELSkipped.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={`EL skipped: ${d.monthsELSkipped.join(", ")}`}>
+                                {d.monthsELSkipped.length} EL skipped
+                              </span>
+                            )}
+                            {d.monthsELMissingData.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" title={`Missing attendance: ${d.monthsELMissingData.join(", ")}`}>
+                                {d.monthsELMissingData.length} no data
+                              </span>
+                            )}
+                            {d.correctionsApplied > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                {d.correctionsApplied} corrected
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{pendingDryRun ? "Dry Run — Preview Only" : "Run Backfill — This Writes to DB"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {pendingDryRun ? (
+              <p>
+                A dry run will compute what would be backfilled for each employee and return a detailed preview
+                — without writing anything to the database. Use this to verify the numbers before committing.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <p>
+                  This will insert historical leave accrual rows, apply 2026 cron corrections, run the 2025 year-end
+                  carry-forward/lapse, insert confirmed leave requests, and apply HR-directed balance adjustments.
+                </p>
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  The operation is idempotent — running it again will not create duplicate rows.
+                  All corrections use offset rows for a full audit trail.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirm(false)}>Cancel</Button>
+            <Button
+              onClick={() => backfillMutation.mutate(pendingDryRun)}
+              disabled={backfillMutation.isPending}
+              data-testid="button-confirm-backfill"
+            >
+              {backfillMutation.isPending ? "Running..." : pendingDryRun ? "Run Dry Run" : "Confirm & Run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 function ShiftsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -1561,6 +1737,7 @@ export default function HRSettings() {
         <PerformanceSettingsSection />
         <RayoAcademySettingsSection />
         <LetterTemplatesSection />
+        <DataMaintenanceSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>
           <DialogContent className="sm:max-w-lg">

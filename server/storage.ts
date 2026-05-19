@@ -199,6 +199,26 @@ export interface IStorage {
   }>;
   countLeaveDays(startDate: string, endDate: string): Promise<number>;
   getLeaveAccrualsByUser(userId: string, year?: number): Promise<LeaveAccrual[]>;
+  backfillLeaveAccruals(dryRun?: boolean): Promise<{
+    employeesProcessed: number;
+    skippedInactive: number;
+    accrualRowsCreated: number;
+    correctionRowsApplied: number;
+    details: Array<{
+      employeeId: string | null;
+      name: string;
+      joiningDate: string | null;
+      firstAccrualMonth: string | null;
+      isPartTime: boolean;
+      elAdded: number;
+      slAdded: number;
+      correctionsApplied: number;
+      monthsELSkipped: string[];
+      monthsELMissingData: string[];
+      newELBalance: number;
+      newSLBalance: number;
+    }>;
+  }>;
 
   // Leave Requests
   getLeaveRequests(filters?: { userId?: string; status?: string }): Promise<LeaveRequest[]>;
@@ -972,10 +992,16 @@ export class DatabaseStorage implements IStorage {
     year: number;
     month: number;
   }> {
-    // EL bonus months: January(1), May(5), September(9) → credit 2 days instead of 1
-    const EL_BONUS_MONTHS = [1, 5, 9];
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     const now = new Date();
+
+    // Probation settings — only applied to new hires with joining_date >= probationPolicyDate
+    const probationMonthsSetting = await this.getSystemSetting("probation_months");
+    const probationMonths = probationMonthsSetting ? Number(probationMonthsSetting.value) : 3;
+    const probationPolicyDateSetting = await this.getSystemSetting("probation_policy_date");
+    const probationPolicyDate = probationPolicyDateSetting?.value
+      ? new Date(String(probationPolicyDateSetting.value))
+      : null;
 
     const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
     const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
@@ -1000,6 +1026,9 @@ export class DatabaseStorage implements IStorage {
         ? (now.getTime() - joiningDate.getTime()) >= THIRTY_DAYS_MS
         : true;
 
+      // Pro-rate factor for part-time employees (50% of all rates and thresholds)
+      const proRateFactor = user.employmentType?.toLowerCase().includes("part-time") ? 0.5 : 1.0;
+
       let userBalances = await this.getLeaveBalances(user.id, year);
       if (userBalances.length === 0) {
         userBalances = await this.initLeaveBalances(user.id, year);
@@ -1010,8 +1039,9 @@ export class DatabaseStorage implements IStorage {
       const userName = `${user.firstName} ${user.lastName || ""}`.trim();
 
       for (const lt of activeLeaveTypesList) {
-        const monthlyRate = parseFloat(lt.monthlyAccrual || "0");
-        if (monthlyRate <= 0) continue;
+        const baseMonthlyRate = parseFloat(lt.monthlyAccrual || "0");
+        if (baseMonthlyRate <= 0) continue;
+        const monthlyRate = parseFloat((baseMonthlyRate * proRateFactor).toFixed(4));
 
         // 30-day employment check applies to all leave types
         if (!employedForThirtyDays) {
@@ -1029,9 +1059,29 @@ export class DatabaseStorage implements IStorage {
         let accrualType = "monthly";
 
         if (lt.isConditional) {
+          // EL: probation skip for new hires only (joining_date >= probationPolicyDate)
+          if (probationPolicyDate && joiningDate && joiningDate >= probationPolicyDate) {
+            const joiningYear = joiningDate.getFullYear();
+            const joiningMonth = joiningDate.getMonth() + 1;
+            const monthsSinceJoining = (year - joiningYear) * 12 + (month - joiningMonth);
+            if (monthsSinceJoining < probationMonths) {
+              skippedUsers.push({
+                name: userName,
+                reason: `Probation period (month ${monthsSinceJoining + 1} of ${probationMonths})`,
+                leaveTypeName: lt.name,
+              });
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: lt.id, year, month,
+                accruedDays: "0", hoursWorked: String(hoursWorked),
+                qualified: false, accrualType: "monthly",
+                skipReason: `Probation: month ${monthsSinceJoining + 1} of ${probationMonths}`,
+              }).onConflictDoNothing();
+              continue;
+            }
+          }
           // EL: conditional on hours worked threshold (exempt users bypass this check)
           if (!user.attendanceExempt) {
-            const minHours = parseFloat(lt.minHoursForAccrual || "128");
+            const minHours = parseFloat(lt.minHoursForAccrual || "128") * proRateFactor;
             if (hoursWorked < minHours) {
               skippedUsers.push({
                 name: userName,
@@ -1047,16 +1097,11 @@ export class DatabaseStorage implements IStorage {
               continue;
             }
           }
-          // EL bonus months: Jan(1), May(5), Sep(9) get +1 extra day
-          if (EL_BONUS_MONTHS.includes(month)) {
-            daysToCredit = monthlyRate + 1;
-            accrualType = "monthly+bonus";
-          }
         } else {
-          // SL (isConditional=false, unconditional): cap annual total to exactly 8 days.
+          // SL (isConditional=false, unconditional): cap annual total to 8 days (pro-rated for part-time).
           // 0.67 × 12 = 8.04 so we check how much has already been credited this year
-          // and reduce the credit so the full-year total never exceeds 8.
-          const SL_ANNUAL_CAP = 8;
+          // and reduce the credit so the full-year total never exceeds the cap.
+          const SL_ANNUAL_CAP = parseFloat((8 * proRateFactor).toFixed(2));
           const yearAccruals = await db.select().from(leaveAccruals).where(
             and(
               eq(leaveAccruals.userId, user.id),
@@ -1333,6 +1378,553 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(leaveAccruals)
       .where(whereClause)
       .orderBy(desc(leaveAccruals.year), desc(leaveAccruals.month));
+  }
+
+  async backfillLeaveAccruals(dryRun: boolean = false): Promise<{
+    employeesProcessed: number;
+    skippedInactive: number;
+    accrualRowsCreated: number;
+    correctionRowsApplied: number;
+    details: Array<{
+      employeeId: string | null;
+      name: string;
+      joiningDate: string | null;
+      firstAccrualMonth: string | null;
+      isPartTime: boolean;
+      elAdded: number;
+      slAdded: number;
+      correctionsApplied: number;
+      monthsELSkipped: string[];
+      monthsELMissingData: string[];
+      newELBalance: number;
+      newSLBalance: number;
+    }>;
+  }> {
+    // ──── Constants ────────────────────────────────────────────────
+    const BACKFILL_END_YEAR = 2026;
+    const BACKFILL_END_MONTH = 5; // May 2026 inclusive
+    // The first month the live cron ran (Jan 2026).
+    // Months before this are pure backfill; on/after are correction months.
+    const CRON_START_YEAR = 2026;
+    const CRON_START_MONTH = 1;
+    const EL_CARRY_CAP = 45;
+    const EL_MONTHLY_RATE = 1.5;
+    const SL_MONTHLY_RATE = 0.67;
+    const SL_ANNUAL_CAP = 8;
+    const EL_MIN_HOURS = 128;
+
+    // HR-specific adjustment targets (Approach B — HR directive)
+    // key: "FirstName LastName" (trimmed), value: { elCorrection, slCorrection, year }
+    const HR_ADJUSTMENTS: Record<string, { elCorrection: number; slCorrection: number }> = {
+      "Ayushi Tiwari":   { elCorrection: -8.5,  slCorrection: -3.35 },
+      "Maheep Singh":    { elCorrection: -8.5,  slCorrection: -1.35 },
+      "Aditya Gangwar":  { elCorrection: -5.5,  slCorrection: -1.35 },
+      "Anurag Kumar":    { elCorrection: -7.5,  slCorrection: -3.35 },
+    };
+
+    // Approach A — leave_request inserts (exact dates confirmed)
+    // key: "FirstName LastName", value: array of leave_request specs
+    const LEAVE_REQUEST_INSERTS: Record<string, Array<{ startDate: string; endDate: string; totalDays: number; halfDay: boolean }>> = {
+      "Sharad Kumar":        [{ startDate: "2026-05-06", endDate: "2026-05-08", totalDays: 3.0,  halfDay: false }],
+      "Mohd Shafique Beg":   [{ startDate: "2026-05-16", endDate: "2026-05-16", totalDays: 0.5,  halfDay: true  }],
+    };
+
+    // ──── Load data ─────────────────────────────────────────────────
+    const allUsers = await db.select().from(adminUsers);
+    const activeUsers = allUsers.filter(u => u.isActive && !u.deletedAt);
+    const inactiveCount = allUsers.length - activeUsers.length;
+    const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
+
+    // Identify EL and SL types (skip LWP/Comp/Occurrence-based)
+    const elType = activeLeaveTypesList.find(lt => lt.isConditional && !lt.occurrenceBased && !/lwp|loss.?of.?pay|comp/i.test(lt.name));
+    const slType = activeLeaveTypesList.find(lt => !lt.isConditional && !lt.occurrenceBased && !/lwp|loss.?of.?pay|comp/i.test(lt.name));
+
+    if (!elType || !slType) {
+      throw new Error("Could not identify EL and SL leave types. Ensure both are configured.");
+    }
+
+    let totalAccrualRows = 0;
+    let totalCorrectionRows = 0;
+    const details: Array<{
+      employeeId: string | null; name: string; joiningDate: string | null; firstAccrualMonth: string | null;
+      isPartTime: boolean; elAdded: number; slAdded: number; correctionsApplied: number;
+      monthsELSkipped: string[]; monthsELMissingData: string[]; newELBalance: number; newSLBalance: number;
+    }> = [];
+
+    // ──── Process each active employee ──────────────────────────────
+    for (const user of activeUsers) {
+      if (!user.joiningDate) continue; // No joining date → skip
+
+      const joiningDate = new Date(user.joiningDate);
+      const joiningDay = joiningDate.getUTCDate();
+      const joiningYear = joiningDate.getUTCFullYear();
+      const joiningMonthIdx = joiningDate.getUTCMonth(); // 0-indexed
+
+      // First accrual month: same month if joined on 1st, else next month
+      let firstAccrualYear = joiningYear;
+      let firstAccrualMonth = joiningMonthIdx + 1; // 1-indexed
+      if (joiningDay > 1) {
+        firstAccrualMonth++;
+        if (firstAccrualMonth > 12) { firstAccrualMonth = 1; firstAccrualYear++; }
+      }
+
+      const userName = `${user.firstName} ${user.lastName || ""}`.trim();
+      const isPartTime = user.employmentType?.toLowerCase().includes("part-time") ?? false;
+      const proRate = isPartTime ? 0.5 : 1.0;
+
+      const elRate    = parseFloat((EL_MONTHLY_RATE * proRate).toFixed(4));
+      const slRate    = parseFloat((SL_MONTHLY_RATE * proRate).toFixed(4));
+      const elMinHrs  = EL_MIN_HOURS * proRate;
+      const slAnnualCap = SL_ANNUAL_CAP * proRate;
+
+      const monthsELSkipped: string[] = [];
+      const monthsELMissingData: string[] = [];
+      let elAdded = 0;
+      let slAdded = 0;
+      let correctionCount = 0;
+      // Track 2026-year-specific additions for projected balance in dry-run mode
+      let el2026DeltaForBalance = 0;
+      let sl2026DeltaForBalance = 0;
+      // Track in-engine (would-be NEW) 2025 accruals for dry-run carry/lapse simulation
+      let el2025AddedInEngine = 0;
+      let sl2025AddedInEngine = 0;
+      // Track would-be new Approach A leave request days (not yet in DB) for dry-run balance
+      let approachANewElDays = 0;
+
+      // Running SL totals per year (to enforce annual cap during iteration)
+      const slAccruedByYear: Record<number, number> = {};
+
+      // ── Month iteration ────────────────────────────────────────────
+      let iterYear = firstAccrualYear;
+      let iterMonth = firstAccrualMonth;
+
+      while (iterYear < BACKFILL_END_YEAR || (iterYear === BACKFILL_END_YEAR && iterMonth <= BACKFILL_END_MONTH)) {
+        const isPreCron = iterYear < CRON_START_YEAR || (iterYear === CRON_START_YEAR && iterMonth < CRON_START_MONTH);
+        const monthLabel = `${iterYear}-${String(iterMonth).padStart(2, "0")}`;
+
+        // Get attendance records for this month — distinguish "no records" from "0 hours worked"
+        const monthStr2 = String(iterMonth).padStart(2, "0");
+        const monthPrefix = `${iterYear}-${monthStr2}`;
+        const attRecs = await db.select().from(attendance).where(
+          and(eq(attendance.userId, user.id), sql`${attendance.date} LIKE ${monthPrefix + "%"}`)
+        );
+        const hasAttendanceData = attRecs.length > 0; // true if ANY records exist, even 0h
+        let hoursWorked = 0;
+        for (const rec of attRecs) {
+          if (rec.totalHours) {
+            hoursWorked += parseFloat(rec.totalHours);
+          } else if (rec.punchIn && rec.punchOut) {
+            hoursWorked += (new Date(rec.punchOut).getTime() - new Date(rec.punchIn).getTime()) / 3_600_000;
+          }
+        }
+        hoursWorked = Math.round(hoursWorked * 100) / 100;
+
+        // ── EL for this month ───────────────────────────────────────
+        let elForMonth = 0;
+        let elSkippedReason: string | null = null;
+
+        if (!hasAttendanceData && !user.attendanceExempt) {
+          // No attendance data: default to crediting EL and flag for HR review
+          elForMonth = elRate;
+          monthsELMissingData.push(monthLabel);
+        } else if (!user.attendanceExempt && hoursWorked < elMinHrs) {
+          elSkippedReason = `${hoursWorked}h < ${elMinHrs}h threshold`;
+          monthsELSkipped.push(`${monthLabel}(${hoursWorked}h)`);
+        } else {
+          elForMonth = elRate;
+        }
+
+        // ── SL for this month ───────────────────────────────────────
+        slAccruedByYear[iterYear] = slAccruedByYear[iterYear] ?? 0;
+        const slAlreadyThisYear = slAccruedByYear[iterYear];
+        let slForMonth = 0;
+        const slRemaining = slAnnualCap - slAlreadyThisYear;
+        if (slRemaining > 0) {
+          slForMonth = parseFloat(Math.min(slRate, slRemaining).toFixed(2));
+        }
+
+        // ── Insert / correct accrual rows ───────────────────────────
+        if (isPreCron) {
+          // Check if backfill row already exists for this month
+          const existingEL = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} = 'backfill'`)
+          ).limit(1);
+
+          if (existingEL.length === 0) {
+            if (!dryRun) {
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: elType.id, year: iterYear, month: iterMonth,
+                accruedDays: String(elForMonth), hoursWorked: String(hoursWorked),
+                qualified: elForMonth > 0,
+                accrualType: "backfill",
+                skipReason: elSkippedReason ?? (monthsELMissingData.includes(monthLabel) ? "No attendance data — defaulted to credit" : null),
+              });
+            }
+            if (elForMonth > 0) {
+              elAdded += elForMonth;
+              totalAccrualRows++;
+              if (iterYear === 2025) el2025AddedInEngine += elForMonth; // for dry-run carry projection
+            }
+          }
+
+          const existingSL = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} = 'backfill'`)
+          ).limit(1);
+
+          if (existingSL.length === 0) {
+            if (!dryRun) {
+              await db.insert(leaveAccruals).values({
+                userId: user.id, leaveTypeId: slType.id, year: iterYear, month: iterMonth,
+                accruedDays: String(slForMonth), hoursWorked: String(hoursWorked),
+                qualified: slForMonth > 0,
+                accrualType: "backfill",
+                skipReason: slForMonth <= 0 ? "SL annual cap reached" : null,
+              });
+            }
+            if (slForMonth > 0) {
+              slAdded += slForMonth;
+              totalAccrualRows++;
+              if (iterYear === 2025) sl2025AddedInEngine += slForMonth; // for dry-run lapse projection
+            }
+          }
+        } else {
+          // Correction month (Jan-May 2026): compare existing vs correct
+          // EL correction
+          const existingELRows = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} NOT IN ('backfill_correction', 'hr_adjustment')`)
+          );
+          const existingELCredit = existingELRows.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+
+          // Determine correct EL: if hours < threshold for cron months, correct is 0
+          // (if attendanceExempt or no data, default to full rate)
+          let correctEL = elForMonth; // already computed above (0 if hours < threshold)
+
+          const alreadyCorrected = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} = 'backfill_correction'`)
+          ).limit(1);
+
+          if (alreadyCorrected.length === 0) {
+            const elDelta = parseFloat((correctEL - existingELCredit).toFixed(4));
+            if (Math.abs(elDelta) >= 0.001) {
+              if (!dryRun) {
+                await db.insert(leaveAccruals).values({
+                  userId: user.id, leaveTypeId: elType.id, year: iterYear, month: iterMonth,
+                  accruedDays: String(elDelta), hoursWorked: String(hoursWorked),
+                  qualified: true,
+                  accrualType: "backfill_correction",
+                  skipReason: `Correction: was ${existingELCredit}, correct is ${correctEL}`,
+                });
+              }
+              elAdded += elDelta;
+              el2026DeltaForBalance += elDelta; // 2026 correction row
+              totalCorrectionRows++;
+              correctionCount++;
+            }
+          }
+
+          // SL correction — check if any SL was missed for this month
+          const existingSLRows = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} NOT IN ('backfill_correction', 'hr_adjustment')`)
+          );
+          const existingSLCredit = existingSLRows.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+
+          const alreadyCorrectedSL = await db.select().from(leaveAccruals).where(
+            and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+              eq(leaveAccruals.year, iterYear), eq(leaveAccruals.month, iterMonth),
+              sql`${leaveAccruals.accrualType} = 'backfill_correction'`)
+          ).limit(1);
+
+          if (alreadyCorrectedSL.length === 0) {
+            const slDelta = parseFloat((slForMonth - existingSLCredit).toFixed(4));
+            if (Math.abs(slDelta) >= 0.001) {
+              if (!dryRun) {
+                await db.insert(leaveAccruals).values({
+                  userId: user.id, leaveTypeId: slType.id, year: iterYear, month: iterMonth,
+                  accruedDays: String(slDelta), hoursWorked: String(hoursWorked),
+                  qualified: true,
+                  accrualType: "backfill_correction",
+                  skipReason: `Correction: was ${existingSLCredit}, correct is ${slForMonth}`,
+                });
+              }
+              slAdded += slDelta;
+              sl2026DeltaForBalance += slDelta; // 2026 correction row
+              totalCorrectionRows++;
+              correctionCount++;
+            }
+          }
+        }
+
+        // Track SL for annual cap
+        slAccruedByYear[iterYear] = (slAccruedByYear[iterYear] ?? 0) + slForMonth;
+
+        // Advance month
+        iterMonth++;
+        if (iterMonth > 12) { iterMonth = 1; iterYear++; }
+      }
+
+      // ── Year-end 2025: compute amounts in both modes, write only if !dryRun ──
+      const el2025Rows = await db.select().from(leaveAccruals).where(
+        and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+          eq(leaveAccruals.year, 2025), sql`${leaveAccruals.month} BETWEEN 1 AND 12`)
+      );
+      // Projected 2025 total = persisted DB rows + in-engine would-be new rows (idempotent in both modes)
+      const el2025TotalFromDb = el2025Rows.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+      const el2025Total = el2025TotalFromDb + el2025AddedInEngine;
+      const used2025ELReqs = await db.select().from(leaveRequests).where(
+        and(eq(leaveRequests.userId, user.id), eq(leaveRequests.leaveTypeId, elType.id),
+          eq(leaveRequests.status, "approved"),
+          sql`${leaveRequests.startDate} >= '2025-01-01' AND ${leaveRequests.startDate} <= '2025-12-31'`)
+      );
+      const el2025Used = used2025ELReqs.reduce((s, r) => s + parseFloat(r.totalDays), 0);
+      const el2025Remaining = Math.max(0, el2025Total - el2025Used);
+      const el2025Carry = Math.min(el2025Remaining, EL_CARRY_CAP);
+
+      const sl2025Rows = await db.select().from(leaveAccruals).where(
+        and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+          eq(leaveAccruals.year, 2025), sql`${leaveAccruals.month} BETWEEN 1 AND 12`)
+      );
+      // Same projected-total approach for SL
+      const sl2025TotalFromDb = sl2025Rows.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+      const sl2025Total = sl2025TotalFromDb + sl2025AddedInEngine;
+      const used2025SLReqs = await db.select().from(leaveRequests).where(
+        and(eq(leaveRequests.userId, user.id), eq(leaveRequests.leaveTypeId, slType.id),
+          eq(leaveRequests.status, "approved"),
+          sql`${leaveRequests.startDate} >= '2025-01-01' AND ${leaveRequests.startDate} <= '2025-12-31'`)
+      );
+      const sl2025Used = used2025SLReqs.reduce((s, r) => s + parseFloat(r.totalDays), 0);
+      const sl2025Remaining = Math.max(0, sl2025Total - sl2025Used);
+
+      // Idempotency checks for carry/lapse (needed in both modes to avoid double-counting)
+      const existingCarry = await db.select().from(leaveAccruals).where(
+        and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+          eq(leaveAccruals.year, 2026), eq(leaveAccruals.month, 0),
+          sql`${leaveAccruals.accrualType} = 'year_end_carry_forward'`)
+      ).limit(1);
+      const carryAlreadyRecorded = existingCarry.length > 0 && parseFloat(existingCarry[0].accruedDays) > 0;
+
+      const existingLapse = await db.select().from(leaveAccruals).where(
+        and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+          eq(leaveAccruals.year, 2025), eq(leaveAccruals.month, 13),
+          sql`${leaveAccruals.accrualType} = 'year_end_lapse'`)
+      ).limit(1);
+
+      // Track carry for projected balance (only if not already recorded)
+      if (!carryAlreadyRecorded && el2025Carry > 0) {
+        elAdded += el2025Carry;
+        el2026DeltaForBalance += el2025Carry; // carry-forward is a year=2026 row
+      }
+
+      if (!dryRun) {
+        if (existingCarry.length > 0) {
+          if (parseFloat(existingCarry[0].accruedDays) === 0 && el2025Carry > 0) {
+            await db.update(leaveAccruals)
+              .set({ accruedDays: String(el2025Carry), skipReason: "Updated by backfill" })
+              .where(eq(leaveAccruals.id, existingCarry[0].id));
+          }
+        } else if (el2025Carry > 0) {
+          await db.insert(leaveAccruals).values({
+            userId: user.id, leaveTypeId: elType.id, year: 2026, month: 0,
+            accruedDays: String(el2025Carry), hoursWorked: "0",
+            qualified: true, accrualType: "year_end_carry_forward",
+            skipReason: `EL carry from 2025: ${el2025Remaining.toFixed(2)} remaining → capped at ${EL_CARRY_CAP}`,
+          });
+        }
+        if (existingLapse.length === 0 && sl2025Remaining > 0) {
+          await db.insert(leaveAccruals).values({
+            userId: user.id, leaveTypeId: slType.id, year: 2025, month: 13,
+            accruedDays: String(-sl2025Remaining), hoursWorked: "0",
+            qualified: true, accrualType: "year_end_lapse",
+            skipReason: `SL year-end lapse: ${sl2025Remaining.toFixed(2)} days forfeited`,
+          });
+        }
+      }
+
+      // ── HR-directed balance adjustments (Approach B) — compute in both modes ──
+      const adj = HR_ADJUSTMENTS[userName];
+      if (adj) {
+        // Check idempotency in both modes to avoid double-counting in dry-run
+        const existingELAdj = await db.select().from(leaveAccruals).where(
+          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.month, 99),
+            sql`${leaveAccruals.accrualType} = 'hr_adjustment'`)
+        ).limit(1);
+        const existingSLAdj = await db.select().from(leaveAccruals).where(
+          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.month, 99),
+            sql`${leaveAccruals.accrualType} = 'hr_adjustment'`)
+        ).limit(1);
+
+        if (existingELAdj.length === 0 && Math.abs(adj.elCorrection) > 0) {
+          if (!dryRun) {
+            await db.insert(leaveAccruals).values({
+              userId: user.id, leaveTypeId: elType.id, year: 2026, month: 99,
+              accruedDays: String(adj.elCorrection), hoursWorked: "0",
+              qualified: true, accrualType: "hr_adjustment",
+              skipReason: "Historical leave balance correction — HR directive",
+            });
+          }
+          elAdded += adj.elCorrection;
+          el2026DeltaForBalance += adj.elCorrection;
+          correctionCount++;
+        }
+        if (existingSLAdj.length === 0 && Math.abs(adj.slCorrection) > 0) {
+          if (!dryRun) {
+            await db.insert(leaveAccruals).values({
+              userId: user.id, leaveTypeId: slType.id, year: 2026, month: 99,
+              accruedDays: String(adj.slCorrection), hoursWorked: "0",
+              qualified: true, accrualType: "hr_adjustment",
+              skipReason: "Historical leave balance correction — HR directive",
+            });
+          }
+          slAdded += adj.slCorrection;
+          sl2026DeltaForBalance += adj.slCorrection;
+          correctionCount++;
+        }
+      }
+
+      // ── Approach A: Insert leave_requests BEFORE balance recomputation ──
+      const leaveReqInserts = LEAVE_REQUEST_INSERTS[userName];
+      if (leaveReqInserts) {
+        for (const req of leaveReqInserts) {
+          const existing = await db.select().from(leaveRequests).where(
+            and(eq(leaveRequests.userId, user.id),
+              eq(leaveRequests.startDate, req.startDate),
+              eq(leaveRequests.endDate, req.endDate),
+              eq(leaveRequests.status, "approved"))
+          ).limit(1);
+
+          if (existing.length === 0) {
+            if (!dryRun) {
+              await db.insert(leaveRequests).values({
+                userId: user.id,
+                leaveTypeId: elType.id,
+                startDate: req.startDate,
+                endDate: req.endDate,
+                totalDays: String(req.totalDays),
+                halfDay: req.halfDay,
+                reason: "Historical leave — imported from attendance record",
+                status: "approved",
+                reviewedAt: new Date(),
+              });
+            }
+            // Track for dry-run balance: these days would be deducted from EL in 2026
+            approachANewElDays += req.totalDays;
+          }
+        }
+      }
+
+      // ── Update leave_balances (write mode only — only totalDays is touched; usedDays is never written by backfill) ──
+      if (!dryRun) {
+        for (const ltId of [elType.id, slType.id]) {
+          for (const balYear of [2025, 2026]) {
+            const rows = await db.select().from(leaveAccruals).where(
+              and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, ltId),
+                eq(leaveAccruals.year, balYear), eq(leaveAccruals.qualified, true))
+            );
+            const newTotal = rows.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+
+            const existingBal = await db.select().from(leaveBalances).where(
+              and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, ltId),
+                eq(leaveBalances.year, balYear))
+            ).limit(1);
+
+            if (existingBal.length > 0) {
+              // Only totalDays is updated — usedDays is managed by the leave-request approval flow
+              await db.update(leaveBalances)
+                .set({ totalDays: String(parseFloat(newTotal.toFixed(2))), updatedAt: new Date() })
+                .where(eq(leaveBalances.id, existingBal[0].id));
+            } else if (newTotal > 0) {
+              await db.insert(leaveBalances).values({
+                userId: user.id, leaveTypeId: ltId,
+                totalDays: String(parseFloat(newTotal.toFixed(2))), usedDays: "0", year: balYear,
+              });
+            }
+          }
+        }
+      }
+
+      // ── Compute final balances for result ──────────────────────────────
+      let newELBalance = 0;
+      let newSLBalance = 0;
+      if (!dryRun) {
+        // Read updated balance from DB (totalDays just written; usedDays unchanged by backfill)
+        const el2026Bal = await db.select().from(leaveBalances).where(
+          and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, elType.id), eq(leaveBalances.year, 2026))
+        ).limit(1);
+        const sl2026Bal = await db.select().from(leaveBalances).where(
+          and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, slType.id), eq(leaveBalances.year, 2026))
+        ).limit(1);
+        if (el2026Bal.length) newELBalance = parseFloat(el2026Bal[0].totalDays) - parseFloat(el2026Bal[0].usedDays);
+        if (sl2026Bal.length) newSLBalance = parseFloat(sl2026Bal[0].totalDays) - parseFloat(sl2026Bal[0].usedDays);
+      } else {
+        // Dry-run: project 2026 balance = existing accruals + this-run deltas - existing usedDays
+        const existing2026ELAcc = await db.select().from(leaveAccruals).where(
+          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true))
+        );
+        const existing2026ELTotal = existing2026ELAcc.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+        const existing2026ELBal = await db.select().from(leaveBalances).where(
+          and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, elType.id), eq(leaveBalances.year, 2026))
+        ).limit(1);
+        const existing2026ELUsed = existing2026ELBal.length ? parseFloat(existing2026ELBal[0].usedDays) : 0;
+        // Also subtract would-be new Approach A leave requests not yet in DB (tracked above)
+        newELBalance = existing2026ELTotal + el2026DeltaForBalance - existing2026ELUsed - approachANewElDays;
+
+        const existing2026SLAcc = await db.select().from(leaveAccruals).where(
+          and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true))
+        );
+        const existing2026SLTotal = existing2026SLAcc.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+        const existing2026SLBal = await db.select().from(leaveBalances).where(
+          and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, slType.id), eq(leaveBalances.year, 2026))
+        ).limit(1);
+        const existing2026SLUsed = existing2026SLBal.length ? parseFloat(existing2026SLBal[0].usedDays) : 0;
+        newSLBalance = existing2026SLTotal + sl2026DeltaForBalance - existing2026SLUsed;
+      }
+
+      details.push({
+        employeeId: user.employeeId ?? null,
+        name: userName,
+        joiningDate: user.joiningDate ?? null,
+        firstAccrualMonth: `${firstAccrualYear}-${String(firstAccrualMonth).padStart(2, "0")}`,
+        isPartTime,
+        elAdded: parseFloat(elAdded.toFixed(2)),
+        slAdded: parseFloat(slAdded.toFixed(2)),
+        correctionsApplied: correctionCount,
+        monthsELSkipped,
+        monthsELMissingData,
+        newELBalance: parseFloat(newELBalance.toFixed(2)),
+        newSLBalance: parseFloat(newSLBalance.toFixed(2)),
+      });
+    }
+
+    // Store run log
+    if (!dryRun) {
+      await this.upsertSystemSetting("backfill_leave_accruals_log", {
+        runAt: new Date().toISOString(),
+        employeesProcessed: details.length,
+        accrualRowsCreated: totalAccrualRows,
+        correctionRowsApplied: totalCorrectionRows,
+      });
+    }
+
+    return {
+      employeesProcessed: details.length,
+      skippedInactive: inactiveCount,
+      accrualRowsCreated: totalAccrualRows,
+      correctionRowsApplied: totalCorrectionRows,
+      details,
+    };
   }
 
   // ==========================================

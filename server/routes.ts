@@ -2875,6 +2875,22 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/hr/backfill-leave-accruals", requireAdminLevel, async (req, res) => {
+    try {
+      const dryRun = req.body?.dryRun === true;
+      const result = await storage.backfillLeaveAccruals(dryRun);
+      res.json({
+        message: dryRun
+          ? `Dry run complete — no data was written. ${result.employeesProcessed} employees would be processed.`
+          : `Backfill complete. ${result.employeesProcessed} employees processed, ${result.accrualRowsCreated} rows created, ${result.correctionRowsApplied} corrections applied.`,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("[backfill] Leave accrual backfill failed:", error);
+      res.status(500).json({ error: error.message || "Failed to run leave accrual backfill" });
+    }
+  });
+
   app.get("/api/hr/leave-accruals/run-log", requireRole("hr"), async (req, res) => {
     try {
       const latest = await storage.getSystemSetting("accrual_run_log_latest");
