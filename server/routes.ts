@@ -1686,7 +1686,7 @@ export async function registerRoutes(
       const activeBalances = balances.filter(b => activeIds.has(b.leaveTypeId));
 
       let todayStatus: "not_punched" | "punched_in" | "completed" = "not_punched";
-      if (todayRecord) {
+      if (todayRecord && todayRecord.punchIn) {
         todayStatus = todayRecord.punchOut ? "completed" : "punched_in";
       }
 
