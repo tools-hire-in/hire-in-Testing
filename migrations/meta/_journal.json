@@ -50,6 +50,13 @@
       "when": 1746684600000,
       "tag": "0006_universal_policy_tracks",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779343496480,
+      "tag": "0007_add_missing_columns",
+      "breakpoints": true
     }
   ]
 }
