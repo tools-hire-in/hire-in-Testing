@@ -204,6 +204,7 @@ export interface IStorage {
     skippedInactive: number;
     accrualRowsCreated: number;
     correctionRowsApplied: number;
+    resolvedLeaveTypes: { el: { id: string; name: string }; sl: { id: string; name: string } };
     details: Array<{
       employeeId: string | null;
       name: string;
@@ -1385,6 +1386,7 @@ export class DatabaseStorage implements IStorage {
     skippedInactive: number;
     accrualRowsCreated: number;
     correctionRowsApplied: number;
+    resolvedLeaveTypes: { el: { id: string; name: string }; sl: { id: string; name: string } };
     details: Array<{
       employeeId: string | null;
       name: string;
@@ -1420,11 +1422,19 @@ export class DatabaseStorage implements IStorage {
     const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
 
     // Identify EL and SL types (skip LWP/Comp/Occurrence-based)
-    const elType = activeLeaveTypesList.find(lt => lt.isConditional && !lt.occurrenceBased && !/lwp|loss.?of.?pay|comp/i.test(lt.name));
-    const slType = activeLeaveTypesList.find(lt => !lt.isConditional && !lt.occurrenceBased && !/lwp|loss.?of.?pay|comp/i.test(lt.name));
+    // Step 1: name-based matching (case-insensitive keywords)
+    const candidates = activeLeaveTypesList.filter(lt => !lt.occurrenceBased && !/lwp|loss.?of.?pay|comp/i.test(lt.name));
+    let elType = candidates.find(lt => /earned|\bel\b/i.test(lt.name));
+    let slType = candidates.find(lt => /sick|\bsl\b/i.test(lt.name));
+
+    // Step 2: fall back to isConditional flag if name matching didn't resolve
+    if (!elType) elType = candidates.find(lt => lt.isConditional && lt !== slType);
+    if (!slType) slType = candidates.find(lt => !lt.isConditional && lt !== elType);
 
     if (!elType || !slType) {
-      throw new Error("Could not identify EL and SL leave types. Ensure both are configured.");
+      const typeList = candidates.map(lt => `"${lt.name}" (isConditional=${lt.isConditional})`).join(", ");
+      const found = typeList || "(none)";
+      throw new Error(`Could not identify EL and SL leave types. Active non-occurrence leave types found: ${found}. Ensure EL and SL are configured with recognizable names (e.g. "Earned Leave"/"EL" and "Sick Leave"/"SL").`);
     }
 
     let totalAccrualRows = 0;
@@ -1829,6 +1839,10 @@ export class DatabaseStorage implements IStorage {
       skippedInactive: inactiveCount,
       accrualRowsCreated: totalAccrualRows,
       correctionRowsApplied: totalCorrectionRows,
+      resolvedLeaveTypes: {
+        el: { id: elType.id, name: elType.name },
+        sl: { id: slType.id, name: slType.name },
+      },
       details,
     };
   }

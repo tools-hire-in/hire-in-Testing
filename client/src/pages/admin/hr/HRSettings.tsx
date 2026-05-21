@@ -628,6 +628,11 @@ function DataMaintenanceSection() {
               <span>Accrual rows created: <strong className="text-green-700 dark:text-green-400">{backfillResult.accrualRowsCreated}</strong></span>
               <span>Corrections applied: <strong className="text-amber-600 dark:text-amber-400">{backfillResult.correctionRowsApplied}</strong></span>
             </div>
+            {backfillResult.resolvedLeaveTypes && (
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded px-3 py-1.5 border" data-testid="backfill-resolved-leave-types">
+                Resolved leave types — EL: <strong className="text-foreground">{backfillResult.resolvedLeaveTypes.el.name}</strong> (id: {backfillResult.resolvedLeaveTypes.el.id}) · SL: <strong className="text-foreground">{backfillResult.resolvedLeaveTypes.sl.name}</strong> (id: {backfillResult.resolvedLeaveTypes.sl.id})
+              </div>
+            )}
             {backfillResult.details && backfillResult.details.length > 0 && (
               <div className="max-h-96 overflow-y-auto border rounded-md">
                 <table className="w-full text-xs">
