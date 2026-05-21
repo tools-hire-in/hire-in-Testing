@@ -1,0 +1,110 @@
+CREATE TYPE "public"."contract_source" AS ENUM('generated', 'imported');
+CREATE TYPE "public"."contract_status" AS ENUM('draft', 'sent', 'client_signed', 'countersigned', 'cancelled');
+CREATE TYPE "public"."invoice_status" AS ENUM('scheduled', 'sent', 'paid', 'overdue', 'cancelled');
+CREATE TYPE "public"."offer_letter_addendum_status" AS ENUM('draft', 'sent', 'accepted', 'countersigned', 'cancelled');
+CREATE TYPE "public"."offer_letter_addendum_type" AS ENUM('salary_revision', 'role_change', 'probation_extension', 'combined', 'custom', 'device_allocation');
+ALTER TYPE "public"."user_role" ADD VALUE 'finance' BEFORE 'operations';
+ALTER TYPE "public"."user_role" ADD VALUE 'recruiter' BEFORE 'employee';
+CREATE TABLE "contract_templates" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar NOT NULL,
+	"description" text,
+	"file_path" varchar NOT NULL,
+	"placeholder_list" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"uploaded_by" varchar,
+	"usage_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "contract_clients" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar NOT NULL,
+	"address" text,
+	"signatory_name" varchar,
+	"signatory_title" varchar,
+	"email" varchar,
+	"phone" varchar,
+	"website" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "contract_invoices" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"contract_id" varchar NOT NULL,
+	"invoice_number" varchar,
+	"period_start" date,
+	"period_end" date,
+	"due_date" date,
+	"amount" numeric,
+	"currency" varchar DEFAULT 'USD' NOT NULL,
+	"status" "invoice_status" DEFAULT 'scheduled' NOT NULL,
+	"sent_at" timestamp,
+	"paid_at" timestamp,
+	"reminder_sent_at" timestamp,
+	"notes" text,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "contracts" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source" "contract_source" DEFAULT 'generated' NOT NULL,
+	"template_id" varchar,
+	"client_id" varchar,
+	"template_name" varchar,
+	"client_name" varchar NOT NULL,
+	"candidate_name" varchar,
+	"candidate_role" varchar,
+	"variable_values" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"docx_path" varchar,
+	"uploaded_doc_path" varchar,
+	"contract_start_date" date,
+	"contract_end_date" date,
+	"margin_per_hour" varchar,
+	"payment_terms_days" integer,
+	"billing_frequency" varchar,
+	"notes" text,
+	"status" "contract_status" DEFAULT 'draft' NOT NULL,
+	"signing_token" varchar,
+	"document_hash" varchar,
+	"auth_code" varchar,
+	"client_signed_at" timestamp,
+	"client_signed_ip" varchar,
+	"countersigned_by" varchar,
+	"countersigned_at" timestamp,
+	"sent_at" timestamp,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "contracts_signing_token_unique" UNIQUE("signing_token")
+);
+ALTER TABLE "offer_letters" ADD COLUMN "gender" varchar;
+ALTER TABLE "offer_letters" ADD COLUMN "attendance_exempt" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letters" ADD COLUMN "training_exempt" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letters" ADD COLUMN "maternity_leave_eligible" boolean DEFAULT false NOT NULL;
+ALTER TABLE "contract_templates" ADD CONSTRAINT "contract_templates_uploaded_by_admin_users_id_fk" FOREIGN KEY ("uploaded_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contract_invoices" ADD CONSTRAINT "contract_invoices_contract_id_contracts_id_fk" FOREIGN KEY ("contract_id") REFERENCES "public"."contracts"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contract_invoices" ADD CONSTRAINT "contract_invoices_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_client_id_contract_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."contract_clients"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_countersigned_by_admin_users_id_fk" FOREIGN KEY ("countersigned_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_template_id_contract_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."contract_templates"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance" ADD CONSTRAINT "attendance_corrected_by_id_admin_users_id_fk" FOREIGN KEY ("corrected_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letters" ADD CONSTRAINT "offer_letters_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_assignments" ADD CONSTRAINT "track_assignments_exception_granted_by_id_admin_users_id_fk" FOREIGN KEY ("exception_granted_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "shift_assignment_log" ADD CONSTRAINT "shift_assignment_log_changed_by_id_admin_users_id_fk" FOREIGN KEY ("changed_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "shift_assignment_log" ADD CONSTRAINT "shift_assignment_log_new_shift_id_shifts_id_fk" FOREIGN KEY ("new_shift_id") REFERENCES "public"."shifts"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "shift_assignment_log" ADD CONSTRAINT "shift_assignment_log_old_shift_id_shifts_id_fk" FOREIGN KEY ("old_shift_id") REFERENCES "public"."shifts"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "shift_assignment_log" ADD CONSTRAINT "shift_assignment_log_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_counter_signed_by_admin_users_id_fk" FOREIGN KEY ("counter_signed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_issued_by_admin_users_id_fk" FOREIGN KEY ("issued_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_offer_letter_id_offer_letters_id_fk" FOREIGN KEY ("offer_letter_id") REFERENCES "public"."offer_letters"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "break_records" ADD CONSTRAINT "break_records_attendance_id_attendance_id_fk" FOREIGN KEY ("attendance_id") REFERENCES "public"."attendance"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "break_records" ADD CONSTRAINT "break_records_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_custom_override_by_admin_users_id_fk" FOREIGN KEY ("custom_override_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_issued_by_admin_users_id_fk" FOREIGN KEY ("issued_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_revoked_by_admin_users_id_fk" FOREIGN KEY ("revoked_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_signatory_id_admin_users_id_fk" FOREIGN KEY ("signatory_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "night_shift_consents" ADD CONSTRAINT "night_shift_consents_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
