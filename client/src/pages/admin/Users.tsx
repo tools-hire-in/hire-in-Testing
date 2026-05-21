@@ -140,7 +140,7 @@ export default function AdminUsers() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, employeeCategory: "experienced" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, trainingExempt: false, employeeCategory: "experienced", employmentType: "Full-time / Regular" });
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -481,7 +481,9 @@ export default function AdminUsers() {
       joiningDate: adminUser.joiningDate || "",
       salary: adminUser.salary || "",
       attendanceExempt: adminUser.attendanceExempt ?? false,
+      trainingExempt: (adminUser as any).trainingExempt ?? false,
       employeeCategory: adminUser.employeeCategory || "experienced",
+      employmentType: (adminUser as any).employmentType || "Full-time / Regular",
     });
     setEditOpen(true);
   };
@@ -1043,6 +1045,18 @@ export default function AdminUsers() {
                 <Input type="date" value={editForm.joiningDate} onChange={(e) => setEditForm(prev => ({ ...prev, joiningDate: e.target.value }))} data-testid="input-edit-joining-date" />
               </div>
               <div className="space-y-2">
+                <Label>Employment Type</Label>
+                <Select value={editForm.employmentType} onValueChange={(v) => setEditForm(prev => ({ ...prev, employmentType: v }))}>
+                  <SelectTrigger data-testid="select-edit-employment-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Full-time / Regular">Full-time / Regular</SelectItem>
+                    <SelectItem value="Part-time">Part-time</SelectItem>
+                    <SelectItem value="Contract">Contract</SelectItem>
+                    <SelectItem value="Intern">Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Employee Category</Label>
                 <Select value={editForm.employeeCategory} onValueChange={(v) => setEditForm(prev => ({ ...prev, employeeCategory: v }))}>
                   <SelectTrigger data-testid="select-edit-employee-category"><SelectValue /></SelectTrigger>
@@ -1054,21 +1068,40 @@ export default function AdminUsers() {
                 </Select>
               </div>
               {(isSuperAdmin || isAdmin || user?.role === "hr") && (
-                <div className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <Label className="text-sm font-medium">Attendance Exempt</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements. Leave accrual continues normally.</p>
+                <div className="rounded-lg border p-3 space-y-3">
+                  <Label className="text-sm font-medium">Exemption Flags</Label>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Attendance Exempt</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements.</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editForm.attendanceExempt}
+                      onClick={() => setEditForm(prev => ({ ...prev, attendanceExempt: !prev.attendanceExempt }))}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editForm.attendanceExempt ? "bg-primary" : "bg-input"}`}
+                      data-testid="toggle-attendance-exempt"
+                    >
+                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.attendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={editForm.attendanceExempt}
-                    onClick={() => setEditForm(prev => ({ ...prev, attendanceExempt: !prev.attendanceExempt }))}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editForm.attendanceExempt ? "bg-primary" : "bg-input"}`}
-                    data-testid="toggle-attendance-exempt"
-                  >
-                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.attendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Training Exempt</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Exempt from training compliance lock.</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editForm.trainingExempt}
+                      onClick={() => setEditForm(prev => ({ ...prev, trainingExempt: !prev.trainingExempt }))}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editForm.trainingExempt ? "bg-primary" : "bg-input"}`}
+                      data-testid="toggle-training-exempt"
+                    >
+                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.trainingExempt ? "translate-x-5" : "translate-x-0"}`} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1087,7 +1120,9 @@ export default function AdminUsers() {
                       joiningDate: editForm.joiningDate || null,
                       salary: editForm.salary || null,
                       attendanceExempt: editForm.attendanceExempt,
+                      trainingExempt: editForm.trainingExempt,
                       employeeCategory: editForm.employeeCategory,
+                      employmentType: editForm.employmentType,
                     },
                   });
                 }}

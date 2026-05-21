@@ -5856,7 +5856,7 @@ export async function registerRoutes(
       const hasAccess = await validateMyTeamAccess(req, res, userId);
       if (!hasAccess) return;
 
-      const { designation, departmentId, hierarchyLevel, gender, employmentType, attendanceExempt, trainingExempt, maternityLeaveEligible, note } = req.body;
+      const { designation, departmentId, hierarchyLevel, gender, employmentType, employeeCategory, attendanceExempt, trainingExempt, maternityLeaveEligible, note } = req.body;
       if (!note || !note.trim()) {
         return res.status(400).json({ error: "Reason for change is required" });
       }
@@ -5894,6 +5894,11 @@ export async function registerRoutes(
         before.employmentType = (targetUser as any).employmentType;
         after.employmentType = employmentType;
         updateData.employmentType = employmentType;
+      }
+      if (employeeCategory !== undefined) {
+        before.employeeCategory = (targetUser as any).employeeCategory;
+        after.employeeCategory = employeeCategory;
+        updateData.employeeCategory = employeeCategory;
       }
       if (attendanceExempt !== undefined) {
         before.attendanceExempt = targetUser.attendanceExempt;
@@ -6282,6 +6287,7 @@ export async function registerRoutes(
             : null,
           gender: (user as any).gender ?? null,
           employmentType: (user as any).employmentType ?? null,
+          employeeCategory: (user as any).employeeCategory ?? "experienced",
           attendanceExempt: user.attendanceExempt ?? false,
           trainingExempt: (user as any).trainingExempt ?? false,
           maternityLeaveEligible: (user as any).maternityLeaveEligible ?? false,

@@ -113,6 +113,7 @@ interface EmployeeProfile {
   salary: string | null;
   gender: string | null;
   employmentType: string | null;
+  employeeCategory: string | null;
   attendanceExempt: boolean;
   trainingExempt: boolean;
   maternityLeaveEligible: boolean;
@@ -1840,6 +1841,7 @@ export default function MyTeam() {
   const [formAttendanceExempt, setFormAttendanceExempt] = useState(false);
   const [formTrainingExempt, setFormTrainingExempt] = useState(false);
   const [formMaternityLeaveEligible, setFormMaternityLeaveEligible] = useState(false);
+  const [formEmployeeCategory, setFormEmployeeCategory] = useState("experienced");
   const [formHolidayId, setFormHolidayId] = useState("");
   const [formContactName, setFormContactName] = useState("");
   const [formContactRelationship, setFormContactRelationship] = useState("");
@@ -2002,6 +2004,7 @@ export default function MyTeam() {
     setFormAttendanceExempt(false);
     setFormTrainingExempt(false);
     setFormMaternityLeaveEligible(false);
+    setFormEmployeeCategory("experienced");
     setFormHolidayId("");
     setFormContactName("");
     setFormContactRelationship("");
@@ -2033,6 +2036,7 @@ export default function MyTeam() {
     setFormAttendanceExempt((user as any).attendanceExempt ?? false);
     setFormTrainingExempt((user as any).trainingExempt ?? false);
     setFormMaternityLeaveEligible((user as any).maternityLeaveEligible ?? false);
+    setFormEmployeeCategory(user.employeeCategory || "experienced");
     setFormNote("");
     setEditProfileOpen(true);
   }
@@ -2209,21 +2213,65 @@ export default function MyTeam() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="border rounded-lg p-3 space-y-2">
+              <div>
+                <label className="text-sm font-medium">Employee Category</label>
+                <Select value={formEmployeeCategory} onValueChange={setFormEmployeeCategory}>
+                  <SelectTrigger data-testid="select-profile-employee-category">
+                    <SelectValue placeholder="Select category..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="experienced">Experienced</SelectItem>
+                    <SelectItem value="fresher">Fresher</SelectItem>
+                    <SelectItem value="intern">Intern</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="border rounded-lg p-3 space-y-3">
                 <label className="text-sm font-medium">Exemption Flags</label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-attendance-exempt">
-                    <input type="checkbox" checked={formAttendanceExempt} onChange={e => setFormAttendanceExempt(e.target.checked)} className="rounded" />
-                    <span className="text-sm">Attendance Exempt</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-training-exempt">
-                    <input type="checkbox" checked={formTrainingExempt} onChange={e => setFormTrainingExempt(e.target.checked)} className="rounded" />
-                    <span className="text-sm">Training Exempt</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer" data-testid="check-profile-maternity-eligible">
-                    <input type="checkbox" checked={formMaternityLeaveEligible} onChange={e => setFormMaternityLeaveEligible(e.target.checked)} className="rounded" />
-                    <span className="text-sm">Maternity Leave Eligible</span>
-                  </label>
+                <div className="flex items-center justify-between" data-testid="check-profile-attendance-exempt">
+                  <div>
+                    <p className="text-sm font-medium">Attendance Exempt</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formAttendanceExempt}
+                    onClick={() => setFormAttendanceExempt(v => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formAttendanceExempt ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formAttendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between" data-testid="check-profile-training-exempt">
+                  <div>
+                    <p className="text-sm font-medium">Training Exempt</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from training compliance lock.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formTrainingExempt}
+                    onClick={() => setFormTrainingExempt(v => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formTrainingExempt ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formTrainingExempt ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between" data-testid="check-profile-maternity-eligible">
+                  <div>
+                    <p className="text-sm font-medium">Maternity Leave Eligible</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Can apply for maternity leave.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formMaternityLeaveEligible}
+                    onClick={() => setFormMaternityLeaveEligible(v => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formMaternityLeaveEligible ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formMaternityLeaveEligible ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
                 </div>
               </div>
               <div>
@@ -2244,6 +2292,7 @@ export default function MyTeam() {
                     hierarchyLevel: formHierarchyLevel || undefined,
                     gender: formGender || undefined,
                     employmentType: formEmploymentType || undefined,
+                    employeeCategory: formEmployeeCategory || undefined,
                     attendanceExempt: formAttendanceExempt,
                     trainingExempt: formTrainingExempt,
                     maternityLeaveEligible: formMaternityLeaveEligible,
