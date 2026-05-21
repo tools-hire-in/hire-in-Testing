@@ -7,7 +7,7 @@ import { z } from "zod";
 export * from "./models/auth";
 
 // User roles enum
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"]);
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"]);
 
 // Hierarchy level enum
 export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "vp", "director", "manager", "team_lead", "delivery_manager", "team_member"]);
@@ -516,7 +516,7 @@ export const registerAdminSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  role: z.enum(["super_admin", "admin", "hr", "operations", "manager", "employee"]).default("employee"),
+  role: z.enum(["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"]).default("employee"),
 });
 
 export const insertJobSchema = createInsertSchema(jobs).omit({

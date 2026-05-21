@@ -15,11 +15,12 @@ export default function ReportsCompliance() {
 
   const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
   const isHR = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isFinance = user?.role === "finance";
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
   const validTabs = [
-    ...(isHR ? ["salary"] : []),
+    ...(isHR || isFinance ? ["salary"] : []),
     ...(isHR ? ["compliance"] : []),
     ...(isHR ? ["policy"] : []),
     ...(isAdmin ? ["audit"] : []),
@@ -69,12 +70,12 @@ export default function ReportsCompliance() {
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-reports">
           <TabsList>
-            {isHR && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}
+            {(isHR || isFinance) && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}
             {isHR && <TabsTrigger value="compliance" data-testid="tab-compliance">Document Compliance</TabsTrigger>}
             {isHR && <TabsTrigger value="policy" data-testid="tab-policy">Policy Compliance</TabsTrigger>}
             {isAdmin && <TabsTrigger value="audit" data-testid="tab-audit">Audit Logs</TabsTrigger>}
           </TabsList>
-          {isHR && (
+          {(isHR || isFinance) && (
             <TabsContent value="salary">
               <SalaryReportsContent />
             </TabsContent>

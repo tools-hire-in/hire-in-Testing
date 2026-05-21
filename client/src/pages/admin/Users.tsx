@@ -58,6 +58,7 @@ const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
   hr: "HR",
+  finance: "Finance",
   operations: "Operations",
   manager: "Manager",
   recruiter: "Recruiter",
@@ -68,6 +69,7 @@ const roleColors: Record<string, string> = {
   super_admin: "bg-purple-100 text-purple-800",
   admin: "bg-blue-100 text-blue-800",
   hr: "bg-green-100 text-green-800",
+  finance: "bg-amber-100 text-amber-800",
   operations: "bg-orange-100 text-orange-800",
   manager: "bg-violet-100 text-violet-800",
   recruiter: "bg-cyan-100 text-cyan-800",
@@ -87,7 +89,7 @@ const levelLabels: Record<string, string> = {
 const TOP_LEVELS = ["ceo", "vp"];
 
 const roleRank: Record<string, number> = {
-  super_admin: 6, admin: 5, hr: 4, operations: 3, manager: 2, recruiter: 1.5, employee: 1,
+  super_admin: 6, admin: 5, hr: 4, finance: 2.5, operations: 3, manager: 2, recruiter: 1.5, employee: 1,
 };
 
 const DESIGNATIONS = [
@@ -767,6 +769,11 @@ export default function AdminUsers() {
                                         Set as HR
                                       </DropdownMenuItem>
                                     )}
+                                    {currentUserRank > roleRank.finance && (
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "finance" })}>
+                                        Set as Finance
+                                      </DropdownMenuItem>
+                                    )}
                                     {currentUserRank > roleRank.operations && (
                                       <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>
                                         Set as Operations
@@ -884,6 +891,7 @@ export default function AdminUsers() {
                     <SelectContent>
                       {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
                       {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
+                      {currentUserRank > roleRank.finance && <SelectItem value="finance">Finance</SelectItem>}
                       {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
                       {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
                       {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}

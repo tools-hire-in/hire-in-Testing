@@ -69,6 +69,7 @@ const roleLabels: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-primary text-primary-foreground" },
   admin: { label: "Admin", color: "bg-blue-500 text-white" },
   hr: { label: "HR", color: "bg-green-500 text-white" },
+  finance: { label: "Finance", color: "bg-amber-500 text-white" },
   operations: { label: "Operations", color: "bg-orange-500 text-white" },
   manager: { label: "Manager", color: "bg-purple-500 text-white" },
   recruiter: { label: "Recruiter", color: "bg-cyan-500 text-white" },
@@ -389,7 +390,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
   const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole);
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
-  const hasFinanceAccess = ["super_admin", "admin"].includes(userRole);
+  const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole);
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth

@@ -306,7 +306,7 @@ export function SalaryReportsContent() {
 
   if (authLoading || !isAuthenticated) return null;
 
-  const allowedRoles = ["super_admin", "admin", "hr"];
+  const allowedRoles = ["super_admin", "admin", "hr", "finance"];
   if (user?.role && !allowedRoles.includes(user.role)) {
     return (
         <div className="flex items-center justify-center h-64">
