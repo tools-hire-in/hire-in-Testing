@@ -832,19 +832,20 @@ async function backfillHolidayAttendance() {
   }
 
   try {
-    // Update EL leave type to 1.5/month flat rate (remove old 1.0 + bonus-month approach).
-    // Only updates if still on the old 1.0 rate to avoid overwriting manual HR changes.
+    // Set EL leave type to correct policy: 1.0 day/month base (bonus months Jan/May/Sep
+    // credit 2.0 days via the accrual engine). Annual entitlement = 9×1 + 3×2 = 15 days.
+    // Corrects the previous wrong flat 1.5/month setting.
     await db.execute(sql`
       UPDATE leave_types
-      SET monthly_accrual = 1.5
+      SET monthly_accrual = 1.0, default_days = 15
       WHERE is_conditional = TRUE
         AND occurrence_based = FALSE
-        AND monthly_accrual = 1.0
         AND name NOT ILIKE '%comp%'
         AND name NOT ILIKE '%lwp%'
         AND name NOT ILIKE '%loss%'
+        AND (CAST(monthly_accrual AS NUMERIC) != 1.0 OR default_days != 15)
     `);
-    log("EL monthly accrual rate ensured at 1.5/month");
+    log("EL monthly accrual rate ensured at 1.0/month (bonus months Jan/May/Sep credit 2.0 days)");
   } catch (err) {
     console.error("EL rate migration error:", err);
   }

@@ -1056,8 +1056,13 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
-        let daysToCredit = monthlyRate;
-        let accrualType = "monthly";
+        // Bonus months (Jan=1, May=5, Sep=9): EL credits 2× the base monthly rate.
+        const BONUS_MONTHS = [1, 5, 9];
+        const isBonusMonth = lt.isConditional && BONUS_MONTHS.includes(month);
+        let daysToCredit = isBonusMonth
+          ? parseFloat((baseMonthlyRate * 2 * proRateFactor).toFixed(4))
+          : monthlyRate;
+        let accrualType = isBonusMonth ? "monthly+bonus" : "monthly";
 
         if (lt.isConditional) {
           // EL: probation skip for new hires only (joining_date >= probationPolicyDate)
@@ -1410,7 +1415,8 @@ export class DatabaseStorage implements IStorage {
     const CRON_START_YEAR = 2026;
     const CRON_START_MONTH = 1;
     const EL_CARRY_CAP = 45;
-    const EL_MONTHLY_RATE = 1.5;
+    const EL_MONTHLY_RATE = 1.0; // base rate; bonus months (Jan/May/Sep) credit 2× via BONUS_MONTHS
+    const BONUS_MONTHS = [1, 5, 9]; // January, May, September each credit 2.0 EL days
     const SL_MONTHLY_RATE = 0.67;
     const SL_ANNUAL_CAP = 8;
     const EL_MIN_HOURS = 128;
@@ -1511,18 +1517,21 @@ export class DatabaseStorage implements IStorage {
         hoursWorked = Math.round(hoursWorked * 100) / 100;
 
         // ── EL for this month ───────────────────────────────────────
+        // Jan=1, May=5, Sep=9 are bonus months — credit 2× the base monthly rate.
+        const isBonusMonth = BONUS_MONTHS.includes(iterMonth);
+        const elEffectiveRate = isBonusMonth ? parseFloat((elRate * 2).toFixed(4)) : elRate;
         let elForMonth = 0;
         let elSkippedReason: string | null = null;
 
         if (!hasAttendanceData && !user.attendanceExempt) {
           // No attendance data: default to crediting EL and flag for HR review
-          elForMonth = elRate;
+          elForMonth = elEffectiveRate;
           monthsELMissingData.push(monthLabel);
         } else if (!user.attendanceExempt && hoursWorked < elMinHrs) {
           elSkippedReason = `${hoursWorked}h < ${elMinHrs}h threshold`;
           monthsELSkipped.push(`${monthLabel}(${hoursWorked}h)`);
         } else {
-          elForMonth = elRate;
+          elForMonth = elEffectiveRate;
         }
 
         // ── SL for this month ───────────────────────────────────────
