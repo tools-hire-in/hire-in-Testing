@@ -589,11 +589,30 @@ async function applyOneTimeLeaveCorrections() {
   try {
     // EL = is_conditional=true, not occurrence_based, not lwp/comp
     // SL = is_conditional=false, not occurrence_based, not lwp/comp
+    // Delete any stale hr_adjustment rows for the affected employees so corrected
+    // values can be inserted cleanly (idempotent DELETE — safe to run repeatedly)
+    const staleEmployees = [
+      { firstName: "Ayushi", lastName: "Tiwari" },
+      { firstName: "Maheep", lastName: "Singh" },
+      { firstName: "Aditya", lastName: "Gangwar" },
+      { firstName: "Anurag", lastName: "Kumar" },
+    ];
+    for (const emp of staleEmployees) {
+      await db.execute(sql`
+        DELETE FROM leave_accruals
+        WHERE year = 2026 AND month = 99 AND accrual_type = 'hr_adjustment'
+          AND user_id IN (
+            SELECT id FROM admin_users
+            WHERE first_name = ${emp.firstName} AND last_name = ${emp.lastName} AND deleted_at IS NULL
+          )
+      `);
+    }
+
+    // Ayushi Tiwari: no adjustment needed (both corrections are 0 — no row inserted)
     const hrAdjustments = [
-      { firstName: "Ayushi",  lastName: "Tiwari",      elCorrection: "-8.5",  slCorrection: "-3.35" },
-      { firstName: "Maheep",  lastName: "Singh",        elCorrection: "-8.5",  slCorrection: "-1.35" },
-      { firstName: "Aditya",  lastName: "Gangwar",      elCorrection: "-5.5",  slCorrection: "-1.35" },
-      { firstName: "Anurag",  lastName: "Kumar",        elCorrection: "-7.5",  slCorrection: "-3.35" },
+      { firstName: "Maheep",  lastName: "Singh",   elCorrection: "-2", slCorrection: "-2" },
+      { firstName: "Aditya",  lastName: "Gangwar", elCorrection: "-3", slCorrection: "-1" },
+      { firstName: "Anurag",  lastName: "Kumar",   elCorrection: "-4", slCorrection: "-3" },
     ];
 
     for (const adj of hrAdjustments) {
@@ -624,6 +643,35 @@ async function applyOneTimeLeaveCorrections() {
           WHERE la2.user_id = u.id AND la2.leave_type_id = lt.id
           AND la2.year = 2026 AND la2.month = 99 AND la2.accrual_type = 'hr_adjustment'
         )
+      `);
+    }
+
+    // Reconcile leave_balances totals for all 4 affected employees (year 2026)
+    // Recompute totalDays from qualified accruals and overwrite — usedDays is untouched.
+    const balanceEmployees = [
+      { firstName: "Ayushi", lastName: "Tiwari" },
+      { firstName: "Maheep", lastName: "Singh" },
+      { firstName: "Aditya", lastName: "Gangwar" },
+      { firstName: "Anurag", lastName: "Kumar" },
+    ];
+    for (const emp of balanceEmployees) {
+      await db.execute(sql`
+        UPDATE leave_balances lb
+        SET total_days = sub.computed_total
+        FROM (
+          SELECT la.user_id, la.leave_type_id,
+                 COALESCE(SUM(la.accrued_days), 0) AS computed_total
+          FROM leave_accruals la
+          JOIN admin_users u ON u.id = la.user_id
+          WHERE u.first_name = ${emp.firstName} AND u.last_name = ${emp.lastName}
+            AND u.deleted_at IS NULL
+            AND la.year = 2026
+            AND la.qualified = true
+          GROUP BY la.user_id, la.leave_type_id
+        ) sub
+        WHERE lb.user_id = sub.user_id
+          AND lb.leave_type_id = sub.leave_type_id
+          AND lb.year = 2026
       `);
     }
 
