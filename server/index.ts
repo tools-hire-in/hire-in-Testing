@@ -976,6 +976,13 @@ async function backfillHolidayAttendance() {
     console.error("Probation policy settings seed error (non-fatal):", err);
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE contract_clients ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`);
+    log("Ensured is_active column on contract_clients");
+  } catch (err) {
+    console.error("contract_clients is_active migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

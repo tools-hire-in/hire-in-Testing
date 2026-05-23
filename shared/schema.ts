@@ -1312,6 +1312,7 @@ export const contractClients = pgTable("contract_clients", {
   email: varchar("email"),
   phone: varchar("phone"),
   website: varchar("website"),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -106,7 +106,8 @@ export function registerContractRoutes(app: Express) {
   // ─── CLIENT REGISTRY ────────────────────────────────────────────────────────
   app.get("/api/contracts/clients", requireAuth, async (req, res) => {
     try {
-      res.json(await dbStorage.getContractClients());
+      const activeOnly = req.query.activeOnly !== "false";
+      res.json(await dbStorage.getContractClients(activeOnly));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -126,11 +127,18 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.delete("/api/contracts/clients/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/contracts/clients/:id/status", requireRole("hr", "operations"), async (req, res) => {
     try {
-      await dbStorage.deleteContractClient(req.params.id);
-      res.status(204).send();
+      const { isActive } = req.body;
+      if (typeof isActive !== "boolean") return res.status(400).json({ error: "isActive must be a boolean" });
+      const client = await dbStorage.toggleContractClientStatus(req.params.id, isActive);
+      if (!client) return res.status(404).json({ error: "Client not found" });
+      res.json(client);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/contracts/clients/:id", requireRole("hr", "operations"), async (req, res) => {
+    res.status(405).json({ error: "Hard deletion of clients is disabled. Use PATCH /status to deactivate." });
   });
 
   // ─── CONTRACT GENERATION ─────────────────────────────────────────────────────

@@ -422,7 +422,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                     <SelectValue placeholder="Select existing client..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map(c => (
+                    {clients.filter(c => c.isActive !== false).map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

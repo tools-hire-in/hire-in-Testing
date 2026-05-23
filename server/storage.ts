@@ -2411,7 +2411,10 @@ export class DatabaseStorage implements IStorage {
   // ==========================================
   // CONTRACT CLIENTS
   // ==========================================
-  async getContractClients(): Promise<ContractClient[]> {
+  async getContractClients(activeOnly = true): Promise<ContractClient[]> {
+    if (activeOnly) {
+      return db.select().from(contractClients).where(eq(contractClients.isActive, true)).orderBy(asc(contractClients.name));
+    }
     return db.select().from(contractClients).orderBy(asc(contractClients.name));
   }
 
@@ -2433,9 +2436,12 @@ export class DatabaseStorage implements IStorage {
     return c;
   }
 
-  async deleteContractClient(id: string): Promise<boolean> {
-    await db.delete(contractClients).where(eq(contractClients.id, id));
-    return true;
+  async toggleContractClientStatus(id: string, isActive: boolean): Promise<ContractClient | undefined> {
+    const [c] = await db.update(contractClients)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(contractClients.id, id))
+      .returning();
+    return c;
   }
 
   // ==========================================
