@@ -1,8 +1,15 @@
 import { Layout } from "@/components/layout/Layout";
 import { Link } from "wouter";
 import { COMPANY, CONTACT } from "@/lib/constants";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function Privacy() {
+  useSEO({
+    title: "Privacy Policy | Hire'in Solutions",
+    description:
+      "Read the Hire'in Solutions Privacy Policy to understand how we collect, use, and protect your personal information.",
+  });
+
   return (
     <Layout>
       <section className="py-12 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">

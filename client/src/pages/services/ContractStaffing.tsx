@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { Clock, FileCheck, Repeat, Scale, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
 export default function ContractStaffing() {
+  useSEO({
+    title: "Contract Staffing Solutions | Hire'in Solutions",
+    description:
+      "Scale your workforce flexibly with Hire'in Solutions contract staffing. We handle sourcing, compliance, and onboarding so you can focus on results.",
+  });
+
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const benefits = [

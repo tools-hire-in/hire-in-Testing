@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { useSEO } from "@/hooks/use-seo";
 import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,12 @@ import type { Job } from "@shared/schema";
 const PAGE_SIZE = 12;
 
 export default function Jobs() {
+  useSEO({
+    title: "Browse Open Jobs | Hire'in Solutions",
+    description:
+      "Explore hundreds of open positions across Healthcare, IT, Engineering, and Professional Services. Apply today and take the next step in your career with Hire'in Solutions.",
+  });
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [industry, setIndustry] = useState<Industry>("All");

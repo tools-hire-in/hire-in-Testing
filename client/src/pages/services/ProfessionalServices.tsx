@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { Briefcase, TrendingUp, Users, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
 export default function ProfessionalServices() {
+  useSEO({
+    title: "Professional Services Staffing | Hire'in Solutions",
+    description:
+      "Hire'in Solutions delivers skilled professionals in finance, HR, operations, and business management. Build your team with confidence using our vetted talent network.",
+  });
+
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const categories = [

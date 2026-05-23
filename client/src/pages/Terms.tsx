@@ -1,8 +1,15 @@
 import { Layout } from "@/components/layout/Layout";
 import { Link } from "wouter";
 import { COMPANY, CONTACT } from "@/lib/constants";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function Terms() {
+  useSEO({
+    title: "Terms of Service | Hire'in Solutions",
+    description:
+      "Review the Terms of Service for Hire'in Solutions. Understand your rights and obligations when using our recruitment and staffing platform.",
+  });
+
   return (
     <Layout>
       <section className="py-12 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">

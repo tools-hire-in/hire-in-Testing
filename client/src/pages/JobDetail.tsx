@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationModal } from "@/components/jobs/ApplicationModal";
 import { useToast } from "@/hooks/use-toast";
+import { useSEO } from "@/hooks/use-seo";
 import { stripHtmlEntities, DUPLICATE_LABEL_RE } from "@/lib/jobUtils";
 import type { Job } from "@shared/schema";
 
@@ -244,6 +245,16 @@ export default function JobDetail() {
   const { data: job, isLoading } = useQuery<Job>({
     queryKey: ["/api/jobs", jobId],
     enabled: !!jobId,
+  });
+
+  const jobLocation = job ? [job.city, job.state].filter(Boolean).join(", ") || "Remote" : "";
+  useSEO({
+    title: job
+      ? `${job.title} — ${job.company || "Hire'in Solutions"} | Hire'in Solutions Jobs`
+      : "Job Details | Hire'in Solutions",
+    description: job
+      ? `${job.title} at ${job.company || "Hire'in Solutions"}${jobLocation ? ` in ${jobLocation}` : ""}. Apply now through Hire'in Solutions.`
+      : "View job details and apply through Hire'in Solutions.",
   });
 
   const jobExtra = (job ?? {}) as Record<string, any>;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSEO } from "@/hooks/use-seo";
 import { Link } from "wouter";
 import { Code, Brain, Globe, Shield, Cloud, Database, Lock, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -8,6 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
 export default function ITSoftware() {
+  useSEO({
+    title: "IT & Software Development Staffing | Hire'in Solutions",
+    description:
+      "Find top IT and software development talent with Hire'in Solutions. We staff engineers, developers, architects, and technology leaders for contract and permanent roles.",
+  });
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const specializations = [

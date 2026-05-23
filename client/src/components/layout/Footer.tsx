@@ -41,10 +41,11 @@ export function Footer() {
                 href={CONTACT.social.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Follow Hire'in Solutions on LinkedIn"
                 className="text-muted-foreground hover:text-primary transition-colors"
                 data-testid="link-linkedin"
               >
-                <Linkedin className="h-5 w-5" />
+                <Linkedin className="h-5 w-5" aria-hidden="true" />
               </a>
             </div>
           </div>

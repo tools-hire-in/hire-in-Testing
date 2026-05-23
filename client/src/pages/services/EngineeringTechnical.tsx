@@ -2,12 +2,18 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { Wrench, Factory, Zap, Cog, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
 export default function EngineeringTechnical() {
+  useSEO({
+    title: "Engineering & Technical Staffing | Hire'in Solutions",
+    description:
+      "Hire'in Solutions sources and places mechanical, electrical, civil, and technical engineers for contract and direct-hire roles across industries.",
+  });
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const disciplines = [

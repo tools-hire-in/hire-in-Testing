@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,12 @@ import { ConsultationModal } from "@/components/forms/ConsultationModal";
 import type { CTAType } from "@/lib/constants";
 
 export default function HealthcareRecruitment() {
+  useSEO({
+    title: "Healthcare Recruitment Services | Hire'in Solutions",
+    description:
+      "Hire'in Solutions places qualified healthcare professionals — nurses, physicians, allied health staff — quickly and compliantly. Partner with us for your clinical staffing needs.",
+  });
+
   const [consultationOpen, setConsultationOpen] = useState(false);
 
   const valueProps = [

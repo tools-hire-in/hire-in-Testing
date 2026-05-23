@@ -6,9 +6,16 @@ import { ServicesSection } from "@/components/sections/ServicesSection";
 import { WhyChooseUsSection } from "@/components/sections/WhyChooseUsSection";
 import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
+import { useSEO } from "@/hooks/use-seo";
 import type { CTAType } from "@/lib/constants";
 
 export default function Home() {
+  useSEO({
+    title: "Hire'in Solutions | AI-Powered Recruitment & Staffing Agency",
+    description:
+      "Hire'in Solutions connects top employers with skilled candidates across Healthcare, IT, Engineering, and Professional Services. Start hiring or find your next role today.",
+  });
+
   const [consultationOpen, setConsultationOpen] = useState(false);
   const [ctaType, setCtaType] = useState<CTAType>("hero-start-hiring");
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { Lightbulb, Shield, Heart, Award, ArrowRight, Calendar, Users, Target } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
@@ -16,6 +17,12 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 export default function About() {
+  useSEO({
+    title: "About Us | Hire'in Solutions",
+    description:
+      "Learn about Hire'in Solutions — our mission, values, and the team behind our AI-powered recruitment services for Healthcare, IT, Engineering, and Professional Services.",
+  });
+
   const [consultationOpen, setConsultationOpen] = useState(false);
   const [ctaType, setCtaType] = useState<CTAType>("header-start-hiring");
 

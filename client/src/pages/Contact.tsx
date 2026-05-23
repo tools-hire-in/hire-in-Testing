@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSEO } from "@/hooks/use-seo";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,6 +33,11 @@ const contactFormSchema = z.object({
 type ContactFormData = z.infer<typeof contactFormSchema>;
 
 export default function Contact() {
+  useSEO({
+    title: "Contact Us | Hire'in Solutions",
+    description:
+      "Get in touch with Hire'in Solutions. Whether you're looking to hire top talent or find your next opportunity, our team is ready to help.",
+  });
   const { toast } = useToast();
 
   const form = useForm<ContactFormData>({
