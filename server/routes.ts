@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveTypes, leaveRequests, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
@@ -4102,15 +4102,45 @@ export async function registerRoutes(
       }
 
       const newTotal = Number(balance.totalDays) + Number(adjustmentDays);
-      await storage.updateLeaveBalance(balance.id, { totalDays: String(Math.max(0, newTotal)) });
 
-      const adjustment = await storage.createLeaveAdjustment({
-        userId,
-        leaveTypeId,
-        adjustmentDays: String(adjustmentDays),
-        reason,
-        year,
-        adjustedBy: req.session.userId!,
+      // Wrap all three writes atomically: balance, audit record, and accrual durability row.
+      let adjustment: any;
+      await db.transaction(async (tx) => {
+        await tx.update(leaveBalances)
+          .set({ totalDays: String(Math.max(0, newTotal)), updatedAt: new Date() })
+          .where(eq(leaveBalances.id, balance!.id));
+
+        [adjustment] = await tx.insert(leaveAdjustments).values({
+          userId,
+          leaveTypeId,
+          adjustmentDays: String(adjustmentDays),
+          reason,
+          year,
+          adjustedBy: req.session.userId!,
+        }).returning();
+
+        // Upsert a hr_adjustment row into leave_accruals (month=0 sentinel, distinct from
+        // year_end_carry_forward which also uses month=0 but has a different accrual_type)
+        // so this adjustment survives any future backfill recalculation. ON CONFLICT
+        // accumulates the delta into the existing row to respect the unique constraint on
+        // (user_id, leave_type_id, year, month, accrual_type).
+        await tx.insert(leaveAccruals).values({
+          userId,
+          leaveTypeId,
+          year,
+          month: 0,
+          accruedDays: String(adjustmentDays),
+          hoursWorked: "0",
+          qualified: true,
+          accrualType: "hr_adjustment",
+          skipReason: `HR manual adjustment: ${reason}`,
+        }).onConflictDoUpdate({
+          target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
+          set: {
+            accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
+            skipReason: sql`EXCLUDED.skip_reason`,
+          },
+        });
       });
 
       res.json({ success: true, adjustment, newBalance: Math.max(0, newTotal) });
@@ -4142,14 +4172,39 @@ export async function registerRoutes(
 
           if (balance) {
             const newTotal = Number(balance.totalDays) + Number(adjustmentDays);
-            await storage.updateLeaveBalance(balance.id, { totalDays: String(Math.max(0, newTotal)) });
-            await storage.createLeaveAdjustment({
-              userId,
-              leaveTypeId,
-              adjustmentDays: String(adjustmentDays),
-              reason,
-              year,
-              adjustedBy: req.session.userId!,
+            // Wrap all three writes atomically for each user.
+            await db.transaction(async (tx) => {
+              await tx.update(leaveBalances)
+                .set({ totalDays: String(Math.max(0, newTotal)), updatedAt: new Date() })
+                .where(eq(leaveBalances.id, balance!.id));
+              await tx.insert(leaveAdjustments).values({
+                userId,
+                leaveTypeId,
+                adjustmentDays: String(adjustmentDays),
+                reason,
+                year,
+                adjustedBy: req.session.userId!,
+              });
+              // Upsert hr_adjustment in leave_accruals (month=0 sentinel) — ON CONFLICT
+              // accumulates delta so the unique constraint is never violated even when the
+              // same user receives multiple adjustments for the same year.
+              await tx.insert(leaveAccruals).values({
+                userId,
+                leaveTypeId,
+                year,
+                month: 0,
+                accruedDays: String(adjustmentDays),
+                hoursWorked: "0",
+                qualified: true,
+                accrualType: "hr_adjustment",
+                skipReason: `HR manual adjustment: ${reason}`,
+              }).onConflictDoUpdate({
+                target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
+                set: {
+                  accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
+                  skipReason: sql`EXCLUDED.skip_reason`,
+                },
+              });
             });
             adjusted++;
           } else {

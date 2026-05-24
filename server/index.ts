@@ -598,9 +598,13 @@ async function applyOneTimeLeaveCorrections() {
       { firstName: "Anurag", lastName: "Kumar" },
     ];
     for (const emp of staleEmployees) {
+      // Only delete the historical startup-correction rows — identified by their specific
+      // skip_reason. Endpoint-made rows (skip_reason 'HR manual adjustment:…' at month=0)
+      // are never touched by this startup script.
       await db.execute(sql`
         DELETE FROM leave_accruals
         WHERE year = 2026 AND month = 99 AND accrual_type = 'hr_adjustment'
+          AND skip_reason = 'Historical leave balance correction — HR directive'
           AND user_id IN (
             SELECT id FROM admin_users
             WHERE first_name = ${emp.firstName} AND last_name = ${emp.lastName} AND deleted_at IS NULL
@@ -696,6 +700,139 @@ async function applyOneTimeLeaveCorrections() {
           AND lr2.end_date = ${req.endDate} AND lr2.status = 'approved'
         )
       `);
+    }
+
+    // ── Ayushi Tiwari: zero out EL and SL balances for 2026 ─────────────────
+    // Guard: only apply if the sentinel hr_adjustment row (month=98) doesn't exist yet.
+    // We use month=98 to distinguish from the historical corrections above (month=99).
+    const ayushiGuardEL = await db.execute(sql`
+      SELECT la.id FROM leave_accruals la
+      JOIN admin_users u ON u.id = la.user_id
+      WHERE u.first_name = 'Ayushi' AND u.last_name = 'Tiwari' AND u.deleted_at IS NULL
+        AND la.year = 2026 AND la.month = 98 AND la.accrual_type = 'hr_adjustment'
+        AND la.skip_reason = 'Ayushi zero-out correction'
+      LIMIT 1
+    `);
+    if (ayushiGuardEL.rows.length === 0) {
+      // Query current EL and SL totalDays for Ayushi in 2026
+      const ayushiELBal = await db.execute(sql`
+        SELECT lb.id, lb.total_days, lb.used_days FROM leave_balances lb
+        JOIN admin_users u ON u.id = lb.user_id
+        JOIN leave_types lt ON lt.id = lb.leave_type_id
+        WHERE u.first_name = 'Ayushi' AND u.last_name = 'Tiwari' AND u.deleted_at IS NULL
+          AND lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+          AND lb.year = 2026
+        LIMIT 1
+      `);
+      const ayushiSLBal = await db.execute(sql`
+        SELECT lb.id, lb.total_days, lb.used_days FROM leave_balances lb
+        JOIN admin_users u ON u.id = lb.user_id
+        JOIN leave_types lt ON lt.id = lb.leave_type_id
+        WHERE u.first_name = 'Ayushi' AND u.last_name = 'Tiwari' AND u.deleted_at IS NULL
+          AND lt.is_conditional = false AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+          AND lb.year = 2026
+        LIMIT 1
+      `);
+
+      // EL zero-out: insert negative hr_adjustment so future backfill sums to 0
+      if (ayushiELBal.rows.length > 0) {
+        const elTotal = parseFloat(String(ayushiELBal.rows[0].total_days));
+        const elUsed = parseFloat(String(ayushiELBal.rows[0].used_days));
+        // Target: totalDays = usedDays (balance = 0), so delta = usedDays - elTotal
+        const elDelta = elUsed - elTotal;
+        if (Math.abs(elDelta) >= 0.001 || elTotal > elUsed) {
+          await db.execute(sql`
+            INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+            SELECT u.id, lt.id, 2026, 98, ${String(elDelta)}, '0', true, 'hr_adjustment', 'Ayushi zero-out correction'
+            FROM admin_users u
+            JOIN leave_types lt ON lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+              AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+            WHERE u.first_name = 'Ayushi' AND u.last_name = 'Tiwari' AND u.deleted_at IS NULL
+          `);
+          // Set totalDays = usedDays (balance = 0) in leave_balances
+          await db.execute(sql`
+            UPDATE leave_balances SET total_days = used_days
+            WHERE id = ${String(ayushiELBal.rows[0].id)}
+          `);
+        }
+      }
+      // SL zero-out
+      if (ayushiSLBal.rows.length > 0) {
+        const slTotal = parseFloat(String(ayushiSLBal.rows[0].total_days));
+        const slUsed = parseFloat(String(ayushiSLBal.rows[0].used_days));
+        const slDelta = slUsed - slTotal;
+        if (Math.abs(slDelta) >= 0.001 || slTotal > slUsed) {
+          await db.execute(sql`
+            INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+            SELECT u.id, lt.id, 2026, 98, ${String(slDelta)}, '0', true, 'hr_adjustment', 'Ayushi zero-out correction'
+            FROM admin_users u
+            JOIN leave_types lt ON lt.is_conditional = false AND lt.is_active = true AND lt.occurrence_based = false
+              AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+            WHERE u.first_name = 'Ayushi' AND u.last_name = 'Tiwari' AND u.deleted_at IS NULL
+          `);
+          await db.execute(sql`
+            UPDATE leave_balances SET total_days = used_days
+            WHERE id = ${String(ayushiSLBal.rows[0].id)}
+          `);
+        }
+      }
+      log("Applied Ayushi Tiwari zero-out correction");
+    }
+
+    // ── Aditya Gangwar: floor EL totalDays at usedDays to fix -1 balance ────
+    const adityaGuard = await db.execute(sql`
+      SELECT la.id FROM leave_accruals la
+      JOIN admin_users u ON u.id = la.user_id
+      WHERE u.first_name = 'Aditya' AND u.last_name = 'Gangwar' AND u.deleted_at IS NULL
+        AND la.year = 2026 AND la.month = 98 AND la.accrual_type = 'hr_adjustment'
+        AND la.skip_reason = 'Aditya EL floor correction'
+      LIMIT 1
+    `);
+    if (adityaGuard.rows.length === 0) {
+      const adityaELBal = await db.execute(sql`
+        SELECT lb.id, lb.total_days, lb.used_days FROM leave_balances lb
+        JOIN admin_users u ON u.id = lb.user_id
+        JOIN leave_types lt ON lt.id = lb.leave_type_id
+        WHERE u.first_name = 'Aditya' AND u.last_name = 'Gangwar' AND u.deleted_at IS NULL
+          AND lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+          AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+          AND lb.year = 2026
+        LIMIT 1
+      `);
+      if (adityaELBal.rows.length > 0) {
+        const elTotal = parseFloat(String(adityaELBal.rows[0].total_days));
+        const elUsed = parseFloat(String(adityaELBal.rows[0].used_days));
+        if (elTotal < elUsed) {
+          const delta = elUsed - elTotal; // positive delta brings total up to used
+          await db.execute(sql`
+            INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+            SELECT u.id, lt.id, 2026, 98, ${String(delta)}, '0', true, 'hr_adjustment', 'Aditya EL floor correction'
+            FROM admin_users u
+            JOIN leave_types lt ON lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+              AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+            WHERE u.first_name = 'Aditya' AND u.last_name = 'Gangwar' AND u.deleted_at IS NULL
+          `);
+          // Floor totalDays at usedDays so balance = 0 (non-negative)
+          await db.execute(sql`
+            UPDATE leave_balances SET total_days = used_days
+            WHERE id = ${String(adityaELBal.rows[0].id)}
+          `);
+          log(`Applied Aditya Gangwar EL floor correction: totalDays ${elTotal} → ${elUsed} (usedDays)`);
+        } else {
+          // Already non-negative; insert guard row so we skip this block on future runs
+          await db.execute(sql`
+            INSERT INTO leave_accruals (user_id, leave_type_id, year, month, accrued_days, hours_worked, qualified, accrual_type, skip_reason)
+            SELECT u.id, lt.id, 2026, 98, '0', '0', false, 'hr_adjustment', 'Aditya EL floor correction'
+            FROM admin_users u
+            JOIN leave_types lt ON lt.is_conditional = true AND lt.is_active = true AND lt.occurrence_based = false
+              AND lt.name NOT ILIKE '%lwp%' AND lt.name NOT ILIKE '%loss%' AND lt.name NOT ILIKE '%comp%'
+            WHERE u.first_name = 'Aditya' AND u.last_name = 'Gangwar' AND u.deleted_at IS NULL
+            ON CONFLICT DO NOTHING
+          `);
+        }
+      }
     }
 
     log("One-time leave corrections applied");

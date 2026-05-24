@@ -1765,9 +1765,15 @@ export class DatabaseStorage implements IStorage {
             ).limit(1);
 
             if (existingBal.length > 0) {
-              // Only totalDays is updated — usedDays is managed by the leave-request approval flow
+              // Only totalDays is updated — usedDays is managed by the leave-request approval flow.
+              // Floor totalDays at usedDays to prevent impossible negative displayed balances.
+              const currentUsedDays = parseFloat(existingBal[0].usedDays);
+              if (newTotal < currentUsedDays) {
+                console.warn(`[backfill] WARNING: computed totalDays (${newTotal.toFixed(2)}) < usedDays (${currentUsedDays}) for userId=${user.id} leaveTypeId=${ltId} year=${balYear}. Flooring to usedDays.`);
+              }
+              const flooredTotal = Math.max(newTotal, currentUsedDays);
               await db.update(leaveBalances)
-                .set({ totalDays: String(parseFloat(newTotal.toFixed(2))), updatedAt: new Date() })
+                .set({ totalDays: String(parseFloat(flooredTotal.toFixed(2))), updatedAt: new Date() })
                 .where(eq(leaveBalances.id, existingBal[0].id));
             } else if (newTotal > 0) {
               await db.insert(leaveBalances).values({
@@ -1793,28 +1799,53 @@ export class DatabaseStorage implements IStorage {
         if (el2026Bal.length) newELBalance = parseFloat(el2026Bal[0].totalDays) - parseFloat(el2026Bal[0].usedDays);
         if (sl2026Bal.length) newSLBalance = parseFloat(sl2026Bal[0].totalDays) - parseFloat(sl2026Bal[0].usedDays);
       } else {
-        // Dry-run: project 2026 balance = existing accruals + this-run deltas - existing usedDays
+        // Dry-run: project 2026 balance = accruals + manual adjustments + this-run deltas - usedDays.
+        //
+        // Endpoint-created hr_adjustment rows use month=0 + accrual_type='hr_adjustment' and are
+        // mirrored exactly in leave_adjustments. To include legacy adjustments (only in
+        // leave_adjustments) without double-counting new-style ones (in both tables), we:
+        //   1) Sum qualified accruals EXCLUDING month=0 hr_adjustment rows (those are leave_adjustments mirrors)
+        //   2) Add the leave_adjustments sum directly for this user/type/year
+        // Historical startup corrections (month=98 or month=99 hr_adjustment) are NOT in
+        // leave_adjustments, so they stay in the accruals sum — no double-counting.
         const existing2026ELAcc = await db.select().from(leaveAccruals).where(
           and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, elType.id),
-            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true))
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true),
+            sql`NOT (${leaveAccruals.accrualType} = 'hr_adjustment' AND ${leaveAccruals.month} = 0)`)
         );
         const existing2026ELTotal = existing2026ELAcc.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+        // Add leave_adjustments sum — covers legacy pre-fix adjustments and new endpoint adjustments.
+        const existing2026ELAdjs = await db.select().from(leaveAdjustments).where(
+          and(eq(leaveAdjustments.userId, user.id), eq(leaveAdjustments.leaveTypeId, elType.id),
+            eq(leaveAdjustments.year, 2026))
+        );
+        const existing2026ELAdjTotal = existing2026ELAdjs.reduce((s, r) => s + parseFloat(r.adjustmentDays), 0);
         const existing2026ELBal = await db.select().from(leaveBalances).where(
           and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, elType.id), eq(leaveBalances.year, 2026))
         ).limit(1);
         const existing2026ELUsed = existing2026ELBal.length ? parseFloat(existing2026ELBal[0].usedDays) : 0;
-        newELBalance = existing2026ELTotal + el2026DeltaForBalance - existing2026ELUsed;
+        newELBalance = existing2026ELTotal + existing2026ELAdjTotal + el2026DeltaForBalance - existing2026ELUsed;
 
         const existing2026SLAcc = await db.select().from(leaveAccruals).where(
           and(eq(leaveAccruals.userId, user.id), eq(leaveAccruals.leaveTypeId, slType.id),
-            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true))
+            eq(leaveAccruals.year, 2026), eq(leaveAccruals.qualified, true),
+            sql`NOT (${leaveAccruals.accrualType} = 'hr_adjustment' AND ${leaveAccruals.month} = 0)`)
         );
         const existing2026SLTotal = existing2026SLAcc.reduce((s, r) => s + parseFloat(r.accruedDays), 0);
+        // Same treatment for SL
+        const existing2026SLAdjs = await db.select().from(leaveAdjustments).where(
+          and(eq(leaveAdjustments.userId, user.id), eq(leaveAdjustments.leaveTypeId, slType.id),
+            eq(leaveAdjustments.year, 2026))
+        );
+        const existing2026SLAdjTotal = existing2026SLAdjs.reduce((s, r) => s + parseFloat(r.adjustmentDays), 0);
         const existing2026SLBal = await db.select().from(leaveBalances).where(
           and(eq(leaveBalances.userId, user.id), eq(leaveBalances.leaveTypeId, slType.id), eq(leaveBalances.year, 2026))
         ).limit(1);
         const existing2026SLUsed = existing2026SLBal.length ? parseFloat(existing2026SLBal[0].usedDays) : 0;
-        newSLBalance = existing2026SLTotal + sl2026DeltaForBalance - existing2026SLUsed;
+        newSLBalance = existing2026SLTotal + existing2026SLAdjTotal + sl2026DeltaForBalance - existing2026SLUsed;
+        // Apply the same floor as live mode (totalDays is floored at usedDays, so displayed balance ≥ 0)
+        newELBalance = Math.max(0, newELBalance);
+        newSLBalance = Math.max(0, newSLBalance);
       }
 
       details.push({
