@@ -819,8 +819,8 @@ export default function CapabilityDeck() {
             <div className="pt-6 border-t border-white/10">
               <p className="text-white/40 text-xs">{COMPANY.name} — {COMPANY.brandLine}</p>
               <p className="text-white/25 text-[11px] mt-0.5">{CONTACT.address.full}</p>
-              <a href={CONTACT.social.linkedin} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 text-white/30 hover:text-primary transition-colors" data-testid="link-deck-linkedin">
-                <Linkedin className="h-4 w-4" />
+              <a href={CONTACT.social.linkedin} target="_blank" rel="noopener noreferrer" aria-label="Follow Hire'in Solutions on LinkedIn" className="inline-block mt-3 text-white/30 hover:text-primary transition-colors" data-testid="link-deck-linkedin">
+                <Linkedin className="h-4 w-4" aria-hidden="true" />
               </a>
             </div>
           </div>

@@ -64,7 +64,7 @@ export function ServicesSection() {
                       </li>
                     ))}
                   </ul>
-                  <Link href={`/services/${service.slug}`}>
+                  <Link href={`/services/${service.slug}`} aria-label={`Learn more about ${service.title}`}>
                     <Button variant="outline" className="w-full group">
                       Learn More
                       <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />

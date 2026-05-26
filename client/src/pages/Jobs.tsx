@@ -286,7 +286,7 @@ export default function Jobs() {
                         </p>
                       )}
                       <div className="flex gap-2 mt-auto">
-                        <Link href={`/jobs/${job.id}`} className="flex-1">
+                        <Link href={`/jobs/${job.id}`} className="flex-1" aria-label={`View details for ${job.title}`}>
                           <Button
                             variant="outline"
                             className="w-full"
