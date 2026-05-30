@@ -7,6 +7,7 @@ import {
 } from "@shared/schema";
 import { eq, and, or, inArray, sql, desc } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
+import { sendCheckInReminderEmail } from "./email";
 
 const ADMIN_ROLES = ["super_admin", "admin", "hr"];
 const MANAGER_ROLES = ["super_admin", "admin", "hr", "manager"];
@@ -118,6 +119,69 @@ export function registerPerformanceRoutes(app: Express) {
       const empMap = Object.fromEntries(employees.map(e => [e.id, `${e.firstName} ${e.lastName}`]));
 
       res.json(goals.map(g => ({ ...g, employeeName: empMap[g.employeeId] || "Unknown" })));
+    } catch (error) {
+      console.error("Error fetching team goals:", error);
+      res.status(500).json({ error: "Failed to fetch team goals" });
+    }
+  });
+
+  // Grouped team goals endpoint — returns members shape expected by TeamGoals.tsx
+  app.get("/api/performance/team-goals", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const role = req.session.role!;
+      const allUsers = await storage.getAdminUsers();
+
+      let teamMembers: typeof allUsers;
+      if (ADMIN_ROLES.includes(role)) {
+        teamMembers = allUsers.filter(u => u.isActive && u.id !== userId);
+      } else {
+        const members = await storage.getTeamMembers(userId);
+        teamMembers = members.filter(u => u.isActive);
+      }
+
+      const teamIds = teamMembers.map(m => m.id);
+
+      const goals = teamIds.length > 0
+        ? await db.select().from(performanceGoals)
+            .where(inArray(performanceGoals.employeeId, teamIds))
+            .orderBy(desc(performanceGoals.createdAt))
+        : [];
+
+      const membersWithGoals = teamMembers.map(member => ({
+        userId: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        email: member.email,
+        designation: (member as any).designation || null,
+        goals: goals.filter(g => g.employeeId === member.id).map(g => ({
+          id: g.id,
+          userId: g.employeeId,
+          title: g.title,
+          description: g.description,
+          category: g.category,
+          startDate: g.startDate,
+          targetDate: g.targetDate,
+          weight: g.weight,
+          progress: g.progress,
+          status: g.status,
+          successCriteria: g.successCriteria,
+          createdAt: g.createdAt,
+        })),
+      }));
+
+      const totalGoals = goals.length;
+      const completedGoals = goals.filter(g => g.status === "completed").length;
+      const inProgressGoals = goals.filter(g => g.status === "in_progress" || g.status === "on_track").length;
+      const atRiskGoals = goals.filter(g => g.status === "at_risk").length;
+
+      res.json({
+        members: membersWithGoals,
+        summary: { totalGoals, completedGoals, inProgressGoals, atRiskGoals },
+      });
     } catch (error) {
       console.error("Error fetching team goals:", error);
       res.status(500).json({ error: "Failed to fetch team goals" });
@@ -301,6 +365,28 @@ export function registerPerformanceRoutes(app: Express) {
       }).returning();
 
       await createAuditLog(userId, "check_in_created", { checkInId: ci.id, scheduledDate }, employeeId);
+
+      // Send notification email to the employee (non-blocking)
+      (async () => {
+        try {
+          const [employee] = await db.select({ firstName: adminUsers.firstName, email: adminUsers.email })
+            .from(adminUsers).where(eq(adminUsers.id, employeeId));
+          const [manager] = await db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(eq(adminUsers.id, userId));
+          if (employee?.email && manager) {
+            await sendCheckInReminderEmail({
+              to: employee.email,
+              firstName: employee.firstName,
+              scheduledDate,
+              managerName: `${manager.firstName} ${manager.lastName}`,
+              notes: managerNotes || undefined,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send check-in notification email:", emailErr);
+        }
+      })();
+
       res.status(201).json(ci);
     } catch (error) {
       console.error("Error creating check-in:", error);
@@ -645,6 +731,28 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error creating feedback:", error);
       res.status(500).json({ error: "Failed to create feedback" });
+    }
+  });
+
+  // ==========================================
+  // EMPLOYEES (for feedback recipient picker)
+  // ==========================================
+
+  // Returns a minimal list of active employees accessible to all performance module users
+  app.get("/api/performance/employees", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const users = await storage.getAdminUsers();
+      const list = users
+        .filter(u => u.isActive && u.id !== userId)
+        .map(u => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email }));
+      res.json(list);
+    } catch (error) {
+      console.error("Error fetching performance employees:", error);
+      res.status(500).json({ error: "Failed to fetch employees" });
     }
   });
 

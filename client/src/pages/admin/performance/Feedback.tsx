@@ -19,10 +19,10 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface FeedbackItem {
   id: string;
-  senderId: string;
-  senderName: string;
-  recipientId: string;
-  recipientName: string;
+  fromEmployeeId: string;
+  fromName: string;
+  toEmployeeId: string;
+  toName: string;
   type: "praise" | "constructive" | "general";
   message: string;
   goalId?: string;
@@ -68,7 +68,7 @@ export default function Feedback() {
   });
 
   const { data: employees } = useQuery<Employee[]>({
-    queryKey: ["/api/hr/users"],
+    queryKey: ["/api/performance/employees"],
     enabled: isAuthenticated && showSend,
   });
 
@@ -79,7 +79,7 @@ export default function Feedback() {
 
   const sendFeedbackMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/performance/feedback", {
-      recipientId: form.recipientId,
+      toEmployeeId: form.recipientId,
       type: form.type,
       message: form.message,
       goalId: form.goalId || undefined,
@@ -111,7 +111,7 @@ export default function Feedback() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">
-            {showSender ? item.senderName : item.recipientName}
+            {showSender ? item.fromName : item.toName}
           </span>
           <Badge variant="secondary" className={feedbackTypeColors[item.type]} data-testid={`badge-feedback-type-${item.id}`}>
             {item.type}

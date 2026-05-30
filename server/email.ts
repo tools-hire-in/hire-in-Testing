@@ -1344,24 +1344,33 @@ export async function sendCheckInReminderEmail(options: {
   firstName: string;
   scheduledDate: string;
   managerName: string;
+  notes?: string;
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
+    const notesBlock = options.notes
+      ? `<div style="background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; padding: 12px 16px; margin: 16px 0;">
+          <p style="color: #1e293b; font-weight: 600; margin: 0 0 6px; font-size: 13px;">Notes from your manager:</p>
+          <p style="color: #475569; margin: 0; font-size: 14px; white-space: pre-wrap;">${options.notes}</p>
+        </div>`
+      : "";
+    const notesText = options.notes ? `\n\nNotes from your manager:\n${options.notes}` : "";
     const msg = {
       to: options.to,
       from: { email: fromEmail, name: "Alina Carter" },
-      subject: `Check-In Reminder: ${options.scheduledDate}`,
+      subject: `Check-In Scheduled: ${options.scheduledDate}`,
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
-            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Check-In Reminder</p>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Check-In Scheduled</p>
           </div>
           <div style="padding: 32px;">
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
-              You have a check-in scheduled for <strong>${options.scheduledDate}</strong> with <strong>${options.managerName}</strong>.
+              A check-in has been scheduled for <strong>${options.scheduledDate}</strong> with <strong>${options.managerName}</strong>.
             </p>
+            ${notesBlock}
             <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
               Please prepare your notes and discussion items before the meeting.
             </p>
@@ -1372,13 +1381,13 @@ export async function sendCheckInReminderEmail(options: {
           </div>
         </div>
       `,
-      text: `Hi ${options.firstName},\n\nYou have a check-in scheduled for ${options.scheduledDate} with ${options.managerName}. Please prepare your notes.${SIGNOFF_TEXT}`,
+      text: `Hi ${options.firstName},\n\nA check-in has been scheduled for ${options.scheduledDate} with ${options.managerName}.${notesText}\n\nPlease prepare your notes and discussion items before the meeting.${SIGNOFF_TEXT}`,
     };
     await client.send(msg);
-    console.log(`Check-in reminder sent to ${options.to}`);
+    console.log(`Check-in scheduled email sent to ${options.to}`);
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to send check-in reminder:", error?.response?.body || error.message);
+    console.error("Failed to send check-in scheduled email:", error?.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }
