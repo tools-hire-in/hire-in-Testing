@@ -88,6 +88,12 @@ import {
   notifications,
   type Notification,
   type InsertNotification,
+  attendanceRegularizations,
+  policyAcknowledgements,
+  type AttendanceRegularization,
+  type InsertAttendanceRegularization,
+  type PolicyAcknowledgement,
+  type InsertPolicyAcknowledgement,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -311,6 +317,18 @@ export interface IStorage {
 
   // Role Summary Templates
   getRoleSummaryTemplates(filters?: { vertical?: string; designation?: string }): Promise<RoleSummaryTemplate[]>;
+
+  // Attendance Regularizations
+  createRegularizationRequest(data: InsertAttendanceRegularization): Promise<AttendanceRegularization>;
+  getRegularizationRequests(filters?: { employeeId?: string; managerTeamIds?: string[]; status?: string; startDate?: string; endDate?: string }): Promise<AttendanceRegularization[]>;
+  getRegularizationRequest(id: string): Promise<AttendanceRegularization | undefined>;
+  updateRegularizationRequest(id: string, updates: Partial<AttendanceRegularization>): Promise<AttendanceRegularization | undefined>;
+  applyRegularizationOverride(data: { actorId: string; employeeId: string; attendanceDate: string; requestedPunchIn?: string; requestedPunchOut?: string; requestType: string; reason: string; comment: string }): Promise<AttendanceRegularization>;
+
+  // Policy Acknowledgements
+  recordPolicyAcknowledgement(data: InsertPolicyAcknowledgement): Promise<PolicyAcknowledgement>;
+  getPolicyAcknowledgementStatus(userId: string, policyType: string, policyVersion: string): Promise<boolean>;
+  getPolicyAcknowledgementsByPolicy(policyType: string, policyVersion: string): Promise<PolicyAcknowledgement[]>;
 
   // Stats
   getStats(): Promise<{
@@ -2575,6 +2593,159 @@ export class DatabaseStorage implements IStorage {
   async deleteContractInvoice(id: string): Promise<boolean> {
     await db.delete(contractInvoices).where(eq(contractInvoices.id, id));
     return true;
+  }
+
+  // ==========================================
+  // ATTENDANCE REGULARIZATIONS
+  // ==========================================
+
+  async createRegularizationRequest(data: InsertAttendanceRegularization): Promise<AttendanceRegularization> {
+    const [created] = await db.insert(attendanceRegularizations).values(data).returning();
+    return created;
+  }
+
+  async getRegularizationRequests(filters?: { employeeId?: string; managerTeamIds?: string[]; status?: string; startDate?: string; endDate?: string }): Promise<AttendanceRegularization[]> {
+    // If scoped to manager's team but team is empty, return nothing immediately (not all records)
+    if (filters?.managerTeamIds !== undefined && filters.managerTeamIds.length === 0) {
+      return [];
+    }
+    let results = await db.select().from(attendanceRegularizations).orderBy(desc(attendanceRegularizations.createdAt));
+    if (filters?.employeeId) {
+      results = results.filter(r => r.employeeId === filters.employeeId);
+    }
+    if (filters?.managerTeamIds && filters.managerTeamIds.length > 0) {
+      results = results.filter(r => filters.managerTeamIds!.includes(r.employeeId));
+    }
+    if (filters?.status) {
+      results = results.filter(r => r.status === filters.status);
+    }
+    if (filters?.startDate) {
+      results = results.filter(r => r.attendanceDate >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      results = results.filter(r => r.attendanceDate <= filters.endDate!);
+    }
+    return results;
+  }
+
+  async getRegularizationRequest(id: string): Promise<AttendanceRegularization | undefined> {
+    const [r] = await db.select().from(attendanceRegularizations).where(eq(attendanceRegularizations.id, id));
+    return r;
+  }
+
+  async updateRegularizationRequest(id: string, updates: Partial<AttendanceRegularization>): Promise<AttendanceRegularization | undefined> {
+    const [updated] = await db.update(attendanceRegularizations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(attendanceRegularizations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async applyRegularizationOverride(data: { actorId: string; employeeId: string; attendanceDate: string; requestedPunchIn?: string; requestedPunchOut?: string; requestType: string; reason: string; comment: string; attendanceStatus?: string }): Promise<AttendanceRegularization> {
+    const punchIn = data.requestedPunchIn ? new Date(data.requestedPunchIn) : undefined;
+    const punchOut = data.requestedPunchOut ? new Date(data.requestedPunchOut) : undefined;
+    const [created] = await db.insert(attendanceRegularizations).values({
+      employeeId: data.employeeId,
+      attendanceDate: data.attendanceDate,
+      requestedPunchIn: punchIn,
+      requestedPunchOut: punchOut,
+      requestType: data.requestType as any,
+      reason: data.reason,
+      status: "approved",
+      reviewedBy: data.actorId,
+      reviewerComment: data.comment,
+      reviewedAt: new Date(),
+    }).returning();
+
+    // Apply the correction to the attendance record
+    const existing = await db.select().from(attendance)
+      .where(and(eq(attendance.userId, data.employeeId), eq(attendance.date, data.attendanceDate)))
+      .limit(1);
+
+    let totalHoursNum: string | undefined;
+    if (punchIn && punchOut) {
+      const diffMs = punchOut.getTime() - punchIn.getTime();
+      totalHoursNum = (diffMs / 3600000).toFixed(2);
+    }
+
+    // Use the caller-supplied recomputed status (derived from shift policy in the route);
+    // fall back to "present" for wrong_absent, or preserve existing status as last resort.
+    const resolvedStatus = data.attendanceStatus ?? (data.requestType === "wrong_absent" ? "present" : existing[0]?.status ?? "present");
+
+    if (existing.length > 0) {
+      await db.update(attendance).set({
+        punchIn: punchIn ?? existing[0].punchIn,
+        punchOut: punchOut ?? existing[0].punchOut,
+        totalHours: totalHoursNum ?? existing[0].totalHours,
+        isCorrect: true,
+        correctionSource: "hr_override",
+        correctedById: data.actorId,
+        correctionNote: data.comment,
+        status: resolvedStatus,
+        updatedAt: new Date(),
+      }).where(eq(attendance.id, existing[0].id));
+    } else if (data.requestType === "wrong_absent") {
+      await db.insert(attendance).values({
+        userId: data.employeeId,
+        date: data.attendanceDate,
+        punchIn,
+        punchOut,
+        totalHours: totalHoursNum,
+        status: resolvedStatus,
+        isCorrect: true,
+        correctionSource: "hr_override",
+        correctedById: data.actorId,
+        correctionNote: data.comment,
+      });
+    }
+
+    return created;
+  }
+
+  // ==========================================
+  // POLICY ACKNOWLEDGEMENTS
+  // ==========================================
+
+  async recordPolicyAcknowledgement(data: InsertPolicyAcknowledgement): Promise<PolicyAcknowledgement> {
+    // Upsert: if the user already has an entry for this policy type, update it
+    const existing = await db.select().from(policyAcknowledgements)
+      .where(and(
+        eq(policyAcknowledgements.userId, data.userId),
+        eq(policyAcknowledgements.policyType, data.policyType),
+      )).limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db.update(policyAcknowledgements)
+        .set({ policyVersion: data.policyVersion, acceptedAt: new Date() })
+        .where(eq(policyAcknowledgements.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(policyAcknowledgements).values({
+      ...data,
+      acceptedAt: new Date(),
+    }).returning();
+    return created;
+  }
+
+  async getPolicyAcknowledgementStatus(userId: string, policyType: string, policyVersion: string): Promise<boolean> {
+    const [row] = await db.select().from(policyAcknowledgements)
+      .where(and(
+        eq(policyAcknowledgements.userId, userId),
+        eq(policyAcknowledgements.policyType, policyType),
+        eq(policyAcknowledgements.policyVersion, policyVersion),
+      )).limit(1);
+    return !!row;
+  }
+
+  async getPolicyAcknowledgementsByPolicy(policyType: string, policyVersion: string): Promise<PolicyAcknowledgement[]> {
+    return db.select().from(policyAcknowledgements)
+      .where(and(
+        eq(policyAcknowledgements.policyType, policyType),
+        eq(policyAcknowledgements.policyVersion, policyVersion),
+      ))
+      .orderBy(desc(policyAcknowledgements.acceptedAt));
   }
 }
 

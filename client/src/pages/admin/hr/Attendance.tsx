@@ -10,6 +10,11 @@ import {
   Clock4,
   ChevronDown,
   ChevronUp,
+  AlertCircle,
+  Plus,
+  X,
+  Check,
+  Info,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,11 +22,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BreakWidget } from "@/components/admin/BreakWidget";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { TicketsContent } from "./Tickets";
 import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
 
 interface DashboardStats {
@@ -57,6 +66,26 @@ interface GraceUsageRow {
   lateCount: number;
 }
 
+interface RegularizationRequest {
+  id: string;
+  employeeId: string;
+  attendanceDate: string;
+  requestType: string;
+  requestedPunchIn: string | null;
+  requestedPunchOut: string | null;
+  reason: string;
+  status: string;
+  reviewerComment: string | null;
+  reviewerName: string | null;
+  createdAt: string;
+}
+
+interface PolicyConfig {
+  employeeWindowDays: number;
+  managerCutoffDay: number;
+  policyVersion: string;
+}
+
 const TARGET_HOURS = 8;
 
 function formatElapsed(ms: number): string {
@@ -90,6 +119,19 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   corrected: { label: "Corrected", cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
 };
 
+const REG_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  pending:  { label: "Pending",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  approved: { label: "Approved", cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  rejected: { label: "Rejected", cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+};
+
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  missed_punch_in:  "Missed Punch In",
+  missed_punch_out: "Missed Punch Out",
+  wrong_absent:     "Wrong Absent Mark",
+  correction:       "Time Correction",
+};
+
 function StatusBadge({ status, isCorrect }: { status: string; isCorrect?: boolean }) {
   const key = isCorrect && status === "present" ? "corrected" : (status || "absent");
   const cfg = STATUS_STYLE[key] || { label: status, cls: "" };
@@ -97,6 +139,195 @@ function StatusBadge({ status, isCorrect }: { status: string; isCorrect?: boolea
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
       {cfg.label}
     </span>
+  );
+}
+
+function getWorkingDaysBack(date: string, today: string, holidaySet: Set<string> = new Set()): number {
+  if (date > today) return -1;
+  if (date === today) return 0;
+  const start = new Date(date + "T00:00:00");
+  const end = new Date(today + "T00:00:00");
+  let wd = 0;
+  const cur = new Date(start);
+  while (cur < end) {
+    const dow = cur.getDay();
+    const ds = cur.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !holidaySet.has(ds)) wd++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return wd;
+}
+
+function ReportIssueModal({
+  date,
+  onClose,
+  windowDays,
+}: {
+  date: string;
+  onClose: () => void;
+  windowDays: number;
+}) {
+  const { toast } = useToast();
+  const [requestType, setRequestType] = useState("");
+  const [requestedPunchIn, setRequestedPunchIn] = useState("");
+  const [requestedPunchOut, setRequestedPunchOut] = useState("");
+  const [reason, setReason] = useState("");
+
+  const submitMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/hr/attendance/regularization", {
+        attendanceDate: date,
+        requestType,
+        requestedPunchIn: requestedPunchIn || undefined,
+        requestedPunchOut: requestedPunchOut || undefined,
+        reason,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/my"] });
+      toast({ title: "Request Submitted", description: "Your regularization request has been submitted." });
+      onClose();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to submit", variant: "destructive" });
+    },
+  });
+
+  const needsPunchFields = ["missed_punch_in", "missed_punch_out", "correction"].includes(requestType);
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent data-testid="dialog-report-issue">
+        <DialogHeader>
+          <DialogTitle>Report Attendance Issue</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label>Date</Label>
+            <p className="text-sm font-medium text-foreground">{date}</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Issue Type</Label>
+            <Select value={requestType} onValueChange={setRequestType}>
+              <SelectTrigger data-testid="select-issue-type">
+                <SelectValue placeholder="Select issue type..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="missed_punch_in">Missed Punch In</SelectItem>
+                <SelectItem value="missed_punch_out">Missed Punch Out</SelectItem>
+                <SelectItem value="wrong_absent">Wrong Absent Mark</SelectItem>
+                <SelectItem value="correction">Time Correction</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {needsPunchFields && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Correct Punch In Time</Label>
+                <Input
+                  type="time"
+                  value={requestedPunchIn}
+                  onChange={(e) => setRequestedPunchIn(e.target.value)}
+                  data-testid="input-reg-punch-in"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Correct Punch Out Time</Label>
+                <Input
+                  type="time"
+                  value={requestedPunchOut}
+                  onChange={(e) => setRequestedPunchOut(e.target.value)}
+                  data-testid="input-reg-punch-out"
+                />
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Reason</Label>
+            <Textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Explain what happened..."
+              data-testid="input-reg-reason"
+            />
+          </div>
+          <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+            <span>
+              Requests must be submitted within <strong>{windowDays} working days</strong> of the incident. You have until {windowDays} working days after {date}.
+            </span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => submitMutation.mutate()}
+            disabled={!requestType || !reason || submitMutation.isPending}
+            data-testid="button-submit-regularization"
+          >
+            {submitMutation.isPending ? "Submitting..." : "Submit Request"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MyRegularizationsSection() {
+  const { data: requests, isLoading } = useQuery<RegularizationRequest[]>({
+    queryKey: ["/api/hr/attendance/regularization/my"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>;
+  }
+
+  if (!requests || requests.length === 0) {
+    return (
+      <div className="text-center py-6">
+        <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+        <p className="text-sm text-muted-foreground">No regularization requests yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Date</th>
+            <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Type</th>
+            <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
+            <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Reviewer Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {requests.map((r) => {
+            const cfg = REG_STATUS_STYLE[r.status] || { label: r.status, cls: "" };
+            return (
+              <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
+                <td className="py-2.5 px-4 font-mono">{r.attendanceDate}</td>
+                <td className="py-2.5 px-4">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
+                <td className="py-2.5 px-4">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+                    {cfg.label}
+                  </span>
+                </td>
+                <td className="py-2.5 px-4 text-muted-foreground">
+                  {r.reviewerComment || "—"}
+                  {r.reviewerName && <span className="text-xs ml-1">({r.reviewerName})</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -211,11 +442,12 @@ export default function Attendance() {
   const { toast } = useToast();
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [reportIssueDate, setReportIssueDate] = useState<string | null>(null);
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
   const canSeeGrace = ["hr", "admin", "super_admin", "manager"].includes(user?.role || "");
-  const validTabs = ["attendance", "tickets", ...(canSeeGrace ? ["grace"] : [])];
+  const validTabs = ["attendance", "regularizations", ...(canSeeGrace ? ["grace"] : [])];
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -230,6 +462,21 @@ export default function Attendance() {
     enabled: isAuthenticated,
   });
 
+  const { data: policyConfig } = useQuery<PolicyConfig>({
+    queryKey: ["/api/hr/attendance/regularization/policy"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: myRegularizations } = useQuery<RegularizationRequest[]>({
+    queryKey: ["/api/hr/attendance/regularization/my"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0];
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
@@ -237,6 +484,13 @@ export default function Attendance() {
   const { data: records } = useQuery<AttendanceRecord[]>({
     queryKey: ["/api/hr/attendance/my", { startDate: monthStart, endDate: todayStr }],
     enabled: isAuthenticated,
+  });
+
+  // Fetch server-computed submission window so frontend doesn't duplicate holiday/working-day logic
+  const { data: submissionWindow } = useQuery<{ windowStart: string; windowEnd: string }>({
+    queryKey: ["/api/hr/attendance/regularization/window"],
+    enabled: isAuthenticated,
+    staleTime: 10 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -298,7 +552,13 @@ export default function Attendance() {
   const progressPct = Math.min(100, (liveMs / (TARGET_HOURS * 3600000)) * 100);
   const todayDate = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
+  const windowDays = policyConfig?.employeeWindowDays ?? 7;
   const recentRecords = [...(records || [])].sort((a, b) => b.date.localeCompare(a.date));
+
+  // Build a set of dates with pending regularization requests
+  const pendingDates = new Set(
+    (myRegularizations || []).filter(r => r.status === "pending").map(r => r.attendanceDate)
+  );
 
   return (
     <AdminLayout>
@@ -306,7 +566,14 @@ export default function Attendance() {
         <PillTabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
           <PillTabsList>
             <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
-            <PillTabsTrigger value="tickets" data-testid="tab-tickets">Regularization</PillTabsTrigger>
+            <PillTabsTrigger value="regularizations" data-testid="tab-regularizations">
+              My Regularizations
+              {(myRegularizations?.filter(r => r.status === "pending").length ?? 0) > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-xs w-4 h-4 font-medium">
+                  {myRegularizations?.filter(r => r.status === "pending").length}
+                </span>
+              )}
+            </PillTabsTrigger>
             {canSeeGrace && (
               <PillTabsTrigger value="grace" data-testid="tab-grace">Grace Period Usage</PillTabsTrigger>
             )}
@@ -490,6 +757,9 @@ export default function Attendance() {
                 <CardContent className="p-0">
                   <div className="px-5 py-3.5 border-b">
                     <h3 className="text-sm font-semibold">Recent Records</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Click "Report Issue" on any row within {windowDays} working days to request a correction.
+                    </p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -500,12 +770,13 @@ export default function Attendance() {
                           <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Out</th>
                           <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Hours</th>
                           <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
+                          <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {recentRecords.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
+                            <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
                               No records this month yet
                             </td>
                           </tr>
@@ -514,6 +785,10 @@ export default function Attendance() {
                           const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
                           const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                           const isToday = r.date === todayStr;
+                          const canReport = submissionWindow
+                            ? r.date >= submissionWindow.windowStart && r.date <= submissionWindow.windowEnd && r.status !== "weekend" && r.status !== "holiday"
+                            : false;
+                          const hasPending = pendingDates.has(r.date);
                           return (
                             <tr
                               key={r.date}
@@ -532,6 +807,25 @@ export default function Attendance() {
                               <td className="py-3 px-4">
                                 <StatusBadge status={r.status} isCorrect={r.isCorrect} />
                               </td>
+                              <td className="py-3 px-4">
+                                {hasPending ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                    <AlertCircle className="h-3.5 w-3.5" />
+                                    Pending
+                                  </span>
+                                ) : canReport ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => setReportIssueDate(r.date)}
+                                    data-testid={`button-report-issue-${r.date}`}
+                                  >
+                                    <AlertCircle className="h-3.5 w-3.5 mr-1" />
+                                    Report Issue
+                                  </Button>
+                                ) : null}
+                              </td>
                             </tr>
                           );
                         })}
@@ -544,8 +838,18 @@ export default function Attendance() {
             </div>
           </PillTabsContent>
 
-          <PillTabsContent value="tickets">
-            <TicketsContent />
+          <PillTabsContent value="regularizations">
+            <div className="space-y-4 max-w-3xl">
+              <div>
+                <h2 className="text-base font-semibold">My Regularization Requests</h2>
+                <p className="text-xs text-muted-foreground">All attendance correction requests you have raised</p>
+              </div>
+              <Card>
+                <CardContent className="p-0">
+                  <MyRegularizationsSection />
+                </CardContent>
+              </Card>
+            </div>
           </PillTabsContent>
 
           {canSeeGrace && (
@@ -555,6 +859,15 @@ export default function Attendance() {
           )}
         </PillTabs>
       </div>
+
+      {/* Report Issue Modal */}
+      {reportIssueDate && (
+        <ReportIssueModal
+          date={reportIssueDate}
+          windowDays={windowDays}
+          onClose={() => setReportIssueDate(null)}
+        />
+      )}
     </AdminLayout>
   );
 }

@@ -7,8 +7,9 @@ import Users from "./Users";
 import ReportsCompliance from "./hr/ReportsCompliance";
 import TrainingManagement from "./hr/TrainingManagement";
 import HRSettings from "./hr/HRSettings";
+import RegularizationsPanel from "./hr/RegularizationsPanel";
 
-const TABS = ["users", "reports", "training", "settings"] as const;
+const TABS = ["users", "reports", "training", "regularizations", "settings"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -52,13 +53,14 @@ export default function PeopleHR() {
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-peoplehr-title">People & HR</h1>
-          <p className="text-sm text-muted-foreground">User management, reports, training, and settings</p>
+          <p className="text-sm text-muted-foreground">User management, reports, training, regularizations, and settings</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-peoplehr">
-          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-2xl">
+          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-3xl">
             <TabsTrigger value="users" data-testid="tab-users">User Management</TabsTrigger>
             <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             <TabsTrigger value="training" data-testid="tab-training-mgmt">Training Mgmt</TabsTrigger>
+            <TabsTrigger value="regularizations" data-testid="tab-regularizations">Regularizations</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-hr-settings">Settings</TabsTrigger>
           </TabsList>
           <TabsContent value="users" className="mt-4">
@@ -69,6 +71,9 @@ export default function PeopleHR() {
           </TabsContent>
           <TabsContent value="training" className="mt-4">
             <TrainingManagement />
+          </TabsContent>
+          <TabsContent value="regularizations" className="mt-4">
+            <RegularizationsPanel />
           </TabsContent>
           <TabsContent value="settings" className="mt-4">
             <HRSettings />

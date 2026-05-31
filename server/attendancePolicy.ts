@@ -128,10 +128,11 @@ export async function computeHalfDayStatus(
 }
 
 /**
- * Count working days from `date` (inclusive) back to `today` (exclusive).
+ * Count working days from `date` (inclusive) back to `today` (exclusive),
+ * excluding weekends AND the supplied set of holiday date strings (YYYY-MM-DD).
  * Returns -1 for a future date.
  */
-export function countWorkingDaysBack(date: string, today: string): number {
+export function countWorkingDaysBack(date: string, today: string, holidaySet: Set<string> = new Set()): number {
   if (date > today) return -1;
   if (date === today) return 0;
   const start = new Date(date + "T00:00:00");
@@ -139,7 +140,9 @@ export function countWorkingDaysBack(date: string, today: string): number {
   let wd = 0;
   const cur = new Date(start);
   while (cur < end) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) wd++;
+    const dow = cur.getDay();
+    const ds = cur.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !holidaySet.has(ds)) wd++;
     cur.setDate(cur.getDate() + 1);
   }
   return wd;
@@ -151,6 +154,78 @@ export function countWorkingDaysBack(date: string, today: string): number {
 export function isRegularisationAllowed(date: string, today: string): boolean {
   const wd = countWorkingDaysBack(date, today);
   return wd >= 0 && wd <= 3;
+}
+
+/**
+ * Async: fetches public holidays from DB in the relevant date range and checks
+ * whether an employee can submit a regularization for the given attendance date.
+ */
+export async function canSubmitRegularizationAsync(
+  requestDate: string,
+  today: string,
+  windowDays: number,
+): Promise<boolean> {
+  // Quick range check first (avoids DB hit for obviously out-of-window dates)
+  const roughDays = countWorkingDaysBack(requestDate, today);
+  if (roughDays < 0 || roughDays > windowDays + 15) return false; // 15-day buffer for holidays
+
+  // Fetch public holidays between requestDate and today to get accurate working-day count
+  try {
+    const { holidays: holidaysTable } = await import("@shared/schema");
+    const { gte, lte, and: andOp, eq: eqOp } = await import("drizzle-orm");
+    const rows = await db.select({ date: holidaysTable.date })
+      .from(holidaysTable)
+      .where(andOp(
+        eqOp(holidaysTable.isOptional, false),
+        gte(holidaysTable.date, requestDate),
+        lte(holidaysTable.date, today),
+      ));
+    const holidaySet = new Set(rows.map(r => r.date));
+    const wd = countWorkingDaysBack(requestDate, today, holidaySet);
+    return wd >= 0 && wd <= windowDays;
+  } catch {
+    // Fall back to weekend-only calculation if DB query fails
+    return roughDays >= 0 && roughDays <= windowDays;
+  }
+}
+
+/**
+ * Synchronous fallback (weekends only, no holiday exclusion).
+ * Use canSubmitRegularizationAsync in route handlers where possible.
+ */
+export function canSubmitRegularization(requestDate: string, today: string, windowDays: number): boolean {
+  const wd = countWorkingDaysBack(requestDate, today);
+  return wd >= 0 && wd <= windowDays;
+}
+
+/**
+ * Checks whether the acting role can take action on a regularization request.
+ *
+ * Semantics:
+ * - HR / admin / super_admin: always allowed.
+ * - Manager: allowed only when the **request's attendance date** is in the current month
+ *   AND the attendance date's day-of-month is on or before the cutoff day.
+ *   Once the attendance date's day exceeds the cutoff (e.g., date is the 25th and
+ *   cutoff is the 20th) the request is considered payroll-sensitive and must be
+ *   escalated to HR.
+ */
+export function canActOnRegularization(
+  actorRole: string,
+  requestDate: string,
+  cutoffDay: number,
+): boolean {
+  if (["hr", "admin", "super_admin"].includes(actorRole)) return true;
+  if (actorRole === "manager") {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const [rYear, rMonth, rDay] = requestDate.split("-").map(Number);
+    // Must be the current calendar month
+    if (rYear !== year || rMonth !== month) return false;
+    // The request's attendance date must be on/before the cutoff day
+    return rDay <= cutoffDay;
+  }
+  return false;
 }
 
 /**

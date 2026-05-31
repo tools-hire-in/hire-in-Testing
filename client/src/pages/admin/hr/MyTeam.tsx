@@ -31,6 +31,7 @@ import {
   CheckCircle,
   XCircle,
   Timer,
+  ClipboardList,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -617,6 +618,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-tickets" value="tickets" className="gap-1">
             <FileText className="h-4 w-4" /> Tickets
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-regularizations" value="regularizations" className="gap-1">
+            <ClipboardList className="h-4 w-4" /> Regularizations
+          </TabsTrigger>
           <TabsTrigger data-testid="tab-shift" value="shift" className="gap-1">
             <Timer className="h-4 w-4" /> Shift
           </TabsTrigger>
@@ -661,6 +665,9 @@ function EmployeeDetailView({
         </TabsContent>
         <TabsContent value="tickets">
           <TicketsTab tickets={data.tickets} onReview={onReviewTicket} />
+        </TabsContent>
+        <TabsContent value="regularizations">
+          <TeamMemberRegularizations userId={userId} />
         </TabsContent>
         <TabsContent value="shift">
           <ShiftTab userId={userId} />
@@ -1203,6 +1210,347 @@ function EmergencyContactsTab({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Team-level manager queue: shows ALL pending regularization requests across direct reports
+function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: string) => void }) {
+  const { toast } = useToast();
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [decision, setDecision] = useState<"approved" | "rejected">("approved");
+  const [comment, setComment] = useState("");
+
+  const { data: requests, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/hr/attendance/regularization", "team-queue"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const { data: policyConfig } = useQuery<{ employeeWindowDays: number; managerCutoffDay: number; policyVersion: string }>({
+    queryKey: ["/api/hr/attendance/regularization/policy"],
+  });
+  const cutoffDay = policyConfig?.managerCutoffDay ?? 20;
+
+  const reviewMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/hr/attendance/regularization/${reviewId}/review`, {
+        status: decision,
+        reviewerComment: comment,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization", "team-queue"] });
+      toast({ title: decision === "approved" ? "Request Approved" : "Request Rejected" });
+      setReviewId(null);
+      setComment("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to review", variant: "destructive" });
+    },
+  });
+
+  const pending = (requests || []).filter(r => r.status === "pending");
+
+  if (pending.length === 0) return null;
+
+  // Group by employee
+  const byEmployee: Record<string, { name: string; requests: any[] }> = {};
+  for (const r of pending) {
+    if (!byEmployee[r.employeeId]) byEmployee[r.employeeId] = { name: r.employeeName ?? r.employeeId, requests: [] };
+    byEmployee[r.employeeId].requests.push(r);
+  }
+
+  const reviewing = pending.find(r => r.id === reviewId);
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-amber-500" />
+            Pending Regularization Requests
+            <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 text-xs font-semibold">
+              {pending.length}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 space-y-2">{[1,2].map(i => <div key={i} className="h-10 rounded bg-muted animate-pulse" />)}</div>
+          ) : (
+            <div className="divide-y">
+              {Object.entries(byEmployee).map(([empId, { name, requests: empReqs }]) => (
+                <div key={empId} className="px-4 py-3">
+                  <button
+                    className="text-sm font-semibold text-primary hover:underline mb-2 flex items-center gap-1"
+                    onClick={() => onViewEmployee(empId)}
+                    data-testid={`link-view-employee-${empId}`}
+                  >
+                    {name} ({empReqs.length})
+                  </button>
+                  <div className="space-y-1.5">
+                    {empReqs.map(r => {
+                      const reqDay = Number(r.attendanceDate?.split("-")[2] ?? 0);
+                      const pastCutoff = reqDay > cutoffDay;
+                      return (
+                        <div key={r.id} className="flex items-center gap-3 text-sm" data-testid={`team-queue-row-${r.id}`}>
+                          <span className="font-mono text-xs">{r.attendanceDate}</span>
+                          <span className="text-muted-foreground text-xs">{REG_TYPE_LABELS_QUEUE[r.requestType] || r.requestType}</span>
+                          {pastCutoff ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-0.5" title={`Past cutoff day ${cutoffDay} — HR must handle`}>
+                              Refer to HR
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" className="h-6 text-xs px-2 py-0" onClick={() => { setReviewId(r.id); setDecision("approved"); setComment(""); }} data-testid={`button-queue-review-${r.id}`}>
+                              Review
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {reviewId && reviewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background border border-border rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 space-y-4">
+            <h3 className="text-base font-bold">Review Regularization Request</h3>
+            <div className="p-3 bg-muted/40 rounded-lg text-sm space-y-1">
+              <p><span className="text-muted-foreground">Employee: </span>{reviewing.employeeName}</p>
+              <p><span className="text-muted-foreground">Date: </span><span className="font-mono">{reviewing.attendanceDate}</span></p>
+              <p><span className="text-muted-foreground">Type: </span>{REG_TYPE_LABELS_QUEUE[reviewing.requestType] || reviewing.requestType}</p>
+              <p><span className="text-muted-foreground">Reason: </span>{reviewing.reason}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant={decision === "approved" ? "default" : "outline"} onClick={() => setDecision("approved")} data-testid="button-queue-approve">
+                <CheckCircle className="h-4 w-4 mr-1" /> Approve
+              </Button>
+              <Button size="sm" variant={decision === "rejected" ? "destructive" : "outline"} onClick={() => setDecision("rejected")} data-testid="button-queue-reject">
+                <XCircle className="h-4 w-4 mr-1" /> Reject
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Comment <span className="text-destructive">*</span></label>
+              <textarea className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm" value={comment} onChange={e => setComment(e.target.value)} placeholder="Reason for decision..." data-testid="input-queue-comment" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setReviewId(null)}>Cancel</Button>
+              <Button onClick={() => reviewMutation.mutate()} disabled={!comment.trim() || reviewMutation.isPending} data-testid="button-queue-submit">
+                {reviewMutation.isPending ? "Submitting..." : "Submit Decision"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const REG_TYPE_LABELS_QUEUE: Record<string, string> = {
+  missed_punch_in:  "Missed Punch In",
+  missed_punch_out: "Missed Punch Out",
+  wrong_absent:     "Wrong Absent Mark",
+  correction:       "Time Correction",
+};
+
+const REG_STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  pending:  { label: "Pending",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  approved: { label: "Approved", cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  rejected: { label: "Rejected", cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+};
+
+const REG_TYPE_LABELS: Record<string, string> = {
+  missed_punch_in:  "Missed Punch In",
+  missed_punch_out: "Missed Punch Out",
+  wrong_absent:     "Wrong Absent Mark",
+  correction:       "Time Correction",
+};
+
+function TeamMemberRegularizations({ userId }: { userId: string }) {
+  const { toast } = useToast();
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [decision, setDecision] = useState<"approved" | "rejected">("approved");
+  const [comment, setComment] = useState("");
+
+  const { data: requests, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/hr/attendance/regularization", { employeeId: userId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/attendance/regularization?employeeId=${userId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const { data: policyConfig } = useQuery<{ employeeWindowDays: number; managerCutoffDay: number; policyVersion: string }>({
+    queryKey: ["/api/hr/attendance/regularization/policy"],
+  });
+  const cutoffDay = policyConfig?.managerCutoffDay ?? 20;
+
+  const reviewMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/hr/attendance/regularization/${reviewId}/review`, {
+        status: decision,
+        reviewerComment: comment,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization", { employeeId: userId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/all"] });
+      toast({ title: decision === "approved" ? "Request Approved" : "Request Rejected" });
+      setReviewId(null);
+      setComment("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to review", variant: "destructive" });
+    },
+  });
+
+  const reviewing = requests?.find(r => r.id === reviewId);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          {[1,2,3].map(i => <div key={i} className="h-10 rounded bg-muted animate-pulse" />)}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <CardContent className="p-0">
+          {!requests || requests.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              No regularization requests for this employee
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Date</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Reason</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map(r => {
+                    const cfg = REG_STATUS_CFG[r.status] || { label: r.status, cls: "" };
+                    return (
+                      <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`team-reg-row-${r.id}`}>
+                        <td className="py-2.5 px-4 font-mono">{r.attendanceDate}</td>
+                        <td className="py-2.5 px-4">{REG_TYPE_LABELS[r.requestType] || r.requestType}</td>
+                        <td className="py-2.5 px-4 text-muted-foreground max-w-[200px] truncate" title={r.reason}>{r.reason}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+                            {cfg.label}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          {r.status === "pending" && (() => {
+                            const reqDay = Number(r.attendanceDate?.split("-")[2] ?? 0);
+                            const pastCutoff = reqDay > cutoffDay;
+                            if (pastCutoff) {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-1"
+                                  title={`Date is past manager cutoff (day ${cutoffDay}) — HR must handle this`}
+                                  data-testid={`badge-refer-hr-${r.id}`}
+                                >
+                                  Refer to HR
+                                </span>
+                              );
+                            }
+                            return (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { setReviewId(r.id); setDecision("approved"); setComment(""); }}
+                                data-testid={`button-team-review-${r.id}`}
+                              >
+                                Review
+                              </Button>
+                            );
+                          })()}
+                          {r.status !== "pending" && r.reviewerName && (
+                            <span className="text-xs text-muted-foreground">By {r.reviewerName}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Review dialog */}
+      {reviewId && reviewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background border border-border rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 space-y-4">
+            <h3 className="text-base font-bold">Review Regularization Request</h3>
+            <div className="p-3 bg-muted/40 rounded-lg text-sm space-y-1">
+              <p><span className="text-muted-foreground">Date: </span><span className="font-mono">{reviewing.attendanceDate}</span></p>
+              <p><span className="text-muted-foreground">Type: </span>{REG_TYPE_LABELS[reviewing.requestType] || reviewing.requestType}</p>
+              <p><span className="text-muted-foreground">Reason: </span>{reviewing.reason}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Decision</label>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={decision === "approved" ? "default" : "outline"}
+                  onClick={() => setDecision("approved")}
+                  data-testid="button-approve"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant={decision === "rejected" ? "destructive" : "outline"}
+                  onClick={() => setDecision("rejected")}
+                  data-testid="button-reject"
+                >
+                  <XCircle className="h-4 w-4 mr-1" /> Reject
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Comment <span className="text-destructive">*</span></label>
+              <textarea
+                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Reason for your decision..."
+                data-testid="input-team-review-comment"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setReviewId(null)}>Cancel</Button>
+              <Button
+                onClick={() => reviewMutation.mutate()}
+                disabled={!comment.trim() || reviewMutation.isPending}
+                data-testid="button-submit-team-review"
+              >
+                {reviewMutation.isPending ? "Submitting..." : "Submit Decision"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -2537,6 +2885,8 @@ export default function MyTeam() {
             className="pl-10"
           />
         </div>
+
+        <ManagerRegularizationQueue onViewEmployee={(id) => setSelectedUserId(id)} />
 
         {membersQuery.isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

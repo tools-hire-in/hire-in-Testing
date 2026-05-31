@@ -1564,6 +1564,87 @@ export type LetterTemplateSentence = typeof letterTemplateSentences.$inferSelect
 export type InsertLetterTemplateSentence = z.infer<typeof insertLetterTemplateSentenceSchema>;
 
 // ==========================================
+// ATTENDANCE REGULARIZATION SYSTEM
+// ==========================================
+
+export const regularizationRequestTypeEnum = pgEnum("regularization_request_type", [
+  "missed_punch_in",
+  "missed_punch_out",
+  "wrong_absent",
+  "correction",
+]);
+
+export const regularizationStatusEnum = pgEnum("regularization_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+export const attendanceRegularizations = pgTable("attendance_regularizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  attendanceDate: varchar("attendance_date").notNull(),
+  requestedPunchIn: timestamp("requested_punch_in"),
+  requestedPunchOut: timestamp("requested_punch_out"),
+  requestType: regularizationRequestTypeEnum("request_type").notNull(),
+  reason: text("reason").notNull(),
+  status: regularizationStatusEnum("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewerComment: text("reviewer_comment"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const policyAcknowledgements = pgTable("policy_acknowledgements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  policyType: varchar("policy_type").notNull(),
+  policyVersion: varchar("policy_version").notNull(),
+  acceptedAt: timestamp("accepted_at").defaultNow(),
+});
+
+export const attendanceRegularizationsRelations = relations(attendanceRegularizations, ({ one }) => ({
+  employee: one(adminUsers, {
+    fields: [attendanceRegularizations.employeeId],
+    references: [adminUsers.id],
+    relationName: "regularizationEmployee",
+  }),
+  reviewer: one(adminUsers, {
+    fields: [attendanceRegularizations.reviewedBy],
+    references: [adminUsers.id],
+    relationName: "regularizationReviewer",
+  }),
+}));
+
+export const policyAcknowledgementsRelations = relations(policyAcknowledgements, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [policyAcknowledgements.userId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const insertAttendanceRegularizationSchema = createInsertSchema(attendanceRegularizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  reviewedBy: true,
+  reviewerComment: true,
+  reviewedAt: true,
+});
+
+export const insertPolicyAcknowledgementSchema = createInsertSchema(policyAcknowledgements).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export type AttendanceRegularization = typeof attendanceRegularizations.$inferSelect;
+export type InsertAttendanceRegularization = z.infer<typeof insertAttendanceRegularizationSchema>;
+export type PolicyAcknowledgement = typeof policyAcknowledgements.$inferSelect;
+export type InsertPolicyAcknowledgement = z.infer<typeof insertPolicyAcknowledgementSchema>;
+
+// ==========================================
 // PRAISE BOARD SYSTEM
 // ==========================================
 

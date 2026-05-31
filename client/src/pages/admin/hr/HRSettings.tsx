@@ -121,6 +121,122 @@ function TrainingSettingsSection() {
   );
 }
 
+function RegularizationPolicySection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const [editing, setEditing] = useState(false);
+  const [windowDays, setWindowDays] = useState("7");
+  const [cutoffDay, setCutoffDay] = useState("20");
+  const [policyVersion, setPolicyVersion] = useState("1");
+
+  const { data: config, isLoading } = useQuery<{ employeeWindowDays: number; managerCutoffDay: number; policyVersion: string }>({
+    queryKey: ["/api/hr/attendance/regularization/policy"],
+    enabled: isHrOrAbove,
+    onSuccess: (d: any) => {
+      setWindowDays(String(d.employeeWindowDays));
+      setCutoffDay(String(d.managerCutoffDay));
+      setPolicyVersion(d.policyVersion);
+    },
+  } as any);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      // Auto-bump policy version when window days or cutoff day changes
+      let effectiveVersion = policyVersion;
+      const origWindowDays = String(config?.employeeWindowDays ?? 7);
+      const origCutoffDay = String(config?.managerCutoffDay ?? 20);
+      const policyChanged = windowDays !== origWindowDays || cutoffDay !== origCutoffDay;
+      if (policyChanged && effectiveVersion === String(config?.policyVersion ?? "1")) {
+        const num = parseInt(effectiveVersion, 10);
+        effectiveVersion = isNaN(num) ? `${effectiveVersion}.1` : String(num + 1);
+      }
+      await apiRequest("PUT", "/api/system-settings/regularization_employee_window_days", { value: windowDays });
+      await apiRequest("PUT", "/api/system-settings/regularization_manager_cutoff_day", { value: cutoffDay });
+      await apiRequest("PUT", "/api/system-settings/regularization_policy_version", { value: effectiveVersion });
+      return { effectiveVersion, policyChanged };
+    },
+    onSuccess: ({ effectiveVersion, policyChanged }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/policy"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/window"] });
+      toast({
+        title: "Policy settings saved",
+        description: policyChanged
+          ? `Policy version updated to v${effectiveVersion}. All employees will be prompted to re-acknowledge.`
+          : "Settings saved.",
+      });
+      setEditing(false);
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CheckSquare className="h-4 w-4" />
+            Attendance Regularization Policy
+          </CardTitle>
+          {!editing && (
+            <Button size="sm" variant="outline" onClick={() => { setEditing(true); if (config) { setWindowDays(String(config.employeeWindowDays)); setCutoffDay(String(config.managerCutoffDay)); setPolicyVersion(config.policyVersion); } }} data-testid="button-edit-reg-policy">
+              Edit
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : editing ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Employee Window (working days)</Label>
+                <Input type="number" min={1} max={30} value={windowDays} onChange={(e) => setWindowDays(e.target.value)} data-testid="input-reg-window-days" />
+                <p className="text-xs text-muted-foreground">Days from incident to raise a request</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Manager Cutoff Day</Label>
+                <Input type="number" min={1} max={28} value={cutoffDay} onChange={(e) => setCutoffDay(e.target.value)} data-testid="input-reg-cutoff-day" />
+                <p className="text-xs text-muted-foreground">Day of month; after this HR handles it</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Policy Version</Label>
+                <Input value={policyVersion} onChange={(e) => setPolicyVersion(e.target.value)} data-testid="input-reg-policy-version" />
+                <p className="text-xs text-muted-foreground">Increment to re-prompt all employees</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-reg-policy">
+                {saveMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono" data-testid="text-reg-window">{config?.employeeWindowDays ?? 7}</p>
+              <p className="text-xs text-muted-foreground mt-1">Working days window</p>
+            </div>
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono" data-testid="text-reg-cutoff">{config?.managerCutoffDay ?? 20}</p>
+              <p className="text-xs text-muted-foreground mt-1">Manager cutoff day</p>
+            </div>
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono" data-testid="text-reg-version">v{config?.policyVersion ?? "1"}</p>
+              <p className="text-xs text-muted-foreground mt-1">Policy version</p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function PerformanceSettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -1738,6 +1854,8 @@ export default function HRSettings() {
         <FeatureFlagsSection />
 
         <TrainingSettingsSection />
+
+        <RegularizationPolicySection />
 
         <PerformanceSettingsSection />
         <RayoAcademySettingsSection />

@@ -3301,6 +3301,548 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // ATTENDANCE REGULARIZATION ROUTES
+  // ==========================================
+
+  // Get policy config (public to all authenticated users)
+  app.get("/api/hr/attendance/regularization/policy", requireAuth, async (req, res) => {
+    try {
+      const windowSetting = await storage.getSystemSetting("regularization_employee_window_days");
+      const cutoffSetting = await storage.getSystemSetting("regularization_manager_cutoff_day");
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      res.json({
+        employeeWindowDays: windowSetting ? Number(windowSetting.value) : 7,
+        managerCutoffDay: cutoffSetting ? Number(cutoffSetting.value) : 20,
+        policyVersion: versionSetting ? String(versionSetting.value) : "1",
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch policy" });
+    }
+  });
+
+  // Return the valid submission window dates (server-computes holiday-aware working-day range)
+  app.get("/api/hr/attendance/regularization/window", requireAuth, async (req, res) => {
+    try {
+      const windowSetting = await storage.getSystemSetting("regularization_employee_window_days");
+      const windowDays = windowSetting ? Number(windowSetting.value) : 7;
+      const holidays = await storage.getHolidays();
+      const publicHolidays = new Set(holidays.filter(h => !h.isOptional).map((h: any) => h.date));
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+      // Walk backwards counting only working days until we reach windowDays
+      let wd = 0;
+      const cur = new Date(today);
+      cur.setDate(cur.getDate() - 1);
+      let windowStart = todayStr;
+      for (let safety = 0; safety < 120; safety++) {
+        const ds = cur.toISOString().slice(0, 10);
+        const dow = cur.getDay();
+        if (dow !== 0 && dow !== 6 && !publicHolidays.has(ds)) wd++;
+        if (wd >= windowDays) { windowStart = ds; break; }
+        cur.setDate(cur.getDate() - 1);
+      }
+      res.json({ windowStart, windowEnd: todayStr });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to compute submission window" });
+    }
+  });
+
+  // Submit a regularization request (employee)
+  app.post("/api/hr/attendance/regularization", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { attendanceDate, requestType, requestedPunchIn, requestedPunchOut, reason } = req.body;
+
+      if (!attendanceDate || !requestType || !reason) {
+        return res.status(400).json({ error: "attendanceDate, requestType, and reason are required" });
+      }
+
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      const todayIST = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+
+      const windowSetting = await storage.getSystemSetting("regularization_employee_window_days");
+      const windowDays = windowSetting ? Number(windowSetting.value) : 7;
+
+      const { canSubmitRegularizationAsync } = await import("./attendancePolicy");
+      if (!await canSubmitRegularizationAsync(attendanceDate, todayIST, windowDays)) {
+        return res.status(400).json({ error: `Regularization must be submitted within ${windowDays} working days of the incident (weekends and public holidays excluded)` });
+      }
+
+      // Check for existing pending request for this date
+      const existing = await storage.getRegularizationRequests({ employeeId: userId });
+      const duplicate = existing.find(r => r.attendanceDate === attendanceDate && r.status === "pending");
+      if (duplicate) {
+        return res.status(400).json({ error: "A pending regularization request already exists for this date" });
+      }
+
+      const punchIn = requestedPunchIn ? new Date(`${attendanceDate}T${requestedPunchIn}`) : undefined;
+      const punchOut = requestedPunchOut ? new Date(`${attendanceDate}T${requestedPunchOut}`) : undefined;
+
+      const request = await storage.createRegularizationRequest({
+        employeeId: userId,
+        attendanceDate,
+        requestType,
+        requestedPunchIn: punchIn,
+        requestedPunchOut: punchOut,
+        reason,
+      });
+
+      await storage.createAuditLog({
+        actorId: userId,
+        targetId: userId,
+        action: "regularization_submitted",
+        changes: { attendanceDate, requestType, reason },
+      });
+
+      res.status(201).json(request);
+    } catch (error) {
+      console.error("Regularization submit error:", error);
+      res.status(500).json({ error: "Failed to submit regularization request" });
+    }
+  });
+
+  // Get regularization requests (role-scoped)
+  app.get("/api/hr/attendance/regularization", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      const { status, startDate, endDate, employeeId } = req.query;
+
+      let filters: any = {};
+      if (status) filters.status = status as string;
+      if (startDate) filters.startDate = startDate as string;
+      if (endDate) filters.endDate = endDate as string;
+
+      if (userRole === "employee") {
+        filters.employeeId = userId;
+      } else if (userRole === "manager") {
+        const team = await storage.getTeamMembers(userId);
+        const teamIds = team.map(m => m.id);
+        if (employeeId) {
+          // Per-employee tab: verify the requested employee is in the manager's team
+          if (!teamIds.includes(employeeId as string)) {
+            return res.status(403).json({ error: "Employee is not in your team" });
+          }
+          filters.employeeId = employeeId as string;
+        } else {
+          filters.managerTeamIds = teamIds;
+        }
+      } else if (["hr", "admin", "super_admin"].includes(userRole)) {
+        if (employeeId) filters.employeeId = employeeId as string;
+      } else {
+        filters.employeeId = userId;
+      }
+
+      const requests = await storage.getRegularizationRequests(filters);
+
+      // Enrich with employee name
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const enriched = requests.map(r => {
+        const emp = userMap.get(r.employeeId);
+        const reviewer = r.reviewedBy ? userMap.get(r.reviewedBy) : null;
+        return {
+          ...r,
+          employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
+          employeeCode: emp?.employeeId ?? null,
+          reviewerName: reviewer ? `${reviewer.firstName} ${reviewer.lastName}` : null,
+        };
+      });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Regularization fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch regularization requests" });
+    }
+  });
+
+  // Get single regularization request (scoped by role)
+  app.get("/api/hr/attendance/regularization/:id", requireAuth, async (req, res) => {
+    try {
+      const request = await storage.getRegularizationRequest(req.params.id);
+      if (!request) return res.status(404).json({ error: "Request not found" });
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      if (userRole === "employee") {
+        // Employees may only view their own requests
+        if (request.employeeId !== userId) {
+          return res.status(403).json({ error: "Not authorized" });
+        }
+      } else if (userRole === "manager") {
+        // Managers may only view requests belonging to their direct reports
+        const team = await storage.getTeamMembers(userId);
+        const teamIds = new Set(team.map(m => m.id));
+        if (!teamIds.has(request.employeeId)) {
+          return res.status(403).json({ error: "Not authorized — this employee is not in your team" });
+        }
+      }
+      // HR / admin / super_admin have unrestricted read access
+
+      // Enrich with actor names for audit chain
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+      const emp = userMap.get(request.employeeId);
+
+      // Query real audit_logs entries linked to this request via changes->>'requestId'
+      const rawLogs = await db.execute(sql`
+        SELECT al.id, al.actor_id, al.action, al.changes, al.created_at
+        FROM audit_logs al
+        WHERE al.changes->>'requestId' = ${request.id}
+        ORDER BY al.created_at ASC
+      `);
+
+      type RawLogRow = { id: string; actor_id: string | null; action: string; changes: any; created_at: Date | null };
+      const auditChain: { event: string; actor: string; actorId: string | null; at: Date | null; detail?: string; changes?: any }[] = [];
+
+      // Always prepend the submission event from the request record itself
+      auditChain.push({
+        event: "submitted",
+        actor: emp ? `${emp.firstName} ${emp.lastName}` : request.employeeId,
+        actorId: request.employeeId,
+        at: request.createdAt,
+        detail: `${request.requestType.replace(/_/g, " ")} — ${request.reason}`,
+      });
+
+      // Append actual audit log entries (approved/rejected/overridden/policy_accepted etc.)
+      for (const row of (rawLogs.rows as RawLogRow[])) {
+        const actor = row.actor_id ? userMap.get(row.actor_id) : null;
+        auditChain.push({
+          event: row.action,
+          actor: actor ? `${actor.firstName} ${actor.lastName}` : (row.actor_id ?? "System"),
+          actorId: row.actor_id,
+          at: row.created_at,
+          detail: row.changes?.reviewerComment ?? row.changes?.comment ?? undefined,
+          changes: row.changes,
+        });
+      }
+
+      res.json({ ...request, auditChain });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch request" });
+    }
+  });
+
+  // Approve or reject a regularization request
+  app.patch("/api/hr/attendance/regularization/:id/review", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+      const { status, reviewerComment } = req.body;
+
+      if (!["approved", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+      }
+      if (!reviewerComment || !reviewerComment.trim()) {
+        return res.status(400).json({ error: "Reviewer comment is required" });
+      }
+
+      const request = await storage.getRegularizationRequest(req.params.id);
+      if (!request) return res.status(404).json({ error: "Request not found" });
+      if (request.status !== "pending") return res.status(400).json({ error: "Request is no longer pending" });
+
+      // Managers may only review requests for their own direct reports
+      if (actorRole === "manager") {
+        const team = await storage.getTeamMembers(actorId);
+        const teamIds = new Set(team.map(m => m.id));
+        if (!teamIds.has(request.employeeId)) {
+          return res.status(403).json({ error: "You can only review requests for your direct reports" });
+        }
+      }
+
+      const cutoffSetting = await storage.getSystemSetting("regularization_manager_cutoff_day");
+      const cutoffDay = cutoffSetting ? Number(cutoffSetting.value) : 20;
+
+      const { canActOnRegularization } = await import("./attendancePolicy");
+      const canAct = canActOnRegularization(actorRole, request.attendanceDate, cutoffDay);
+      if (!canAct) {
+        return res.status(403).json({ error: "Request attendance date is past the manager cutoff day — please escalate to HR" });
+      }
+
+      const updated = await storage.updateRegularizationRequest(req.params.id, {
+        status,
+        reviewedBy: actorId,
+        reviewerComment,
+        reviewedAt: new Date(),
+      });
+
+      // On approval: apply attendance correction with fully recomputed derived fields
+      if (status === "approved") {
+        const punchIn = request.requestedPunchIn;
+        const punchOut = request.requestedPunchOut;
+
+        const existing = await storage.getAttendanceByUser(request.employeeId, request.attendanceDate, request.attendanceDate);
+
+        // Determine the effective punch times after merging the correction
+        const rec = existing.length > 0 ? existing[0] : null;
+        const effectivePunchIn  = punchIn  ?? rec?.punchIn  ?? undefined;
+        const effectivePunchOut = punchOut ?? rec?.punchOut ?? undefined;
+
+        // Always recompute totalHours from the effective punch pair
+        let totalHoursNum: string | undefined;
+        if (effectivePunchIn && effectivePunchOut) {
+          const diffMs = new Date(effectivePunchOut).getTime() - new Date(effectivePunchIn).getTime();
+          if (diffMs > 0) totalHoursNum = (diffMs / 3600000).toFixed(2);
+        }
+
+        // Recompute attendance status from corrected punch times + shift policy
+        // Falls back to "present" when shift data is unavailable
+        let correctedStatus = "present";
+        const empUser = await storage.getAdminUser(request.employeeId);
+        if (empUser?.shiftId && effectivePunchIn) {
+          try {
+            const { computeLateStatus, computeHalfDayStatus } = await import("./attendancePolicy");
+            const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
+            if (lateResult) {
+              const halfResult = totalHoursNum
+                ? await computeHalfDayStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                : { status: lateResult.status };
+              correctedStatus = halfResult.status;
+            }
+          } catch {
+            // Fall back to "present" if shift-based recomputation fails
+          }
+        }
+
+        if (rec) {
+          await storage.updateAttendance(rec.id, {
+            punchIn: effectivePunchIn,
+            punchOut: effectivePunchOut,
+            totalHours: totalHoursNum ?? rec.totalHours ?? undefined,
+            isCorrect: true,
+            correctionSource: "regularization",
+            correctedById: actorId,
+            correctionNote: reviewerComment,
+            status: correctedStatus,
+          });
+        } else if (request.requestType === "wrong_absent") {
+          // No existing record — create one marking the employee as present
+          await storage.createAttendance({
+            userId: request.employeeId,
+            date: request.attendanceDate,
+            punchIn: effectivePunchIn,
+            punchOut: effectivePunchOut,
+            totalHours: totalHoursNum,
+            status: correctedStatus,
+            isCorrect: true,
+            correctionSource: "regularization",
+            correctedById: actorId,
+            correctionNote: reviewerComment,
+          });
+        }
+      }
+
+      // Create in-app notification for employee
+      const actorUser = await storage.getAdminUser(actorId);
+      await storage.createNotification({
+        userId: request.employeeId,
+        type: "regularization_decision",
+        title: status === "approved" ? "Regularization Approved" : "Regularization Rejected",
+        message: `Your regularization request for ${request.attendanceDate} was ${status}. ${reviewerComment ? `Comment: ${reviewerComment}` : ""}`,
+        isRead: false,
+        metadata: { requestId: request.id, attendanceDate: request.attendanceDate, status, reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : null },
+      });
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: request.employeeId,
+        action: `regularization_${status}`,
+        changes: {
+          requestId: request.id,
+          attendanceDate: request.attendanceDate,
+          requestType: request.requestType,
+          oldStatus: "pending",
+          newStatus: status,
+          reviewerComment,
+          requestedPunchIn: request.requestedPunchIn ?? null,
+          requestedPunchOut: request.requestedPunchOut ?? null,
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Regularization review error:", error);
+      res.status(500).json({ error: "Failed to review request" });
+    }
+  });
+
+  // HR/Admin direct override (bypasses request queue)
+  app.post("/api/hr/attendance/regularization/override", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const { employeeId, attendanceDate, requestedPunchIn, requestedPunchOut, requestType, reason, comment } = req.body;
+
+      if (!employeeId || !attendanceDate || !requestType || !reason || !comment) {
+        return res.status(400).json({ error: "employeeId, attendanceDate, requestType, reason, and comment are required" });
+      }
+
+      // Convert HH:mm time strings to full ISO datetime strings by combining with attendanceDate.
+      // Reject any time values that don't produce a valid Date.
+      const HH_MM_RE = /^\d{2}:\d{2}$/;
+      const buildFullDatetime = (time: string | undefined): string | undefined => {
+        if (!time) return undefined;
+        const iso = HH_MM_RE.test(time)
+          ? `${attendanceDate}T${time}:00`
+          : time; // Already a full ISO string (e.g. from older callers)
+        if (isNaN(new Date(iso).getTime())) throw new Error(`Invalid time value: "${time}"`);
+        return iso;
+      };
+
+      let resolvedPunchIn: string | undefined;
+      let resolvedPunchOut: string | undefined;
+      try {
+        resolvedPunchIn = buildFullDatetime(requestedPunchIn);
+        resolvedPunchOut = buildFullDatetime(requestedPunchOut);
+      } catch (timeErr: any) {
+        return res.status(400).json({ error: timeErr.message });
+      }
+
+      if (resolvedPunchIn && resolvedPunchOut && new Date(resolvedPunchIn) >= new Date(resolvedPunchOut)) {
+        return res.status(400).json({ error: "Punch-in time must be before punch-out time" });
+      }
+
+      // Recompute attendance status from corrected punch times + shift policy
+      // Falls back to "present" when shift data is unavailable
+      let computedStatus = "present";
+      const empUserO = await storage.getAdminUser(employeeId);
+      if (empUserO?.shiftId && resolvedPunchIn) {
+        try {
+          const { computeLateStatus: cls, computeHalfDayStatus: chs } = await import("./attendancePolicy");
+          const lateResult = await cls(empUserO.shiftId, new Date(resolvedPunchIn));
+          if (lateResult) {
+            let totalHrsNum: number | undefined;
+            if (resolvedPunchIn && resolvedPunchOut) {
+              const diffMs = new Date(resolvedPunchOut).getTime() - new Date(resolvedPunchIn).getTime();
+              if (diffMs > 0) totalHrsNum = diffMs / 3600000;
+            }
+            const halfResult = totalHrsNum !== undefined
+              ? await chs(empUserO.shiftId, totalHrsNum, lateResult.status)
+              : { status: lateResult.status };
+            computedStatus = halfResult.status;
+          }
+        } catch {
+          // Fall back to "present"
+        }
+      }
+
+      const result = await storage.applyRegularizationOverride({
+        actorId,
+        employeeId,
+        attendanceDate,
+        requestedPunchIn: resolvedPunchIn,
+        requestedPunchOut: resolvedPunchOut,
+        requestType,
+        reason,
+        comment,
+        attendanceStatus: computedStatus,
+      });
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: employeeId,
+        action: "regularization_override",
+        changes: { requestId: result.id, attendanceDate, requestType, reason, comment },
+      });
+
+      await storage.createNotification({
+        userId: employeeId,
+        type: "regularization_decision",
+        title: "Attendance Correction Applied",
+        message: `HR has directly corrected your attendance for ${attendanceDate}. Note: ${comment}`,
+        isRead: false,
+        metadata: { requestId: result.id, attendanceDate, status: "approved_override" },
+      });
+
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Regularization override error:", error);
+      res.status(500).json({ error: "Failed to apply override" });
+    }
+  });
+
+  // ==========================================
+  // POLICY ACKNOWLEDGEMENT ROUTES
+  // ==========================================
+
+  // Check if current user has accepted the current policy version
+  app.get("/api/hr/policy-acknowledgements/status", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const policyVersion = versionSetting ? String(versionSetting.value) : "1";
+      const accepted = await storage.getPolicyAcknowledgementStatus(userId, "attendance_regularization", policyVersion);
+      res.json({ accepted, policyVersion });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check policy status" });
+    }
+  });
+
+  // Record policy acceptance
+  app.post("/api/hr/policy-acknowledgements", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const policyVersion = versionSetting ? String(versionSetting.value) : "1";
+      const record = await storage.recordPolicyAcknowledgement({
+        userId,
+        policyType: "attendance_regularization",
+        policyVersion,
+      });
+      await storage.createAuditLog({
+        actorId: userId,
+        targetId: userId,
+        action: "policy_accepted",
+        changes: { policyType: "attendance_regularization", policyVersion },
+      });
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to record acknowledgement" });
+    }
+  });
+
+  // HR: list acknowledgements for current policy version — includes ALL active users,
+  // flagged as acknowledged or not, so HR can see a full coverage report.
+  app.get("/api/hr/policy-acknowledgements", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const policyVersion = versionSetting ? String(versionSetting.value) : "1";
+
+      // Fetch acknowledged records for this version
+      const ackRecords = await storage.getPolicyAcknowledgementsByPolicy("attendance_regularization", policyVersion);
+      const ackByUser = new Map(ackRecords.map(r => [r.userId, r]));
+
+      // Fetch all active (non-deleted) users — every user who can log in needs to acknowledge
+      const allUsers = await storage.getAdminUsers();
+      const activeUsers = allUsers.filter(u => !u.deletedAt);
+
+      const result = activeUsers.map(u => {
+        const ack = ackByUser.get(u.id);
+        return {
+          userId: u.id,
+          userName: `${u.firstName} ${u.lastName}`,
+          userEmail: u.email,
+          userRole: u.role,
+          policyType: "attendance_regularization",
+          policyVersion,
+          acknowledged: !!ack,
+          acceptedAt: ack?.acceptedAt ?? null,
+          acknowledgedVersion: ack?.policyVersion ?? null,
+        };
+      });
+
+      // Sort: not-acknowledged first (so HR sees who still needs to act), then by name
+      result.sort((a, b) => {
+        if (a.acknowledged !== b.acknowledged) return a.acknowledged ? 1 : -1;
+        return a.userName.localeCompare(b.userName);
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch acknowledgements" });
+    }
+  });
+
   // --- Attendance Report (CSV export) ---
   app.get("/api/hr/reports/attendance", requireRole("hr"), async (req, res) => {
     try {
