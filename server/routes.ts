@@ -26,6 +26,7 @@ import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
+import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -7859,6 +7860,10 @@ export async function registerRoutes(
   registerOnboardingRoutes(app);
   registerPerformanceRoutes(app);
   registerContractRoutes(app);
+  registerPraiseRoutes(app);
+
+  // Seed badge types on startup (idempotent)
+  seedPraiseBadgeTypes().catch(console.error);
 
   return httpServer;
 }

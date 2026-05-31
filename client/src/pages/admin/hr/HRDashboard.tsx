@@ -112,6 +112,20 @@ export default function HRDashboard() {
     enabled: isAuthenticated,
   });
 
+  const { data: pinnedBadges = [] } = useQuery<Array<{
+    id: string; message: string; createdAt: string; giverName: string;
+    badgeType: { id: string; name: string; emoji: string; color: string } | null;
+  }>>({
+    queryKey: ["/api/praise/pinned", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await fetch(`/api/praise/pinned/${user.id}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated && !!user?.id,
+  });
+
   const isManagerOrAbove = user && ["super_admin", "admin", "hr", "manager", "operations"].includes(user.role);
   const todayStr = new Date().toISOString().split("T")[0];
   const monthStart = todayStr.substring(0, 7) + "-01";
@@ -276,6 +290,24 @@ export default function HRDashboard() {
           <p className="text-sm text-muted-foreground">
             {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
+          {pinnedBadges.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2" data-testid="dashboard-pinned-badges">
+              {pinnedBadges.map((post) => (
+                <span
+                  key={post.id}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                  style={{
+                    backgroundColor: post.badgeType ? `${post.badgeType.color}20` : "#f3f4f6",
+                    color: post.badgeType?.color ?? "#374151",
+                  }}
+                  title={`${post.badgeType?.name} from ${post.giverName}`}
+                  data-testid={`dashboard-pinned-badge-${post.id}`}
+                >
+                  {post.badgeType?.emoji} {post.badgeType?.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 5-hour lunch reminder banner */}

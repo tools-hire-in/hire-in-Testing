@@ -1564,6 +1564,91 @@ export type LetterTemplateSentence = typeof letterTemplateSentences.$inferSelect
 export type InsertLetterTemplateSentence = z.infer<typeof insertLetterTemplateSentenceSchema>;
 
 // ==========================================
+// PRAISE BOARD SYSTEM
+// ==========================================
+
+export const praiseBadgeTypes = pgTable("praise_badge_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull().unique(),
+  emoji: varchar("emoji").notNull(),
+  color: varchar("color").notNull(), // hex color
+  description: varchar("description"),
+});
+
+export const praisePosts = pgTable("praise_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  giverId: varchar("giver_id").notNull().references(() => adminUsers.id),
+  recipientId: varchar("recipient_id").notNull().references(() => adminUsers.id),
+  badgeTypeId: varchar("badge_type_id").notNull().references(() => praiseBadgeTypes.id),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const praiseReactions = pgTable("praise_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull().references(() => praisePosts.id, { onDelete: "cascade" }),
+  reactorId: varchar("reactor_id").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("uq_praise_reaction_post_reactor").on(table.postId, table.reactorId),
+]);
+
+export const praiseComments = pgTable("praise_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull().references(() => praisePosts.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull().references(() => adminUsers.id),
+  message: text("message").notNull(),
+  parentCommentId: varchar("parent_comment_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const pinnedPraisePosts = pgTable("pinned_praise_posts", {
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  postId: varchar("post_id").notNull().references(() => praisePosts.id, { onDelete: "cascade" }),
+}, (table) => [
+  uniqueIndex("uq_pinned_praise_user_post").on(table.userId, table.postId),
+]);
+
+export const praiseBadgeTypesRelations = relations(praiseBadgeTypes, ({ many }) => ({
+  posts: many(praisePosts),
+}));
+
+export const praisePostsRelations = relations(praisePosts, ({ one, many }) => ({
+  giver: one(adminUsers, { fields: [praisePosts.giverId], references: [adminUsers.id], relationName: "praiseGiver" }),
+  recipient: one(adminUsers, { fields: [praisePosts.recipientId], references: [adminUsers.id], relationName: "praiseRecipient" }),
+  badgeType: one(praiseBadgeTypes, { fields: [praisePosts.badgeTypeId], references: [praiseBadgeTypes.id] }),
+  reactions: many(praiseReactions),
+  comments: many(praiseComments),
+}));
+
+export const praiseReactionsRelations = relations(praiseReactions, ({ one }) => ({
+  post: one(praisePosts, { fields: [praiseReactions.postId], references: [praisePosts.id] }),
+  reactor: one(adminUsers, { fields: [praiseReactions.reactorId], references: [adminUsers.id], relationName: "praiseReactor" }),
+}));
+
+export const praiseCommentsRelations = relations(praiseComments, ({ one }) => ({
+  post: one(praisePosts, { fields: [praiseComments.postId], references: [praisePosts.id] }),
+  author: one(adminUsers, { fields: [praiseComments.authorId], references: [adminUsers.id], relationName: "praiseCommentAuthor" }),
+}));
+
+export const pinnedPraisePostsRelations = relations(pinnedPraisePosts, ({ one }) => ({
+  user: one(adminUsers, { fields: [pinnedPraisePosts.userId], references: [adminUsers.id], relationName: "pinnedUser" }),
+  post: one(praisePosts, { fields: [pinnedPraisePosts.postId], references: [praisePosts.id] }),
+}));
+
+export const insertPraiseBadgeTypeSchema = createInsertSchema(praiseBadgeTypes).omit({ id: true });
+export const insertPraisePostSchema = createInsertSchema(praisePosts).omit({ id: true, createdAt: true });
+export const insertPraiseReactionSchema = createInsertSchema(praiseReactions).omit({ id: true, createdAt: true });
+export const insertPraiseCommentSchema = createInsertSchema(praiseComments).omit({ id: true, createdAt: true });
+
+export type PraiseBadgeType = typeof praiseBadgeTypes.$inferSelect;
+export type InsertPraiseBadgeType = z.infer<typeof insertPraiseBadgeTypeSchema>;
+export type PraisePost = typeof praisePosts.$inferSelect;
+export type InsertPraisePost = z.infer<typeof insertPraisePostSchema>;
+export type PraiseReaction = typeof praiseReactions.$inferSelect;
+export type PraiseComment = typeof praiseComments.$inferSelect;
+
+// ==========================================
 // ROLE SUMMARY TEMPLATES (configurable role library)
 // ==========================================
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { UserCircle, Mail, Shield, Calendar, KeyRound, Loader2, ShieldCheck, ShieldOff, Clock, History } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -529,6 +529,20 @@ export default function Profile() {
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "profile";
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  const { data: pinnedBadges = [] } = useQuery<Array<{
+    id: string; message: string; createdAt: string; giverName: string;
+    badgeType: { id: string; name: string; emoji: string; color: string } | null;
+  }>>({
+    queryKey: ["/api/praise/pinned", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await fetch(`/api/praise/pinned/${user.id}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated && !!user?.id,
+  });
+
   const { data: balances } = useQuery<LeaveBalance[]>({
     queryKey: ["/api/hr/leave-balances/my"],
     enabled: isAuthenticated && !!user?.totpEnabled,
@@ -609,6 +623,25 @@ export default function Profile() {
               <Badge className="mt-2" data-testid="badge-profile-role">
                 {roleLabels[user?.role || "employee"]}
               </Badge>
+              {/* Pinned badges */}
+              {pinnedBadges.length > 0 && (
+                <div className="mt-3 flex flex-wrap justify-center gap-1.5" data-testid="profile-pinned-badges">
+                  {pinnedBadges.map((post) => (
+                    <span
+                      key={post.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: post.badgeType ? `${post.badgeType.color}20` : "#f3f4f6",
+                        color: post.badgeType?.color ?? "#374151",
+                      }}
+                      title={post.badgeType?.name ?? "Badge"}
+                      data-testid={`pinned-badge-chip-${post.id}`}
+                    >
+                      {post.badgeType?.emoji} {post.badgeType?.name}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="mt-4 space-y-2 text-left">
                 {user?.employeeId && (
                   <div className="flex items-center gap-2 text-sm">
