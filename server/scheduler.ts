@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
-import { sendSalaryReport, sendLeaveAccrualEmail, sendLeaveYearEndEmail } from "./email";
+import { sendSalaryReport } from "./email";
 import { storage } from "./storage";
 import { db } from "./db";
 import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests } from "@shared/schema";
@@ -222,17 +222,8 @@ export function startScheduler() {
             } catch (notifErr) {
               console.error(`[scheduler] Year-end notification failed for ${info.name}:`, notifErr);
             }
-            // Year-end email (in-app + email parity with accrual notifications)
-            if (info.email) {
-              sendLeaveYearEndEmail({
-                to: info.email,
-                employeeName: info.name,
-                year: priorYear,
-                events: info.events,
-              }).catch(emailErr => console.error(`[scheduler] Year-end email failed for ${info.email}:`, emailErr));
-            }
           }
-          console.log(`[scheduler] Year-end notifications and emails sent to ${userYearEndMap.size} employees.`);
+          console.log(`[scheduler] Year-end notifications sent to ${userYearEndMap.size} employees.`);
         }
       } catch (yearEndErr) {
         console.error("[scheduler] Year-end batch failed — proceeding with January accrual:", yearEndErr);
@@ -290,23 +281,9 @@ export function startScheduler() {
           }
         }
 
-        // Per-employee email with full breakdown
-        if (info.email) {
-          try {
-            await sendLeaveAccrualEmail({
-              to: info.email,
-              employeeName: info.name,
-              year,
-              month,
-              types: info.types,
-            });
-          } catch (emailErr) {
-            console.error(`[scheduler] Accrual email failed for ${info.email}:`, emailErr);
-          }
-        }
       }
 
-      console.log(`[scheduler] Sent accrual notifications/emails to ${userMap.size} employees.`);
+      console.log(`[scheduler] Sent accrual notifications to ${userMap.size} employees.`);
     } catch (error) {
       console.error("[scheduler] Monthly leave accrual failed:", error);
     }

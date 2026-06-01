@@ -14,7 +14,7 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendLeaveAccrualEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -2839,19 +2839,6 @@ export async function registerRoutes(
               metadata: { year: targetYear, month: targetMonth, types: info.types },
             });
           } catch (_) { /* non-fatal */ }
-        }
-      }
-
-      // Per-employee emails — same as scheduler path (fire-and-forget, non-fatal)
-      for (const d of result.processedDetails) {
-        if (d.email) {
-          sendLeaveAccrualEmail({
-            to: d.email,
-            employeeName: d.name,
-            year: targetYear,
-            month: targetMonth,
-            types: [{ leaveTypeName: d.leaveTypeName, days: d.accruedDays, newBalance: d.newBalance, accrualType: d.accrualType }],
-          }).catch(() => { /* non-fatal */ });
         }
       }
 
