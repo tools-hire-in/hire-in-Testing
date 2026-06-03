@@ -75,6 +75,14 @@ async function ensurePerformanceTables() {
     console.error("signed_version column migration error:", err);
   }
 
+  // Always ensure rayo_academy_track_id column exists (added after initial table creation)
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS rayo_academy_track_id varchar`);
+    log("Ensured rayo_academy_track_id column exists on performance_goals");
+  } catch (err) {
+    console.error("performance_goals rayo_academy_track_id column migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
