@@ -203,9 +203,6 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
                       />
                     </FormControl>
                     <FormMessage />
-                    <p className="text-xs text-muted-foreground" data-testid="text-sms-disclosure">
-                      By providing a telephone number and submitting this form you are consenting to be contacted by SMS text message. Message & data rates may apply. You can reply STOP to opt-out of further messaging.
-                    </p>
                   </FormItem>
                 )}
               />
@@ -340,6 +337,9 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
                 "Submit Application"
               )}
             </Button>
+            <p className="text-xs text-muted-foreground mt-2" data-testid="text-sms-disclosure">
+              By providing a telephone number and submitting this form you are consenting to be contacted by SMS text message. Message & data rates may apply. You can reply STOP to opt-out of further messaging.
+            </p>
           </form>
         </Form>
       </DialogContent>
