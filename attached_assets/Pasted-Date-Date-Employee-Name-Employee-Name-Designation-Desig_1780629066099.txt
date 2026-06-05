@@ -1,0 +1,256 @@
+Date: [Date]
+Employee Name: [Employee Name]
+Designation: [Designation]
+Department: Healthcare Recruitment
+Reporting Manager: [Manager Name]
+Company: [Company Name]
+
+Subject: Compensation Revision Addendum
+
+Dear [Employee Name],
+
+This addendum confirms the revised compensation structure and review terms applicable to your continued employment with [Company Name].
+
+1. Revised Fixed Compensation
+
+Effective [Effective Date], your revised fixed salary will be:
+
+₹50,000 per month
+
+This revised salary replaces your previous fixed monthly salary. All applicable deductions, taxes, statutory requirements, and company policies will apply as applicable.
+
+2. 90-Day Growth Review
+
+You will be placed on a structured 90-day growth review path.
+
+The review will evaluate performance, retained business outcomes, candidate quality, falloff control, reporting, communication, candidate ownership, sourcer/JR recruiter coordination, confidentiality, and overall healthcare desk ownership.
+
+The 90-day review is not an automatic salary increment. Any future salary revision will be subject to performance, retained billing outcomes, business requirements, management review, and final company approval.
+
+The detailed review expectations are included in Annexure A: 90-Day Growth Review Plan.
+
+3. Higher Salary Band Consideration
+
+Future salary revision, including possible movement toward the next compensation band, will be considered only if the employee demonstrates sustained senior-level performance and successfully achieves the expectations outlined in the 90-Day Growth Review Plan.
+
+The next salary band under consideration will generally be in the range of ₹55,000–₹60,000 per month, subject to retained billing outcomes, candidate quality, profitability, falloff control, confidentiality, business position, management review, and final company approval.
+
+For clarity, the 90-day review does not guarantee an automatic increment or a fixed salary increase. The review is intended to evaluate readiness for future compensation growth based on agreed expectations and business results.
+
+4. Healthcare Incentive Plan
+
+The company may introduce a healthcare incentive plan in the future as a formal healthcare team policy.
+
+Any incentive eligibility, if applicable, will be governed strictly by the final approved written policy, including its effective date, eligibility criteria, retention requirements, margin/profitability requirements, documentation requirements, payout timing, and management approval process.
+
+No incentive, bonus, or variable payout is guaranteed unless specifically stated in a formally approved written company policy or written compensation agreement.
+
+For clarity, any future incentive plan will not be treated as an individual arrangement or retroactive commitment unless specifically stated in writing.
+
+5. Professional Expectations
+
+As part of the role, the employee is expected to maintain:
+
+Clear and consistent communication
+Professional conduct
+Candidate ownership discipline
+Accurate RTR and submission tracking
+Reporting discipline
+Sourcer/JR recruiter coordination
+Client and candidate follow-up ownership
+Confidentiality around company information
+Overall healthcare desk ownership
+6. Confidentiality and Company Information
+
+The employee is expected to maintain strict confidentiality regarding all company information, including but not limited to:
+
+Candidate data
+Client/MSP information
+RTRs and submissions
+Pipeline details and reports
+Sourcing strategy
+Internal tools and processes
+Compensation, bill rate, pay rate, pricing, and margin information
+Business plans and company strategy
+
+Company information must not be shared externally, copied, downloaded, transferred, forwarded, retained, or used for any non-company purpose without written approval from the company.
+
+7. Candidate Ownership and Reporting Discipline
+
+The employee is expected to maintain accurate and updated records for:
+
+Candidate ownership
+RTR status
+Submission details
+Client/MSP status
+PO/start status
+Follow-up notes
+Falloff risks
+Next actions
+Sourcer/JR recruiter coordination
+
+All active pipeline and candidate information must remain updated in the company-approved system, tracker, or reporting format.
+
+8. Personal Device and Company Data
+
+Since company work may be performed using personal devices, all company-related data must remain within approved company systems wherever possible.
+
+Any company data stored locally, downloaded, shared, or saved on personal devices, personal email, messaging apps, or personal cloud storage must be returned/transferred to the company and deleted upon request or upon separation.
+
+The employee must not retain company data after separation.
+
+9. Other Employment Terms
+
+All other terms and conditions of the original employment agreement, offer letter, confidentiality obligations, company policies, and employment terms remain unchanged unless specifically modified in this addendum.
+
+Please sign and return a copy of this addendum as confirmation of acceptance of the revised compensation structure and expectations.
+
+Regards,
+[Authorized Signatory Name]
+[Title]
+[Company Name]
+
+Employee Acknowledgment
+
+I, [Employee Name], acknowledge and accept the revised compensation structure and expectations outlined in this addendum.
+
+Employee Name: ___________________________
+Signature: _______________________________
+Date: ___________________________________
+
+Annexure A: 90-Day Growth Review Plan
+1. Purpose
+
+The 90-day growth review is intended to evaluate readiness for any future compensation revision based on measurable performance, retained business outcomes, candidate quality, profitability, ownership, communication, confidentiality, and healthcare desk contribution.
+
+This review does not guarantee an automatic salary increment. Any future revision will remain subject to performance, business position, retained revenue, and management approval.
+
+2. Review Period
+
+Review Start Date: [Date]
+Review End Date: [Date]
+Review Duration: 90 days
+
+3. Primary Review Standard
+
+The primary focus of the review will be retained business outcomes, not submission volume alone.
+
+Given the active healthcare job volume, existing pipeline, and available sourcing support, the expected 90-day target is:
+
+Target: 10 qualified retained starts in 90 days
+Expected monthly pace: 3–4 qualified retained starts per month
+
+This target is subject to active client demand, open requirements, role flow, and company-approved profitability requirements.
+
+Submission activity will be reviewed as a supporting metric only. The primary review factors will be retained starts, candidate quality, falloff control, profitability, billing continuity, RTR/documentation accuracy, reporting discipline, sourcer coordination, confidentiality, and overall healthcare desk ownership.
+
+4. Definition of Qualified Retained Start
+
+A candidate will count as a qualified retained start only when all of the following conditions are met:
+
+Candidate starts the assignment.
+Candidate is accepted by the client/MSP.
+Candidate has complete RTR and required documentation.
+Candidate meets role requirements and experience expectations.
+Candidate meets pay, availability, location, license/specialty, and commitment requirements.
+Placement meets company-approved margin/profitability requirements.
+Candidate does not fall off due to avoidable no-show, poor screening, experience mismatch, commitment issue, documentation issue, or preventable follow-up gap.
+Candidate is actively billing and retained as per company/client expectations.
+5. 90-Day Performance Expectations
+Category	90-Day Requirement
+Qualified retained starts	10 in 90 days
+Monthly pace	3–4 qualified retained starts per month
+Candidate quality	No avoidable no-show, mismatch, or weak screening falloffs
+Falloff control	No avoidable falloffs
+Margin/profitability	Must meet company calculator / profitability threshold
+Pipeline health	Maintain active qualified pipeline for priority roles
+Submissions	Quality submissions aligned to active requirements; not volume-only
+RTR/documentation	100% RTR, submission, and ownership tracking
+Candidate follow-up	Timely follow-up with submitted and active candidates
+Sourcer/JR coordination	Clear daily direction and weekly review
+Reporting	Weekly tracker shared every Friday
+Confidentiality	Internal information must remain protected
+Ownership	Proactive candidate, client, and pipeline management
+6. First 30 Days: Conversion from Active Pipeline
+
+Since the healthcare desk and active pipeline are already in place, the first 30 days should demonstrate conversion movement from existing pipeline and active requirements.
+
+Area	First 30-Day Expectation
+Pipeline cleanup	Complete within first week
+Qualified retained starts	3–4 target starts
+Client/interview movement	Active follow-up on submitted candidates
+Candidate ownership	All active candidates updated with status and next steps
+RTR/documentation	All RTRs and submission notes updated
+Sourcer coordination	Daily direction to sourcers/JR recruiters
+Reporting	Weekly Friday report
+7. Days 31–60: Repeatable Conversion and Quality Control
+Area	Days 31–60 Expectation
+Qualified retained starts	3 additional target starts
+Candidate quality	Improved screening and reduced falloff risk
+Client/MSP feedback	Tracked and acted upon
+Pipeline management	Priority roles actively worked
+Sourcer output	Reviewed and corrected weekly
+Reporting	Weekly dashboard maintained
+Documentation	Candidate status and RTR tracking kept current
+8. Days 61–90: Senior-Level Ownership
+Area	Days 61–90 Expectation
+Qualified retained starts	3–4 additional target starts
+Total 90-day retained starts	10 target starts
+Retention quality	Candidates remain active and billing
+Desk ownership	Proactive prioritization and follow-up
+Communication	No chasing required for updates
+Confidentiality	Strong discretion with internal matters
+Team coordination	Sourcers/JR recruiters clearly directed
+Business outcome	Placements support company profitability requirements
+9. Weekly Tracker Requirement
+
+The employee must share a weekly tracker every Friday covering:
+
+Metric	This Week	Month-to-Date	Notes
+New candidates sourced			
+Screened candidates			
+Qualified candidates			
+Quality submissions			
+Interviews/client movement			
+POs/starts			
+Qualified retained starts			
+Candidates billing successfully			
+RTRs completed			
+Falloff risks			
+Candidate follow-ups completed			
+Sourcer/JR output reviewed			
+Profitability / margin notes			
+Issues/support needed			
+10. Review Outcome
+
+Future salary revision will depend on both performance results and professional maturity.
+
+Review Result	Outcome
+Fewer than 7 qualified retained starts	Below expected level; no salary revision
+7–9 qualified retained starts	Partial achievement; management may review based on quality, profitability, and business context
+10 qualified retained starts achieved	Target achieved; eligible for next salary band review
+More than 10 qualified retained starts with clean quality and profitability	Strong performance; stronger salary review consideration
+Confidentiality, communication, trust, or conduct concerns	May delay or prevent salary revision regardless of performance numbers
+11. Salary Band Consideration
+
+Achievement of the 90-day target makes the employee eligible for review. It does not guarantee a salary increase.
+
+Any salary revision, including possible movement toward the next salary band, generally in the range of ₹55,000–₹60,000 per month, will depend on:
+
+Achievement of qualified retained start targets
+Retained billing outcomes
+Candidate quality
+Profitability/margin performance
+Falloff control
+Reporting discipline
+Sourcer/JR coordination
+Communication and professionalism
+Confidentiality and trust
+Business position and management approval
+12. Confidentiality and Professional Conduct
+
+As part of senior/foundation team expectations, the employee must demonstrate discretion, judgment, and confidentiality.
+
+Internal company discussions, tools, sourcing strategies, client information, candidate data, compensation/margin information, business plans, and process details must remain within the company unless sharing is approved.
+
+Higher compensation and senior growth require both performance and trust.
