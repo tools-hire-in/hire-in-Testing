@@ -88,6 +88,7 @@ export function registerContractRoutes(app: Express) {
       const template = await dbStorage.createContractTemplate({
         name: req.body.name,
         description: req.body.description || null,
+        clientId: req.body.clientId || null,
         filePath,
         placeholderList: placeholders,
         uploadedBy: req.session!.userId,
@@ -163,11 +164,24 @@ export function registerContractRoutes(app: Express) {
     try {
       const {
         templateId, clientId, clientName, candidateName, candidateRole,
-        variableValues, contractStartDate, contractEndDate, marginPerHour,
-        paymentTermsDays, billingFrequency, notes, templateName,
+        candidates, variableValues, contractStartDate, contractEndDate,
+        agreementDate, marginPerHour, paymentTermsDays, billingFrequency,
+        notes, templateName,
       } = req.body;
 
       if (!clientName) return res.status(400).json({ error: "Client name required" });
+
+      // Normalise candidates array — fall back to legacy single-candidate fields
+      const candidatesArray: Array<{ name: string; role: string; startDate: string; location: string; engagementType: string }> =
+        Array.isArray(candidates) && candidates.length > 0
+          ? candidates
+          : candidateName
+            ? [{ name: candidateName, role: candidateRole || "", startDate: contractStartDate || "", location: "", engagementType: "" }]
+            : [];
+
+      // Backwards-compat: populate legacy columns from first candidate
+      const legacyName = candidatesArray[0]?.name || candidateName || null;
+      const legacyRole = candidatesArray[0]?.role || candidateRole || null;
 
       let docxPath: string | null = null;
 
@@ -177,7 +191,7 @@ export function registerContractRoutes(app: Express) {
 
         // Fetch template file
         const tmplBuffer = await objectStorageService.downloadBuffer(tmpl.filePath);
-        const rendered = renderTemplate(tmplBuffer, variableValues || {});
+        const rendered = renderTemplate(tmplBuffer, variableValues || {}, candidatesArray);
 
         const outPath = `.private/contracts/${Date.now()}_${clientName.replace(/\s+/g, "_")}.docx`;
         docxPath = await objectStorageService.uploadBuffer(rendered, outPath,
@@ -192,12 +206,14 @@ export function registerContractRoutes(app: Express) {
         clientId: clientId || null,
         templateName: templateName || null,
         clientName,
-        candidateName: candidateName || null,
-        candidateRole: candidateRole || null,
+        candidateName: legacyName,
+        candidateRole: legacyRole,
+        candidates: candidatesArray,
         variableValues: variableValues || {},
         docxPath,
         contractStartDate: contractStartDate || null,
         contractEndDate: contractEndDate || null,
+        agreementDate: agreementDate || null,
         marginPerHour: marginPerHour || null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,

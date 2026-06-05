@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, ChevronRight, ChevronLeft, Wand2, Search, User, X, Info,
-  AlertCircle, Plus, Building2, CheckCircle2, ExternalLink
+  AlertCircle, Plus, Building2, CheckCircle2, ExternalLink, Trash2
 } from "lucide-react";
 import type { ContractClient, ContractTemplate, InsertContractClient } from "@shared/schema";
 
@@ -21,6 +21,21 @@ interface CandidateSuggestion {
   phone?: string;
   skills?: string;
 }
+
+interface CandidateEntry {
+  name: string;
+  role: string;
+  startDate: string;
+  location: string;
+  engagementType: string;
+  searchQuery: string;
+  showSuggestions: boolean;
+}
+
+const EMPTY_CANDIDATE: CandidateEntry = {
+  name: "", role: "", startDate: "", location: "", engagementType: "",
+  searchQuery: "", showSuggestions: false,
+};
 
 interface Props {
   clients?: ContractClient[];
@@ -48,16 +63,28 @@ const EMPTY_CLIENT: Partial<InsertContractClient> = {
   name: "", signatoryName: "", signatoryTitle: "", email: "", address: "",
 };
 
+// Format a date string as "04 May 2026"
+function formatAgreementDate(value: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+
 export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab }: Props) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
 
-  // Candidate search state
-  const [candidateSearch, setCandidateSearch] = useState("");
-  const [candidateName, setCandidateName] = useState("");
-  const [candidateRole, setCandidateRole] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  // Multi-candidate state
+  const [candidates, setCandidates] = useState<CandidateEntry[]>([{ ...EMPTY_CANDIDATE }]);
+
+  // Per-candidate Ceipal search results (keyed by index)
+  const [searchResults, setSearchResults] = useState<Record<number, { candidates: CandidateSuggestion[]; ceipal_unavailable?: boolean; message?: string }>>({});
+  const [searchQueries, setSearchQueries] = useState<Record<number, string>>({});
+  const debouncedQueries = Object.fromEntries(
+    Object.entries(searchQueries).map(([k, v]) => [k, v])
+  );
+  const suggestionsRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // Client state
   const [clientId, setClientId] = useState("");
@@ -71,6 +98,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
   const [templateId, setTemplateId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [agreementDate, setAgreementDate] = useState("");
   const [margin, setMargin] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [billingFreq, setBillingFreq] = useState("");
@@ -78,8 +106,6 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
 
   // Step 3 — Template variable fill
   const [fields, setFields] = useState<TemplateField[]>([]);
-
-  const debouncedSearch = useDebounce(candidateSearch, 350);
 
   // Own clients query so inline creation refreshes the dropdown
   const { data: clients = [] } = useQuery<ContractClient[]>({
@@ -90,23 +116,75 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
     queryKey: ["/api/contracts/templates"],
   });
 
-  // Ceipal candidate search
-  const { data: searchResult, isFetching: isSearching } = useQuery<{
-    candidates: CandidateSuggestion[];
-    ceipal_unavailable?: boolean;
-    message?: string;
-  }>({
-    queryKey: ["/api/contracts/candidates/search", debouncedSearch],
-    queryFn: async () => {
-      if (!debouncedSearch || debouncedSearch.length < 2) return { candidates: [] };
-      const res = await fetch(`/api/contracts/candidates/search?q=${encodeURIComponent(debouncedSearch)}`, { credentials: "include" });
-      return res.json();
-    },
-    enabled: debouncedSearch.length >= 2,
-  });
+  const selectedTemplate = templates.find(t => t.id === templateId);
+  const selectedClient = clients.find(c => c.id === clientId) || null;
 
-  const ceipalUnavailable = searchResult?.ceipal_unavailable === true;
-  const suggestions = searchResult?.candidates || [];
+  // Debounced per-candidate searches
+  const [debouncedSearchMap, setDebouncedSearchMap] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const timers: NodeJS.Timeout[] = [];
+    candidates.forEach((_, idx) => {
+      const q = searchQueries[idx] || "";
+      const timer = setTimeout(() => {
+        setDebouncedSearchMap(prev => ({ ...prev, [idx]: q }));
+      }, 350);
+      timers.push(timer);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [searchQueries, candidates.length]);
+
+  // Fetch Ceipal suggestions for each candidate that has an active query
+  useEffect(() => {
+    candidates.forEach((_, idx) => {
+      const q = debouncedSearchMap[idx] || "";
+      if (q.length < 2) return;
+      fetch(`/api/contracts/candidates/search?q=${encodeURIComponent(q)}`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => setSearchResults(prev => ({ ...prev, [idx]: data })))
+        .catch(() => setSearchResults(prev => ({ ...prev, [idx]: { candidates: [], ceipal_unavailable: true } })));
+    });
+  }, [debouncedSearchMap]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      setCandidates(prev => prev.map((c, idx) => {
+        const ref = suggestionsRefs.current[idx];
+        if (ref && !ref.contains(e.target as Node)) {
+          return { ...c, showSuggestions: false };
+        }
+        return c;
+      }));
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleClientChange = (id: string) => {
+    setClientId(id);
+    const client = clients.find(c => c.id === id);
+    if (client) setClientName(client.name);
+  };
+
+  const updateCandidate = (idx: number, patch: Partial<CandidateEntry>) => {
+    setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  };
+
+  const addCandidate = () => {
+    setCandidates(prev => [...prev, { ...EMPTY_CANDIDATE }]);
+  };
+
+  const removeCandidate = (idx: number) => {
+    setCandidates(prev => prev.filter((_, i) => i !== idx));
+    setSearchResults(prev => { const n = { ...prev }; delete n[idx]; return n; });
+    setSearchQueries(prev => { const n = { ...prev }; delete n[idx]; return n; });
+  };
+
+  const handleSelectSuggestion = (idx: number, c: CandidateSuggestion) => {
+    updateCandidate(idx, { name: c.name, searchQuery: c.name, showSuggestions: false });
+    setSearchQueries(prev => ({ ...prev, [idx]: c.name }));
+  };
 
   // Inline client creation mutation
   const addClientMutation = useMutation<ContractClient, Error, Partial<InsertContractClient>>({
@@ -125,48 +203,29 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
     onError: (e: Error) => toast({ title: "Error saving client", description: e.message, variant: "destructive" }),
   });
 
-  // Close suggestions on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const selectedTemplate = templates.find(t => t.id === templateId);
-  const selectedClient = clients.find(c => c.id === clientId) || null;
-
-  const handleClientChange = (id: string) => {
-    setClientId(id);
-    const client = clients.find(c => c.id === id);
-    if (client) setClientName(client.name);
+  const buildPrefillMap = (client?: ContractClient | null) => {
+    const first = candidates[0];
+    return {
+      client_name: clientName,
+      candidate_name: first?.name || "",
+      candidate_role: first?.role || "",
+      start_date: first?.startDate || startDate,
+      end_date: endDate,
+      margin_per_hour: margin,
+      payment_terms_days: paymentTerms,
+      billing_frequency: billingFreq.replace(/_/g, " "),
+      signatory_name: client?.signatoryName || "",
+      signatory_title: client?.signatoryTitle || "",
+      client_address: client?.address || "",
+      agency_name: "Rayomind Solutions LLP",
+      contract_date: new Date().toLocaleDateString("en-GB"),
+      notice_period_days: "14",
+      agreement_date: agreementDate ? formatAgreementDate(agreementDate) : "",
+      agency_signatory_name: "Authorised Signatory",
+      client_signatory_name: client?.signatoryName || "",
+      client_signatory_title: client?.signatoryTitle || "",
+    } as Record<string, string>;
   };
-
-  const handleSelectCandidate = (c: CandidateSuggestion) => {
-    setCandidateName(c.name);
-    setCandidateSearch(c.name);
-    setShowSuggestions(false);
-  };
-
-  const buildPrefillMap = (client?: ContractClient | null) => ({
-    client_name: clientName,
-    candidate_name: candidateName,
-    candidate_role: candidateRole,
-    start_date: startDate,
-    end_date: endDate,
-    margin_per_hour: margin,
-    payment_terms_days: paymentTerms,
-    billing_frequency: billingFreq.replace(/_/g, " "),
-    signatory_name: client?.signatoryName || "",
-    signatory_title: client?.signatoryTitle || "",
-    client_address: client?.address || "",
-    agency_name: "Rayomind Solutions LLP",
-    contract_date: new Date().toLocaleDateString("en-GB"),
-    notice_period_days: "14",
-  } as Record<string, string>);
 
   const computeFields = () => {
     const tmpl = templates.find(t => t.id === templateId);
@@ -182,19 +241,34 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
 
   const hasPlaceholders = !!templateId && (selectedTemplate?.placeholderList as string[] | null)?.length;
 
+  const buildCandidatesPayload = () =>
+    candidates
+      .filter(c => c.name.trim())
+      .map(c => ({
+        name: c.name,
+        role: c.role,
+        startDate: c.startDate,
+        location: c.location,
+        engagementType: c.engagementType,
+      }));
+
   const createMutation = useMutation({
     mutationFn: () => {
       const variableValues: Record<string, string> = {};
       fields.forEach(f => { variableValues[f.key] = f.value; });
+      const candidatesPayload = buildCandidatesPayload();
+      const first = candidatesPayload[0];
       return apiRequest("POST", "/api/contracts", {
         templateId: templateId || null,
         clientId: clientId || null,
         clientName,
-        candidateName,
-        candidateRole,
+        candidateName: first?.name || null,
+        candidateRole: first?.role || null,
+        candidates: candidatesPayload,
         variableValues,
-        contractStartDate: startDate || null,
+        contractStartDate: startDate || (first?.startDate || null),
         contractEndDate: endDate || null,
+        agreementDate: agreementDate ? formatAgreementDate(agreementDate) : null,
         marginPerHour: margin || null,
         paymentTermsDays: paymentTerms ? Number(paymentTerms) : null,
         billingFrequency: billingFreq || null,
@@ -224,100 +298,187 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
           </DialogTitle>
         </DialogHeader>
 
-        {/* ── Step 1: Candidate + Client ─────────────────────────────── */}
+        {/* ── Step 1: Candidates + Client ─────────────────────────────── */}
         {step === 1 && (
           <div className="space-y-5 py-2">
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" />
-                <h3 className="font-semibold text-sm">Candidate Details</h3>
-                <Badge variant="outline" className="text-xs">Optional</Badge>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-sm">Candidate Details</h3>
+                  <Badge variant="outline" className="text-xs">Optional</Badge>
+                </div>
               </div>
 
-              {/* Ceipal search box */}
-              <div ref={searchRef} className="relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-9 pr-9"
-                    placeholder={ceipalUnavailable ? "Type candidate name (manual entry)..." : "Search Ceipal ATS for candidate..."}
-                    value={candidateSearch}
-                    onChange={e => {
-                      setCandidateSearch(e.target.value);
-                      setCandidateName(e.target.value);
-                      setShowSuggestions(true);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    data-testid="input-candidate-search"
-                  />
-                  {isSearching && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                  )}
-                  {candidateSearch && !isSearching && (
-                    <button
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      onClick={() => { setCandidateSearch(""); setCandidateName(""); setShowSuggestions(false); }}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
+              {/* Candidate cards */}
+              {candidates.map((candidate, idx) => {
+                const result = searchResults[idx];
+                const ceipalUnavailable = result?.ceipal_unavailable === true;
+                const suggestions = result?.candidates || [];
+                const q = searchQueries[idx] || "";
+                const dq = debouncedSearchMap[idx] || "";
 
-                {/* Suggestions dropdown */}
-                {showSuggestions && debouncedSearch.length >= 2 && !isSearching && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                    {ceipalUnavailable ? (
-                      <div className="p-3 flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">Ceipal search unavailable</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {searchResult?.message || "Using manual entry — type the candidate's name above."}
-                          </p>
-                        </div>
-                      </div>
-                    ) : suggestions.length === 0 ? (
-                      <div className="p-3 text-sm text-muted-foreground text-center">
-                        No candidates found for "{debouncedSearch}"
-                      </div>
-                    ) : (
-                      suggestions.map((c, i) => (
-                        <button
-                          key={i}
-                          className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b last:border-b-0 transition-colors"
-                          onClick={() => handleSelectCandidate(c)}
-                          data-testid={`candidate-suggestion-${i}`}
+                return (
+                  <div key={idx} className="border rounded-lg p-3 space-y-3 bg-slate-50/50">
+                    {/* Card header */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Candidate {candidates.length > 1 ? idx + 1 : ""}
+                      </span>
+                      {idx > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeCandidate(idx)}
+                          data-testid={`button-remove-candidate-${idx}`}
                         >
-                          <p className="font-medium text-sm text-slate-900">{c.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {[c.email, c.skills].filter(Boolean).join(" · ")}
-                          </p>
-                        </button>
-                      ))
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Ceipal search */}
+                    <div
+                      className="relative"
+                      ref={el => { suggestionsRefs.current[idx] = el; }}
+                    >
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          className="pl-9 pr-9"
+                          placeholder={ceipalUnavailable ? "Type candidate name (manual entry)..." : "Search Ceipal ATS for candidate..."}
+                          value={q}
+                          onChange={e => {
+                            setSearchQueries(prev => ({ ...prev, [idx]: e.target.value }));
+                            updateCandidate(idx, { name: e.target.value, showSuggestions: true });
+                          }}
+                          onFocus={() => updateCandidate(idx, { showSuggestions: true })}
+                          data-testid={`input-candidate-search-${idx}`}
+                        />
+                        {q && (
+                          <button
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              setSearchQueries(prev => ({ ...prev, [idx]: "" }));
+                              updateCandidate(idx, { name: "", searchQuery: "", showSuggestions: false });
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Suggestions dropdown */}
+                      {candidate.showSuggestions && dq.length >= 2 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                          {ceipalUnavailable ? (
+                            <div className="p-3 flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-medium text-slate-800">Ceipal search unavailable</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {result?.message || "Using manual entry — type the candidate's name above."}
+                                </p>
+                              </div>
+                            </div>
+                          ) : suggestions.length === 0 ? (
+                            <div className="p-3 text-sm text-muted-foreground text-center">
+                              No candidates found for "{dq}"
+                            </div>
+                          ) : (
+                            suggestions.map((c, si) => (
+                              <button
+                                key={si}
+                                className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b last:border-b-0 transition-colors"
+                                onClick={() => handleSelectSuggestion(idx, c)}
+                                data-testid={`candidate-suggestion-${idx}-${si}`}
+                              >
+                                <p className="font-medium text-sm text-slate-900">{c.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {[c.email, c.skills].filter(Boolean).join(" · ")}
+                                </p>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ceipal unavailability info strip */}
+                    {ceipalUnavailable && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                        <Info className="h-4 w-4 text-amber-600 shrink-0" />
+                        <p className="text-xs text-amber-700">
+                          Ceipal ATS is unavailable. Enter the name and role manually.
+                        </p>
+                      </div>
                     )}
+
+                    {/* Candidate fields grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Role / Title</Label>
+                        <Input
+                          placeholder="e.g. Senior Software Engineer"
+                          value={candidate.role}
+                          onChange={e => updateCandidate(idx, { role: e.target.value })}
+                          data-testid={`input-candidate-role-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start Date</Label>
+                        <Input
+                          type="date"
+                          value={candidate.startDate}
+                          onChange={e => updateCandidate(idx, { startDate: e.target.value })}
+                          data-testid={`input-candidate-startdate-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Location</Label>
+                        <Input
+                          placeholder="e.g. New York, NY"
+                          value={candidate.location}
+                          onChange={e => updateCandidate(idx, { location: e.target.value })}
+                          data-testid={`input-candidate-location-${idx}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Engagement Type</Label>
+                        <Select
+                          value={candidate.engagementType || "_none"}
+                          onValueChange={v => updateCandidate(idx, { engagementType: v === "_none" ? "" : v })}
+                        >
+                          <SelectTrigger data-testid={`select-candidate-engagement-${idx}`}>
+                            <SelectValue placeholder="Select type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">— Select —</SelectItem>
+                            <SelectItem value="Contract">Contract</SelectItem>
+                            <SelectItem value="Contract-to-Hire">Contract-to-Hire</SelectItem>
+                            <SelectItem value="Full-Time">Full-Time</SelectItem>
+                            <SelectItem value="Part-Time">Part-Time</SelectItem>
+                            <SelectItem value="Temp">Temp</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })}
 
-              {/* Ceipal unavailability info strip */}
-              {ceipalUnavailable && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
-                  <Info className="h-4 w-4 text-amber-600 shrink-0" />
-                  <p className="text-xs text-amber-700">
-                    Ceipal ATS candidate lookup is not available. Enter the name and role manually — they'll be merged into the contract.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <Label>Candidate Role / Title</Label>
-                <Input
-                  placeholder="e.g. Senior Software Engineer"
-                  value={candidateRole}
-                  onChange={e => setCandidateRole(e.target.value)}
-                  data-testid="input-candidate-role"
-                />
-              </div>
+              {/* Add Another Candidate */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs gap-1.5 border-dashed"
+                onClick={addCandidate}
+                data-testid="button-add-candidate"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Another Candidate
+              </Button>
             </div>
 
             {/* Client section */}
@@ -520,6 +681,18 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                 <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date" />
               </div>
               <div className="space-y-1.5">
+                <Label>Agreement Date</Label>
+                <Input
+                  type="date"
+                  value={agreementDate}
+                  onChange={e => setAgreementDate(e.target.value)}
+                  data-testid="input-agreement-date"
+                />
+                {agreementDate && (
+                  <p className="text-xs text-muted-foreground">Will render as: <strong>{formatAgreementDate(agreementDate)}</strong></p>
+                )}
+              </div>
+              <div className="space-y-1.5">
                 <Label>Margin Per Hour ($)</Label>
                 <Input placeholder="e.g. 15.00" value={margin} onChange={e => setMargin(e.target.value)} data-testid="input-margin" />
               </div>
@@ -549,7 +722,23 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">No template (metadata record only)</SelectItem>
-                    {templates.map(t => (
+                    {/* Client-specific templates shown first */}
+                    {clientId && templates.filter(t => t.clientId === clientId).length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-violet-700 bg-violet-50 -mx-1">
+                          {clientName} — Dedicated Templates
+                        </div>
+                        {templates.filter(t => t.clientId === clientId).map(t => (
+                          <SelectItem key={t.id} value={t.id}>⭐ {t.name}</SelectItem>
+                        ))}
+                        {templates.filter(t => !t.clientId).length > 0 && (
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/30 -mx-1">
+                            Generic Templates
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {templates.filter(t => !t.clientId).map(t => (
                       <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -617,13 +806,17 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
             <h3 className="font-semibold text-sm">Review & Generate</h3>
             <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
               <p><span className="text-muted-foreground w-32 inline-block">Client:</span> <strong>{clientName}</strong></p>
-              {candidateName && (
-                <p>
-                  <span className="text-muted-foreground w-32 inline-block">Candidate:</span>
-                  <strong>{candidateName}</strong>{candidateRole ? ` — ${candidateRole}` : ""}
+              {candidates.filter(c => c.name.trim()).map((c, i) => (
+                <p key={i}>
+                  <span className="text-muted-foreground w-32 inline-block">{i === 0 ? "Candidate:" : ""}</span>
+                  <strong>{c.name}</strong>
+                  {c.role ? ` — ${c.role}` : ""}
+                  {c.location ? ` · ${c.location}` : ""}
+                  {c.engagementType ? ` · ${c.engagementType}` : ""}
                 </p>
-              )}
+              ))}
               {startDate && <p><span className="text-muted-foreground w-32 inline-block">Period:</span> {startDate} → {endDate || "Open-ended"}</p>}
+              {agreementDate && <p><span className="text-muted-foreground w-32 inline-block">Agreement Date:</span> {formatAgreementDate(agreementDate)}</p>}
               {margin && <p><span className="text-muted-foreground w-32 inline-block">Margin:</span> ${margin}/hr</p>}
               {paymentTerms && <p><span className="text-muted-foreground w-32 inline-block">Payment:</span> Net {paymentTerms} · {billingFreq?.replace(/_/g, " ") || "unset"} billing</p>}
               {selectedTemplate && <p><span className="text-muted-foreground w-32 inline-block">Template:</span> {selectedTemplate.name}</p>}

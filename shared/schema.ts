@@ -1323,6 +1323,8 @@ export const contractTemplates = pgTable("contract_templates", {
   description: text("description"),
   filePath: varchar("file_path").notNull(),
   placeholderList: jsonb("placeholder_list").notNull().default(sql`'[]'::jsonb`),
+  // Optional: link this template to a specific client. NULL = generic (available for any client).
+  clientId: varchar("client_id").references(() => contractClients.id),
   uploadedBy: varchar("uploaded_by").references(() => adminUsers.id),
   usageCount: integer("usage_count").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1337,6 +1339,8 @@ export const contracts = pgTable("contracts", {
   clientName: varchar("client_name").notNull(),
   candidateName: varchar("candidate_name"),
   candidateRole: varchar("candidate_role"),
+  // Multi-candidate support: array of {name, role, startDate, location, engagementType}
+  candidates: jsonb("candidates").default(sql`'[]'::jsonb`),
   variableValues: jsonb("variable_values").notNull().default(sql`'{}'::jsonb`),
   docxPath: varchar("docx_path"),
   // For imported contracts: store the uploaded file path
@@ -1344,6 +1348,7 @@ export const contracts = pgTable("contracts", {
   // Contract dates & commercial terms
   contractStartDate: date("contract_start_date"),
   contractEndDate: date("contract_end_date"),
+  agreementDate: varchar("agreement_date"), // formatted as "04 May 2026"
   marginPerHour: varchar("margin_per_hour"),
   paymentTermsDays: integer("payment_terms_days"), // e.g. 30 for Net 30
   billingFrequency: varchar("billing_frequency"), // weekly | bi_weekly | monthly | milestone

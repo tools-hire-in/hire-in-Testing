@@ -57,6 +57,20 @@
       "when": 1779343496480,
       "tag": "0007_add_missing_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780481000000,
+      "tag": "0009_multi_candidate_contracts",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780482000000,
+      "tag": "0010_client_templates",
+      "breakpoints": true
     }
   ]
 }
