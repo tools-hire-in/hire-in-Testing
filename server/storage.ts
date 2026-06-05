@@ -1411,6 +1411,7 @@ export class DatabaseStorage implements IStorage {
     correctionRowsApplied: number;
     resolvedLeaveTypes: { el: { id: string; name: string }; sl: { id: string; name: string } };
     details: Array<{
+      userId: string;
       employeeId: string | null;
       name: string;
       joiningDate: string | null;
@@ -1867,6 +1868,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       details.push({
+        userId: user.id,
         employeeId: user.employeeId ?? null,
         name: userName,
         joiningDate: user.joiningDate ?? null,

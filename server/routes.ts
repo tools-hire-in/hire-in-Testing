@@ -2864,14 +2864,129 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/hr/backfill-leave-accruals", requireAdminLevel, async (req, res) => {
+  app.post("/api/admin/hr/backfill-leave-accruals", requireAuth, async (req, res) => {
+    if (req.session.role !== "super_admin") {
+      return res.status(403).json({ error: "Super admin access required" });
+    }
     try {
       const dryRun = req.body?.dryRun === true;
+      const overrides: Array<{ userId: string; elOverride?: number; slOverride?: number; note: string }> = req.body?.overrides ?? [];
+      const overrideNote: string = (req.body?.overrideNote ?? "").trim();
+
+      if (!dryRun && overrides.length > 0 && overrideNote.length === 0) {
+        return res.status(400).json({ error: "A non-empty override note is required when applying per-employee overrides." });
+      }
+
       const result = await storage.backfillLeaveAccruals(dryRun);
+
+      // After successful backfill (non-dry-run), apply per-employee overrides as audit-logged adjustments
+      if (!dryRun && overrides.length > 0) {
+        // Build a lookup of computed values from the result
+        const computedMap: Record<string, { elAdded: number; slAdded: number }> = {};
+        for (const d of result.details) {
+          computedMap[d.userId] = { elAdded: d.elAdded, slAdded: d.slAdded };
+        }
+
+        for (const ov of overrides) {
+          const computed = computedMap[ov.userId];
+          if (!computed) continue;
+
+          // Determine EL and SL leave type IDs from resolved types
+          const elTypeId = result.resolvedLeaveTypes.el.id;
+          const slTypeId = result.resolvedLeaveTypes.sl.id;
+          const year = 2026;
+          const actorId = req.session.userId!;
+          const reason = `Backfill override: ${overrideNote}`;
+
+          if (ov.elOverride !== undefined) {
+            const elDelta = parseFloat((ov.elOverride - computed.elAdded).toFixed(4));
+            if (Math.abs(elDelta) >= 0.001) {
+              // Insert leave_adjustments row (visible in normal HR audit views)
+              await db.insert(leaveAdjustments).values({
+                userId: ov.userId,
+                leaveTypeId: elTypeId,
+                adjustmentDays: String(elDelta),
+                reason,
+                year,
+                adjustedBy: actorId,
+              });
+              // Mirror in leave_accruals as hr_adjustment (survives future recalculations)
+              await db.insert(leaveAccruals).values({
+                userId: ov.userId,
+                leaveTypeId: elTypeId,
+                year,
+                month: 0,
+                accruedDays: String(elDelta),
+                hoursWorked: "0",
+                qualified: true,
+                accrualType: "hr_adjustment",
+                skipReason: reason,
+              }).onConflictDoUpdate({
+                target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
+                set: {
+                  accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
+                  skipReason: sql`EXCLUDED.skip_reason`,
+                },
+              });
+              // Update leave_balances to reflect the delta
+              const existingBal = await db.select().from(leaveBalances).where(
+                and(eq(leaveBalances.userId, ov.userId), eq(leaveBalances.leaveTypeId, elTypeId), eq(leaveBalances.year, year))
+              ).limit(1);
+              if (existingBal.length > 0) {
+                const newTotal = Math.max(parseFloat(existingBal[0].usedDays), parseFloat(existingBal[0].totalDays) + elDelta);
+                await db.update(leaveBalances)
+                  .set({ totalDays: String(parseFloat(newTotal.toFixed(2))), updatedAt: new Date() })
+                  .where(eq(leaveBalances.id, existingBal[0].id));
+              }
+            }
+          }
+
+          if (ov.slOverride !== undefined) {
+            const slDelta = parseFloat((ov.slOverride - computed.slAdded).toFixed(4));
+            if (Math.abs(slDelta) >= 0.001) {
+              await db.insert(leaveAdjustments).values({
+                userId: ov.userId,
+                leaveTypeId: slTypeId,
+                adjustmentDays: String(slDelta),
+                reason,
+                year,
+                adjustedBy: actorId,
+              });
+              await db.insert(leaveAccruals).values({
+                userId: ov.userId,
+                leaveTypeId: slTypeId,
+                year,
+                month: 0,
+                accruedDays: String(slDelta),
+                hoursWorked: "0",
+                qualified: true,
+                accrualType: "hr_adjustment",
+                skipReason: reason,
+              }).onConflictDoUpdate({
+                target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
+                set: {
+                  accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
+                  skipReason: sql`EXCLUDED.skip_reason`,
+                },
+              });
+              const existingBal = await db.select().from(leaveBalances).where(
+                and(eq(leaveBalances.userId, ov.userId), eq(leaveBalances.leaveTypeId, slTypeId), eq(leaveBalances.year, year))
+              ).limit(1);
+              if (existingBal.length > 0) {
+                const newTotal = Math.max(parseFloat(existingBal[0].usedDays), parseFloat(existingBal[0].totalDays) + slDelta);
+                await db.update(leaveBalances)
+                  .set({ totalDays: String(parseFloat(newTotal.toFixed(2))), updatedAt: new Date() })
+                  .where(eq(leaveBalances.id, existingBal[0].id));
+              }
+            }
+          }
+        }
+      }
+
       res.json({
         message: dryRun
           ? `Dry run complete — no data was written. ${result.employeesProcessed} employees would be processed.`
-          : `Backfill complete. ${result.employeesProcessed} employees processed, ${result.accrualRowsCreated} rows created, ${result.correctionRowsApplied} corrections applied.`,
+          : `Backfill complete. ${result.employeesProcessed} employees processed, ${result.accrualRowsCreated} rows created, ${result.correctionRowsApplied} corrections applied${overrides.length > 0 ? `, ${overrides.length} override(s) applied` : ""}.`,
         ...result,
       });
     } catch (error: any) {

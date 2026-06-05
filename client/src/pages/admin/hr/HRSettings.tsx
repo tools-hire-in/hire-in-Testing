@@ -665,22 +665,51 @@ interface ShiftInfo {
   istEnd: string;
 }
 
+interface BackfillOverride {
+  elOverride?: number;
+  slOverride?: number;
+}
+
 function DataMaintenanceSection() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingDryRun, setPendingDryRun] = useState(false);
   const [backfillResult, setBackfillResult] = useState<any>(null);
+  // Map of userId -> override values (only set when user edits a cell)
+  const [overrides, setOverrides] = useState<Record<string, BackfillOverride>>({});
+  const [overrideNote, setOverrideNote] = useState("");
+
+  const hasOverrides = Object.keys(overrides).length > 0;
+  const overrideCount = Object.keys(overrides).length;
+
+  // Total rows that would be created (from last dry run result)
+  const totalRows = backfillResult
+    ? (backfillResult.accrualRowsCreated ?? 0) + (backfillResult.correctionRowsApplied ?? 0)
+    : 0;
 
   const backfillMutation = useMutation({
     mutationFn: async (dryRun: boolean) => {
-      const res = await apiRequest("POST", "/api/admin/hr/backfill-leave-accruals", { dryRun });
+      const body: any = { dryRun };
+      if (!dryRun && hasOverrides) {
+        body.overrideNote = overrideNote;
+        body.overrides = Object.entries(overrides).map(([userId, ov]) => ({
+          userId,
+          ...ov,
+          note: overrideNote,
+        }));
+      }
+      const res = await apiRequest("POST", "/api/admin/hr/backfill-leave-accruals", body);
       return res.json();
     },
     onSuccess: (data) => {
       setBackfillResult(data);
+      if (!pendingDryRun) {
+        // After a real run, clear overrides
+        setOverrides({});
+        setOverrideNote("");
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-balances"] });
       toast({
         title: pendingDryRun ? "Dry Run Complete" : "Backfill Complete",
@@ -694,7 +723,63 @@ function DataMaintenanceSection() {
     },
   });
 
-  if (!isAdmin) return null;
+  if (user?.role !== "super_admin") return null;
+
+  function setElOverride(userId: string, computedEl: number, value: string) {
+    const num = parseFloat(value);
+    if (isNaN(num)) return;
+    if (Math.abs(num - computedEl) < 0.001) {
+      // Reverted to computed — remove override for this field if no sl override either
+      setOverrides(prev => {
+        const existing = prev[userId];
+        if (!existing) return prev;
+        const next = { ...existing };
+        delete next.elOverride;
+        if (Object.keys(next).length === 0) {
+          const { [userId]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [userId]: next };
+      });
+    } else {
+      setOverrides(prev => ({ ...prev, [userId]: { ...prev[userId], elOverride: num } }));
+    }
+  }
+
+  function setSlOverride(userId: string, computedSl: number, value: string) {
+    const num = parseFloat(value);
+    if (isNaN(num)) return;
+    if (Math.abs(num - computedSl) < 0.001) {
+      setOverrides(prev => {
+        const existing = prev[userId];
+        if (!existing) return prev;
+        const next = { ...existing };
+        delete next.slOverride;
+        if (Object.keys(next).length === 0) {
+          const { [userId]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [userId]: next };
+      });
+    } else {
+      setOverrides(prev => ({ ...prev, [userId]: { ...prev[userId], slOverride: num } }));
+    }
+  }
+
+  const runBackfillLabel = backfillResult
+    ? `Run Backfill (${totalRows} rows${overrideCount > 0 ? `, ${overrideCount} override${overrideCount > 1 ? "s" : ""}` : ""})`
+    : "Run Backfill";
+
+  const canRunBackfill = !backfillMutation.isPending && (!hasOverrides || overrideNote.trim().length > 0);
+
+  // Collect override details for confirmation dialog
+  const overrideDetails = backfillResult?.details
+    ? Object.entries(overrides).map(([userId, ov]) => {
+        const detail = backfillResult.details.find((d: any) => d.userId === userId);
+        if (!detail) return null;
+        return { name: detail.name, computedEl: detail.elAdded, computedSl: detail.slAdded, ...ov };
+      }).filter(Boolean)
+    : [];
 
   return (
     <Card>
@@ -725,12 +810,17 @@ function DataMaintenanceSection() {
             <Button
               size="sm"
               onClick={() => { setPendingDryRun(false); setShowConfirm(true); }}
-              disabled={backfillMutation.isPending}
+              disabled={!canRunBackfill}
               data-testid="button-backfill-run"
             >
-              {backfillMutation.isPending && !pendingDryRun ? "Running..." : "Run Backfill"}
+              {backfillMutation.isPending && !pendingDryRun ? "Running..." : runBackfillLabel}
             </Button>
           </div>
+          {hasOverrides && overrideNote.trim().length === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              A reason is required before running the backfill when overrides are present.
+            </p>
+          )}
         </div>
 
         {backfillResult && (
@@ -750,56 +840,104 @@ function DataMaintenanceSection() {
               </div>
             )}
             {backfillResult.details && backfillResult.details.length > 0 && (
-              <div className="max-h-96 overflow-y-auto border rounded-md">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-muted">
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2 font-medium">Employee</th>
-                      <th className="text-left py-2 px-2 font-medium">Joined</th>
-                      <th className="text-left py-2 px-2 font-medium">First Acc</th>
-                      <th className="text-right py-2 px-2 font-medium">EL Added</th>
-                      <th className="text-right py-2 px-2 font-medium">SL Added</th>
-                      <th className="text-right py-2 px-2 font-medium">EL Bal</th>
-                      <th className="text-right py-2 px-2 font-medium">SL Bal</th>
-                      <th className="text-left py-2 px-2 font-medium">Flags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {backfillResult.details.map((d: any, i: number) => (
-                      <tr key={i} className="border-b last:border-0 hover:bg-muted/40" data-testid={`backfill-row-${i}`}>
-                        <td className="py-1.5 px-2 font-medium">
-                          {d.name}
-                          {d.isPartTime && <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(PT)</span>}
-                        </td>
-                        <td className="py-1.5 px-2 text-muted-foreground">{d.joiningDate || "—"}</td>
-                        <td className="py-1.5 px-2 text-muted-foreground">{d.firstAccrualMonth || "—"}</td>
-                        <td className="py-1.5 px-2 text-right text-green-700 dark:text-green-400">{d.elAdded >= 0 ? `+${d.elAdded}` : d.elAdded}</td>
-                        <td className="py-1.5 px-2 text-right text-green-700 dark:text-green-400">{d.slAdded >= 0 ? `+${d.slAdded}` : d.slAdded}</td>
-                        <td className="py-1.5 px-2 text-right font-medium">{d.newELBalance}</td>
-                        <td className="py-1.5 px-2 text-right font-medium">{d.newSLBalance}</td>
-                        <td className="py-1.5 px-2">
-                          <div className="flex flex-wrap gap-1">
-                            {d.monthsELSkipped.length > 0 && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={`EL skipped: ${d.monthsELSkipped.join(", ")}`}>
-                                {d.monthsELSkipped.length} EL skipped
-                              </span>
-                            )}
-                            {d.monthsELMissingData.length > 0 && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" title={`Missing attendance: ${d.monthsELMissingData.join(", ")}`}>
-                                {d.monthsELMissingData.length} no data
-                              </span>
-                            )}
-                            {d.correctionsApplied > 0 && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
-                                {d.correctionsApplied} corrected
-                              </span>
-                            )}
-                          </div>
-                        </td>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Edit <strong className="text-foreground">EL Added</strong> or <strong className="text-foreground">SL Added</strong> values to override individual employees. Edited rows are highlighted.
+                </p>
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted">
+                      <tr className="border-b">
+                        <th className="text-left py-2 px-2 font-medium">Employee</th>
+                        <th className="text-left py-2 px-2 font-medium">Joined</th>
+                        <th className="text-left py-2 px-2 font-medium">First Acc</th>
+                        <th className="text-right py-2 px-2 font-medium">EL Added</th>
+                        <th className="text-right py-2 px-2 font-medium">SL Added</th>
+                        <th className="text-right py-2 px-2 font-medium">EL Bal</th>
+                        <th className="text-right py-2 px-2 font-medium">SL Bal</th>
+                        <th className="text-left py-2 px-2 font-medium">Flags</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {backfillResult.details.map((d: any, i: number) => {
+                        const ov = overrides[d.userId];
+                        const isEdited = !!ov;
+                        return (
+                          <tr
+                            key={i}
+                            className={`border-b last:border-0 ${isEdited ? "bg-amber-50 dark:bg-amber-950/30 border-l-2 border-l-amber-400" : "hover:bg-muted/40"}`}
+                            data-testid={`backfill-row-${i}`}
+                          >
+                            <td className="py-1.5 px-2 font-medium">
+                              {d.name}
+                              {d.isPartTime && <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(PT)</span>}
+                              {isEdited && <span className="ml-1 text-amber-600 dark:text-amber-400" title="Overridden">✎</span>}
+                            </td>
+                            <td className="py-1.5 px-2 text-muted-foreground">{d.joiningDate || "—"}</td>
+                            <td className="py-1.5 px-2 text-muted-foreground">{d.firstAccrualMonth || "—"}</td>
+                            <td className="py-1.5 px-2 text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                defaultValue={d.elAdded}
+                                className={`w-16 text-right border rounded px-1 py-0.5 text-xs bg-background ${ov?.elOverride !== undefined ? "border-amber-400 dark:border-amber-500" : "border-border"}`}
+                                onChange={e => setElOverride(d.userId, d.elAdded, e.target.value)}
+                                data-testid={`input-el-override-${i}`}
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                defaultValue={d.slAdded}
+                                className={`w-16 text-right border rounded px-1 py-0.5 text-xs bg-background ${ov?.slOverride !== undefined ? "border-amber-400 dark:border-amber-500" : "border-border"}`}
+                                onChange={e => setSlOverride(d.userId, d.slAdded, e.target.value)}
+                                data-testid={`input-sl-override-${i}`}
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-medium">{d.newELBalance}</td>
+                            <td className="py-1.5 px-2 text-right font-medium">{d.newSLBalance}</td>
+                            <td className="py-1.5 px-2">
+                              <div className="flex flex-wrap gap-1">
+                                {d.monthsELSkipped.length > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={`EL skipped: ${d.monthsELSkipped.join(", ")}`}>
+                                    {d.monthsELSkipped.length} EL skipped
+                                  </span>
+                                )}
+                                {d.monthsELMissingData.length > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" title={`Missing attendance: ${d.monthsELMissingData.join(", ")}`}>
+                                    {d.monthsELMissingData.length} no data
+                                  </span>
+                                )}
+                                {d.correctionsApplied > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                    {d.correctionsApplied} corrected
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {hasOverrides && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs font-medium text-amber-700 dark:text-amber-400" htmlFor="override-note">
+                      Reason for override (required for audit) *
+                    </label>
+                    <Textarea
+                      id="override-note"
+                      value={overrideNote}
+                      onChange={e => setOverrideNote(e.target.value)}
+                      placeholder="Explain why these values are being overridden…"
+                      className="text-xs min-h-[64px]"
+                      data-testid="textarea-override-note"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -807,7 +945,7 @@ function DataMaintenanceSection() {
       </CardContent>
 
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{pendingDryRun ? "Dry Run — Preview Only" : "Run Backfill — This Writes to DB"}</DialogTitle>
           </DialogHeader>
@@ -823,6 +961,31 @@ function DataMaintenanceSection() {
                   This will insert historical leave accrual rows, apply 2026 cron corrections, run the 2025 year-end
                   carry-forward/lapse, insert confirmed leave requests, and apply HR-directed balance adjustments.
                 </p>
+                {backfillResult && (
+                  <p className="text-muted-foreground text-xs">
+                    <strong className="text-foreground">{totalRows}</strong> rows will be created
+                    {overrideCount > 0 && <>, <strong className="text-amber-700 dark:text-amber-400">{overrideCount}</strong> employee override{overrideCount > 1 ? "s" : ""} applied</>}.
+                  </p>
+                )}
+                {overrideDetails.length > 0 && (
+                  <div className="space-y-1 border rounded-md p-2 bg-amber-50 dark:bg-amber-950/30">
+                    <p className="text-xs font-medium text-amber-800 dark:text-amber-300">Overrides to be applied:</p>
+                    {overrideDetails.map((ov: any, i: number) => (
+                      <div key={i} className="text-xs text-amber-700 dark:text-amber-400">
+                        <strong>{ov.name}</strong>:{" "}
+                        {ov.elOverride !== undefined && (
+                          <span>EL {ov.computedEl} → {ov.elOverride} </span>
+                        )}
+                        {ov.slOverride !== undefined && (
+                          <span>SL {ov.computedSl} → {ov.slOverride}</span>
+                        )}
+                      </div>
+                    ))}
+                    {overrideNote && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">Reason: {overrideNote}</p>
+                    )}
+                  </div>
+                )}
                 <p className="font-medium text-amber-700 dark:text-amber-400">
                   The operation is idempotent — running it again will not create duplicate rows.
                   All corrections use offset rows for a full audit trail.
@@ -834,7 +997,7 @@ function DataMaintenanceSection() {
             <Button variant="outline" onClick={() => setShowConfirm(false)}>Cancel</Button>
             <Button
               onClick={() => backfillMutation.mutate(pendingDryRun)}
-              disabled={backfillMutation.isPending}
+              disabled={backfillMutation.isPending || (!pendingDryRun && hasOverrides && overrideNote.trim().length === 0)}
               data-testid="button-confirm-backfill"
             >
               {backfillMutation.isPending ? "Running..." : pendingDryRun ? "Run Dry Run" : "Confirm & Run"}
