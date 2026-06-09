@@ -29,14 +29,13 @@ interface CandidateEntry {
   location: string;
   engagementType: string;
   hiresInFee: string;
-  hiresInFees: string;
   searchQuery: string;
   showSuggestions: boolean;
 }
 
 const EMPTY_CANDIDATE: CandidateEntry = {
   name: "", role: "", startDate: "", location: "", engagementType: "",
-  hiresInFee: "", hiresInFees: "",
+  hiresInFee: "",
   searchQuery: "", showSuggestions: false,
 };
 
@@ -99,10 +98,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
 
   // Step 2 — Commercial terms
   const [templateId, setTemplateId] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [agreementDate, setAgreementDate] = useState("");
-  const [margin, setMargin] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("60");
   const [billingFreq, setBillingFreq] = useState("monthly");
   const [notes, setNotes] = useState("");
@@ -220,9 +216,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
       client_name: clientName,
       candidate_name: first?.name || "",
       candidate_role: first?.role || "",
-      start_date: first?.startDate || startDate,
-      end_date: endDate,
-      margin_per_hour: margin,
+      start_date: first?.startDate || "",
       payment_terms_days: paymentTerms,
       billing_frequency: billingFreq.replace(/_/g, " "),
       signatory_name: client?.signatoryName || "",
@@ -262,7 +256,6 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
         location: c.location,
         engagementType: c.engagementType,
         hiresInFee: c.hiresInFee,
-        hiresInFees: c.hiresInFees,
       }));
 
   const createMutation = useMutation({
@@ -279,10 +272,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
         candidateRole: first?.role || null,
         candidates: candidatesPayload,
         variableValues,
-        contractStartDate: startDate || (first?.startDate || null),
-        contractEndDate: endDate || null,
         agreementDate: agreementDate ? formatAgreementDate(agreementDate) : null,
-        marginPerHour: margin || null,
         paymentTermsDays: paymentTerms ? Number(paymentTerms) : null,
         billingFrequency: billingFreq || null,
         notes: notes || null,
@@ -696,14 +686,6 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
             <h3 className="font-semibold text-sm">Commercial Terms & Template</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Contract Start Date</Label>
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Contract End Date</Label>
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date" />
-              </div>
-              <div className="space-y-1.5">
                 <Label>Agreement Date</Label>
                 <Input
                   type="date"
@@ -714,10 +696,6 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                 {agreementDate && (
                   <p className="text-xs text-muted-foreground">Will render as: <strong>{formatAgreementDate(agreementDate)}</strong></p>
                 )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Margin Per Hour ($)</Label>
-                <Input placeholder="e.g. 15.00" value={margin} onChange={e => setMargin(e.target.value)} data-testid="input-margin" />
               </div>
               <div className="space-y-1.5">
                 <Label>Payment Terms (days)</Label>

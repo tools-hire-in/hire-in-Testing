@@ -164,8 +164,8 @@ export function registerContractRoutes(app: Express) {
     try {
       const {
         templateId, clientId, clientName, candidateName, candidateRole,
-        candidates, variableValues, contractStartDate, contractEndDate,
-        agreementDate, marginPerHour, paymentTermsDays, billingFrequency,
+        candidates, variableValues,
+        agreementDate, paymentTermsDays, billingFrequency,
         notes, templateName,
       } = req.body;
 
@@ -211,10 +211,7 @@ export function registerContractRoutes(app: Express) {
         candidates: candidatesArray,
         variableValues: variableValues || {},
         docxPath,
-        contractStartDate: contractStartDate || null,
-        contractEndDate: contractEndDate || null,
         agreementDate: agreementDate || null,
-        marginPerHour: marginPerHour || null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,
         notes: notes || null,
@@ -229,8 +226,8 @@ export function registerContractRoutes(app: Express) {
   app.post("/api/contracts/import", requireRole("hr", "operations", "manager"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-      const { clientName, clientId, candidateName, candidateRole, contractStartDate, contractEndDate,
-        marginPerHour, paymentTermsDays, billingFrequency, notes } = req.body;
+      const { clientName, clientId, candidateName, candidateRole,
+        paymentTermsDays, billingFrequency, notes } = req.body;
       if (!clientName) return res.status(400).json({ error: "Client name required" });
 
       const ext = path.extname(req.file.originalname).toLowerCase();
@@ -254,9 +251,6 @@ export function registerContractRoutes(app: Express) {
         variableValues: {},
         docxPath: null,
         uploadedDocPath,
-        contractStartDate: contractStartDate || null,
-        contractEndDate: contractEndDate || null,
-        marginPerHour: marginPerHour || null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,
         notes: notes || null,
