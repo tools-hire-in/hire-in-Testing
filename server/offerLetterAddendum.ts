@@ -21,6 +21,11 @@ export interface DeviceItem {
   condition?: string;
 }
 
+export interface AnnexureItem {
+  title: string;
+  body: string;
+}
+
 export interface AddendumData {
   candidateName: string;
   originalOfferDate: string;
@@ -43,6 +48,7 @@ export interface AddendumData {
   customClauseText?: string;
   deviceItems?: DeviceItem[];
   reason?: string;
+  annexures?: AnnexureItem[];
 }
 
 function heading(text: string): Paragraph {
@@ -244,6 +250,30 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     bodyParagraphs.push(bodyText(data.reason));
   }
 
+  // Annexure sections (appended after signature via extra section children)
+  const annexureChildren: Paragraph[] = [];
+  if (data.annexures && data.annexures.length > 0) {
+    const LABELS = ["A", "B", "C", "D", "E"];
+    for (let i = 0; i < data.annexures.length; i++) {
+      const ann = data.annexures[i];
+      const label = LABELS[i] || String(i + 1);
+      // Page break before each annexure
+      annexureChildren.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+      annexureChildren.push(new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ text: `Annexure ${label}: ${ann.title}`, bold: true, size: 26, underline: {} })],
+      }));
+      // Split body on newlines and emit each line as a paragraph
+      const lines = ann.body.split(/\r?\n/);
+      for (const line of lines) {
+        annexureChildren.push(new Paragraph({
+          spacing: { after: 80 },
+          children: [new TextRun({ text: line, size: 20 })],
+        }));
+      }
+    }
+  }
+
   // Signature block
   const signatureTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -316,6 +346,8 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
           new Paragraph({ spacing: { before: 300 }, children: [] }),
 
           signatureTable,
+
+          ...annexureChildren,
         ],
       },
     ],

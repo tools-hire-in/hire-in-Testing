@@ -5226,6 +5226,12 @@ export async function registerRoutes(
         departmentName = dept?.name || "";
       }
 
+      const rawGenAnnexures = req.body.annexureData;
+      let genAnnexures: Array<{ title: string; body: string }> | undefined;
+      if (Array.isArray(rawGenAnnexures) && rawGenAnnexures.length > 0) {
+        genAnnexures = rawGenAnnexures.slice(0, 5).map((a: any) => ({ title: String(a.title || ""), body: String(a.body || "") }));
+      }
+
       const data: OfferLetterData = {
         candidateTitle: req.body.candidateTitle || "Mr.",
         candidateName: req.body.candidateName || "",
@@ -5242,6 +5248,7 @@ export async function registerRoutes(
         department: departmentName,
         hrManagerName: req.body.hrManagerName || "Alina Carter",
         offerDate: req.body.offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+        annexures: genAnnexures,
       };
 
       if (!data.candidateName || !data.designation) {
@@ -5287,6 +5294,20 @@ export async function registerRoutes(
 
       const offerStatus = canSendDirectly ? "sent" : "pending_approval";
 
+      const rawOfferAnnexures = req.body.annexureData;
+      let offerAnnexures: Array<{ title: string; body: string }> | null = null;
+      if (Array.isArray(rawOfferAnnexures) && rawOfferAnnexures.length > 0) {
+        if (rawOfferAnnexures.length > 5) {
+          return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
+        }
+        for (const ann of rawOfferAnnexures) {
+          if (!ann.title || !ann.body) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          }
+        }
+        offerAnnexures = rawOfferAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
+      }
+
       const offerLetter = await storage.createOfferLetter({
         token,
         status: offerStatus,
@@ -5310,6 +5331,7 @@ export async function registerRoutes(
         expiresAt,
         hireInEmail: null,
         ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
+        annexureData: offerAnnexures,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -7451,6 +7473,21 @@ export async function registerRoutes(
         const signatoryName = (req.body.signatoryName || "").trim();
         const signatoryDesignation = (req.body.signatoryDesignation || "HR Manager").trim();
 
+        // Validate and extract annexures (max 5, each requires title + body)
+        const rawAnnexures = req.body.annexureData;
+        let validatedAnnexures: Array<{ title: string; body: string }> | null = null;
+        if (Array.isArray(rawAnnexures) && rawAnnexures.length > 0) {
+          if (rawAnnexures.length > 5) {
+            return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
+          }
+          for (const ann of rawAnnexures) {
+            if (!ann.title || !ann.body) {
+              return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+            }
+          }
+          validatedAnnexures = rawAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
+        }
+
         const docData: AddendumData = {
           candidateName: resolvedEmployeeName,
           originalOfferDate: resolvedStartDate || effectiveDate,
@@ -7459,6 +7496,7 @@ export async function registerRoutes(
           hrManagerName: signatoryName || "HR Manager",
           addendumType: templateType as AddendumData["addendumType"],
           ...metadata,
+          ...(validatedAnnexures ? { annexures: validatedAnnexures } : {}),
         };
         const docxBuffer = await generateAddendumDocx(docData);
 
@@ -7476,6 +7514,7 @@ export async function registerRoutes(
           issueDate: issueDate || null,
           manualEmployeeEmail: resolvedEmail || null,
           metadata,
+          annexureData: validatedAnnexures || null,
           createdBy: req.session.userId!,
           status: "draft",
         };
@@ -7539,7 +7578,20 @@ export async function registerRoutes(
         return res.status(201).json(issuedRecord);
       }
 
-      // --- STANDARD LETTER PATH (existing logic unchanged) ---
+      // --- STANDARD LETTER PATH ---
+      // Validate annexures if provided
+      const rawStdAnnexures = req.body.annexureData;
+      if (Array.isArray(rawStdAnnexures) && rawStdAnnexures.length > 0) {
+        if (rawStdAnnexures.length > 5) {
+          return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
+        }
+        for (const ann of rawStdAnnexures) {
+          if (!ann.title || !ann.body) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          }
+        }
+      }
+
       if (!req.body.employeeId) {
         return res.status(400).json({ error: "Employee must be selected from the system. Manual entry is not allowed." });
       }
@@ -7856,6 +7908,7 @@ export async function registerRoutes(
       if (isAmendment) {
         const meta: Record<string, unknown> = (typeof letter.metadata === "object" && letter.metadata !== null ? letter.metadata : {}) as Record<string, unknown>;
         const effectiveDateFromMeta = typeof meta.effectiveDate === "string" ? meta.effectiveDate : letter.startDate;
+        const storedAnnexures = Array.isArray((letter as any).annexureData) ? (letter as any).annexureData : undefined;
         const docxBuffer = await generateAddendumDocx({
           candidateName: letter.employeeName,
           originalOfferDate: letter.startDate,
@@ -7864,6 +7917,7 @@ export async function registerRoutes(
           hrManagerName: letter.signatoryName || "HR Manager",
           addendumType: letter.templateType as AddendumData["addendumType"],
           ...meta,
+          ...(storedAnnexures ? { annexures: storedAnnexures } : {}),
         });
         res.setHeader("Content-Type", mimeType);
         res.setHeader("Content-Disposition", disposition);

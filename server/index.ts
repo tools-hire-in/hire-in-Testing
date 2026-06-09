@@ -363,6 +363,14 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters approval columns migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE hr_letters ADD COLUMN IF NOT EXISTS annexure_data JSONB`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS annexure_data JSONB`);
+    log("Ensured annexure_data columns exist on hr_letters and offer_letters");
+  } catch (err) {
+    console.error("annexure_data migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {

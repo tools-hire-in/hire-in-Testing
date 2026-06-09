@@ -627,6 +627,7 @@ export const offerLetters = pgTable("offer_letters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   token: varchar("token").notNull().unique(),
   status: varchar("status").notNull().default("sent"),
+  annexureData: jsonb("annexure_data"),
   candidateTitle: varchar("candidate_title"),
   candidateName: varchar("candidate_name").notNull(),
   candidatePersonalEmail: varchar("candidate_personal_email").notNull(),
@@ -786,6 +787,7 @@ export const hrLetters = pgTable("hr_letters", {
   ccEmails: text("cc_emails"),
   metadata: jsonb("metadata"),
   manualEmployeeEmail: varchar("manual_employee_email"),
+  annexureData: jsonb("annexure_data"),
 });
 
 export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({

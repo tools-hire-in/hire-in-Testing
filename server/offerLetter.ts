@@ -13,6 +13,7 @@ import {
   WidthType,
   BorderStyle,
 } from "docx";
+import type { AnnexureItem } from "./offerLetterAddendum";
 
 export interface OfferLetterData {
   candidateTitle: string;
@@ -30,6 +31,7 @@ export interface OfferLetterData {
   department: string;
   hrManagerName: string;
   offerDate: string;
+  annexures?: AnnexureItem[];
 }
 
 function heading(text: string): Paragraph {
@@ -51,6 +53,29 @@ function subHeading(text: string): Paragraph {
     spacing: { before: 200, after: 80 },
     children: [new TextRun({ text, bold: true, size: 20 })],
   });
+}
+
+function buildAnnexureChildren(annexures?: AnnexureItem[]): Paragraph[] {
+  if (!annexures || annexures.length === 0) return [];
+  const LABELS = ["A", "B", "C", "D", "E"];
+  const result: Paragraph[] = [];
+  for (let i = 0; i < annexures.length; i++) {
+    const ann = annexures[i];
+    const label = LABELS[i] || String(i + 1);
+    result.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+    result.push(new Paragraph({
+      spacing: { after: 200 },
+      children: [new TextRun({ text: `Annexure ${label}: ${ann.title}`, bold: true, size: 26, underline: {} })],
+    }));
+    const lines = ann.body.split(/\r?\n/);
+    for (const line of lines) {
+      result.push(new Paragraph({
+        spacing: { after: 80 },
+        children: [new TextRun({ text: line, size: 20 })],
+      }));
+    }
+  }
+  return result;
 }
 
 function noBorderCell(children: (Paragraph)[]) {
@@ -351,6 +376,9 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           bodyText("• Enforce MFA; connect via VPN/SSO; personal Wi‑Fi must be WPA2/WPA3 secured."),
           bodyText("• Consent to limited telemetry of work data/containers; Company may remotely wipe Company data on exit/incidents."),
           bodyText("• Report device loss/breach within 24 hours; cooperate with investigation and remediation."),
+
+          // User-supplied annexures appended after Annexure-R
+          ...buildAnnexureChildren(data.annexures),
         ],
       },
     ],

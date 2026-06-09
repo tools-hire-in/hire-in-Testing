@@ -23,6 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescrip
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { LetterGenerator } from "@/components/hr/LetterGenerator";
 import { LettersDashboard } from "@/components/hr/LettersDashboard";
+import { AnnexureEditor, type AnnexureItem } from "@/components/hr/AnnexureEditor";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
@@ -747,6 +748,7 @@ export function OfferLetterGenerator() {
 
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
 
   const getReportingToName = () => {
     if (!formData.reportingToUserId) return "";
@@ -810,6 +812,7 @@ export function OfferLetterGenerator() {
           proposedStartDate: formData.proposedStartDate
             ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : "",
+          annexureData: annexures.length > 0 ? annexures : undefined,
         }),
       });
 
@@ -853,6 +856,7 @@ export function OfferLetterGenerator() {
         proposedStartDate: formData.proposedStartDate
           ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : "",
+        annexureData: annexures.length > 0 ? annexures : undefined,
       });
 
       if (!res.ok) {
@@ -874,6 +878,7 @@ export function OfferLetterGenerator() {
       }
       setFormData(getDefaultOfferData());
       setSelectedUserId("");
+      setAnnexures([]);
       setShowPreview(false);
     } catch (err: any) {
       toast({ title: err.message || "Failed to send offer letter", variant: "destructive" });
@@ -1098,6 +1103,8 @@ export function OfferLetterGenerator() {
           </CardContent>
         </Card>
       </div>
+
+      <AnnexureEditor annexures={annexures} onChange={setAnnexures} />
 
       <Card>
         <CardContent className="pt-6">

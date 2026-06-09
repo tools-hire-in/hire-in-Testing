@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 import type { HrLetter } from "@shared/schema";
+import type { AnnexureItem } from "./offerLetterAddendum";
 
 const DANCING_SCRIPT_PATH = path.resolve("server/fonts/DancingScript.ttf");
 const hasCursiveFont = fs.existsSync(DANCING_SCRIPT_PATH);
@@ -221,6 +222,35 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
       y += 10;
       doc.fontSize(7).font("Helvetica-Oblique").fillColor("#AAAAAA");
       doc.text("Draft — cryptographic verification will be assigned upon issuance", doc.page.margins.left, y, { align: "center", width: pageWidth });
+    }
+
+    // Append user-defined annexures as new pages
+    const annexures = (letter as any).annexureData;
+    if (Array.isArray(annexures) && annexures.length > 0) {
+      const LABELS = ["A", "B", "C", "D", "E"];
+      for (let i = 0; i < annexures.length; i++) {
+        const ann = annexures[i] as AnnexureItem;
+        if (!ann?.title && !ann?.body) continue;
+        const label = LABELS[i] || String(i + 1);
+
+        doc.addPage();
+        const pw = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        let ay = doc.page.margins.top;
+
+        doc.fontSize(14).font("Helvetica-Bold").fillColor(textColor);
+        doc.text(`Annexure ${label}: ${ann.title}`, doc.page.margins.left, ay, { width: pw });
+        ay = doc.y + 16;
+
+        doc.moveTo(doc.page.margins.left, ay).lineTo(doc.page.margins.left + pw, ay).lineWidth(1).strokeColor(orangeColor).stroke();
+        ay += 12;
+
+        doc.fontSize(11).font("Helvetica").fillColor(textColor);
+        const lines = (ann.body || "").split(/\r?\n/);
+        for (const line of lines) {
+          doc.text(line || " ", doc.page.margins.left, ay, { width: pw, lineGap: 4 });
+          ay = doc.y + 6;
+        }
+      }
     }
 
     doc.end();

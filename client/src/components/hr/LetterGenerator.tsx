@@ -4,6 +4,7 @@ import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
   TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail,
 } from "lucide-react";
+import { AnnexureEditor, type AnnexureItem } from "./AnnexureEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -180,6 +181,7 @@ export function LetterGenerator() {
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
   const isAmendmentType = (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(form.templateType);
@@ -311,6 +313,7 @@ export function LetterGenerator() {
       setIsManualEntry(false);
       setManualEmployeeEmail("");
       setSendEmail(false);
+      setAnnexures([]);
       setStep(0);
     },
     onError: (err: Error) => {
@@ -476,6 +479,7 @@ export function LetterGenerator() {
         manualEmployeeEmail: manualEmployeeEmail || undefined,
         sendEmail,
         metadata,
+        annexureData: annexures.length > 0 ? annexures : undefined,
       };
 
       if (!isManualEntry) {
@@ -496,6 +500,7 @@ export function LetterGenerator() {
       if (!payload.lastWorkingDay) delete payload.lastWorkingDay;
       if (!payload.signatoryId) delete payload.signatoryId;
       if (!payload.employeeId) delete payload.employeeId;
+      if (annexures.length > 0) payload.annexureData = annexures;
       createMutation.mutate(payload);
     }
   }
@@ -1082,6 +1087,8 @@ export function LetterGenerator() {
                 )}
               </>
             )}
+
+            <AnnexureEditor annexures={annexures} onChange={setAnnexures} />
           </div>
         )}
 
