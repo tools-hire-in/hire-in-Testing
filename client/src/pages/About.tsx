@@ -260,6 +260,46 @@ export default function About() {
         </div>
       </section>
 
+      {/* Company Registration Section */}
+      <section className="py-16 px-4 lg:px-6 bg-muted/30">
+        <div className="container mx-auto max-w-5xl">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2">Company Registration</h2>
+            <p className="text-muted-foreground">
+              Federal registration identifiers for government contracting and verification
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            <Card>
+              <CardContent className="p-6 text-center">
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  Unique Entity ID (UEI)
+                </p>
+                <p
+                  className="text-2xl font-mono font-bold tracking-wider text-primary"
+                  data-testid="text-company-uei"
+                >
+                  {COMPANY.uei}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6 text-center">
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  CAGE / NCAGE Code
+                </p>
+                <p
+                  className="text-2xl font-mono font-bold tracking-wider text-primary"
+                  data-testid="text-company-cage"
+                >
+                  {COMPANY.cage}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       <ConsultationModal
         open={consultationOpen}
         onOpenChange={setConsultationOpen}

@@ -5,6 +5,8 @@ export const COMPANY = {
   legalName: "Rayomind Software Solutions LLC",
   established: "2014",
   brandLine: "A RAYOMIND COMPANY | EST. 2014",
+  uei: "J36BQRPL2WN3",
+  cage: "206Q6",
 } as const;
 
 // Contact Information

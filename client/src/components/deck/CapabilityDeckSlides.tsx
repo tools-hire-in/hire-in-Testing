@@ -166,6 +166,8 @@ function Slide1Cover() {
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Confidential · 2026</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
+          <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
         </div>
       </div>
@@ -647,6 +649,8 @@ function Slide11Contact() {
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>hire-in.com · contact@hire-in.com</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Confidential · 2026</span>
+          <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
         </div>
