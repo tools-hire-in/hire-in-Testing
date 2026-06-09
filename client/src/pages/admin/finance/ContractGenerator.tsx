@@ -331,8 +331,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                       <th className="text-left px-3 py-2 font-semibold min-w-[110px]">Start Date</th>
                       <th className="text-left px-3 py-2 font-semibold min-w-[110px]">Location</th>
                       <th className="text-left px-3 py-2 font-semibold min-w-[120px]">Type</th>
-                      <th className="text-left px-3 py-2 font-semibold min-w-[95px]">Fee (per candidate)</th>
-                      <th className="text-left px-3 py-2 font-semibold min-w-[105px]">Total Fees</th>
+                      <th className="text-left px-3 py-2 font-semibold min-w-[95px]">Hire'in Fee</th>
                       <th className="w-8"></th>
                     </tr>
                   </thead>
@@ -468,17 +467,6 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                               value={candidate.hiresInFee}
                               onChange={e => updateCandidate(idx, { hiresInFee: e.target.value })}
                               data-testid={`input-candidate-hirein-fee-${idx}`}
-                            />
-                          </td>
-
-                          {/* Hire'in Fees (aggregate/total) */}
-                          <td className="px-2 py-1.5 align-top">
-                            <Input
-                              className="h-7 text-xs"
-                              placeholder="e.g. $15,000"
-                              value={candidate.hiresInFees}
-                              onChange={e => updateCandidate(idx, { hiresInFees: e.target.value })}
-                              data-testid={`input-candidate-hirein-fees-${idx}`}
                             />
                           </td>
 
