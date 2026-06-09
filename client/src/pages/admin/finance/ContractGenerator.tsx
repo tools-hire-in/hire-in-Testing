@@ -331,8 +331,8 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                       <th className="text-left px-3 py-2 font-semibold min-w-[110px]">Start Date</th>
                       <th className="text-left px-3 py-2 font-semibold min-w-[110px]">Location</th>
                       <th className="text-left px-3 py-2 font-semibold min-w-[120px]">Type</th>
-                      <th className="text-left px-3 py-2 font-semibold min-w-[95px]">Hire'in Fee</th>
-                      <th className="text-left px-3 py-2 font-semibold min-w-[105px]">Hire'in Fees</th>
+                      <th className="text-left px-3 py-2 font-semibold min-w-[95px]">Fee (per candidate)</th>
+                      <th className="text-left px-3 py-2 font-semibold min-w-[105px]">Total Fees</th>
                       <th className="w-8"></th>
                     </tr>
                   </thead>
