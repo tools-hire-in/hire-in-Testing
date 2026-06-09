@@ -1168,6 +1168,61 @@ async function backfillHolidayAttendance() {
     console.error("Contract template seeder error (non-fatal):", err);
   }
 
+  // ── Attendance Regularization tables ─────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE regularization_request_type AS ENUM('missed_punch_in','missed_punch_out','wrong_absent','correction');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE regularization_status AS ENUM('pending','approved','rejected');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_regularizations (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        attendance_date VARCHAR NOT NULL,
+        requested_punch_in TIMESTAMP,
+        requested_punch_out TIMESTAMP,
+        request_type VARCHAR NOT NULL,
+        reason TEXT NOT NULL,
+        status VARCHAR NOT NULL DEFAULT 'pending',
+        reviewed_by VARCHAR REFERENCES admin_users(id),
+        reviewer_comment TEXT,
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT now(),
+        updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_employee_id ON attendance_regularizations(employee_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_status ON attendance_regularizations(status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_date ON attendance_regularizations(attendance_date)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS policy_acknowledgements (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        policy_type VARCHAR NOT NULL,
+        policy_version VARCHAR NOT NULL,
+        accepted_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_policy_ack_user_type ON policy_acknowledgements(user_id, policy_type)`);
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES
+        ('regularization_employee_window_days', '7'),
+        ('regularization_manager_cutoff_day', '20'),
+        ('regularization_policy_version', '1')
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Attendance regularization tables ensured");
+  } catch (err) {
+    console.error("Attendance regularization table migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
