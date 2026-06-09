@@ -1136,6 +1136,38 @@ async function backfillHolidayAttendance() {
     console.error("contract_clients is_active migration error:", err);
   }
 
+  // ── Contract dispatch schema migrations ─────────────────────────────────────
+  try {
+    // Add pending_dispatch_approval to the contract_status enum (idempotent)
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE contract_status ADD VALUE IF NOT EXISTS 'pending_dispatch_approval';
+      EXCEPTION WHEN others THEN NULL;
+      END $$;
+    `);
+    await db.execute(sql`ALTER TABLE contract_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS cc_recipients JSONB DEFAULT '[]'::jsonb`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS dispatch_method VARCHAR`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reference_number VARCHAR UNIQUE`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS dispatch_recipient_email VARCHAR`);
+    log("Contract dispatch schema columns ensured");
+  } catch (err) {
+    console.error("Contract dispatch schema migration error:", err);
+  }
+
+  // ── 22nd Century Healthcare SSA template seeder ─────────────────────────────
+  try {
+    const { seedContractTemplates } = await import("./contractTemplateSeed");
+    const seedResult = await seedContractTemplates();
+    if (seedResult.created) {
+      log("22nd Century Healthcare SSA contract template seeded");
+    }
+  } catch (err) {
+    console.error("Contract template seeder error (non-fatal):", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

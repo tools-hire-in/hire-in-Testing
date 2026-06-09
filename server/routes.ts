@@ -18,6 +18,7 @@ import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentRe
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
+import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance } from "./documentSigningService";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
@@ -5681,8 +5682,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Please type your full name exactly as it appears on the offer: "${letter.candidateName}"` });
       }
 
-      const signingKey = process.env.OFFER_SIGNING_KEY;
-      if (!signingKey) {
+      if (!process.env.OFFER_SIGNING_KEY) {
         console.error("OFFER_SIGNING_KEY is not set in environment");
         return res.status(500).json({ error: "Server configuration error" });
       }
@@ -5691,22 +5691,12 @@ export async function registerRoutes(
       const userAgent = req.headers["user-agent"] || "unknown";
       const serverTimestamp = new Date();
 
-      // 1. Compute document hash
-      const docContents = JSON.stringify({
-        id: letter.id,
-        candidateName: letter.candidateName,
-        designation: letter.designation,
-        salary: letter.salary,
-        proposedStartDate: letter.proposedStartDate,
-        offerDate: letter.offerDate,
-        location: letter.location
-      });
-      const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
-
-      // 2. Generate authCode
-      const hmacPayload = `${letter.id}|${acceptedName.trim()}|${serverTimestamp.toISOString()}|${documentHash}`;
-      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
-      const authCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+      // Delegates to DocumentSigningService (preserves exact same algorithm/hash)
+      const { authCode, documentHash } = _signOfferLetterAcceptance(
+        { id: letter.id, candidateName: letter.candidateName, designation: letter.designation, salary: letter.salary, proposedStartDate: letter.proposedStartDate, offerDate: letter.offerDate, location: letter.location },
+        acceptedName,
+        serverTimestamp,
+      );
 
       await storage.updateOfferLetter(letter.id, {
         status: "accepted",
@@ -5749,29 +5739,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Counter-signer name is required" });
       }
 
-      const signingKey = process.env.OFFER_SIGNING_KEY;
-      if (!signingKey) {
-        console.error("OFFER_SIGNING_KEY is not set in environment");
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-
       const now = new Date();
-      
-      // 1. Compute document hash for counter-signature (incorporating candidate signature)
-      const counterDocContents = JSON.stringify({
-        id: letter.id,
-        candidateName: letter.candidateName,
-        acceptedName: letter.acceptedName,
-        acceptanceDate: letter.acceptanceDate,
-        authCode: letter.authCode,
-        documentHash: letter.documentHash
-      });
-      const counterDocumentHash = crypto.createHash("sha256").update(counterDocContents).digest("hex");
 
-      // 2. Generate counterAuthCode
-      const hmacPayload = `${letter.id}|counter|${counterSignedName.trim()}|${now.toISOString()}|${counterDocumentHash}`;
-      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
-      const counterAuthCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+      const { signOfferCountersign } = await import("./documentSigningService");
+      const { counterAuthCode, counterDocumentHash } = signOfferCountersign(letter, counterSignedName, now);
 
       await storage.updateOfferLetter(letter.id, {
         status: "countersigned",
@@ -6077,26 +6048,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Please type your full name exactly as: "${addendum.candidateName}"` });
       }
 
-      const signingKey = process.env.OFFER_SIGNING_KEY;
-      if (!signingKey) {
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-
       const clientIp = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.ip || "unknown";
       const serverTimestamp = new Date();
 
-      const docContents = JSON.stringify({
-        id: addendum.id,
-        offerLetterId: addendum.offerLetterId,
-        candidateName: addendum.candidateName,
-        addendumType: addendum.addendumType,
-        effectiveDate: addendum.effectiveDate,
-      });
-      const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
-
-      const hmacPayload = `${addendum.id}|${acceptedName.trim()}|${serverTimestamp.toISOString()}|${documentHash}`;
-      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
-      const authCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+      const { signAddendumAcceptance } = await import("./documentSigningService");
+      const { authCode, documentHash } = signAddendumAcceptance(addendum, acceptedName, serverTimestamp);
 
       await storage.updateAddendumStatus(addendum.id, {
         status: "accepted",
@@ -6157,24 +6113,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Cannot counter-sign — addendum status is '${addendum.status}', must be 'accepted'` });
       }
 
-      const signingKey = process.env.OFFER_SIGNING_KEY;
-      if (!signingKey) {
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-
       const now = new Date();
-      const counterDocContents = JSON.stringify({
-        id: addendum.id,
-        candidateName: addendum.candidateName,
-        acceptedName: addendum.acceptedName,
-        authCode: addendum.authCode,
-        documentHash: addendum.documentHash,
-      });
-      const counterDocumentHash = crypto.createHash("sha256").update(counterDocContents).digest("hex");
 
-      const hmacPayload = `${addendum.id}|counter|${req.session.userId}|${now.toISOString()}|${counterDocumentHash}`;
-      const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
-      const counterAuthCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
+      const { signAddendumCountersign } = await import("./documentSigningService");
+      const { counterAuthCode, counterDocumentHash } = signAddendumCountersign(addendum, req.session.userId!, now);
 
       await storage.updateAddendumStatus(addendum.id, {
         status: "countersigned",
@@ -7311,6 +7253,8 @@ export async function registerRoutes(
     return `RL/${prefix}/${year}/${String(count + 1).padStart(4, "0")}`;
   }
 
+  // Delegates to the central DocumentSigningService to avoid duplicating the algorithm.
+  // Field ordering is preserved exactly to remain compatible with already-issued letters.
   function computeLetterAuthCode(letter: {
     id: string; templateType: string; employeeName: string; designation: string;
     startDate: string; endDate?: string | null; performanceBand?: string | null;
@@ -7321,22 +7265,7 @@ export async function registerRoutes(
     projectName?: string | null; customOverrideText?: string | null;
     issueDate?: string | null;
   }): { authCode: string; documentHash: string } {
-    if (!LETTER_HMAC_SECRET) {
-      throw new Error("LETTER_HMAC_SECRET or OFFER_SIGNING_KEY environment variable is required to issue letters");
-    }
-    const payload = [
-      letter.id, letter.templateType, letter.employeeName,
-      letter.designation, letter.department || "", letter.location || "",
-      letter.employeeCode || "", letter.startDate, letter.endDate || "",
-      letter.performanceBand || "", letter.conductBand || "", letter.completionBand || "",
-      letter.closingLine || "", letter.signatoryName || "", letter.signatoryDesignation || "",
-      letter.responsibilitiesSummary || "", letter.projectName || "",
-      letter.customOverrideText || "", letter.issueDate || "",
-    ].join("|");
-    const documentHash = crypto.createHash("sha256").update(payload).digest("hex");
-    const hmac = crypto.createHmac("sha256", LETTER_HMAC_SECRET).update(documentHash).digest("hex");
-    const authCode = hmac.substring(0, 4).toUpperCase() + "-" + hmac.substring(4, 8).toUpperCase();
-    return { authCode, documentHash };
+    return _signHrLetter(letter);
   }
 
   app.get("/api/hr/letters/wording-matrix", requireRole("hr"), async (_req, res) => {
@@ -8225,10 +8154,43 @@ export async function registerRoutes(
 
   app.get("/api/verify-letter", async (req, res) => {
     try {
-      const { ref, auth } = req.query;
+      const { ref, auth, documentType } = req.query;
       if (!ref || !auth) {
         return res.status(400).json({ error: "Reference number and auth code are required" });
       }
+
+      // ── Contract verification branch ────────────────────────────────────────
+      if (documentType === "contract") {
+        const { verifyDocument } = await import("./documentSigningService");
+        const result = await verifyDocument("contract", ref as string, auth as string);
+
+        if (result.error === "not_found") {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        if (result.error) {
+          return res.status(500).json({ error: "Verification service error" });
+        }
+
+        const c = result.record as any;
+        return res.json({
+          documentType: "contract",
+          clientName: c.clientName,
+          templateName: c.templateName,
+          candidateName: c.candidateName,
+          candidates: c.candidates,
+          contractStartDate: c.contractStartDate,
+          contractEndDate: c.contractEndDate,
+          agreementDate: c.agreementDate,
+          billingFrequency: c.billingFrequency,
+          paymentTermsDays: c.paymentTermsDays,
+          status: c.status,
+          verified: result.valid,
+          tamperDetected: result.tamperDetected,
+          ...(result.tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
+        });
+      }
+
+      // ── HR letter verification branch (existing) ───────────────────────────
       const letter = await storage.getHrLetterByRef(ref as string);
       if (!letter) {
         return res.status(404).json({ error: "Document not found or auth code does not match" });

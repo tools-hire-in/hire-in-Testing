@@ -4,8 +4,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +16,8 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   FileText, Plus, Search, Download, Send, CheckCircle, Upload,
   Building2, FileUp, Eye, Clock, XCircle, PenLine, FilePlus,
-  ReceiptText, Calendar, DollarSign, RefreshCw
+  ReceiptText, Calendar, DollarSign, RefreshCw, AlertCircle, X,
+  Loader2, ShieldCheck, Users, Globe, User
 } from "lucide-react";
 import type { Contract, ContractClient } from "@shared/schema";
 import ContractGenerator from "./ContractGenerator";
@@ -25,6 +28,7 @@ import InvoiceTracker from "./InvoiceTracker";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700",
+  pending_dispatch_approval: "bg-violet-100 text-violet-700",
   sent: "bg-blue-100 text-blue-700",
   client_signed: "bg-amber-100 text-amber-700",
   countersigned: "bg-green-100 text-green-700",
@@ -33,6 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
+  pending_dispatch_approval: "Pending Approval",
   sent: "Sent",
   client_signed: "Client Signed",
   countersigned: "Countersigned",
@@ -49,7 +54,20 @@ function ContractStatusIcon({ status }: { status: string }) {
   if (status === "client_signed") return <PenLine className="h-4 w-4 text-amber-600" />;
   if (status === "sent") return <Send className="h-4 w-4 text-blue-600" />;
   if (status === "cancelled") return <XCircle className="h-4 w-4 text-red-600" />;
+  if (status === "pending_dispatch_approval") return <AlertCircle className="h-4 w-4 text-violet-600" />;
   return <Clock className="h-4 w-4 text-slate-500" />;
+}
+
+interface CcRecipient {
+  email: string;
+  name: string;
+  source: "employee" | "manual";
+}
+
+const INTERNAL_DOMAINS = ["hirein.com", "hirein.solutions", "rayomind.com"];
+function isExternalEmail(email: string) {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return !domain || !INTERNAL_DOMAINS.includes(domain);
 }
 
 export default function ContractsHub() {
@@ -61,11 +79,34 @@ export default function ContractsHub() {
   const [showGenerator, setShowGenerator] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
-  const [sendEmail, setSendEmail] = useState("");
-  const [sendingId, setSendingId] = useState<string | null>(null);
 
+  // Dispatch modal state
+  const [dispatchContract, setDispatchContract] = useState<Contract | null>(null);
+  const [deliveryMethod, setDeliveryMethod] = useState<"esign_link" | "presigned_pdf" | "both">("esign_link");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [dispatchNote, setDispatchNote] = useState("");
+  const [ccList, setCcList] = useState<CcRecipient[]>([]);
+  const [ccInput, setCcInput] = useState("");
+  const [ccNameInput, setCcNameInput] = useState("");
+
+  // Reject modal state
+  const [rejectContract, setRejectContract] = useState<Contract | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  // Approval delivery-method picker state
+  const [approvalContract, setApprovalContract] = useState<Contract | null>(null);
+  const [approvalDeliveryMethod, setApprovalDeliveryMethod] = useState<"esign_link" | "presigned_pdf" | "both">("esign_link");
+  const [approvalRecipientEmail, setApprovalRecipientEmail] = useState("");
+
+  // Employee CC picker state
+  const [ccEmployeeSearch, setCcEmployeeSearch] = useState("");
+  const [showEmployeePicker, setShowEmployeePicker] = useState(false);
+
+  const isSuperAdmin = user?.role === "super_admin" || user?.role === "architect";
   const canManage = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
+  const canDispatch = ["super_admin", "admin", "hr", "operations", "manager"].includes(user?.role || "");
   const canCountersign = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const canApproveDispatch = isSuperAdmin;
 
   const { data: contracts = [], isLoading } = useQuery<Contract[]>({
     queryKey: ["/api/contracts"],
@@ -75,16 +116,47 @@ export default function ContractsHub() {
     queryKey: ["/api/contracts/clients"],
   });
 
-  const sendMutation = useMutation({
-    mutationFn: ({ id, email }: { id: string; email: string }) =>
-      apiRequest("POST", `/api/contracts/${id}/send`, { clientEmail: email }),
+  const { data: adminUsers = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin-users"],
+  });
+
+  const dispatchMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, any> }) =>
+      apiRequest("POST", `/api/contracts/${id}/dispatch`, body),
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      const data = await res.json().catch(() => ({}));
+      setDispatchContract(null);
+      resetDispatchForm();
+      if (isSuperAdmin) {
+        toast({ title: "Contract dispatched", description: data.signingUrl ? `Signing URL: ${data.signingUrl}` : "Sent successfully" });
+      } else {
+        toast({ title: "Dispatch request submitted", description: "Waiting for super-admin approval" });
+      }
+    },
+    onError: (e: any) => toast({ title: "Dispatch failed", description: e.message, variant: "destructive" }),
+  });
+
+  const approveDispatchMutation = useMutation({
+    mutationFn: ({ id, deliveryMethod, recipientEmail }: { id: string; deliveryMethod: string; recipientEmail?: string }) =>
+      apiRequest("POST", `/api/contracts/${id}/dispatch/approve`, { deliveryMethod, recipientEmail }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
-      setSendingId(null);
-      setSendEmail("");
-      toast({ title: "Contract sent for signing" });
+      toast({ title: "Dispatch approved and sent" });
     },
-    onError: (e: any) => toast({ title: "Failed to send", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Approval failed", description: e.message, variant: "destructive" }),
+  });
+
+  const rejectDispatchMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest("POST", `/api/contracts/${id}/dispatch/reject`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setRejectContract(null);
+      setRejectReason("");
+      toast({ title: "Dispatch request rejected" });
+    },
+    onError: (e: any) => toast({ title: "Rejection failed", description: e.message, variant: "destructive" }),
   });
 
   const countersignMutation = useMutation({
@@ -104,16 +176,81 @@ export default function ContractsHub() {
     return matchSearch && matchStatus;
   });
 
+  const pendingApproval = contracts.filter(c => c.status === "pending_dispatch_approval");
+
   const stats = {
     total: contracts.length,
     active: contracts.filter(c => c.status === "countersigned").length,
     pending: contracts.filter(c => ["sent", "client_signed"].includes(c.status)).length,
-    imported: contracts.filter(c => c.source === "imported").length,
+    pendingApproval: pendingApproval.length,
   };
 
   const handleDownload = async (contract: Contract) => {
     window.open(`/api/contracts/${contract.id}/download`, "_blank");
   };
+
+  function resetDispatchForm() {
+    setDeliveryMethod("esign_link");
+    setRecipientEmail("");
+    setDispatchNote("");
+    setCcList([]);
+    setCcInput("");
+    setCcNameInput("");
+    setCcEmployeeSearch("");
+    setShowEmployeePicker(false);
+  }
+
+  function openDispatch(contract: Contract) {
+    setDispatchContract(contract);
+    resetDispatchForm(); // clears all fields first
+    // Pre-fill recipient email AFTER reset so it is not cleared
+    const client = clients.find(c => c.id === contract.clientId);
+    setRecipientEmail(client?.email || "");
+  }
+
+  function addCc() {
+    if (!ccInput || !ccInput.includes("@")) return;
+    setCcList(prev => [...prev, { email: ccInput, name: ccNameInput || ccInput, source: "manual" }]);
+    setCcInput("");
+    setCcNameInput("");
+  }
+
+  function addEmployeeCc(emp: any) {
+    const email = emp.email;
+    if (!email) return;
+    if (ccList.some(c => c.email === email)) {
+      toast({ title: "Already added", description: `${email} is already in the CC list`, variant: "destructive" });
+      return;
+    }
+    const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || email;
+    setCcList(prev => [...prev, { email, name, source: "employee" }]);
+    setCcEmployeeSearch("");
+    setShowEmployeePicker(false);
+  }
+
+  const filteredEmployees = ccEmployeeSearch.length >= 1
+    ? (adminUsers as any[]).filter(emp =>
+        emp.email &&
+        !ccList.some(c => c.email === emp.email) &&
+        (`${emp.firstName || ""} ${emp.lastName || ""} ${emp.email}`.toLowerCase().includes(ccEmployeeSearch.toLowerCase()))
+      ).slice(0, 8)
+    : [];
+
+  const externalCcs = ccList.filter(c => isExternalEmail(c.email));
+
+  function handleDispatch() {
+    if (!dispatchContract) return;
+    const body: Record<string, any> = {
+      ccRecipients: ccList,
+      recipientEmail: recipientEmail || undefined,
+    };
+    if (isSuperAdmin) {
+      body.deliveryMethod = deliveryMethod;
+    } else {
+      body.note = dispatchNote;
+    }
+    dispatchMutation.mutate({ id: dispatchContract.id, body });
+  }
 
   return (
     <AdminLayout>
@@ -142,7 +279,7 @@ export default function ContractsHub() {
             { label: "Total Contracts", value: stats.total, icon: FileText, color: "text-slate-700" },
             { label: "Active (Signed)", value: stats.active, icon: CheckCircle, color: "text-green-600" },
             { label: "Pending Signature", value: stats.pending, icon: Clock, color: "text-amber-600" },
-            { label: "Imported Contracts", value: stats.imported, icon: Upload, color: "text-blue-600" },
+            { label: "Awaiting Approval", value: stats.pendingApproval, icon: AlertCircle, color: "text-violet-600" },
           ].map(s => (
             <Card key={s.label} className="border shadow-sm">
               <CardContent className="p-4 flex items-center gap-3">
@@ -162,6 +299,15 @@ export default function ContractsHub() {
             <TabsTrigger value="contracts" data-testid="tab-contracts">
               <FileText className="h-4 w-4 mr-1.5" /> Contracts
             </TabsTrigger>
+            {canApproveDispatch && pendingApproval.length > 0 && (
+              <TabsTrigger value="pending-approval" data-testid="tab-pending-approval">
+                <AlertCircle className="h-4 w-4 mr-1.5 text-violet-600" />
+                Pending Approval
+                <Badge className="ml-1.5 h-5 px-1.5 text-[10px] bg-violet-100 text-violet-700 border-violet-200">
+                  {pendingApproval.length}
+                </Badge>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="invoices" data-testid="tab-invoices">
               <ReceiptText className="h-4 w-4 mr-1.5" /> Invoices
             </TabsTrigger>
@@ -173,7 +319,7 @@ export default function ContractsHub() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ── Contracts Tab ─────────────────────────────── */}
+          {/* ── Contracts Tab ─────────────────────────── */}
           <TabsContent value="contracts" className="mt-4 space-y-4">
             <div className="flex gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
@@ -187,12 +333,13 @@ export default function ContractsHub() {
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-44" data-testid="select-status-filter">
+                <SelectTrigger className="w-48" data-testid="select-status-filter">
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="pending_dispatch_approval">Pending Approval</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="client_signed">Client Signed</SelectItem>
                   <SelectItem value="countersigned">Countersigned</SelectItem>
@@ -239,8 +386,8 @@ export default function ContractsHub() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             <ContractStatusIcon status={contract.status} />
-                            <Badge className={`text-xs ${STATUS_COLORS[contract.status]}`}>
-                              {STATUS_LABELS[contract.status]}
+                            <Badge className={`text-xs ${STATUS_COLORS[contract.status] || "bg-slate-100 text-slate-700"}`}>
+                              {STATUS_LABELS[contract.status] || contract.status}
                             </Badge>
                           </div>
                         </td>
@@ -272,22 +419,23 @@ export default function ContractsHub() {
                                 <Download className="h-4 w-4" />
                               </Button>
                             )}
-                            {canManage && contract.source !== "imported" && contract.status === "draft" && (
+                            {canDispatch && contract.source !== "imported" && ["draft", "pending_dispatch_approval"].includes(contract.status) && (
                               <Button
                                 variant="ghost" size="sm"
-                                onClick={() => setSendingId(contract.id)}
-                                data-testid={`button-send-${contract.id}`}
-                                title="Send for signing"
+                                onClick={() => openDispatch(contract)}
+                                data-testid={`button-dispatch-${contract.id}`}
+                                title={isSuperAdmin ? "Dispatch contract" : "Request dispatch"}
+                                className="text-[#1F3A6E] hover:text-blue-700"
                               >
                                 <Send className="h-4 w-4" />
                               </Button>
                             )}
-                            {canManage && contract.source !== "imported" && contract.status === "sent" && (
+                            {canDispatch && contract.source !== "imported" && contract.status === "sent" && (
                               <Button
                                 variant="ghost" size="sm"
-                                onClick={() => setSendingId(contract.id)}
+                                onClick={() => openDispatch(contract)}
                                 data-testid={`button-resend-${contract.id}`}
-                                title="Resend signing link"
+                                title="Resend"
                                 className="text-blue-600 hover:text-blue-700"
                               >
                                 <RefreshCw className="h-4 w-4" />
@@ -321,6 +469,76 @@ export default function ContractsHub() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── Pending Approval Tab (super_admin only) ──────────────── */}
+          {canApproveDispatch && (
+            <TabsContent value="pending-approval" className="mt-4 space-y-4">
+              {pendingApproval.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ShieldCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p>No contracts awaiting dispatch approval</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-violet-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Candidate / Role</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Requested By</th>
+                        <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {pendingApproval.map(contract => (
+                        <tr key={contract.id} className="hover:bg-muted/30" data-testid={`row-pending-${contract.id}`}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-900">{contract.clientName}</div>
+                            {contract.templateName && <div className="text-xs text-muted-foreground">{contract.templateName}</div>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>{contract.candidateName || "—"}</div>
+                            <div className="text-xs text-muted-foreground">{contract.candidateRole || ""}</div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {(contract as any).createdBy || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="outline" size="sm"
+                                className="text-green-700 border-green-300 hover:bg-green-50"
+                                onClick={() => {
+                                  setApprovalContract(contract);
+                                  setApprovalDeliveryMethod("esign_link");
+                                  // Pre-fill from stored request email or client record
+                                  const client = clients.find(c => c.id === contract.clientId);
+                                  setApprovalRecipientEmail((contract as any).dispatchRecipientEmail || client?.email || "");
+                                }}
+                                disabled={approveDispatchMutation.isPending}
+                                data-testid={`button-approve-dispatch-${contract.id}`}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                Approve & Send
+                              </Button>
+                              <Button
+                                variant="outline" size="sm"
+                                className="text-red-700 border-red-300 hover:bg-red-50"
+                                onClick={() => { setRejectContract(contract); setRejectReason(""); }}
+                                data-testid={`button-reject-dispatch-${contract.id}`}
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           {/* ── Invoices Tab ─────────────────────────── */}
           <TabsContent value="invoices" className="mt-4">
@@ -364,30 +582,270 @@ export default function ContractsHub() {
         />
       )}
 
-      {/* Send for signing dialog */}
-      {sendingId && (
-        <Dialog open onOpenChange={() => setSendingId(null)}>
+      {/* ── Dispatch Modal ────────────────────────────────────────────────── */}
+      {dispatchContract && (
+        <Dialog open onOpenChange={() => { setDispatchContract(null); resetDispatchForm(); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-[#1F3A6E]" />
+                {isSuperAdmin ? "Dispatch Contract" : "Request Dispatch Approval"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-slate-50 border px-3 py-2 text-sm">
+                <p className="font-medium text-slate-900">{dispatchContract.clientName}</p>
+                {dispatchContract.candidateName && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{dispatchContract.candidateName} · {dispatchContract.candidateRole}</p>
+                )}
+              </div>
+
+              {isSuperAdmin ? (
+                <>
+                  {/* Delivery method */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Delivery Method</Label>
+                    <Select value={deliveryMethod} onValueChange={v => setDeliveryMethod(v as any)}>
+                      <SelectTrigger data-testid="select-delivery-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="esign_link">E-Sign Link only — send signing URL by email</SelectItem>
+                        <SelectItem value="presigned_pdf">Pre-Signed PDF only — attach signed PDF</SelectItem>
+                        <SelectItem value="both">Both — link + signed PDF attachment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Recipient email */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Recipient Email *</Label>
+                    <Input
+                      type="email"
+                      placeholder="client@company.com"
+                      value={recipientEmail}
+                      onChange={e => setRecipientEmail(e.target.value)}
+                      data-testid="input-recipient-email"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Recipient Email *</Label>
+                    <Input
+                      type="email"
+                      placeholder="client@company.com"
+                      value={recipientEmail}
+                      onChange={e => setRecipientEmail(e.target.value)}
+                      data-testid="input-recipient-email-request"
+                    />
+                    <p className="text-xs text-muted-foreground">Saved so the approver can dispatch directly without needing to re-enter it.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Note for approver (optional)</Label>
+                    <Textarea
+                      placeholder="Any context for the super-admin approving this dispatch..."
+                      value={dispatchNote}
+                      onChange={e => setDispatchNote(e.target.value)}
+                      rows={2}
+                      data-testid="textarea-dispatch-note"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This will be sent to super-admins for approval before the contract is dispatched.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* CC Recipients */}
+              <div className="space-y-2">
+                <Label className="text-sm">CC Recipients</Label>
+                {/* Manual email entry */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="name@company.com"
+                    value={ccInput}
+                    onChange={e => setCcInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCc(); } }}
+                    className="flex-1"
+                    data-testid="input-cc-email"
+                  />
+                  <Input
+                    placeholder="Name (optional)"
+                    value={ccNameInput}
+                    onChange={e => setCcNameInput(e.target.value)}
+                    className="w-28"
+                    data-testid="input-cc-name"
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={addCc} data-testid="button-add-cc">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Employee picker */}
+                <div className="relative">
+                  <div className="flex gap-2 items-center">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <Input
+                      placeholder="Search employees to CC…"
+                      value={ccEmployeeSearch}
+                      onChange={e => { setCcEmployeeSearch(e.target.value); setShowEmployeePicker(true); }}
+                      onFocus={() => setShowEmployeePicker(true)}
+                      onBlur={() => setTimeout(() => setShowEmployeePicker(false), 150)}
+                      className="flex-1 h-8 text-xs"
+                      data-testid="input-cc-employee-search"
+                    />
+                  </div>
+                  {showEmployeePicker && filteredEmployees.length > 0 && (
+                    <div className="absolute z-50 w-full bg-white border rounded-md shadow-lg max-h-44 overflow-y-auto mt-1">
+                      {filteredEmployees.map((emp: any) => (
+                        <div
+                          key={emp.id}
+                          className="px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs flex justify-between items-center"
+                          onMouseDown={() => addEmployeeCc(emp)}
+                          data-testid={`option-cc-employee-${emp.id}`}
+                        >
+                          <span className="font-medium">{emp.firstName} {emp.lastName}</span>
+                          <span className="text-muted-foreground">{emp.email}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {ccList.length > 0 && (
+                  <div className="space-y-1">
+                    {ccList.map((cc, i) => (
+                      <div key={i} className={`flex items-center justify-between rounded px-2 py-1 text-xs ${isExternalEmail(cc.email) ? "bg-amber-50 border border-amber-200" : "bg-slate-50 border"}`}>
+                        <div>
+                          <span className="font-medium">{cc.name}</span>
+                          <span className="text-muted-foreground ml-1.5">{cc.email}</span>
+                          {isExternalEmail(cc.email) && (
+                            <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-amber-100 text-amber-700">External</Badge>
+                          )}
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setCcList(prev => prev.filter((_, j) => j !== i))}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {externalCcs.length > 0 && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700">
+                      <strong>External CC detected:</strong> {externalCcs.map(c => c.email).join(", ")}.
+                      Super admins will be notified of external recipients.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setDispatchContract(null); resetDispatchForm(); }}>Cancel</Button>
+              <Button
+                onClick={handleDispatch}
+                disabled={dispatchMutation.isPending || (isSuperAdmin && !recipientEmail)}
+                data-testid="button-confirm-dispatch"
+                className="bg-[#1F3A6E] hover:bg-[#152d56]"
+              >
+                {dispatchMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {isSuperAdmin ? <><Send className="h-4 w-4 mr-2" /> Send Now</> : <><AlertCircle className="h-4 w-4 mr-2" /> Submit for Approval</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Reject Dispatch Modal ─────────────────────────────────────────── */}
+      {rejectContract && (
+        <Dialog open onOpenChange={() => { setRejectContract(null); setRejectReason(""); }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>Send Contract for Signing</DialogTitle>
+              <DialogTitle>Reject Dispatch Request</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2">
-              <p className="text-sm text-muted-foreground">Enter the client's email address to send the signing link.</p>
-              <Input
-                placeholder="client@company.com"
-                value={sendEmail}
-                onChange={e => setSendEmail(e.target.value)}
-                data-testid="input-send-email"
-              />
+              <p className="text-sm text-muted-foreground">
+                Rejecting will return the contract to <strong>Draft</strong> status and notify the requester.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Reason for rejection *</Label>
+                <Textarea
+                  placeholder="Explain why this dispatch is being rejected..."
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-reject-reason"
+                />
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSendingId(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setRejectContract(null); setRejectReason(""); }}>Cancel</Button>
               <Button
-                onClick={() => sendMutation.mutate({ id: sendingId, email: sendEmail })}
-                disabled={!sendEmail || sendMutation.isPending}
-                data-testid="button-confirm-send"
+                variant="destructive"
+                onClick={() => rejectDispatchMutation.mutate({ id: rejectContract.id, reason: rejectReason })}
+                disabled={!rejectReason.trim() || rejectDispatchMutation.isPending}
+                data-testid="button-confirm-reject"
               >
-                <Send className="h-4 w-4 mr-2" /> Send Link
+                {rejectDispatchMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Reject
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Approval delivery-method picker dialog */}
+      {approvalContract && (
+        <Dialog open onOpenChange={() => setApprovalContract(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Approve & Send Contract</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Choose how to deliver <strong>{approvalContract.clientName}</strong>'s contract.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Recipient Email *</Label>
+                <Input
+                  type="email"
+                  placeholder="client@company.com"
+                  value={approvalRecipientEmail}
+                  onChange={e => setApprovalRecipientEmail(e.target.value)}
+                  data-testid="input-approval-recipient-email"
+                />
+                <p className="text-xs text-muted-foreground">Pre-filled from the requester's submission. Override if needed.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Delivery Method</Label>
+                <Select value={approvalDeliveryMethod} onValueChange={v => setApprovalDeliveryMethod(v as any)}>
+                  <SelectTrigger data-testid="select-approval-delivery-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="esign_link">E-Sign Link (email with signing URL)</SelectItem>
+                    <SelectItem value="presigned_pdf">Pre-signed PDF (email with PDF attachment)</SelectItem>
+                    <SelectItem value="both">Both — link + PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setApprovalContract(null)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  approveDispatchMutation.mutate({ id: approvalContract.id, deliveryMethod: approvalDeliveryMethod, recipientEmail: approvalRecipientEmail || undefined });
+                  setApprovalContract(null);
+                }}
+                disabled={approveDispatchMutation.isPending}
+                data-testid="button-confirm-approve"
+              >
+                {approveDispatchMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <CheckCircle className="h-4 w-4 mr-2" /> Approve & Send
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -407,8 +865,8 @@ export default function ContractsHub() {
                 <div><span className="text-muted-foreground">Candidate</span><p className="font-medium">{selectedContract.candidateName || "—"}</p></div>
                 <div><span className="text-muted-foreground">Role</span><p>{selectedContract.candidateRole || "—"}</p></div>
                 <div><span className="text-muted-foreground">Status</span>
-                  <Badge className={`text-xs mt-0.5 ${STATUS_COLORS[selectedContract.status]}`}>
-                    {STATUS_LABELS[selectedContract.status]}
+                  <Badge className={`text-xs mt-0.5 ${STATUS_COLORS[selectedContract.status] || "bg-slate-100 text-slate-700"}`}>
+                    {STATUS_LABELS[selectedContract.status] || selectedContract.status}
                   </Badge>
                 </div>
                 <div><span className="text-muted-foreground">Start Date</span><p>{selectedContract.contractStartDate ? new Date(selectedContract.contractStartDate).toLocaleDateString() : "—"}</p></div>
@@ -424,12 +882,56 @@ export default function ContractsHub() {
                   <p className="mt-0.5 text-slate-700 whitespace-pre-wrap">{selectedContract.notes}</p>
                 </div>
               )}
+              {(selectedContract as any).rejectionReason && (
+                <div className="bg-red-50 border border-red-200 rounded p-3">
+                  <p className="text-xs text-muted-foreground">Rejection Reason</p>
+                  <p className="text-sm text-red-800">{(selectedContract as any).rejectionReason}</p>
+                </div>
+              )}
               {selectedContract.authCode && (
                 <div className="bg-green-50 border border-green-200 rounded p-3">
                   <p className="text-xs text-muted-foreground">Verification Auth Code</p>
                   <p className="font-mono font-bold text-green-800">{selectedContract.authCode}</p>
                 </div>
               )}
+              {(selectedContract as any).dispatchRecipientEmail && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Sent To</p>
+                  <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 rounded-full px-3 py-1">
+                    <Send className="h-3 w-3" />
+                    {(selectedContract as any).dispatchRecipientEmail}
+                  </span>
+                </div>
+              )}
+              {(() => {
+                const cc: CcRecipient[] = (selectedContract as any).ccRecipients || [];
+                if (!cc.length) return null;
+                return (
+                  <div data-testid="contract-cc-recipients">
+                    <p className="text-xs text-muted-foreground mb-1.5">CC'd Recipients</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {cc.map((r, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 text-xs rounded-full px-3 py-1 border border-slate-200 bg-white"
+                          data-testid={`cc-chip-${i}`}
+                        >
+                          {r.source === "external" ? (
+                            <Globe className="h-3 w-3 text-amber-500" />
+                          ) : (
+                            <User className="h-3 w-3 text-slate-400" />
+                          )}
+                          <span className="font-medium">{r.name || r.email}</span>
+                          {r.name && <span className="text-muted-foreground">·&nbsp;{r.email}</span>}
+                          {r.source === "external" && (
+                            <span className="text-amber-600 text-[10px]">ext</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <DialogFooter>
               {(selectedContract.docxPath || selectedContract.uploadedDocPath) && (

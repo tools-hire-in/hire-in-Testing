@@ -7,6 +7,8 @@ export interface CandidateEntry {
   startDate: string;
   location: string;
   engagementType: string;
+  hiresInFees?: string;
+  hiresInFee?: string;
 }
 
 // Extracts all {{PLACEHOLDER}} tags from a DOCX buffer.

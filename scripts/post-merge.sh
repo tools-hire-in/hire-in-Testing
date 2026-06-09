@@ -16,3 +16,8 @@ if echo "$PUSH_OUTPUT" | grep -qiE "drop column|drop table"; then
   echo "Aborting post-merge setup. Manual intervention required."
   exit 1
 fi
+
+# Seed the 22nd Century Healthcare SSA contract template (idempotent).
+# This ensures prod deployments have the template even before the first server restart.
+echo "Seeding contract templates..."
+npx tsx server/contractTemplateSeed.ts || echo "[post-merge] Seeder note: will be applied on next server startup (non-fatal)"

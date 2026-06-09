@@ -1286,6 +1286,7 @@ export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
 
 export const contractStatusEnum = pgEnum("contract_status", [
   "draft",
+  "pending_dispatch_approval",
   "sent",
   "client_signed",
   "countersigned",
@@ -1329,6 +1330,8 @@ export const contractTemplates = pgTable("contract_templates", {
   clientId: varchar("client_id").references(() => contractClients.id),
   uploadedBy: varchar("uploaded_by").references(() => adminUsers.id),
   usageCount: integer("usage_count").notNull().default(0),
+  // Marks this as the default template for its associated client
+  isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1357,6 +1360,8 @@ export const contracts = pgTable("contracts", {
   notes: text("notes"),
   status: contractStatusEnum("status").notNull().default("draft"),
   signingToken: varchar("signing_token").unique(),
+  referenceNumber: varchar("reference_number").unique(),
+  signedAt: timestamp("signed_at"),
   documentHash: varchar("document_hash"),
   authCode: varchar("auth_code"),
   clientSignedAt: timestamp("client_signed_at"),
@@ -1364,6 +1369,11 @@ export const contracts = pgTable("contracts", {
   countersignedBy: varchar("countersigned_by").references(() => adminUsers.id),
   countersignedAt: timestamp("countersigned_at"),
   sentAt: timestamp("sent_at"),
+  // Dispatch workflow fields
+  ccRecipients: jsonb("cc_recipients").default(sql`'[]'::jsonb`),
+  rejectionReason: text("rejection_reason"),
+  dispatchMethod: varchar("dispatch_method"), // esign_link | presigned_pdf | both
+  dispatchRecipientEmail: varchar("dispatch_recipient_email"), // stored at request-for-approval time
   createdBy: varchar("created_by").references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1406,6 +1416,8 @@ export const insertContractSchema = createInsertSchema(contracts).omit({
   createdAt: true,
   updatedAt: true,
   signingToken: true,
+  referenceNumber: true,
+  signedAt: true,
   documentHash: true,
   authCode: true,
   clientSignedAt: true,

@@ -289,40 +289,52 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // Send (or resend) contract for client signing
-  app.post("/api/contracts/:id/send", requireRole("hr", "operations"), async (req, res) => {
+  // Send (or resend) contract for client signing — routes through DocumentDispatchService.
+  // super_admin: direct dispatch (esign_link); all other roles: request approval.
+  app.post("/api/contracts/:id/send", requireRole("super_admin", "hr", "operations"), async (req, res) => {
     try {
       const contract = await dbStorage.getContract(req.params.id);
       if (!contract) return res.status(404).json({ error: "Not found" });
       if (contract.source === "imported") return res.status(400).json({ error: "Imported contracts do not use the signing workflow" });
-      if (!["draft", "sent"].includes(contract.status)) {
-        return res.status(400).json({ error: `Cannot send: contract status is '${contract.status}'. Only draft or sent contracts can be (re)sent.` });
+      if (!["draft", "sent", "pending_dispatch_approval"].includes(contract.status)) {
+        return res.status(400).json({ error: `Cannot send: contract status is '${contract.status}'` });
       }
 
-      const token = generateToken();
+      const role = req.session!.role;
+      const isSuperAdmin = role === "super_admin" || role === "architect";
       const appBase = process.env.APP_URL || `https://${req.headers.host}`;
-      const signingUrl = `${appBase}/contracts/sign/${token}`;
-
-      await dbStorage.updateContract(contract.id, {
-        signingToken: token,
-        status: "sent",
-        sentAt: new Date(),
-      });
-
       const clientEmail = req.body.clientEmail || (contract.clientId
         ? (await dbStorage.getContractClient(contract.clientId))?.email
-        : null);
+        : undefined) || undefined;
 
-      if (clientEmail) {
-        await sendContractSigningEmail({
-          to: clientEmail,
-          clientName: contract.clientName,
-          candidateName: contract.candidateName || undefined,
-          signingUrl,
+      if (isSuperAdmin) {
+        const { directDispatch } = await import("./documentDispatch");
+        const result = await directDispatch({
+          documentType: "contract",
+          documentId: req.params.id,
+          deliveryMethod: "esign_link",
+          approvedBy: req.session!.userId,
+          approvedByName: (req.session as any).name || role,
+          approvedByEmail: (req.session as any).email || "",
+          recipientEmail: clientEmail,
+          ccRecipients: [],
+          appBase,
         });
+        if (!result.success) return res.status(500).json({ error: result.error });
+        return res.json({ success: true, signingUrl: result.signingUrl });
+      } else {
+        const { requestDispatch } = await import("./documentDispatch");
+        const result = await requestDispatch({
+          documentType: "contract",
+          documentId: req.params.id,
+          requestedBy: req.session!.userId,
+          recipientEmail: clientEmail,
+          ccRecipients: [],
+          note: "Submitted via send action",
+        });
+        if (!result.success) return res.status(500).json({ error: result.error });
+        return res.json({ success: true, pendingApproval: true });
       }
-
-      res.json({ success: true, signingUrl });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -354,19 +366,44 @@ export function registerContractRoutes(app: Express) {
       if (!contract) return res.status(404).json({ error: "Not found" });
       if (contract.status !== "sent") return res.status(400).json({ error: "Already signed or cancelled" });
 
-      const authCode = generateAuthCode();
-      const hashInput = `${contract.id}:${contract.clientName}:${new Date().toISOString()}`;
-      const documentHash = computeHash(hashInput);
+      const signedAt = new Date();
+
+      if (contract.authCode && contract.documentHash) {
+        // Contract was pre-signed at dispatch time (presigned_pdf or both delivery method).
+        // Reuse the existing cryptographic artifacts — do NOT re-sign with a new timestamp
+        // as that would invalidate verification details already sent to the recipient.
+        await dbStorage.updateContract(contract.id, {
+          status: "client_signed",
+          clientSignedAt: signedAt,
+          clientSignedIp: req.ip || "",
+        });
+        return res.json({ success: true, authCode: contract.authCode, referenceNumber: contract.referenceNumber });
+      }
+
+      // esign_link flow: sign now using the client's execution timestamp
+      const { signContract } = await import("./documentSigningService");
+      const sigResult = signContract({
+        id: contract.id,
+        clientName: contract.clientName,
+        templateName: contract.templateName,
+        agreementDate: contract.agreementDate,
+        billingFrequency: contract.billingFrequency,
+        paymentTermsDays: contract.paymentTermsDays,
+        candidates: contract.candidates,
+        signedAt,
+      });
 
       await dbStorage.updateContract(contract.id, {
         status: "client_signed",
-        clientSignedAt: new Date(),
+        clientSignedAt: signedAt,
+        signedAt,
         clientSignedIp: req.ip || "",
-        authCode,
-        documentHash,
+        authCode: sigResult.authCode,
+        documentHash: sigResult.documentHash,
+        referenceNumber: sigResult.refNumber,
       });
 
-      res.json({ success: true, authCode });
+      res.json({ success: true, authCode: sigResult.authCode, referenceNumber: sigResult.refNumber });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -451,6 +488,154 @@ export function registerContractRoutes(app: Express) {
     try {
       await dbStorage.deleteContractInvoice(req.params.id);
       res.status(204).send();
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── DOCUMENT DISPATCH WORKFLOW ──────────────────────────────────────────────
+
+  // POST /api/contracts/:id/dispatch
+  // super_admin / architect: direct dispatch with delivery method choice
+  // all other roles: request approval (sets pending_dispatch_approval)
+  app.post("/api/contracts/:id/dispatch", requireRole("super_admin", "admin", "hr", "operations", "manager", "architect"), async (req, res) => {
+    try {
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Contract not found" });
+      if (!["draft", "sent", "pending_dispatch_approval"].includes(contract.status)) {
+        return res.status(400).json({ error: `Cannot dispatch: contract status is '${contract.status}'` });
+      }
+
+      const role = req.session!.role;
+      const isSuperAdmin = role === "super_admin" || role === "architect";
+      const { deliveryMethod, recipientEmail, ccRecipients, note } = req.body;
+
+      if (isSuperAdmin) {
+        const method = deliveryMethod || "esign_link";
+        if (!["esign_link", "presigned_pdf", "both"].includes(method)) {
+          return res.status(400).json({ error: "Invalid delivery method. Use: esign_link | presigned_pdf | both" });
+        }
+
+        const { directDispatch } = await import("./documentDispatch");
+        const appBase = process.env.APP_URL || `https://${req.headers.host}`;
+
+        const dispatcherUser = await dbStorage.getAdminUser(req.session!.userId);
+        const dispatcherName = dispatcherUser ? `${dispatcherUser.firstName} ${dispatcherUser.lastName}` : "Admin";
+        const dispatcherEmail = dispatcherUser?.email || "noreply@hirein.com";
+
+        const result = await directDispatch({
+          documentType: "contract",
+          documentId: req.params.id,
+          deliveryMethod: method,
+          approvedBy: req.session!.userId,
+          approvedByName: dispatcherName,
+          approvedByEmail: dispatcherEmail,
+          recipientEmail,
+          ccRecipients: ccRecipients || [],
+          appBase,
+        });
+
+        if (!result.success) return res.status(500).json({ error: result.error });
+
+        await dbStorage.updateContract(req.params.id, {
+          ccRecipients: (ccRecipients || []) as any,
+          dispatchMethod: method,
+        } as any);
+
+        return res.json({ success: true, signingUrl: result.signingUrl });
+      } else {
+        const { requestDispatch } = await import("./documentDispatch");
+        const result = await requestDispatch({
+          documentType: "contract",
+          documentId: req.params.id,
+          requestedBy: req.session!.userId,
+          ccRecipients: ccRecipients || [],
+          note,
+          recipientEmail: recipientEmail || undefined,
+        });
+
+        if (!result.success) return res.status(500).json({ error: result.error });
+
+        return res.json({ success: true, message: "Dispatch request submitted for approval" });
+      }
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/contracts/:id/dispatch/approve — super_admin/architect only
+  app.post("/api/contracts/:id/dispatch/approve", requireRole("super_admin", "architect"), async (req, res) => {
+    try {
+      const role = req.session!.role;
+      if (role !== "super_admin" && role !== "architect") {
+        return res.status(403).json({ error: "Only super_admin or architect can approve dispatch requests" });
+      }
+
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Contract not found" });
+      if (contract.status !== "pending_dispatch_approval") {
+        return res.status(400).json({ error: `Contract is not pending dispatch approval (status: ${contract.status})` });
+      }
+
+      const { deliveryMethod, recipientEmail } = req.body;
+      const method = deliveryMethod || "esign_link";
+
+      const { directDispatch } = await import("./documentDispatch");
+      const appBase = process.env.APP_URL || `https://${req.headers.host}`;
+      const dispatcherUser = await dbStorage.getAdminUser(req.session!.userId);
+      const dispatcherName = dispatcherUser ? `${dispatcherUser.firstName} ${dispatcherUser.lastName}` : "Admin";
+      const dispatcherEmail = dispatcherUser?.email || "noreply@hirein.com";
+
+      // Fall back to the recipient email stored at request-for-approval time if approver
+      // didn't override it in the approval modal (ensures dispatch works even when the
+      // client master record has no email address).
+      const resolvedRecipientEmail = recipientEmail || (contract as any).dispatchRecipientEmail || undefined;
+
+      const result = await directDispatch({
+        documentType: "contract",
+        documentId: req.params.id,
+        deliveryMethod: method,
+        approvedBy: req.session!.userId,
+        approvedByName: dispatcherName,
+        approvedByEmail: dispatcherEmail,
+        recipientEmail: resolvedRecipientEmail,
+        ccRecipients: (contract.ccRecipients as any) || [],
+        appBase,
+      });
+
+      if (!result.success) return res.status(500).json({ error: result.error });
+      res.json({ success: true, signingUrl: result.signingUrl });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/contracts/:id/dispatch/reject — super_admin/architect only
+  app.post("/api/contracts/:id/dispatch/reject", requireRole("super_admin", "architect"), async (req, res) => {
+    try {
+      const role = req.session!.role;
+      if (role !== "super_admin" && role !== "architect") {
+        return res.status(403).json({ error: "Only super_admin or architect can reject dispatch requests" });
+      }
+
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Contract not found" });
+
+      const { reason } = req.body;
+      if (!reason?.trim()) return res.status(400).json({ error: "Rejection reason required" });
+
+      const { rejectDispatch } = await import("./documentDispatch");
+      const result = await rejectDispatch({
+        documentType: "contract",
+        documentId: req.params.id,
+        rejectedBy: req.session!.userId,
+        reason,
+      });
+
+      if (!result.success) return res.status(500).json({ error: result.error });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/contracts/pending-dispatch — list pending_dispatch_approval contracts
+  app.get("/api/contracts/pending-dispatch", requireAuth, async (req, res) => {
+    try {
+      const list = await dbStorage.getContracts({ status: "pending_dispatch_approval" });
+      res.json(list);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 }

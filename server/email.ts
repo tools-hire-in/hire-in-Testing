@@ -1628,3 +1628,87 @@ export async function sendPraiseEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendContractDispatchEmail(options: {
+  to: string;
+  clientName: string;
+  deliveryMethod: "esign_link" | "presigned_pdf" | "both";
+  signingUrl?: string;
+  refNumber?: string;
+  authCode?: string;
+  approvedByName: string;
+  approvedByEmail: string;
+  ccRecipients?: string[];
+  pdfBuffer?: Buffer;
+  contractDocxBuffer?: Buffer; // actual contract content — attached when available
+}) {
+  try {
+    const { client } = await getUncachableSendGridClient();
+
+    const attachments: any[] = [];
+    if (options.pdfBuffer) {
+      attachments.push({
+        content: options.pdfBuffer.toString("base64"),
+        filename: `Contract_${options.clientName.replace(/\s+/g, "_")}_Verification.pdf`,
+        type: "application/pdf",
+        disposition: "attachment",
+      });
+    }
+    // Attach the original contract DOCX so the recipient receives the full contract text
+    if (options.contractDocxBuffer) {
+      attachments.push({
+        content: options.contractDocxBuffer.toString("base64"),
+        filename: `Contract_${options.clientName.replace(/\s+/g, "_")}.docx`,
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        disposition: "attachment",
+      });
+    }
+
+    const signingSection = options.signingUrl
+      ? `<div style="text-align: center; margin: 24px 0;"><a href="${options.signingUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">Review & Sign Contract</a></div>`
+      : "";
+
+    const verifySection = (options.refNumber && options.authCode)
+      ? `<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;"><p style="color: #166534; font-weight: 600; margin: 0 0 8px;">Document Verification Details</p><p style="color: #374151; font-size: 13px; margin: 0 0 4px;">Reference: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${options.refNumber}</code></p><p style="color: #374151; font-size: 13px; margin: 0;">Auth Code: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${options.authCode}</code></p><p style="color: #6b7280; font-size: 12px; margin: 8px 0 0;">Verify authenticity at <a href="https://hire-in.com/verify" style="color: #1F3A6E;">hire-in.com/verify</a></p></div>`
+      : "";
+
+    const msg: any = {
+      to: options.to,
+      from: { email: `noreply@hirein.com`, name: options.approvedByName },
+      replyTo: { email: options.approvedByEmail, name: options.approvedByName },
+      subject: `Staffing Services Agreement — ${options.clientName}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #2563eb 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Solutions</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Staffing Services Agreement</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Dear ${options.clientName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please find your Staffing Services Agreement attached${options.signingUrl ? " and the link below to review and sign online" : ""}.
+            </p>
+            ${signingSection}
+            ${verifySection}
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.clientName},\n\nPlease find your Staffing Services Agreement attached.${options.signingUrl ? `\n\nSign online: ${options.signingUrl}` : ""}${options.refNumber ? `\n\nRef: ${options.refNumber}\nAuth: ${options.authCode}\nVerify at: hire-in.com/verify` : ""}${SIGNOFF_TEXT}`,
+      attachments,
+    };
+
+    if (options.ccRecipients && options.ccRecipients.length > 0) {
+      msg.cc = options.ccRecipients;
+    }
+
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send contract dispatch email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
