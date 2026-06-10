@@ -290,12 +290,46 @@ export function LetterGenerator() {
     return map;
   }, [departments]);
 
+  async function pushAnnexureGoals(
+    referenceNumber: string,
+    employeeId: string,
+    startDate: string,
+    currentAnnexures: AnnexureItem[]
+  ) {
+    const goalsToCreate: { title: string; description?: string; startDate?: string; targetDate?: string }[] = [];
+    for (const ann of currentAnnexures) {
+      if (!ann.table || !ann.goalPush?.enabled || ann.goalPush.selectedRows.length === 0) continue;
+      for (const rowIdx of ann.goalPush.selectedRows) {
+        const row = ann.table.rows[rowIdx];
+        if (!row || !row[0].trim()) continue;
+        goalsToCreate.push({
+          title: row[0].trim(),
+          description: row[1]?.trim() || undefined,
+          startDate: startDate || undefined,
+          targetDate: ann.goalPush.dueDate || undefined,
+        });
+      }
+    }
+    if (goalsToCreate.length === 0) return;
+    try {
+      await apiRequest("POST", "/api/performance/goals/batch", {
+        employeeId,
+        sourceRef: referenceNumber,
+        goals: goalsToCreate,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/performance/goals"] });
+      toast({ title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`, description: `Linked to addendum ${referenceNumber}` });
+    } catch {
+      toast({ title: "Goals could not be pushed", description: "Addendum was created. Goals may need to be added manually.", variant: "destructive" });
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/hr/letters", data);
       return res.json() as Promise<{ id: string; referenceNumber?: string; templateType?: string }>;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       const isAmendment = data.templateType && (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(data.templateType);
       if (isAmendment && data.id) {
         const link = document.createElement("a");
@@ -304,6 +338,14 @@ export function LetterGenerator() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+      }
+      if (isAmendment && data.referenceNumber && !isManualEntry && form.employeeId) {
+        await pushAnnexureGoals(
+          data.referenceNumber,
+          form.employeeId,
+          amendmentMeta.effectiveDate,
+          annexures
+        );
       }
       toast({ title: "Letter created", description: isAmendment ? "DOCX downloaded successfully." : "Letter has been generated successfully." });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
@@ -1088,7 +1130,7 @@ export function LetterGenerator() {
               </>
             )}
 
-            <AnnexureEditor annexures={annexures} onChange={setAnnexures} />
+            <AnnexureEditor annexures={annexures} onChange={setAnnexures} effectiveDate={amendmentMeta.effectiveDate || undefined} />
           </div>
         )}
 

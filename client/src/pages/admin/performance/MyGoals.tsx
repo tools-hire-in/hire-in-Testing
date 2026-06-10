@@ -68,6 +68,7 @@ interface PerformanceGoal {
   status: string;
   successCriteria: string | null;
   rayoAcademyTrackId: string | null;
+  sourceRef: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -538,6 +539,11 @@ function GoalCard({
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Weight className="h-3 w-3" /> Weight: {goal.weight}
               </span>
+              {goal.sourceRef && (
+                <Badge variant="outline" className="text-[10px] h-5 border-amber-300 text-amber-700 bg-amber-50" data-testid={`badge-goal-source-${goal.id}`}>
+                  Source: Addendum {goal.sourceRef}
+                </Badge>
+              )}
             </div>
 
             <div className="space-y-1.5">

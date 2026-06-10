@@ -1551,9 +1551,42 @@ export function OfferLettersDashboard() {
       };
       const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${addendumDialog.id}/addendums`, payload);
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      const addendumResult = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters", addendumDialog.id, "addendums"] });
       setExpandedOfferIds(prev => { const next = new Set(prev); next.add(addendumDialog.id); return next; });
       toast({ title: "Addendum created and sent!", description: "The candidate has been emailed a link to sign." });
+
+      const employeeId = addendumDialog.resultingUserId;
+      const referenceNumber = addendumResult?.referenceNumber || addendumResult?.id;
+      if (employeeId && referenceNumber && addendumAnnexures.length > 0) {
+        const goalsToCreate: { title: string; description?: string; startDate?: string; targetDate?: string }[] = [];
+        for (const ann of addendumAnnexures) {
+          if (!ann.table || !ann.goalPush?.enabled || ann.goalPush.selectedRows.length === 0) continue;
+          for (const rowIdx of ann.goalPush.selectedRows) {
+            const row = ann.table.rows[rowIdx];
+            if (!row || !row[0].trim()) continue;
+            goalsToCreate.push({
+              title: row[0].trim(),
+              description: row[1]?.trim() || undefined,
+              startDate: addendumForm.effectiveDate || undefined,
+              targetDate: ann.goalPush.dueDate || undefined,
+            });
+          }
+        }
+        if (goalsToCreate.length > 0) {
+          try {
+            await apiRequest("POST", "/api/performance/goals/batch", {
+              employeeId,
+              sourceRef: referenceNumber,
+              goals: goalsToCreate,
+            });
+            toast({ title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`, description: `Linked to addendum ${referenceNumber}` });
+          } catch {
+            toast({ title: "Goals could not be pushed", description: "Addendum was created. Goals may need to be added manually.", variant: "destructive" });
+          }
+        }
+      }
+
       setAddendumDialog(null);
       resetAddendumForm();
     } catch (err: any) {
@@ -2480,7 +2513,7 @@ export function OfferLettersDashboard() {
             </div>
 
             {/* Annexures */}
-            <AnnexureEditor annexures={addendumAnnexures} onChange={setAddendumAnnexures} />
+            <AnnexureEditor annexures={addendumAnnexures} onChange={setAddendumAnnexures} effectiveDate={addendumForm.effectiveDate || undefined} />
 
             {/* Preview */}
             {addendumForm.effectiveDate && (

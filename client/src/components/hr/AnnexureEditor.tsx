@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Plus, Trash2, Table2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Table2, ChevronDown, ChevronUp, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface AnnexureTable {
   col1Header: string;
@@ -12,10 +14,17 @@ export interface AnnexureTable {
   rows: [string, string][];
 }
 
+export interface AnnexureGoalPush {
+  enabled: boolean;
+  dueDate: string;
+  selectedRows: number[];
+}
+
 export interface AnnexureItem {
   title: string;
   body: string;
   table?: AnnexureTable;
+  goalPush?: AnnexureGoalPush;
 }
 
 const LABELS = ["A", "B", "C", "D", "E"];
@@ -24,6 +33,13 @@ const MAX_ANNEXURES = 5;
 interface AnnexureEditorProps {
   annexures: AnnexureItem[];
   onChange: (annexures: AnnexureItem[]) => void;
+  effectiveDate?: string;
+}
+
+function defaultGoalDueDate(effectiveDate?: string): string {
+  const base = effectiveDate ? new Date(effectiveDate) : new Date();
+  base.setDate(base.getDate() + 90);
+  return base.toISOString().split("T")[0];
 }
 
 function TableEditor({
@@ -31,11 +47,17 @@ function TableEditor({
   onChange,
   onRemove,
   annexureIdx,
+  goalPush,
+  onGoalPushChange,
+  effectiveDate,
 }: {
   table: AnnexureTable;
   onChange: (t: AnnexureTable) => void;
   onRemove: () => void;
   annexureIdx: number;
+  goalPush?: AnnexureGoalPush;
+  onGoalPushChange: (gp: AnnexureGoalPush | undefined) => void;
+  effectiveDate?: string;
 }) {
   function updateHeader(col: 1 | 2, value: string) {
     onChange({ ...table, [`col${col}Header`]: value });
@@ -53,7 +75,14 @@ function TableEditor({
   }
 
   function removeRow(rowIdx: number) {
-    onChange({ ...table, rows: table.rows.filter((_, i) => i !== rowIdx) });
+    const newRows = table.rows.filter((_, i) => i !== rowIdx);
+    onChange({ ...table, rows: newRows });
+    if (goalPush) {
+      const newSelected = goalPush.selectedRows
+        .filter(i => i !== rowIdx)
+        .map(i => (i > rowIdx ? i - 1 : i));
+      onGoalPushChange({ ...goalPush, selectedRows: newSelected });
+    }
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
@@ -68,7 +97,6 @@ function TableEditor({
       })
       .filter(r => r[0] || r[1]);
     if (parsed.length === 0) return;
-    // If the first row looks like headers (no existing headers set), use as headers
     let newHeaders = { col1Header: table.col1Header, col2Header: table.col2Header };
     let dataRows = parsed;
     if (!table.col1Header && !table.col2Header && parsed.length > 1) {
@@ -77,6 +105,29 @@ function TableEditor({
     }
     onChange({ ...newHeaders, rows: [...table.rows, ...dataRows] });
   }
+
+  function toggleGoalPush(enabled: boolean) {
+    if (enabled) {
+      onGoalPushChange({
+        enabled: true,
+        dueDate: defaultGoalDueDate(effectiveDate),
+        selectedRows: table.rows.map((_, i) => i),
+      });
+    } else {
+      onGoalPushChange(undefined);
+    }
+  }
+
+  function toggleRowSelection(rowIdx: number, checked: boolean) {
+    if (!goalPush) return;
+    const newSelected = checked
+      ? [...goalPush.selectedRows, rowIdx].sort((a, b) => a - b)
+      : goalPush.selectedRows.filter(i => i !== rowIdx);
+    onGoalPushChange({ ...goalPush, selectedRows: newSelected });
+  }
+
+  const hasRows = table.rows.length > 0;
+  const rowsWithContent = table.rows.filter(r => r[0].trim());
 
   return (
     <div
@@ -132,6 +183,15 @@ function TableEditor({
         <div className="space-y-1">
           {table.rows.map((row, rowIdx) => (
             <div key={rowIdx} className="flex items-center gap-1" data-testid={`table-row-${annexureIdx}-${rowIdx}`}>
+              {goalPush && (
+                <Checkbox
+                  checked={goalPush.selectedRows.includes(rowIdx)}
+                  onCheckedChange={(checked) => toggleRowSelection(rowIdx, !!checked)}
+                  disabled={!row[0].trim()}
+                  data-testid={`checkbox-goal-row-${annexureIdx}-${rowIdx}`}
+                  className="shrink-0"
+                />
+              )}
               <Input
                 value={row[0]}
                 onChange={e => updateRow(rowIdx, 0, e.target.value)}
@@ -177,11 +237,54 @@ function TableEditor({
       >
         <Plus className="h-3 w-3 mr-1" /> Add Row
       </Button>
+
+      {/* Push to goals toggle — only shown when rows with content exist */}
+      {rowsWithContent.length > 0 && (
+        <div className="border-t pt-2 mt-1 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Target className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-800">Push rows to performance goals</span>
+            </div>
+            <Switch
+              checked={!!goalPush?.enabled}
+              onCheckedChange={toggleGoalPush}
+              data-testid={`switch-push-goals-${annexureIdx}`}
+            />
+          </div>
+
+          {goalPush?.enabled && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2 space-y-2">
+              <p className="text-[11px] text-emerald-700">
+                Col 1 → goal title · Col 2 → description. Deselect rows to skip them.
+              </p>
+              <div className="flex items-center gap-2">
+                <Label className="text-[11px] text-muted-foreground whitespace-nowrap">Due date</Label>
+                <Input
+                  type="date"
+                  value={goalPush.dueDate}
+                  onChange={e => onGoalPushChange({ ...goalPush, dueDate: e.target.value })}
+                  className="h-6 text-xs flex-1"
+                  data-testid={`input-goal-due-date-${annexureIdx}`}
+                />
+              </div>
+              {goalPush.selectedRows.length === 0 && (
+                <p className="text-[11px] text-amber-600">No rows selected — select at least one row above.</p>
+              )}
+              {goalPush.selectedRows.length > 0 && (
+                <p className="text-[11px] text-emerald-700 font-medium">
+                  {goalPush.selectedRows.length} goal{goalPush.selectedRows.length > 1 ? "s" : ""} will be created on generation.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-export function AnnexureEditor({ annexures, onChange }: AnnexureEditorProps) {
+export function AnnexureEditor({ annexures, onChange, effectiveDate }: AnnexureEditorProps) {
   const [expandedTables, setExpandedTables] = useState<Set<number>>(new Set());
 
   function addAnnexure() {
@@ -212,7 +315,7 @@ export function AnnexureEditor({ annexures, onChange }: AnnexureEditorProps) {
   function removeTable(idx: number) {
     onChange(annexures.map((ann, i) => {
       if (i !== idx) return ann;
-      const { table: _t, ...rest } = ann;
+      const { table: _t, goalPush: _gp, ...rest } = ann;
       return rest;
     }));
     setExpandedTables(prev => { const next = new Set(prev); next.delete(idx); return next; });
@@ -220,6 +323,17 @@ export function AnnexureEditor({ annexures, onChange }: AnnexureEditorProps) {
 
   function updateTable(idx: number, table: AnnexureTable) {
     onChange(annexures.map((ann, i) => i === idx ? { ...ann, table } : ann));
+  }
+
+  function updateGoalPush(idx: number, goalPush: AnnexureGoalPush | undefined) {
+    onChange(annexures.map((ann, i) => {
+      if (i !== idx) return ann;
+      if (!goalPush) {
+        const { goalPush: _gp, ...rest } = ann;
+        return rest;
+      }
+      return { ...ann, goalPush };
+    }));
   }
 
   function toggleTable(idx: number) {
@@ -308,6 +422,12 @@ export function AnnexureEditor({ annexures, onChange }: AnnexureEditorProps) {
                   >
                     <Table2 className="h-3 w-3" />
                     Table
+                    {ann.goalPush?.enabled && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">
+                        <Target className="h-2.5 w-2.5" />
+                        {ann.goalPush.selectedRows.length} goal{ann.goalPush.selectedRows.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
                     {expandedTables.has(idx)
                       ? <ChevronUp className="h-3 w-3" />
                       : <ChevronDown className="h-3 w-3" />}
@@ -318,6 +438,9 @@ export function AnnexureEditor({ annexures, onChange }: AnnexureEditorProps) {
                       onChange={t => updateTable(idx, t)}
                       onRemove={() => removeTable(idx)}
                       annexureIdx={idx}
+                      goalPush={ann.goalPush}
+                      onGoalPushChange={gp => updateGoalPush(idx, gp)}
+                      effectiveDate={effectiveDate}
                     />
                   )}
                 </div>

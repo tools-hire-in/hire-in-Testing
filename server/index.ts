@@ -83,6 +83,14 @@ async function ensurePerformanceTables() {
     console.error("performance_goals rayo_academy_track_id column migration error:", err);
   }
 
+  // Ensure source_ref column exists on performance_goals (for addendum goal traceability)
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS source_ref varchar`);
+    log("Ensured source_ref column exists on performance_goals");
+  } catch (err) {
+    console.error("performance_goals source_ref column migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables

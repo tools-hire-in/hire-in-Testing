@@ -61,6 +61,7 @@ interface PerformanceGoal {
   progress: number;
   status: string;
   successCriteria: string | null;
+  sourceRef: string | null;
   createdAt: string;
 }
 
@@ -446,7 +447,7 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
                       <span className="text-xs font-medium w-10 text-right">{goal.progress}%</span>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         Due {formatDate(goal.targetDate)}
@@ -458,6 +459,11 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
                       <Badge variant="outline" className="text-[10px] h-5">
                         {CATEGORY_LABELS[goal.category] || goal.category}
                       </Badge>
+                      {goal.sourceRef && (
+                        <Badge variant="outline" className="text-[10px] h-5 border-amber-300 text-amber-700 bg-amber-50" data-testid={`badge-team-goal-source-${goal.id}`}>
+                          Source: Addendum {goal.sourceRef}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 ))}

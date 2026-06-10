@@ -169,6 +169,7 @@ export function registerPerformanceRoutes(app: Express) {
           progress: g.progress,
           status: g.status,
           successCriteria: g.successCriteria,
+          sourceRef: g.sourceRef,
           createdAt: g.createdAt,
         })),
       }));
@@ -223,6 +224,57 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error creating goal:", error);
       res.status(500).json({ error: "Failed to create goal" });
+    }
+  });
+
+  // Batch create goals from annexure rows
+  app.post("/api/performance/goals/batch", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+
+    try {
+      const { employeeId, goals: goalItems, sourceRef } = req.body as {
+        employeeId: string;
+        sourceRef: string;
+        goals: { title: string; description?: string; startDate?: string; targetDate?: string }[];
+      };
+
+      if (!employeeId) return res.status(400).json({ error: "employeeId is required" });
+      if (!Array.isArray(goalItems) || goalItems.length === 0) return res.status(400).json({ error: "goals array is required" });
+      if (!sourceRef) return res.status(400).json({ error: "sourceRef is required" });
+
+      // Authorization: admin/hr/super_admin can push for any employee;
+      // managers can only push for their direct reports.
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getTeamMemberIds(userId);
+        if (!teamIds.includes(employeeId)) {
+          return res.status(403).json({ error: "Not authorized to create goals for this employee" });
+        }
+      }
+
+      const inserted = await db.insert(performanceGoals).values(
+        goalItems.map(g => ({
+          employeeId,
+          managerId: userId,
+          title: g.title,
+          description: g.description || null,
+          category: "individual" as const,
+          startDate: g.startDate || null,
+          targetDate: g.targetDate || null,
+          weight: 3,
+          sourceRef,
+        }))
+      ).returning();
+
+      for (const g of inserted) {
+        await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef }, employeeId);
+      }
+
+      res.status(201).json({ created: inserted.length, goals: inserted });
+    } catch (error) {
+      console.error("Error batch creating goals:", error);
+      res.status(500).json({ error: "Failed to create goals" });
     }
   });
 

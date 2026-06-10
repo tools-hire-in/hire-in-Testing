@@ -836,6 +836,7 @@ export const performanceGoals = pgTable("performance_goals", {
   status: performanceGoalStatusEnum("status").notNull().default("not_started"),
   progress: integer("progress").notNull().default(0),
   rayoAcademyTrackId: varchar("rayo_academy_track_id"),
+  sourceRef: varchar("source_ref"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
