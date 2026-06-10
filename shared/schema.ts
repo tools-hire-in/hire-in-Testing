@@ -1116,7 +1116,9 @@ export const offerLetterAddendumStatusEnum = pgEnum("offer_letter_addendum_statu
 
 export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  offerLetterId: varchar("offer_letter_id").notNull().references(() => offerLetters.id),
+  offerLetterId: varchar("offer_letter_id").references(() => offerLetters.id),
+  isStandalone: boolean("is_standalone").notNull().default(false),
+  manualEmployeeData: jsonb("manual_employee_data"),
   token: varchar("token").notNull().unique(),
   addendumType: offerLetterAddendumTypeEnum("addendum_type").notNull(),
   status: offerLetterAddendumStatusEnum("status").notNull().default("draft"),

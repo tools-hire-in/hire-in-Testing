@@ -1480,6 +1480,23 @@ export function OfferLettersDashboard() {
   const [countersigning, setCountersigning] = useState(false);
   const [expandedOfferIds, setExpandedOfferIds] = useState<Set<string>>(new Set());
   const [addendumDialog, setAddendumDialog] = useState<any>(null);
+  const [standaloneDialog, setStandaloneDialog] = useState(false);
+  const [standaloneAnnexures, setStandaloneAnnexures] = useState<AnnexureItem[]>([]);
+  const [standaloneForm, setStandaloneForm] = useState({
+    employeeName: "", employeeEmail: "", employeeDesignation: "",
+    employeeDepartment: "", employeeJoiningDate: "", employeeReportingManager: "",
+    addendumType: "salary_revision", effectiveDate: "", reason: "",
+    hrManagerName: "Alina Carter",
+    oldDesignation: "", newDesignation: "",
+    oldDepartment: "", newDepartment: "",
+    oldSalary: "", newSalary: "",
+    oldSalaryInWords: "", newSalaryInWords: "",
+    oldConfirmationDate: "", newConfirmationDate: "",
+    customClauseTitle: "", customClauseText: "",
+    deviceItems: [] as { description: string; serialNumber: string; assetTag: string; condition: string }[],
+    ccEmails: "",
+  });
+  const [submittingStandalone, setSubmittingStandalone] = useState(false);
   const [addendumForm, setAddendumForm] = useState({
     addendumType: "salary_revision",
     effectiveDate: "",
@@ -1549,6 +1566,48 @@ export function OfferLettersDashboard() {
   const { data: letters, isLoading } = useQuery<any[]>({
     queryKey: ["/api/hr/tools/offer-letters"],
   });
+
+  const { data: standaloneAddendums } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/addendums/standalone"],
+  });
+
+  const resetStandaloneForm = () => {
+    setStandaloneForm({
+      employeeName: "", employeeEmail: "", employeeDesignation: "",
+      employeeDepartment: "", employeeJoiningDate: "", employeeReportingManager: "",
+      addendumType: "salary_revision", effectiveDate: "", reason: "",
+      hrManagerName: "Alina Carter",
+      oldDesignation: "", newDesignation: "",
+      oldDepartment: "", newDepartment: "",
+      oldSalary: "", newSalary: "",
+      oldSalaryInWords: "", newSalaryInWords: "",
+      oldConfirmationDate: "", newConfirmationDate: "",
+      customClauseTitle: "", customClauseText: "",
+      deviceItems: [],
+      ccEmails: "",
+    });
+    setStandaloneAnnexures([]);
+  };
+
+  const handleCreateStandaloneAddendum = async () => {
+    if (!standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate) return;
+    setSubmittingStandalone(true);
+    try {
+      const res = await apiRequest("POST", "/api/hr/tools/addendums/standalone", {
+        ...standaloneForm,
+        annexureData: standaloneAnnexures.length > 0 ? standaloneAnnexures : undefined,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] });
+      toast({ title: "Standalone addendum created and sent!", description: "The employee has been emailed a link to sign." });
+      setStandaloneDialog(false);
+      resetStandaloneForm();
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to create standalone addendum", variant: "destructive" });
+    } finally {
+      setSubmittingStandalone(false);
+    }
+  };
 
   const countersignMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -1655,28 +1714,40 @@ export function OfferLettersDashboard() {
   return (
     <div className="space-y-4">
       {isHrOrAdmin && (
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center justify-between">
+          <div className="flex gap-2 items-center">
+            <Button
+              variant={activeFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveFilter("all")}
+              data-testid="filter-tab-all"
+            >
+              All Letters
+            </Button>
+            <Button
+              variant={activeFilter === "pending_approval" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveFilter("pending_approval")}
+              data-testid="filter-tab-pending"
+              className="relative"
+            >
+              Pending Approval
+              {pendingLetters.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-amber-500 text-white">
+                  {pendingLetters.length}
+                </span>
+              )}
+            </Button>
+          </div>
           <Button
-            variant={activeFilter === "all" ? "default" : "outline"}
             size="sm"
-            onClick={() => setActiveFilter("all")}
-            data-testid="filter-tab-all"
+            variant="outline"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+            onClick={() => { resetStandaloneForm(); setStandaloneDialog(true); }}
+            data-testid="button-new-standalone-addendum"
           >
-            All Letters
-          </Button>
-          <Button
-            variant={activeFilter === "pending_approval" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setActiveFilter("pending_approval")}
-            data-testid="filter-tab-pending"
-            className="relative"
-          >
-            Pending Approval
-            {pendingLetters.length > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-amber-500 text-white">
-                {pendingLetters.length}
-              </span>
-            )}
+            <FilePlus className="h-4 w-4 mr-1" />
+            New Standalone Addendum
           </Button>
         </div>
       )}
@@ -1871,6 +1942,126 @@ export function OfferLettersDashboard() {
                         </tr>
                         {isExpanded && <AddendumSubRow letter={letter} />}
                       </>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {standaloneAddendums && standaloneAddendums.length > 0 && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center gap-2 p-4 border-b">
+              <FilePlus className="h-4 w-4 text-purple-600" />
+              <span className="font-semibold text-sm">Standalone Addendums</span>
+              <Badge variant="secondary" className="ml-1 bg-purple-100 text-purple-800 border-purple-200">
+                Legacy / No Parent Offer Letter
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left p-3 font-medium">Employee</th>
+                    <th className="text-left p-3 font-medium">Type</th>
+                    <th className="text-left p-3 font-medium">Effective Date</th>
+                    <th className="text-left p-3 font-medium">Status</th>
+                    <th className="text-left p-3 font-medium">Issued</th>
+                    <th className="text-left p-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standaloneAddendums.map((addendum: any) => {
+                    const statusInfo = ADDENDUM_STATUS_BADGES[addendum.status] || ADDENDUM_STATUS_BADGES.sent;
+                    return (
+                      <tr key={addendum.id} className="border-b hover:bg-muted/20" data-testid={`row-standalone-${addendum.id}`}>
+                        <td className="p-3">
+                          <div className="font-medium">{addendum.candidateName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {(addendum.manualEmployeeData as any)?.designation || "—"}
+                            {(addendum.manualEmployeeData as any)?.department ? ` · ${(addendum.manualEmployeeData as any).department}` : ""}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium">{ADDENDUM_TYPE_LABELS[addendum.addendumType] || addendum.addendumType}</span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-300 text-purple-700">Standalone</Badge>
+                          </div>
+                        </td>
+                        <td className="p-3 text-muted-foreground">{addendum.effectiveDate || "—"}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
+                            {statusInfo.label}
+                          </span>
+                        </td>
+                        <td className="p-3 text-muted-foreground text-xs">
+                          {addendum.issuedAt ? new Date(addendum.issuedAt).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex gap-1 flex-wrap">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => window.open(`/api/hr/tools/addendums/${addendum.id}/download`, "_blank")}
+                              data-testid={`button-download-standalone-${addendum.id}`}
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              DOCX
+                            </Button>
+                            {addendum.status === "sent" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  onClick={async () => {
+                                    const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/send`);
+                                    if (res.ok) toast({ title: "Addendum email resent" });
+                                    else toast({ title: "Failed to resend", variant: "destructive" });
+                                  }}
+                                  data-testid={`button-resend-standalone-${addendum.id}`}
+                                >
+                                  <RefreshCw className="h-3 w-3 mr-1" />
+                                  Resend
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs text-destructive hover:text-destructive"
+                                  onClick={async () => {
+                                    const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/cancel`);
+                                    if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] }); toast({ title: "Addendum cancelled" }); }
+                                    else toast({ title: "Failed to cancel", variant: "destructive" });
+                                  }}
+                                  data-testid={`button-cancel-standalone-${addendum.id}`}
+                                >
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Cancel
+                                </Button>
+                              </>
+                            )}
+                            {addendum.status === "accepted" && isHrOrAdmin && (
+                              <Button
+                                size="sm"
+                                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
+                                onClick={async () => {
+                                  const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/countersign`);
+                                  if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] }); toast({ title: "Addendum counter-signed" }); }
+                                  else toast({ title: "Failed to counter-sign", variant: "destructive" });
+                                }}
+                                data-testid={`button-countersign-standalone-${addendum.id}`}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Counter-Sign
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -2364,6 +2555,178 @@ export function OfferLettersDashboard() {
               data-testid="button-submit-addendum"
             >
               {submittingAddendum ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Create & Send Addendum
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={standaloneDialog} onOpenChange={(open) => { if (!open) { setStandaloneDialog(false); resetStandaloneForm(); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FilePlus className="h-5 w-5 text-purple-600" />
+              New Standalone Addendum
+            </DialogTitle>
+            <DialogDescription>
+              Issue an addendum for a legacy employee who has no offer letter in the system. Fill in employee details manually and select the amendment type.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="border rounded-lg p-4 space-y-3 bg-purple-50/30 border-purple-100">
+              <h4 className="text-sm font-semibold text-purple-900">Employee Details</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Full Name *</Label>
+                  <Input data-testid="input-standalone-name" className="mt-1" placeholder="e.g. Ravi Kumar" value={standaloneForm.employeeName} onChange={e => setStandaloneForm(f => ({ ...f, employeeName: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Personal Email * <span className="text-muted-foreground font-normal">(acceptance link sent here)</span></Label>
+                  <Input data-testid="input-standalone-email" type="email" className="mt-1" placeholder="ravi.kumar@gmail.com" value={standaloneForm.employeeEmail} onChange={e => setStandaloneForm(f => ({ ...f, employeeEmail: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Current Designation</Label>
+                  <Input data-testid="input-standalone-designation" className="mt-1" placeholder="e.g. Software Engineer" value={standaloneForm.employeeDesignation} onChange={e => setStandaloneForm(f => ({ ...f, employeeDesignation: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Department</Label>
+                  <Input data-testid="input-standalone-department" className="mt-1" placeholder="e.g. Information Technology" value={standaloneForm.employeeDepartment} onChange={e => setStandaloneForm(f => ({ ...f, employeeDepartment: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Joining / Start Date</Label>
+                  <Input data-testid="input-standalone-joining" type="date" className="mt-1" value={standaloneForm.employeeJoiningDate} onChange={e => setStandaloneForm(f => ({ ...f, employeeJoiningDate: e.target.value }))} />
+                </div>
+                <div>
+                  <Label className="text-xs">Reporting Manager</Label>
+                  <Input data-testid="input-standalone-manager" className="mt-1" placeholder="e.g. Priya Sharma" value={standaloneForm.employeeReportingManager} onChange={e => setStandaloneForm(f => ({ ...f, employeeReportingManager: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Addendum Type</Label>
+                <Select value={standaloneForm.addendumType} onValueChange={v => setStandaloneForm(f => ({ ...f, addendumType: v }))}>
+                  <SelectTrigger data-testid="select-standalone-type" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="salary_revision">Salary Revision</SelectItem>
+                    <SelectItem value="role_change">Role / Title Change</SelectItem>
+                    <SelectItem value="probation_extension">Probation Extension</SelectItem>
+                    <SelectItem value="combined">Combined Role & Salary</SelectItem>
+                    <SelectItem value="custom">Custom Amendment</SelectItem>
+                    <SelectItem value="device_allocation">Company Device Allocation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Effective Date *</Label>
+                <Input data-testid="input-standalone-effective-date" type="date" className="mt-1" value={standaloneForm.effectiveDate} onChange={e => setStandaloneForm(f => ({ ...f, effectiveDate: e.target.value }))} />
+              </div>
+            </div>
+
+            {(standaloneForm.addendumType === "salary_revision" || standaloneForm.addendumType === "combined") && (
+              <div className="border rounded-lg p-4 space-y-3 bg-muted/10">
+                <h4 className="text-sm font-semibold text-blue-900">Salary Details</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-xs">Old Annual CTC</Label><Input data-testid="input-standalone-old-salary" className="mt-1" placeholder="e.g. 600000" value={standaloneForm.oldSalary} onChange={e => setStandaloneForm(f => ({ ...f, oldSalary: e.target.value }))} /></div>
+                  <div><Label className="text-xs">New Annual CTC</Label><Input data-testid="input-standalone-new-salary" className="mt-1" placeholder="e.g. 720000" value={standaloneForm.newSalary} onChange={e => setStandaloneForm(f => ({ ...f, newSalary: e.target.value }))} /></div>
+                  <div><Label className="text-xs">Old CTC in Words</Label><Input data-testid="input-standalone-old-salary-words" className="mt-1" placeholder="Six Lakh" value={standaloneForm.oldSalaryInWords} onChange={e => setStandaloneForm(f => ({ ...f, oldSalaryInWords: e.target.value }))} /></div>
+                  <div><Label className="text-xs">New CTC in Words</Label><Input data-testid="input-standalone-new-salary-words" className="mt-1" placeholder="Seven Lakh Twenty Thousand" value={standaloneForm.newSalaryInWords} onChange={e => setStandaloneForm(f => ({ ...f, newSalaryInWords: e.target.value }))} /></div>
+                </div>
+              </div>
+            )}
+
+            {(standaloneForm.addendumType === "role_change" || standaloneForm.addendumType === "combined") && (
+              <div className="border rounded-lg p-4 space-y-3 bg-muted/10">
+                <h4 className="text-sm font-semibold text-blue-900">Role / Title Details</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-xs">Old Designation</Label><Input data-testid="input-standalone-old-designation" className="mt-1" value={standaloneForm.oldDesignation} onChange={e => setStandaloneForm(f => ({ ...f, oldDesignation: e.target.value }))} /></div>
+                  <div><Label className="text-xs">New Designation</Label><Input data-testid="input-standalone-new-designation" className="mt-1" value={standaloneForm.newDesignation} onChange={e => setStandaloneForm(f => ({ ...f, newDesignation: e.target.value }))} /></div>
+                  <div><Label className="text-xs">Old Department</Label><Input data-testid="input-standalone-old-department" className="mt-1" value={standaloneForm.oldDepartment} onChange={e => setStandaloneForm(f => ({ ...f, oldDepartment: e.target.value }))} /></div>
+                  <div><Label className="text-xs">New Department</Label><Input data-testid="input-standalone-new-department" className="mt-1" value={standaloneForm.newDepartment} onChange={e => setStandaloneForm(f => ({ ...f, newDepartment: e.target.value }))} /></div>
+                </div>
+              </div>
+            )}
+
+            {standaloneForm.addendumType === "probation_extension" && (
+              <div className="border rounded-lg p-4 space-y-3 bg-muted/10">
+                <h4 className="text-sm font-semibold text-blue-900">Probation Details</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-xs">Original Confirmation Date</Label><Input data-testid="input-standalone-old-confirmation" type="date" className="mt-1" value={standaloneForm.oldConfirmationDate} onChange={e => setStandaloneForm(f => ({ ...f, oldConfirmationDate: e.target.value }))} /></div>
+                  <div><Label className="text-xs">Revised Confirmation Date</Label><Input data-testid="input-standalone-new-confirmation" type="date" className="mt-1" value={standaloneForm.newConfirmationDate} onChange={e => setStandaloneForm(f => ({ ...f, newConfirmationDate: e.target.value }))} /></div>
+                </div>
+              </div>
+            )}
+
+            {standaloneForm.addendumType === "custom" && (
+              <div className="border rounded-lg p-4 space-y-3 bg-muted/10">
+                <h4 className="text-sm font-semibold text-blue-900">Custom Clause</h4>
+                <div><Label className="text-xs">Clause Title</Label><Input data-testid="input-standalone-clause-title" className="mt-1" placeholder="e.g. Remote Work Policy Amendment" value={standaloneForm.customClauseTitle} onChange={e => setStandaloneForm(f => ({ ...f, customClauseTitle: e.target.value }))} /></div>
+                <div><Label className="text-xs">Clause Text</Label><Textarea data-testid="input-standalone-clause-text" className="mt-1" rows={4} placeholder="Enter the full text of the amended clause..." value={standaloneForm.customClauseText} onChange={e => setStandaloneForm(f => ({ ...f, customClauseText: e.target.value }))} /></div>
+              </div>
+            )}
+
+            {standaloneForm.addendumType === "device_allocation" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold flex items-center gap-1.5"><Laptop className="h-4 w-4 text-blue-600" />Devices / Assets to Allocate</Label>
+                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" data-testid="button-standalone-add-device" onClick={() => setStandaloneForm(f => ({ ...f, deviceItems: [...f.deviceItems, { description: "", serialNumber: "", assetTag: "", condition: "Good" }] }))}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Device
+                  </Button>
+                </div>
+                {standaloneForm.deviceItems.length === 0 && <p className="text-xs text-muted-foreground italic py-2">No devices added. Click "Add Device" to begin.</p>}
+                {standaloneForm.deviceItems.map((item, idx) => (
+                  <div key={idx} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600">Device #{idx + 1}</span>
+                      <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => setStandaloneForm(f => ({ ...f, deviceItems: f.deviceItems.filter((_, i) => i !== idx) }))}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div><Label className="text-xs">Description / Item Name *</Label><input className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. Apple MacBook Pro 14-inch" value={item.description} onChange={e => { const items = [...standaloneForm.deviceItems]; items[idx] = { ...items[idx], description: e.target.value }; setStandaloneForm(f => ({ ...f, deviceItems: items })); }} /></div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><Label className="text-xs">Serial Number</Label><input className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="SN123456" value={item.serialNumber} onChange={e => { const items = [...standaloneForm.deviceItems]; items[idx] = { ...items[idx], serialNumber: e.target.value }; setStandaloneForm(f => ({ ...f, deviceItems: items })); }} /></div>
+                      <div><Label className="text-xs">Asset Tag</Label><input className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="HS-L-001" value={item.assetTag} onChange={e => { const items = [...standaloneForm.deviceItems]; items[idx] = { ...items[idx], assetTag: e.target.value }; setStandaloneForm(f => ({ ...f, deviceItems: items })); }} /></div>
+                      <div><Label className="text-xs">Condition</Label><select className="mt-1 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" value={item.condition} onChange={e => { const items = [...standaloneForm.deviceItems]; items[idx] = { ...items[idx], condition: e.target.value }; setStandaloneForm(f => ({ ...f, deviceItems: items })); }}><option value="New">New</option><option value="Excellent">Excellent</option><option value="Good">Good</option><option value="Fair">Fair</option><option value="Refurbished">Refurbished</option></select></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>HR Manager Name</Label>
+                <Input data-testid="input-standalone-hr-manager" className="mt-1" value={standaloneForm.hrManagerName} onChange={e => setStandaloneForm(f => ({ ...f, hrManagerName: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Reason / Remarks (optional)</Label>
+                <Input data-testid="input-standalone-reason" className="mt-1" placeholder="e.g. Annual performance review" value={standaloneForm.reason} onChange={e => setStandaloneForm(f => ({ ...f, reason: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <Label>CC Recipients <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input data-testid="input-standalone-cc" className="mt-1" placeholder="manager@hire-in.com, ceo@hire-in.com" value={standaloneForm.ccEmails} onChange={e => setStandaloneForm(f => ({ ...f, ccEmails: e.target.value }))} />
+              <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
+            </div>
+
+            <AnnexureEditor annexures={standaloneAnnexures} onChange={setStandaloneAnnexures} />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setStandaloneDialog(false); resetStandaloneForm(); }} data-testid="button-cancel-standalone-dialog">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateStandaloneAddendum}
+              disabled={submittingStandalone || !standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate}
+              className="bg-purple-700 hover:bg-purple-800"
+              data-testid="button-submit-standalone"
+            >
+              {submittingStandalone ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Create & Send Addendum
             </Button>
           </DialogFooter>

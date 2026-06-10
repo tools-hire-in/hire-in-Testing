@@ -32,6 +32,7 @@ interface AddendumData {
   originalDesignation: string | null;
   offerDate: string | null;
   deviceItems: Array<{ description: string; serialNumber: string | null; assetTag: string | null; condition: string | null }> | null;
+  isStandalone?: boolean;
 }
 
 const ADDENDUM_TYPE_LABELS: Record<string, string> = {
@@ -312,15 +313,17 @@ export default function AddendumAccept() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground text-xs uppercase tracking-wide">Candidate</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide">Employee</p>
                 <p className="font-medium" data-testid="text-addendum-candidate">{addendum.candidateName}</p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs uppercase tracking-wide">Original Offer Date</p>
-                <p className="font-medium">{addendum.originalOfferDate || "—"}</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide">{addendum.isStandalone ? "Joining Date" : "Original Offer Date"}</p>
+                <p className="font-medium">
+                  {addendum.originalOfferDate || (addendum.isStandalone ? "Legacy Employee" : "—")}
+                </p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs uppercase tracking-wide">Original Role</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide">Designation</p>
                 <p className="font-medium">{addendum.originalDesignation || "—"}</p>
               </div>
               <div>
@@ -328,6 +331,11 @@ export default function AddendumAccept() {
                 <p className="font-medium text-blue-700" data-testid="text-addendum-effective-date">{addendum.effectiveDate || "—"}</p>
               </div>
             </div>
+            {addendum.isStandalone && (
+              <div className="mt-3 px-3 py-2 bg-purple-50 border border-purple-100 rounded-md text-xs text-purple-700">
+                This is a standalone addendum issued directly without a parent offer letter.
+              </div>
+            )}
           </CardContent>
         </Card>
 

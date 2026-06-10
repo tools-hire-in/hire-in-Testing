@@ -6039,9 +6039,21 @@ export async function registerRoutes(
       if (!addendum) {
         return res.status(404).json({ error: "Addendum not found" });
       }
-      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
-      if (!offerLetter) {
-        return res.status(404).json({ error: "Parent offer letter not found" });
+
+      let originalOfferDate: string | null = null;
+      let originalDesignation: string | null = null;
+
+      if (addendum.offerLetterId) {
+        const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+        if (!offerLetter) {
+          return res.status(404).json({ error: "Parent offer letter not found" });
+        }
+        originalOfferDate = offerLetter.offerDate;
+        originalDesignation = offerLetter.designation;
+      } else if (addendum.manualEmployeeData && typeof addendum.manualEmployeeData === "object") {
+        const med = addendum.manualEmployeeData as Record<string, any>;
+        originalOfferDate = med.joiningDate || null;
+        originalDesignation = med.designation || null;
       }
 
       res.json({
@@ -6067,9 +6079,10 @@ export async function registerRoutes(
         deviceItems: addendum.deviceItems,
         acceptedName: addendum.acceptedName,
         authCode: addendum.authCode,
-        originalOfferDate: offerLetter.offerDate,
-        originalDesignation: offerLetter.designation,
-        offerDate: offerLetter.offerDate,
+        originalOfferDate,
+        originalDesignation,
+        offerDate: originalOfferDate,
+        isStandalone: addendum.isStandalone,
       });
     } catch (error) {
       console.error("View addendum error:", error);
@@ -6115,16 +6128,32 @@ export async function registerRoutes(
       });
 
       // Audit trail — acceptance is audited via (a) row fields (acceptedAt/Name/Ip/authCode/documentHash)
-      // and (b) an audit_log entry attributed to the HR creator of the parent offer letter,
+      // and (b) an audit_log entry attributed to the HR creator of the parent offer letter (or issuedBy for standalone),
       // since audit_logs requires a valid admin_users FK and this endpoint is unauthenticated.
-      const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
-      if (offerLetter?.createdBy) {
+      let actorIdForAudit: string | null = null;
+      let hrEmail = "hr@hire-in.com";
+
+      if (addendum.offerLetterId) {
+        const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+        if (offerLetter?.createdBy) {
+          actorIdForAudit = offerLetter.createdBy;
+          const actor = await storage.getAdminUser(offerLetter.createdBy);
+          if (actor?.email) hrEmail = actor.email;
+        }
+      } else if (addendum.issuedBy) {
+        actorIdForAudit = addendum.issuedBy;
+        const actor = await storage.getAdminUser(addendum.issuedBy);
+        if (actor?.email) hrEmail = actor.email;
+      }
+
+      if (actorIdForAudit) {
         await storage.createAuditLog({
           action: "addendum_accepted_by_candidate",
-          actorId: offerLetter.createdBy,
+          actorId: actorIdForAudit,
           changes: {
             addendumId: addendum.id,
             offerLetterId: addendum.offerLetterId,
+            isStandalone: addendum.isStandalone,
             candidateName: addendum.candidateName,
             addendumType: addendum.addendumType,
             authCode,
@@ -6136,20 +6165,260 @@ export async function registerRoutes(
       }
 
       // Notify HR
-      if (offerLetter) {
-        const actor = await storage.getAdminUser(offerLetter.createdBy);
-        const hrEmail = actor?.email || "hr@hire-in.com";
-        await sendAddendumAcceptedEmail({
-          to: hrEmail,
-          candidateName: addendum.candidateName,
-          addendumType: addendum.addendumType,
-        }).catch(e => console.error("[Addendum] Failed to notify HR:", e));
-      }
+      await sendAddendumAcceptedEmail({
+        to: hrEmail,
+        candidateName: addendum.candidateName,
+        addendumType: addendum.addendumType,
+      }).catch(e => console.error("[Addendum] Failed to notify HR:", e));
 
       res.json({ success: true, authCode, documentHash });
     } catch (error) {
       console.error("Accept addendum error:", error);
       res.status(500).json({ error: "Failed to accept addendum" });
+    }
+  });
+
+  // List standalone addendums
+  app.get("/api/hr/tools/addendums/standalone", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const addendums = await storage.getStandaloneAddendums();
+      res.json(addendums);
+    } catch (error) {
+      console.error("List standalone addendums error:", error);
+      res.status(500).json({ error: "Failed to fetch standalone addendums" });
+    }
+  });
+
+  // Create standalone addendum
+  app.post("/api/hr/tools/addendums/standalone", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const {
+        employeeName, employeeEmail, employeeDesignation, employeeDepartment,
+        employeeJoiningDate, employeeReportingManager,
+        addendumType, effectiveDate, reason, hrManagerName,
+        oldDesignation, newDesignation, oldDepartment, newDepartment,
+        oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
+        oldConfirmationDate, newConfirmationDate,
+        customClauseTitle, customClauseText,
+        deviceItems, ccEmails, annexureData,
+      } = req.body;
+
+      if (!employeeName || !employeeEmail || !addendumType || !effectiveDate) {
+        return res.status(400).json({ error: "employeeName, employeeEmail, addendumType, and effectiveDate are required" });
+      }
+
+      // Validate annexures if provided (max 5, each must have title + body)
+      let validatedAnnexures: { title: string; body: string }[] | null = null;
+      if (annexureData && Array.isArray(annexureData) && annexureData.length > 0) {
+        if (annexureData.length > 5) {
+          return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
+        }
+        for (const ax of annexureData) {
+          if (!ax.title?.trim() || !ax.body?.trim()) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          }
+        }
+        validatedAnnexures = annexureData;
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const actorId = req.session.userId!;
+
+      const manualEmployeeData = {
+        name: employeeName,
+        email: employeeEmail,
+        designation: employeeDesignation || null,
+        department: employeeDepartment || null,
+        joiningDate: employeeJoiningDate || null,
+        reportingManager: employeeReportingManager || null,
+      };
+
+      const addendum = await storage.createAddendum({
+        isStandalone: true,
+        manualEmployeeData,
+        token,
+        addendumType,
+        status: "sent",
+        candidateName: employeeName,
+        effectiveDate,
+        reason: reason || null,
+        hrManagerName: hrManagerName || "HR Manager",
+        issuedBy: actorId,
+        oldDesignation: oldDesignation || null,
+        newDesignation: newDesignation || null,
+        oldDepartment: oldDepartment || null,
+        newDepartment: newDepartment || null,
+        oldSalary: oldSalary || null,
+        newSalary: newSalary || null,
+        oldSalaryInWords: oldSalaryInWords || null,
+        newSalaryInWords: newSalaryInWords || null,
+        oldConfirmationDate: oldConfirmationDate || null,
+        newConfirmationDate: newConfirmationDate || null,
+        customClauseTitle: customClauseTitle || null,
+        customClauseText: customClauseText || null,
+        deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
+        annexures: validatedAnnexures,
+        ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
+      } as any);
+
+      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/addendum/${token}`;
+
+      const parsedCcEmails = Array.isArray(ccEmails)
+        ? ccEmails.filter(Boolean)
+        : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+
+      const emailResult = await sendAddendumEmail({
+        to: employeeEmail,
+        candidateName: employeeName,
+        addendumType,
+        acceptUrl,
+        cc: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
+      });
+
+      if (!emailResult.success) {
+        console.error(`[Standalone Addendum] Email delivery failed: ${emailResult.error}`);
+      }
+
+      await storage.createAuditLog({
+        action: "standalone_addendum_created",
+        actorId,
+        changes: { addendumId: addendum.id, employeeName, addendumType, emailSent: emailResult.success },
+      });
+
+      res.json({ ...addendum, emailSent: emailResult.success });
+    } catch (error: any) {
+      console.error("Create standalone addendum error:", error?.message || error);
+      res.status(500).json({ error: "Failed to create standalone addendum", detail: error?.message });
+    }
+  });
+
+  // Download standalone addendum DOCX
+  app.get("/api/hr/tools/addendums/:addendumId/download", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum) {
+        return res.status(404).json({ error: "Addendum not found" });
+      }
+
+      let originalOfferDate = "";
+      let originalDesignation = "";
+
+      if (addendum.offerLetterId) {
+        const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+        originalOfferDate = offerLetter?.offerDate || "";
+        originalDesignation = offerLetter?.designation || "";
+      } else if (addendum.manualEmployeeData && typeof addendum.manualEmployeeData === "object") {
+        const med = addendum.manualEmployeeData as Record<string, any>;
+        originalOfferDate = med.joiningDate || "";
+        originalDesignation = med.designation || "";
+      }
+
+      const buffer = await generateAddendumDocx({
+        candidateName: addendum.candidateName,
+        originalOfferDate,
+        originalDesignation,
+        effectiveDate: addendum.effectiveDate || "",
+        hrManagerName: addendum.hrManagerName || "HR Manager",
+        addendumType: addendum.addendumType,
+        oldDesignation: addendum.oldDesignation || undefined,
+        newDesignation: addendum.newDesignation || undefined,
+        oldDepartment: addendum.oldDepartment || undefined,
+        newDepartment: addendum.newDepartment || undefined,
+        oldSalary: addendum.oldSalary || undefined,
+        newSalary: addendum.newSalary || undefined,
+        oldSalaryInWords: addendum.oldSalaryInWords || undefined,
+        newSalaryInWords: addendum.newSalaryInWords || undefined,
+        oldConfirmationDate: addendum.oldConfirmationDate || undefined,
+        newConfirmationDate: addendum.newConfirmationDate || undefined,
+        customClauseTitle: addendum.customClauseTitle || undefined,
+        customClauseText: addendum.customClauseText || undefined,
+        deviceItems: Array.isArray(addendum.deviceItems) && addendum.deviceItems.length > 0 ? addendum.deviceItems as any[] : undefined,
+        annexures: Array.isArray(addendum.annexures) && (addendum.annexures as any[]).length > 0 ? addendum.annexures as any[] : undefined,
+        reason: addendum.reason || undefined,
+      });
+
+      const fileName = `${addendum.candidateName.replace(/\s+/g, "_")}_Addendum_${addendum.addendumType}.docx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (error: any) {
+      console.error("Download standalone addendum error:", error);
+      res.status(500).json({ error: "Failed to generate addendum document" });
+    }
+  });
+
+  // Cancel standalone addendum
+  app.post("/api/hr/tools/addendums/:addendumId/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum || !addendum.isStandalone) {
+        return res.status(404).json({ error: "Standalone addendum not found" });
+      }
+      if (addendum.status !== "draft" && addendum.status !== "sent") {
+        return res.status(400).json({ error: "Can only cancel draft or sent addendums" });
+      }
+      await storage.updateAddendumStatus(addendum.id, { status: "cancelled" });
+      await storage.createAuditLog({
+        action: "standalone_addendum_cancelled",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, previousStatus: addendum.status },
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Cancel standalone addendum error:", error);
+      res.status(500).json({ error: "Failed to cancel addendum" });
+    }
+  });
+
+  // Resend standalone addendum email
+  app.post("/api/hr/tools/addendums/:addendumId/send", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.addendumId);
+      if (!addendum || !addendum.isStandalone) {
+        return res.status(404).json({ error: "Standalone addendum not found" });
+      }
+      const med = addendum.manualEmployeeData && typeof addendum.manualEmployeeData === "object"
+        ? addendum.manualEmployeeData as Record<string, any>
+        : {};
+      const toEmail = med.email || null;
+      if (!toEmail) {
+        return res.status(400).json({ error: "No employee email on record for this addendum" });
+      }
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/addendum/${addendum.token}`;
+
+      const storedCcEmails = addendum.ccEmails
+        ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+        : [];
+
+      const emailResult = await sendAddendumEmail({
+        to: toEmail,
+        candidateName: addendum.candidateName,
+        addendumType: addendum.addendumType,
+        acceptUrl,
+        cc: storedCcEmails.length > 0 ? storedCcEmails : undefined,
+      });
+
+      if (addendum.status === "draft") {
+        await storage.updateAddendumStatus(addendum.id, { status: "sent" });
+      }
+
+      await storage.createAuditLog({
+        action: "standalone_addendum_resent",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, emailSent: emailResult.success },
+      });
+
+      res.json({ success: emailResult.success, error: emailResult.success ? undefined : emailResult.error });
+    } catch (error: any) {
+      console.error("Resend standalone addendum error:", error);
+      res.status(500).json({ error: "Failed to resend addendum email" });
     }
   });
 
