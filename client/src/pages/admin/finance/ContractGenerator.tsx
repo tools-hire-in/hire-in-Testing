@@ -820,9 +820,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                   {c.engagementType ? ` · ${c.engagementType}` : ""}
                 </p>
               ))}
-              {startDate && <p><span className="text-muted-foreground w-32 inline-block">Period:</span> {startDate} → {endDate || "Open-ended"}</p>}
               {agreementDate && <p><span className="text-muted-foreground w-32 inline-block">Agreement Date:</span> {formatAgreementDate(agreementDate)}</p>}
-              {margin && <p><span className="text-muted-foreground w-32 inline-block">Margin:</span> ${margin}/hr</p>}
               {paymentTerms && <p><span className="text-muted-foreground w-32 inline-block">Payment:</span> Net {paymentTerms} · {billingFreq?.replace(/_/g, " ") || "unset"} billing</p>}
               {selectedTemplate && <p><span className="text-muted-foreground w-32 inline-block">Template:</span> {selectedTemplate.name}</p>}
               {!templateId && (
