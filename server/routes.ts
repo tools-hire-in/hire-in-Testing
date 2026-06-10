@@ -5250,6 +5250,12 @@ export async function registerRoutes(
         hrManagerName: req.body.hrManagerName || "Alina Carter",
         offerDate: req.body.offerDate || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
         annexures: genAnnexures,
+        probationSalary: req.body.probationSalary ? parseFloat(req.body.probationSalary) : undefined,
+        probationSalaryInWords: req.body.probationSalaryInWords || undefined,
+        postProbationSalary: req.body.postProbationSalary ? parseFloat(req.body.postProbationSalary) : undefined,
+        postProbationSalaryInWords: req.body.postProbationSalaryInWords || undefined,
+        probationPeriodMonths: req.body.probationPeriodMonths ? parseInt(req.body.probationPeriodMonths) : undefined,
+        extendedProbationMonths: req.body.extendedProbationMonths ? parseInt(req.body.extendedProbationMonths) : undefined,
       };
 
       if (!data.candidateName || !data.designation) {
@@ -5278,10 +5284,41 @@ export async function registerRoutes(
       const { candidateTitle, candidateName, candidatePersonalEmail, candidateAddress,
         designation, subjectDesignation, reportingToUserId, departmentId,
         employmentType, proposedStartDate, salary, salaryInWords,
-        location, jurisdiction, hrManagerName, offerDate, ccEmails } = req.body;
+        location, jurisdiction, hrManagerName, offerDate, ccEmails,
+        probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
+        probationPeriodMonths, extendedProbationMonths } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
+      }
+
+      // Validate probation salary fields when split compensation is used
+      const hasProbationFields = probationSalary || postProbationSalary;
+      if (hasProbationFields) {
+        const pSal = parseFloat(probationSalary);
+        const ppSal = parseFloat(postProbationSalary);
+        if (!probationSalary || isNaN(pSal) || pSal <= 0) {
+          return res.status(400).json({ error: "Probation salary must be a positive number when using split compensation" });
+        }
+        if (!postProbationSalary || isNaN(ppSal) || ppSal <= 0) {
+          return res.status(400).json({ error: "Post-probation salary must be a positive number when using split compensation" });
+        }
+        if (ppSal <= pSal) {
+          return res.status(400).json({ error: "Post-probation salary should be greater than probation salary" });
+        }
+        if (!probationSalaryInWords || !postProbationSalaryInWords) {
+          return res.status(400).json({ error: "Salary in words is required for both probation and post-probation tiers" });
+        }
+        const pMonths = probationPeriodMonths ? parseInt(probationPeriodMonths) : 3;
+        if (isNaN(pMonths) || pMonths < 1 || pMonths > 6) {
+          return res.status(400).json({ error: "Probation duration must be between 1 and 6 months" });
+        }
+        if (extendedProbationMonths !== undefined && extendedProbationMonths !== null && extendedProbationMonths !== "") {
+          const epMonths = parseInt(extendedProbationMonths);
+          if (isNaN(epMonths) || epMonths < 4 || epMonths > 12) {
+            return res.status(400).json({ error: "Extended probation duration must be between 4 and 12 months" });
+          }
+        }
       }
 
       const token = crypto.randomBytes(32).toString("hex");
@@ -5333,6 +5370,12 @@ export async function registerRoutes(
         hireInEmail: null,
         ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
         annexureData: offerAnnexures,
+        probationSalary: probationSalary ? String(probationSalary) : null,
+        probationSalaryInWords: probationSalaryInWords || null,
+        postProbationSalary: postProbationSalary ? String(postProbationSalary) : null,
+        postProbationSalaryInWords: postProbationSalaryInWords || null,
+        probationPeriodMonths: probationPeriodMonths ? parseInt(probationPeriodMonths) : null,
+        extendedProbationMonths: extendedProbationMonths ? parseInt(extendedProbationMonths) : null,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -5639,6 +5682,12 @@ export async function registerRoutes(
         expiresAt: letter.expiresAt,
         departmentName: dept?.name || null,
         managerName,
+        probationSalary: letter.probationSalary,
+        probationSalaryInWords: letter.probationSalaryInWords,
+        postProbationSalary: letter.postProbationSalary,
+        postProbationSalaryInWords: letter.postProbationSalaryInWords,
+        probationPeriodMonths: letter.probationPeriodMonths,
+        extendedProbationMonths: letter.extendedProbationMonths,
       });
     } catch (error) {
       console.error("View offer letter error:", error);

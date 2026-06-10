@@ -29,6 +29,12 @@ interface OfferData {
   expiresAt: string;
   acceptedName?: string;
   authCode?: string;
+  probationSalary?: string | null;
+  probationSalaryInWords?: string | null;
+  postProbationSalary?: string | null;
+  postProbationSalaryInWords?: string | null;
+  probationPeriodMonths?: number | null;
+  extendedProbationMonths?: number | null;
 }
 
 export default function OnboardAccept() {
@@ -196,6 +202,12 @@ export default function OnboardAccept() {
             offerDate: offer.offerDate,
             jurisdiction: offer.jurisdiction,
             refId: offer.id,
+            probationSalary: offer.probationSalary,
+            probationSalaryInWords: offer.probationSalaryInWords,
+            postProbationSalary: offer.postProbationSalary,
+            postProbationSalaryInWords: offer.postProbationSalaryInWords,
+            probationPeriodMonths: offer.probationPeriodMonths,
+            extendedProbationMonths: offer.extendedProbationMonths,
           }}
         />
 

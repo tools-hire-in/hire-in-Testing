@@ -32,6 +32,12 @@ export interface OfferLetterData {
   hrManagerName: string;
   offerDate: string;
   annexures?: AnnexureItem[];
+  probationSalary?: number;
+  probationSalaryInWords?: string;
+  postProbationSalary?: number;
+  postProbationSalaryInWords?: string;
+  probationPeriodMonths?: number;
+  extendedProbationMonths?: number;
 }
 
 function heading(text: string): Paragraph {
@@ -314,10 +320,25 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           ),
 
           heading("5. Compensation & Structure"),
-          bodyText(
-            `Your Annual Cost to Company (CTC) will be ${salaryStr}.`
-          ),
-          bodyText("Note: Salary will be credited by the 10th of the following month."),
+          ...(data.probationSalary && data.postProbationSalary ? (() => {
+            const probMonths = data.probationPeriodMonths ?? 3;
+            const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
+            const probSalaryStr = `₹${data.probationSalary.toLocaleString("en-IN")}${data.probationSalaryInWords ? ` (${data.probationSalaryInWords})` : ""}`;
+            const postSalaryStr = `₹${data.postProbationSalary.toLocaleString("en-IN")}${data.postProbationSalaryInWords ? ` (${data.postProbationSalaryInWords})` : ""}`;
+            const paras: Paragraph[] = [
+              bodyText(`For the initial probation period of ${probMonthLabel}, the proposed compensation will be ${probSalaryStr} per month.`),
+              bodyText(`Based on successful completion of probation and achievement of agreed performance expectations, the compensation may be revised to ${postSalaryStr} per month after the ${probMonthLabel} performance review.`),
+            ];
+            if (data.extendedProbationMonths) {
+              const extLabel = data.extendedProbationMonths === 1 ? "1 month" : `${data.extendedProbationMonths} months`;
+              paras.push(bodyText(`If performance is progressing but requires additional evaluation, the probation period may be extended up to ${extLabel}, and the compensation revision may be reviewed again at that time.`));
+            }
+            paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
+            return paras;
+          })() : [
+            bodyText(`Your Annual Cost to Company (CTC) will be ${salaryStr}.`),
+            bodyText("Note: Salary will be credited by the 10th of the following month."),
+          ]),
 
           heading("6. Tools, Infrastructure & Reimbursements"),
           bodyText(

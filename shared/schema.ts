@@ -672,6 +672,12 @@ export const offerLetters = pgTable("offer_letters", {
   approvedAt: timestamp("approved_at"),
   approvalRejectionReason: text("approval_rejection_reason"),
   ccEmails: text("cc_emails"),
+  probationSalary: numeric("probation_salary"),
+  probationSalaryInWords: varchar("probation_salary_in_words"),
+  postProbationSalary: numeric("post_probation_salary"),
+  postProbationSalaryInWords: varchar("post_probation_salary_in_words"),
+  probationPeriodMonths: integer("probation_period_months").default(3),
+  extendedProbationMonths: integer("extended_probation_months"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({

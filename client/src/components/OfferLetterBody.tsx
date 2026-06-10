@@ -19,9 +19,19 @@ export interface OfferLetterViewProps {
   offerDate: string;
   jurisdiction?: string | null;
   refId?: string | null;
+  probationSalary?: string | null;
+  probationSalaryInWords?: string | null;
+  postProbationSalary?: string | null;
+  postProbationSalaryInWords?: string | null;
+  probationPeriodMonths?: number | null;
+  extendedProbationMonths?: number | null;
 }
 
 export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
+  const hasSplitSalary = !!(offer.probationSalary && offer.postProbationSalary);
+  const probMonths = offer.probationPeriodMonths ?? 3;
+  const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
+
   return (
     <Card>
       <CardHeader className="bg-blue-50 border-b">
@@ -103,7 +113,38 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
               <p className="font-medium">{offer.employmentType}</p>
             </div>
           </div>
-          {offer.salary && (
+
+          {hasSplitSalary ? (
+            <div className="flex items-start gap-3 md:col-span-2">
+              <DollarSign className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="space-y-3 w-full">
+                <p className="text-sm text-muted-foreground">Compensation Structure</p>
+                <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">During Probation ({probMonthLabel})</p>
+                  <p className="font-medium" data-testid="text-probation-salary">
+                    ₹{parseFloat(offer.probationSalary!).toLocaleString("en-IN")} / month
+                    {offer.probationSalaryInWords && (
+                      <span className="text-muted-foreground text-sm"> ({offer.probationSalaryInWords})</span>
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-green-50 border-green-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-green-800 uppercase tracking-wider">Post-Probation (after {probMonthLabel} review)</p>
+                  <p className="font-medium" data-testid="text-post-probation-salary">
+                    ₹{parseFloat(offer.postProbationSalary!).toLocaleString("en-IN")} / month
+                    {offer.postProbationSalaryInWords && (
+                      <span className="text-muted-foreground text-sm"> ({offer.postProbationSalaryInWords})</span>
+                    )}
+                  </p>
+                </div>
+                {offer.extendedProbationMonths && (
+                  <p className="text-xs text-muted-foreground italic">
+                    If additional evaluation is needed, the probation period may be extended up to {offer.extendedProbationMonths} month{offer.extendedProbationMonths !== 1 ? "s" : ""}, with compensation revision reviewed again at that time.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : offer.salary ? (
             <div className="flex items-start gap-3 md:col-span-2">
               <DollarSign className="h-5 w-5 text-blue-600 mt-0.5" />
               <div>
@@ -116,7 +157,7 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
                 </p>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <Separator />

@@ -664,6 +664,13 @@ interface OfferFormData {
   jurisdiction: string;
   hrManagerName: string;
   offerDate: string;
+  splitProbationSalary: boolean;
+  probationSalary: number;
+  probationSalaryInWords: string;
+  postProbationSalary: number;
+  postProbationSalaryInWords: string;
+  probationPeriodMonths: number;
+  extendedProbationMonths: number;
 }
 
 function getDefaultOfferData(): OfferFormData {
@@ -690,6 +697,13 @@ function getDefaultOfferData(): OfferFormData {
     jurisdiction: "Delhi",
     hrManagerName: "Alina Carter",
     offerDate: today,
+    splitProbationSalary: false,
+    probationSalary: 0,
+    probationSalaryInWords: "",
+    postProbationSalary: 0,
+    postProbationSalaryInWords: "",
+    probationPeriodMonths: 3,
+    extendedProbationMonths: 0,
   };
 }
 
@@ -723,6 +737,18 @@ export function OfferLetterGenerator() {
       updateField("salaryInWords", numberToWords(formData.salary));
     }
   }, [formData.salary]);
+
+  useEffect(() => {
+    if (formData.probationSalary > 0) {
+      updateField("probationSalaryInWords", numberToWords(formData.probationSalary));
+    }
+  }, [formData.probationSalary]);
+
+  useEffect(() => {
+    if (formData.postProbationSalary > 0) {
+      updateField("postProbationSalaryInWords", numberToWords(formData.postProbationSalary));
+    }
+  }, [formData.postProbationSalary]);
 
   const { data: departments } = useQuery<any[]>({
     queryKey: ["/api/departments"],
@@ -784,11 +810,17 @@ export function OfferLetterGenerator() {
       location: formData.location,
       proposedStartDate: startDateFormatted || null,
       employmentType: formData.employmentType,
-      salary: formData.salary ? String(formData.salary) : null,
+      salary: formData.splitProbationSalary ? null : (formData.salary ? String(formData.salary) : null),
       hrManagerName: formData.hrManagerName || null,
       offerDate: offerDateFormatted,
       jurisdiction: formData.jurisdiction || null,
       refId: null,
+      probationSalary: formData.splitProbationSalary && formData.probationSalary ? String(formData.probationSalary) : null,
+      probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || null : null,
+      postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? String(formData.postProbationSalary) : null,
+      postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || null : null,
+      probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : null,
+      extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : null,
     };
   }, [formData, departments, users]);
 
@@ -813,6 +845,12 @@ export function OfferLetterGenerator() {
             ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : "",
           annexureData: annexures.length > 0 ? annexures : undefined,
+          probationSalary: formData.splitProbationSalary && formData.probationSalary ? formData.probationSalary : undefined,
+          probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || undefined : undefined,
+          postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
+          postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
+          probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : undefined,
+          extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
         }),
       });
 
@@ -857,6 +895,12 @@ export function OfferLetterGenerator() {
           ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : "",
         annexureData: annexures.length > 0 ? annexures : undefined,
+        probationSalary: formData.splitProbationSalary && formData.probationSalary ? formData.probationSalary : undefined,
+        probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || undefined : undefined,
+        postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
+        postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
+        probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : undefined,
+        extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
       });
 
       if (!res.ok) {
@@ -1035,15 +1079,82 @@ export function OfferLetterGenerator() {
               <Label>Proposed Start Date</Label>
               <Input data-testid="input-offer-start-date" type="date" value={formData.proposedStartDate} onChange={e => updateField("proposedStartDate", e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Monthly Salary / CTC (₹)</Label>
-                <Input data-testid="input-offer-salary" type="number" value={formData.salary || ""} onChange={e => updateField("salary", parseFloat(e.target.value) || 0)} />
-              </div>
-              <div>
-                <Label>Salary in Words</Label>
-                <Input data-testid="input-offer-salary-words" value={formData.salaryInWords} onChange={e => updateField("salaryInWords", e.target.value)} />
-              </div>
+            <div className="border rounded-lg p-3 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="check-split-probation-salary">
+                <input
+                  type="checkbox"
+                  checked={formData.splitProbationSalary}
+                  onChange={e => updateField("splitProbationSalary", e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span className="text-sm font-medium">Different salary during probation</span>
+                <span className="text-xs text-muted-foreground">(two-stage compensation)</span>
+              </label>
+
+              {!formData.splitProbationSalary ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Monthly Salary / CTC (₹)</Label>
+                    <Input data-testid="input-offer-salary" type="number" value={formData.salary || ""} onChange={e => updateField("salary", parseFloat(e.target.value) || 0)} />
+                  </div>
+                  <div>
+                    <Label>Salary in Words</Label>
+                    <Input data-testid="input-offer-salary-words" value={formData.salaryInWords} onChange={e => updateField("salaryInWords", e.target.value)} />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-3 gap-3 items-end">
+                    <div>
+                      <Label>Probation Duration</Label>
+                      <Select value={String(formData.probationPeriodMonths)} onValueChange={v => updateField("probationPeriodMonths", parseInt(v))}>
+                        <SelectTrigger data-testid="select-probation-months">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5, 6].map(m => (
+                            <SelectItem key={m} value={String(m)}>{m} month{m !== 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Extended Probation <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Select value={String(formData.extendedProbationMonths)} onValueChange={v => updateField("extendedProbationMonths", parseInt(v))}>
+                        <SelectTrigger data-testid="select-extended-probation-months">
+                          <SelectValue placeholder="No extension" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">No extension</SelectItem>
+                          {[4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                            <SelectItem key={m} value={String(m)}>Up to {m} months</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Probation Salary (₹/month)</Label>
+                      <Input data-testid="input-probation-salary" type="number" value={formData.probationSalary || ""} onChange={e => updateField("probationSalary", parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div>
+                      <Label>Probation Salary in Words</Label>
+                      <Input data-testid="input-probation-salary-words" value={formData.probationSalaryInWords} onChange={e => updateField("probationSalaryInWords", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Post-Probation Salary (₹/month)</Label>
+                      <Input data-testid="input-post-probation-salary" type="number" value={formData.postProbationSalary || ""} onChange={e => updateField("postProbationSalary", parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div>
+                      <Label>Post-Probation Salary in Words</Label>
+                      <Input data-testid="input-post-probation-salary-words" value={formData.postProbationSalaryInWords} onChange={e => updateField("postProbationSalaryInWords", e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -2378,6 +2489,12 @@ export function OfferLettersDashboard() {
                   offerDate: viewLetterModal.offerDate || "",
                   jurisdiction: viewLetterModal.jurisdiction,
                   refId: viewLetterModal.id,
+                  probationSalary: viewLetterModal.probationSalary,
+                  probationSalaryInWords: viewLetterModal.probationSalaryInWords,
+                  postProbationSalary: viewLetterModal.postProbationSalary,
+                  postProbationSalaryInWords: viewLetterModal.postProbationSalaryInWords,
+                  probationPeriodMonths: viewLetterModal.probationPeriodMonths,
+                  extendedProbationMonths: viewLetterModal.extendedProbationMonths,
                 }}
               />
 
