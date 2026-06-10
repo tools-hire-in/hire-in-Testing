@@ -1128,6 +1128,7 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   customClauseTitle: varchar("custom_clause_title"),
   customClauseText: text("custom_clause_text"),
   deviceItems: jsonb("device_items"),
+  annexures: jsonb("annexures"),
   ccEmails: text("cc_emails"),
 
   effectiveDate: varchar("effective_date"),

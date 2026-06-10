@@ -21,9 +21,16 @@ export interface DeviceItem {
   condition?: string;
 }
 
+export interface AnnexureTable {
+  col1Header: string;
+  col2Header: string;
+  rows: [string, string][];
+}
+
 export interface AnnexureItem {
   title: string;
   body: string;
+  table?: AnnexureTable;
 }
 
 export interface AddendumData {
@@ -251,7 +258,7 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
   }
 
   // Annexure sections (appended after signature via extra section children)
-  const annexureChildren: Paragraph[] = [];
+  const annexureChildren: (Paragraph | Table)[] = [];
   if (data.annexures && data.annexures.length > 0) {
     const LABELS = ["A", "B", "C", "D", "E"];
     for (let i = 0; i < data.annexures.length; i++) {
@@ -264,12 +271,38 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
         children: [new TextRun({ text: `Annexure ${label}: ${ann.title}`, bold: true, size: 26, underline: {} })],
       }));
       // Split body on newlines and emit each line as a paragraph
-      const lines = ann.body.split(/\r?\n/);
-      for (const line of lines) {
-        annexureChildren.push(new Paragraph({
-          spacing: { after: 80 },
-          children: [new TextRun({ text: line, size: 20 })],
+      if (ann.body) {
+        const lines = ann.body.split(/\r?\n/);
+        for (const line of lines) {
+          annexureChildren.push(new Paragraph({
+            spacing: { after: 80 },
+            children: [new TextRun({ text: line, size: 20 })],
+          }));
+        }
+      }
+      // Optional two-column table
+      if (ann.table) {
+        const { col1Header, col2Header, rows } = ann.table;
+        annexureChildren.push(new Paragraph({ spacing: { before: 160, after: 80 }, children: [] }));
+        const headerRow = new TableRow({
+          children: [
+            borderedCell([new Paragraph({ children: [new TextRun({ text: col1Header || "Column 1", bold: true, size: 20 })] })], true),
+            borderedCell([new Paragraph({ children: [new TextRun({ text: col2Header || "Column 2", bold: true, size: 20 })] })], true),
+          ],
+        });
+        const dataRows = rows.map(([c1, c2]) =>
+          new TableRow({
+            children: [
+              borderedCell([new Paragraph({ children: [new TextRun({ text: c1, size: 20 })] })]),
+              borderedCell([new Paragraph({ children: [new TextRun({ text: c2, size: 20 })] })]),
+            ],
+          })
+        );
+        annexureChildren.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [headerRow, ...dataRows],
         }));
+        annexureChildren.push(new Paragraph({ spacing: { after: 100 }, children: [] }));
       }
     }
   }

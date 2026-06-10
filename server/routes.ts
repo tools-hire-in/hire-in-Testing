@@ -5799,7 +5799,7 @@ export async function registerRoutes(
         oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
         oldConfirmationDate, newConfirmationDate,
         customClauseTitle, customClauseText,
-        deviceItems, ccEmails,
+        deviceItems, ccEmails, annexures,
       } = req.body;
 
       if (!addendumType || !effectiveDate) {
@@ -5832,6 +5832,7 @@ export async function registerRoutes(
         customClauseTitle: customClauseTitle || null,
         customClauseText: customClauseText || null,
         deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
+        annexures: annexures && Array.isArray(annexures) && annexures.length > 0 ? annexures : null,
         ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
       });
 
@@ -5902,6 +5903,7 @@ export async function registerRoutes(
         customClauseTitle: addendum.customClauseTitle || undefined,
         customClauseText: addendum.customClauseText || undefined,
         deviceItems: Array.isArray(addendum.deviceItems) && addendum.deviceItems.length > 0 ? addendum.deviceItems as any[] : undefined,
+        annexures: Array.isArray(addendum.annexures) && addendum.annexures.length > 0 ? addendum.annexures as any[] : undefined,
         reason: addendum.reason || undefined,
       });
 

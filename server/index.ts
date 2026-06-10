@@ -384,6 +384,9 @@ async function ensureOfferLetterAddendumsTable() {
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS device_items JSONB
       `);
       await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS annexures JSONB
+      `);
+      await db.execute(sql`
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS cc_emails TEXT
       `);
       await db.execute(sql`
@@ -413,6 +416,7 @@ async function ensureOfferLetterAddendumsTable() {
         custom_clause_title VARCHAR,
         custom_clause_text TEXT,
         device_items JSONB,
+        annexures JSONB,
         cc_emails TEXT,
         effective_date VARCHAR,
         reason TEXT,

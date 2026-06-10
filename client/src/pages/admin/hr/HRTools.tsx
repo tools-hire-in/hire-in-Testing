@@ -1384,6 +1384,7 @@ export function OfferLettersDashboard() {
     ccEmails: "",
   });
   const [submittingAddendum, setSubmittingAddendum] = useState(false);
+  const [addendumAnnexures, setAddendumAnnexures] = useState<AnnexureItem[]>([]);
 
   const toggleAddendumRow = (letterId: string) => {
     setExpandedOfferIds(prev => {
@@ -1394,26 +1395,33 @@ export function OfferLettersDashboard() {
     });
   };
 
-  const resetAddendumForm = () => setAddendumForm({
-    addendumType: "salary_revision",
-    effectiveDate: "",
-    reason: "",
-    hrManagerName: "Alina Carter",
-    oldDesignation: "", newDesignation: "",
-    oldDepartment: "", newDepartment: "",
-    oldSalary: "", newSalary: "",
-    oldSalaryInWords: "", newSalaryInWords: "",
-    oldConfirmationDate: "", newConfirmationDate: "",
-    customClauseTitle: "", customClauseText: "",
-    deviceItems: [],
-    ccEmails: "",
-  });
+  const resetAddendumForm = () => {
+    setAddendumForm({
+      addendumType: "salary_revision",
+      effectiveDate: "",
+      reason: "",
+      hrManagerName: "Alina Carter",
+      oldDesignation: "", newDesignation: "",
+      oldDepartment: "", newDepartment: "",
+      oldSalary: "", newSalary: "",
+      oldSalaryInWords: "", newSalaryInWords: "",
+      oldConfirmationDate: "", newConfirmationDate: "",
+      customClauseTitle: "", customClauseText: "",
+      deviceItems: [],
+      ccEmails: "",
+    });
+    setAddendumAnnexures([]);
+  };
 
   const handleCreateAddendum = async () => {
     if (!addendumDialog || !addendumForm.effectiveDate) return;
     setSubmittingAddendum(true);
     try {
-      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${addendumDialog.id}/addendums`, addendumForm);
+      const payload = {
+        ...addendumForm,
+        ...(addendumAnnexures.length > 0 ? { annexures: addendumAnnexures } : {}),
+      };
+      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${addendumDialog.id}/addendums`, payload);
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters", addendumDialog.id, "addendums"] });
       setExpandedOfferIds(prev => { const next = new Set(prev); next.add(addendumDialog.id); return next; });
@@ -2168,6 +2176,9 @@ export function OfferLettersDashboard() {
               <Input data-testid="input-addendum-cc" className="mt-1" placeholder="manager@hire-in.com, ceo@hire-in.com" value={addendumForm.ccEmails} onChange={e => setAddendumForm(f => ({ ...f, ccEmails: e.target.value }))} />
               <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
+
+            {/* Annexures */}
+            <AnnexureEditor annexures={addendumAnnexures} onChange={setAddendumAnnexures} />
 
             {/* Preview */}
             {addendumForm.effectiveDate && (
