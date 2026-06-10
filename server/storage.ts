@@ -251,6 +251,7 @@ export interface IStorage {
   getSalarySlip(id: string): Promise<SalarySlip | undefined>;
   createSalarySlip(slip: InsertSalarySlip): Promise<SalarySlip>;
   getSalarySlipsByMonth(year: number, month: number): Promise<SalarySlip[]>;
+  upsertSalarySlip(slip: InsertSalarySlip & { userId: string; year: number; month: number }): Promise<SalarySlip>;
 
   // Leave Accruals (per user)
   getLeaveAccrualsByUser(userId: string, year: number): Promise<LeaveAccrual[]>;
@@ -2095,6 +2096,17 @@ export class DatabaseStorage implements IStorage {
   async getSalarySlipsByMonth(year: number, month: number): Promise<SalarySlip[]> {
     return db.select().from(salarySlips)
       .where(and(eq(salarySlips.year, year), eq(salarySlips.month, month)));
+  }
+
+  async upsertSalarySlip(slip: InsertSalarySlip & { userId: string; year: number; month: number }): Promise<SalarySlip> {
+    await db.delete(salarySlips)
+      .where(and(
+        eq(salarySlips.userId, slip.userId),
+        eq(salarySlips.year, slip.year),
+        eq(salarySlips.month, slip.month),
+      ));
+    const [created] = await db.insert(salarySlips).values(slip).returning();
+    return created;
   }
 
   // ==========================================

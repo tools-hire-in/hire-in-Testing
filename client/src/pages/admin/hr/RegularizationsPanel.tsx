@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -14,6 +14,10 @@ import {
   Search,
   Eye,
   History,
+  Plus,
+  X,
+  Layers,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 
 interface RegularizationRequest {
   id: string;
@@ -154,6 +159,337 @@ function ReviewModal({
             data-testid="button-submit-review"
           >
             {reviewMutation.isPending ? "Submitting..." : "Submit Decision"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface AbsentEmployee {
+  userId: string;
+  name: string;
+  employeeId: string | null;
+  email: string;
+  date: string;
+  currentStatus: string;
+}
+
+function BulkOverrideModal({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const [dates, setDates] = useState<string[]>([]);
+  const [newDate, setNewDate] = useState("");
+  const [punchIn, setPunchIn] = useState("09:00");
+  const [punchOut, setPunchOut] = useState("18:00");
+  const [reason, setReason] = useState("");
+  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+  const [step, setStep] = useState<"configure" | "confirm">("configure");
+  const [result, setResult] = useState<{ successCount: number; failedCount: number } | null>(null);
+
+  const datesParam = dates.join(",");
+
+  const { data: absentEmployees, isLoading: loadingAbsent, refetch: refetchAbsent } = useQuery<AbsentEmployee[]>({
+    queryKey: ["/api/hr/attendance/absent-employees", datesParam],
+    queryFn: async () => {
+      if (!datesParam) return [];
+      const res = await fetch(`/api/hr/attendance/absent-employees?dates=${encodeURIComponent(datesParam)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: dates.length > 0,
+  });
+
+  useEffect(() => {
+    if (dates.length > 0) refetchAbsent();
+  }, [dates]);
+
+  const groupedByDate = (absentEmployees ?? []).reduce<Record<string, AbsentEmployee[]>>((acc, e) => {
+    if (!acc[e.date]) acc[e.date] = [];
+    acc[e.date].push(e);
+    return acc;
+  }, {});
+
+  const allKeys = (absentEmployees ?? []).map(e => `${e.userId}|${e.date}`);
+  const allSelected = allKeys.length > 0 && allKeys.every(k => selectedEmployees.has(k));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedEmployees(new Set());
+    } else {
+      setSelectedEmployees(new Set(allKeys));
+    }
+  };
+
+  const toggleRow = (userId: string, date: string) => {
+    const key = `${userId}|${date}`;
+    setSelectedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const addDate = () => {
+    const d = newDate.trim();
+    if (!d || dates.includes(d)) return;
+    setDates(prev => [...prev, d].sort());
+    setNewDate("");
+    setSelectedEmployees(new Set());
+  };
+
+  const removeDate = (d: string) => {
+    setDates(prev => prev.filter(x => x !== d));
+    setSelectedEmployees(prev => {
+      const next = new Set(prev);
+      for (const k of [...next]) {
+        if (k.endsWith(`|${d}`)) next.delete(k);
+      }
+      return next;
+    });
+  };
+
+  const bulkMutation = useMutation({
+    mutationFn: () => {
+      const entries = [...selectedEmployees].map(k => {
+        const [userId, date] = k.split("|");
+        return { userId, date };
+      });
+      return apiRequest("POST", "/api/hr/attendance/regularization/bulk-override", {
+        entries,
+        punchIn: punchIn || undefined,
+        punchOut: punchOut || undefined,
+        reason,
+      });
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setResult({ successCount: data.successCount, failedCount: data.failedCount });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/all"] });
+      toast({
+        title: `Bulk Override Complete`,
+        description: `${data.successCount} records regularized${data.failedCount > 0 ? `, ${data.failedCount} failed` : ""}`,
+      });
+      setStep("confirm");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to apply bulk override", variant: "destructive" });
+    },
+  });
+
+  const selectedCount = selectedEmployees.size;
+  const isValid = dates.length > 0 && selectedCount > 0 && reason.trim().length > 0;
+
+  if (step === "confirm" && result) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent data-testid="dialog-bulk-override-result">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Bulk Override Complete
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 text-center">
+                <p className="text-3xl font-bold text-green-700 dark:text-green-400">{result.successCount}</p>
+                <p className="text-sm text-green-700 dark:text-green-400 mt-1">Records Regularized</p>
+              </div>
+              {result.failedCount > 0 && (
+                <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-center">
+                  <p className="text-3xl font-bold text-red-700 dark:text-red-400">{result.failedCount}</p>
+                  <p className="text-sm text-red-700 dark:text-red-400 mt-1">Failed</p>
+                </div>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              All selected employees have been marked as Present for the selected dates. 
+              A "Bulk" badge will appear on their regularization records.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={onClose}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-bulk-override">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            Bulk Attendance Override
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">Mark all absent/no-punch employees as Present for selected dates (e.g. portal downtime)</p>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* Date selection */}
+          <div className="space-y-2">
+            <Label>Select Dates</Label>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                value={newDate}
+                onChange={e => setNewDate(e.target.value)}
+                className="flex-1"
+                data-testid="input-bulk-date"
+              />
+              <Button variant="outline" size="sm" onClick={addDate} disabled={!newDate} data-testid="button-add-bulk-date">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {dates.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {dates.map(d => (
+                  <Badge key={d} variant="secondary" className="gap-1 pr-1">
+                    {d}
+                    <button onClick={() => removeDate(d)} className="ml-1 hover:text-destructive" data-testid={`button-remove-date-${d}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Punch times */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Default Punch-In Time</Label>
+              <Input
+                type="time"
+                value={punchIn}
+                onChange={e => setPunchIn(e.target.value)}
+                data-testid="input-bulk-punch-in"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Default Punch-Out Time</Label>
+              <Input
+                type="time"
+                value={punchOut}
+                onChange={e => setPunchOut(e.target.value)}
+                data-testid="input-bulk-punch-out"
+              />
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div className="space-y-2">
+            <Label>Reason <span className="text-destructive">*</span></Label>
+            <Textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Portal downtime Jun 5–6"
+              data-testid="input-bulk-reason"
+            />
+          </div>
+
+          {/* Employee table */}
+          {dates.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Affected Employees {loadingAbsent && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
+                {allKeys.length > 0 && (
+                  <button
+                    onClick={toggleAll}
+                    className="text-xs text-primary underline"
+                    data-testid="button-select-all-bulk"
+                  >
+                    {allSelected ? "Deselect All" : `Select All (${allKeys.length})`}
+                  </button>
+                )}
+              </div>
+
+              {loadingAbsent ? (
+                <div className="space-y-1">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : allKeys.length === 0 ? (
+                <div className="text-center py-4 text-sm text-muted-foreground border rounded-lg">
+                  No absent/no-punch employees found for the selected dates
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-muted/60 z-10">
+                      <tr>
+                        <th className="py-2 px-3 text-left w-8">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={toggleAll}
+                            data-testid="checkbox-select-all"
+                            className="rounded"
+                          />
+                        </th>
+                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Employee</th>
+                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Date</th>
+                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(groupedByDate).sort(([a],[b]) => a.localeCompare(b)).flatMap(([date, emps]) =>
+                        emps.map(emp => {
+                          const key = `${emp.userId}|${emp.date}`;
+                          const checked = selectedEmployees.has(key);
+                          return (
+                            <tr
+                              key={key}
+                              className={`border-t last:border-0 cursor-pointer ${checked ? "bg-primary/5" : "hover:bg-muted/30"}`}
+                              onClick={() => toggleRow(emp.userId, emp.date)}
+                              data-testid={`bulk-row-${emp.userId}-${emp.date}`}
+                            >
+                              <td className="py-2 px-3">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleRow(emp.userId, emp.date)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="rounded"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <p className="font-medium">{emp.name}</p>
+                                {emp.employeeId && <p className="text-xs text-muted-foreground">{emp.employeeId}</p>}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-xs">{emp.date}</td>
+                              <td className="py-2 px-3">
+                                <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400 font-medium">
+                                  <AlertCircle className="h-3 w-3" />
+                                  {emp.currentStatus === "no_punch" ? "No Punch" : "Absent"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {selectedCount > 0 && (
+                <p className="text-xs text-muted-foreground">{selectedCount} employee-day{selectedCount !== 1 ? "s" : ""} selected</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => bulkMutation.mutate()}
+            disabled={!isValid || bulkMutation.isPending}
+            data-testid="button-apply-bulk-override"
+          >
+            {bulkMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Applying...</>
+            ) : (
+              `Apply to ${selectedCount} record${selectedCount !== 1 ? "s" : ""}`
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -503,14 +839,18 @@ function AcknowledgementsSection() {
 
 export default function RegularizationsPanel() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reviewRequest, setReviewRequest] = useState<RegularizationRequest | null>(null);
   const [showOverride, setShowOverride] = useState(false);
+  const [showBulkOverride, setShowBulkOverride] = useState(false);
   const [activeSection, setActiveSection] = useState<"requests" | "acks" | "settings">("requests");
   const [auditDetailId, setAuditDetailId] = useState<string | null>(null);
+
+  const canBulkOverride = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
 
   const { data: requests, isLoading, refetch } = useQuery<RegularizationRequest[]>({
     queryKey: ["/api/hr/attendance/regularization/all"],
@@ -550,6 +890,12 @@ export default function RegularizationsPanel() {
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
             Direct Override
           </Button>
+          {canBulkOverride && (
+            <Button size="sm" variant="secondary" onClick={() => setShowBulkOverride(true)} data-testid="button-bulk-override">
+              <Layers className="h-3.5 w-3.5 mr-1.5" />
+              Bulk Override
+            </Button>
+          )}
         </div>
       </div>
 
@@ -736,6 +1082,7 @@ export default function RegularizationsPanel() {
       {/* Modals */}
       {reviewRequest && <ReviewModal request={reviewRequest} onClose={() => setReviewRequest(null)} />}
       {showOverride && <OverrideModal onClose={() => setShowOverride(false)} />}
+      {showBulkOverride && <BulkOverrideModal onClose={() => setShowBulkOverride(false)} />}
       {auditDetailId && <AuditDetailDialog requestId={auditDetailId} onClose={() => setAuditDetailId(null)} />}
     </div>
   );

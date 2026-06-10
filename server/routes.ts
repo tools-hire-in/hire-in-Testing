@@ -3865,6 +3865,133 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // BULK REGULARIZATION & ABSENT EMPLOYEE ENDPOINTS
+  // ==========================================
+
+  // Get employees with absent/no-punch status on given dates
+  app.get("/api/hr/attendance/absent-employees", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const rawDates = req.query["dates[]"] || req.query["dates"];
+      const dates: string[] = Array.isArray(rawDates)
+        ? (rawDates as string[])
+        : typeof rawDates === "string"
+          ? rawDates.split(",").map(d => d.trim())
+          : [];
+      if (dates.length === 0) {
+        return res.status(400).json({ error: "At least one date is required" });
+      }
+
+      const allUsers = await storage.getAdminUsers();
+
+      const results: Array<{ userId: string; name: string; employeeId: string | null; email: string; date: string; currentStatus: string }> = [];
+
+      for (const date of dates) {
+        const dateAttendance = await storage.getAttendanceByDate(date);
+        const attendanceByUser = new Map(dateAttendance.map(a => [a.userId, a]));
+
+        for (const user of allUsers) {
+          if (!user.isActive) continue;
+          const rec = attendanceByUser.get(user.id);
+          if (!rec || rec.status === "absent") {
+            results.push({
+              userId: user.id,
+              name: `${user.firstName} ${user.lastName}`,
+              employeeId: user.employeeId ?? null,
+              email: user.email,
+              date,
+              currentStatus: rec?.status ?? "no_punch",
+            });
+          }
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Absent employees error:", error);
+      res.status(500).json({ error: "Failed to fetch absent employees" });
+    }
+  });
+
+  // Bulk attendance regularization override
+  app.post("/api/hr/attendance/regularization/bulk-override", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const { entries, punchIn, punchOut, reason, comment } = req.body;
+
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return res.status(400).json({ error: "entries array is required" });
+      }
+      if (!reason) {
+        return res.status(400).json({ error: "reason is required" });
+      }
+
+      const HH_MM_RE = /^\d{2}:\d{2}$/;
+
+      let successCount = 0;
+      let failedCount = 0;
+      const failures: Array<{ userId: string; date: string; error: string }> = [];
+
+      for (const entry of entries) {
+        const { userId, date } = entry;
+        if (!userId || !date) { failedCount++; continue; }
+
+        const resolvedPunchIn = punchIn && HH_MM_RE.test(punchIn) ? `${date}T${punchIn}:00` : punchIn || undefined;
+        const resolvedPunchOut = punchOut && HH_MM_RE.test(punchOut) ? `${date}T${punchOut}:00` : punchOut || undefined;
+
+        try {
+          const hrComment = comment || `Bulk regularization: ${reason}`;
+          await storage.applyRegularizationOverride({
+            actorId,
+            employeeId: userId,
+            attendanceDate: date,
+            requestedPunchIn: resolvedPunchIn,
+            requestedPunchOut: resolvedPunchOut,
+            requestType: "wrong_absent",
+            reason,
+            comment: hrComment,
+            attendanceStatus: "present",
+          });
+
+          await storage.createNotification({
+            userId,
+            type: "regularization_decision",
+            title: "Attendance Correction Applied",
+            message: `HR has corrected your attendance for ${date}. Reason: ${reason}`,
+            isRead: false,
+            metadata: { attendanceDate: date, status: "bulk_override" },
+          });
+
+          successCount++;
+        } catch (err: any) {
+          failedCount++;
+          failures.push({ userId, date, error: err.message || "Unknown error" });
+        }
+      }
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: actorId,
+        action: "bulk_regularization_override",
+        changes: {
+          totalEntries: entries.length,
+          successCount,
+          failedCount,
+          reason,
+          dates: [...new Set(entries.map((e: any) => e.date))],
+          punchIn: punchIn || null,
+          punchOut: punchOut || null,
+          failures,
+        },
+      });
+
+      res.json({ success: true, successCount, failedCount, failures });
+    } catch (error) {
+      console.error("Bulk regularization override error:", error);
+      res.status(500).json({ error: "Failed to apply bulk override" });
+    }
+  });
+
+  // ==========================================
   // POLICY ACKNOWLEDGEMENT ROUTES
   // ==========================================
 
@@ -4720,6 +4847,104 @@ export async function registerRoutes(
       res.json({ success: true, created, month, year });
     } catch (error) {
       res.status(500).json({ error: "Failed to generate salary slips" });
+    }
+  });
+
+  // Salary slip regeneration (replace existing slips for a month)
+  app.post("/api/hr/salary-slips/regenerate", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { month, year, userIds, dryRun } = req.body;
+      const m = parseInt(month);
+      const y = parseInt(year);
+      if (!m || !y || m < 1 || m > 12) {
+        return res.status(400).json({ error: "Valid month and year are required" });
+      }
+
+      const report = await generateMonthlySalaryReport(y, m);
+      const allUsers = await storage.getAdminUsers();
+      const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
+      const userNameMap = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+      const existingSlips = await storage.getSalarySlipsByMonth(y, m);
+      const existingByUser = new Map(existingSlips.map(s => [s.userId, s]));
+
+      const scopedUserIds = Array.isArray(userIds) && userIds.length > 0 ? new Set<string>(userIds) : null;
+
+      const diff: Array<{
+        userId: string;
+        name: string;
+        email: string;
+        oldNetPayable: number | null;
+        newNetPayable: number;
+        oldLopLeaves: number | null;
+        newLopLeaves: number;
+        changed: boolean;
+      }> = [];
+
+      const slipsToUpsert: Array<Parameters<typeof storage.upsertSalarySlip>[0]> = [];
+      const generatedBy = req.session.userId!;
+
+      for (const row of report.rows) {
+        const userId = userEmailMap.get(row.email);
+        if (!userId) continue;
+        if (scopedUserIds && !scopedUserIds.has(userId)) continue;
+
+        const existing = existingByUser.get(userId);
+        const oldNet = existing ? parseFloat(String(existing.netPayable)) : null;
+        const oldLop = existing ? parseFloat(String(existing.lopLeaves ?? 0)) : null;
+        const changed = oldNet === null || Math.abs(oldNet - row.netPayable) > 0.01 || Math.abs((oldLop ?? 0) - row.lopLeaves) > 0.01;
+
+        diff.push({
+          userId,
+          name: userNameMap.get(userId) ?? row.employeeName,
+          email: row.email,
+          oldNetPayable: oldNet,
+          newNetPayable: row.netPayable,
+          oldLopLeaves: oldLop,
+          newLopLeaves: row.lopLeaves,
+          changed,
+        });
+
+        slipsToUpsert.push({
+          userId,
+          year: y,
+          month: m,
+          basicSalary: String(row.salary),
+          grossSalary: String(row.grossSalary),
+          deductions: String(row.deductions),
+          netPayable: String(row.netPayable),
+          totalWorkingDays: row.workingDays,
+          daysPresent: row.presentDays,
+          daysAbsent: row.absentDays,
+          approvedLeaves: String(row.paidLeaves),
+          lopLeaves: String(row.lopLeaves),
+          totalHours: String(row.totalHours),
+          attendancePercentage: String(row.attendancePercentage),
+          generatedBy,
+        });
+      }
+
+      if (dryRun) {
+        return res.json({ dryRun: true, diff, totalEmployees: diff.length, changedCount: diff.filter(d => d.changed).length });
+      }
+
+      let upsertedCount = 0;
+      for (const slip of slipsToUpsert) {
+        await storage.upsertSalarySlip(slip);
+        upsertedCount++;
+      }
+
+      await storage.createAuditLog({
+        actorId: generatedBy,
+        targetId: generatedBy,
+        action: "salary_slips_regenerated",
+        changes: { month: m, year: y, upsertedCount, scopedUserIds: userIds || null },
+      });
+
+      res.json({ success: true, upsertedCount, diff, month: m, year: y });
+    } catch (error) {
+      console.error("Salary slip regeneration error:", error);
+      res.status(500).json({ error: "Failed to regenerate salary slips" });
     }
   });
 

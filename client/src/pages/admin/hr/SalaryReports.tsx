@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, Settings, ChevronDown, ChevronUp, Save } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,246 @@ const MONTHS = [
   { value: "11", label: "November" },
   { value: "12", label: "December" },
 ];
+
+interface RegenerateDiffRow {
+  userId: string;
+  name: string;
+  email: string;
+  oldNetPayable: number | null;
+  newNetPayable: number;
+  oldLopLeaves: number | null;
+  newLopLeaves: number;
+  changed: boolean;
+}
+
+function RegenerateMonthModal({
+  month,
+  year,
+  onClose,
+}: {
+  month: string;
+  year: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [step, setStep] = useState<"warn" | "diff" | "done">("warn");
+  const [diff, setDiff] = useState<RegenerateDiffRow[]>([]);
+  const [changedCount, setChangedCount] = useState(0);
+  const [savedCount, setSavedCount] = useState(0);
+
+  const monthLabel = MONTHS.find(m => m.value === month)?.label || month;
+
+  const formatCurrencyLocal = (val: number | null) => {
+    if (val === null) return "—";
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
+  };
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/hr/salary-slips/regenerate", {
+        month: parseInt(month),
+        year: parseInt(year),
+        dryRun: true,
+      }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setDiff(data.diff || []);
+      setChangedCount(data.changedCount || 0);
+      setStep("diff");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to preview", variant: "destructive" });
+    },
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/hr/salary-slips/regenerate", {
+        month: parseInt(month),
+        year: parseInt(year),
+        dryRun: false,
+      }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setSavedCount(data.upsertedCount || 0);
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-slips"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/admin/salary-slips"] });
+      toast({ title: "Salary Slips Regenerated", description: `${data.upsertedCount} slips updated for ${monthLabel} ${year}` });
+      setStep("done");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to regenerate", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-regenerate-month">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            Regenerate Salary Slips — {monthLabel} {year}
+          </DialogTitle>
+        </DialogHeader>
+
+        {step === "warn" && (
+          <>
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-200">Existing slips will be overwritten</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    All salary slip records for <strong>{monthLabel} {year}</strong> will be recalculated and replaced with corrected values.
+                    This action is logged in the audit trail and cannot be undone automatically.
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Use this when attendance corrections (e.g. bulk regularizations after portal downtime) have been applied and the salary
+                slips for the affected month need to reflect the corrected data.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Clicking <strong>Preview Changes</strong> will calculate the new values and show you a before/after comparison
+                before anything is saved.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button
+                onClick={() => previewMutation.mutate()}
+                disabled={previewMutation.isPending}
+                data-testid="button-preview-regenerate"
+              >
+                {previewMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Calculating...</>
+                ) : (
+                  <><Eye className="h-4 w-4 mr-2" />Preview Changes</>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === "diff" && (
+          <>
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-medium">{diff.length} employees</span>
+                <span className="text-muted-foreground">·</span>
+                <span className={changedCount > 0 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}>
+                  {changedCount} will change
+                </span>
+                {changedCount === 0 && (
+                  <span className="text-green-600 dark:text-green-400">· No changes detected</span>
+                )}
+              </div>
+
+              {diff.length === 0 ? (
+                <p className="text-center text-muted-foreground py-6">No employees found for this period</p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-muted/60 z-10">
+                      <tr>
+                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Employee</th>
+                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">LOP Days</th>
+                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">Old Net Pay</th>
+                        <th className="py-2 px-3 text-center text-xs font-medium text-muted-foreground"></th>
+                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">New Net Pay</th>
+                        <th className="py-2 px-3 text-center text-xs font-medium text-muted-foreground">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diff.map((row, idx) => (
+                        <tr
+                          key={row.userId}
+                          className={`border-t ${row.changed ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`}
+                          data-testid={`regenerate-diff-row-${idx}`}
+                        >
+                          <td className="py-2 px-3">
+                            <p className="font-medium">{row.name}</p>
+                            <p className="text-xs text-muted-foreground">{row.email}</p>
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-xs">
+                            <span className="text-muted-foreground">{row.oldLopLeaves ?? "—"}</span>
+                            {row.newLopLeaves !== (row.oldLopLeaves ?? row.newLopLeaves) && (
+                              <span className="ml-1 text-amber-600">→ {row.newLopLeaves}</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                            {formatCurrencyLocal(row.oldNetPayable)}
+                          </td>
+                          <td className="py-2 px-3 text-center text-muted-foreground">
+                            <ArrowRight className="h-3 w-3 inline" />
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-xs font-medium">
+                            {formatCurrencyLocal(row.newNetPayable)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {row.changed ? (
+                              <span className="inline-flex items-center text-xs font-medium text-amber-600 dark:text-amber-400">
+                                <AlertTriangle className="h-3 w-3 mr-1" />Changed
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button
+                variant="secondary"
+                onClick={() => setStep("warn")}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={() => confirmMutation.mutate()}
+                disabled={confirmMutation.isPending}
+                data-testid="button-confirm-regenerate"
+              >
+                {confirmMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+                ) : (
+                  <><RefreshCw className="h-4 w-4 mr-2" />Confirm & Save</>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === "done" && (
+          <>
+            <div className="space-y-4 py-4 text-center">
+              <div className="flex justify-center">
+                <div className="p-4 rounded-full bg-green-100 dark:bg-green-900/20">
+                  <RefreshCw className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+              <div>
+                <p className="text-lg font-semibold">{savedCount} Salary Slips Regenerated</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  All slips for {monthLabel} {year} have been recalculated with corrected attendance data.
+                  Employees can now download their updated slips.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={onClose}>Done</Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function ReportRecipientsCard() {
   const { toast } = useToast();
@@ -238,6 +479,9 @@ export function SalaryReportsContent() {
   const [selectedMonth, setSelectedMonth] = useState(String(now.getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()));
   const [previewData, setPreviewData] = useState<SalaryReportResult | null>(null);
+  const [showRegenerate, setShowRegenerate] = useState(false);
+
+  const canRegenerate = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
 
   const currentYear = now.getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
@@ -390,6 +634,16 @@ export function SalaryReportsContent() {
                 )}
                 Generate & Send Report
               </Button>
+              {canRegenerate && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowRegenerate(true)}
+                  data-testid="button-regenerate-month"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Regenerate Month
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -538,6 +792,14 @@ export function SalaryReportsContent() {
               <Skeleton className="h-8 w-3/4" />
             </CardContent>
           </Card>
+        )}
+
+        {showRegenerate && (
+          <RegenerateMonthModal
+            month={selectedMonth}
+            year={selectedYear}
+            onClose={() => setShowRegenerate(false)}
+          />
         )}
       </div>
   );
