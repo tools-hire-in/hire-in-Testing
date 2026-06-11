@@ -6888,6 +6888,7 @@ export async function registerRoutes(
         oldConfirmationDate, newConfirmationDate,
         customClauseTitle, customClauseText,
         deviceItems, ccEmails, annexureData,
+        forEmployeeId,
       } = req.body;
 
       if (!employeeName || !employeeEmail || !addendumType || !effectiveDate) {
@@ -6908,6 +6909,16 @@ export async function registerRoutes(
         validatedAnnexures = annexureData;
       }
 
+      // If a system employee was selected, validate it exists and is not deleted
+      let resolvedForEmployeeId: string | null = null;
+      if (forEmployeeId) {
+        const emp = await storage.getAdminUser(forEmployeeId);
+        if (!emp || emp.deletedAt) {
+          return res.status(400).json({ error: "Selected employee was not found." });
+        }
+        resolvedForEmployeeId = emp.id;
+      }
+
       const token = crypto.randomBytes(32).toString("hex");
       const actorId = req.session.userId!;
 
@@ -6923,6 +6934,7 @@ export async function registerRoutes(
       const addendum = await storage.createAddendum({
         isStandalone: true,
         manualEmployeeData,
+        forEmployeeId: resolvedForEmployeeId,
         token,
         addendumType,
         status: "sent",

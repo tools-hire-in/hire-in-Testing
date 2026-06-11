@@ -398,6 +398,9 @@ async function ensureOfferLetterAddendumsTable() {
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS cc_emails TEXT
       `);
       await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS for_employee_id VARCHAR REFERENCES admin_users(id)
+      `);
+      await db.execute(sql`
         ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
       `);
       return;
@@ -426,6 +429,7 @@ async function ensureOfferLetterAddendumsTable() {
         device_items JSONB,
         annexures JSONB,
         cc_emails TEXT,
+        for_employee_id VARCHAR REFERENCES admin_users(id),
         effective_date VARCHAR,
         reason TEXT,
         hr_manager_name VARCHAR,

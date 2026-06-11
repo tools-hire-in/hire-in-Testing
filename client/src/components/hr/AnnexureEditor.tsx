@@ -34,6 +34,8 @@ interface AnnexureEditorProps {
   annexures: AnnexureItem[];
   onChange: (annexures: AnnexureItem[]) => void;
   effectiveDate?: string;
+  goalPushDisabled?: boolean;
+  goalPushDisabledReason?: string;
 }
 
 function defaultGoalDueDate(effectiveDate?: string): string {
@@ -50,6 +52,8 @@ function TableEditor({
   goalPush,
   onGoalPushChange,
   effectiveDate,
+  goalPushDisabled,
+  goalPushDisabledReason,
 }: {
   table: AnnexureTable;
   onChange: (t: AnnexureTable) => void;
@@ -58,6 +62,8 @@ function TableEditor({
   goalPush?: AnnexureGoalPush;
   onGoalPushChange: (gp: AnnexureGoalPush | undefined) => void;
   effectiveDate?: string;
+  goalPushDisabled?: boolean;
+  goalPushDisabledReason?: string;
 }) {
   function updateHeader(col: 1 | 2, value: string) {
     onChange({ ...table, [`col${col}Header`]: value });
@@ -243,17 +249,24 @@ function TableEditor({
         <div className="border-t pt-2 mt-1 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Target className="h-3.5 w-3.5 text-emerald-600" />
-              <span className="text-xs font-medium text-emerald-800">Push rows to performance goals</span>
+              <Target className={`h-3.5 w-3.5 ${goalPushDisabled ? "text-muted-foreground" : "text-emerald-600"}`} />
+              <span className={`text-xs font-medium ${goalPushDisabled ? "text-muted-foreground" : "text-emerald-800"}`}>Push rows to performance goals</span>
             </div>
             <Switch
-              checked={!!goalPush?.enabled}
+              checked={!goalPushDisabled && !!goalPush?.enabled}
               onCheckedChange={toggleGoalPush}
+              disabled={goalPushDisabled}
               data-testid={`switch-push-goals-${annexureIdx}`}
             />
           </div>
 
-          {goalPush?.enabled && (
+          {goalPushDisabled && (
+            <p className="text-[11px] text-muted-foreground italic" data-testid={`text-goal-push-disabled-${annexureIdx}`}>
+              {goalPushDisabledReason || "Select a system employee to push these rows as performance goals."}
+            </p>
+          )}
+
+          {!goalPushDisabled && goalPush?.enabled && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2 space-y-2">
               <p className="text-[11px] text-emerald-700">
                 Col 1 → goal title · Col 2 → description. Deselect rows to skip them.
@@ -284,7 +297,7 @@ function TableEditor({
   );
 }
 
-export function AnnexureEditor({ annexures, onChange, effectiveDate }: AnnexureEditorProps) {
+export function AnnexureEditor({ annexures, onChange, effectiveDate, goalPushDisabled, goalPushDisabledReason }: AnnexureEditorProps) {
   const [expandedTables, setExpandedTables] = useState<Set<number>>(new Set());
 
   function addAnnexure() {
@@ -441,6 +454,8 @@ export function AnnexureEditor({ annexures, onChange, effectiveDate }: AnnexureE
                       goalPush={ann.goalPush}
                       onGoalPushChange={gp => updateGoalPush(idx, gp)}
                       effectiveDate={effectiveDate}
+                      goalPushDisabled={goalPushDisabled}
+                      goalPushDisabledReason={goalPushDisabledReason}
                     />
                   )}
                 </div>

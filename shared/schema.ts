@@ -1120,6 +1120,7 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   offerLetterId: varchar("offer_letter_id").references(() => offerLetters.id),
   isStandalone: boolean("is_standalone").notNull().default(false),
   manualEmployeeData: jsonb("manual_employee_data"),
+  forEmployeeId: varchar("for_employee_id").references(() => adminUsers.id),
   token: varchar("token").notNull().unique(),
   addendumType: offerLetterAddendumTypeEnum("addendum_type").notNull(),
   status: offerLetterAddendumStatusEnum("status").notNull().default("draft"),

@@ -1497,6 +1497,8 @@ export function OfferLettersDashboard() {
     ccEmails: "",
   });
   const [submittingStandalone, setSubmittingStandalone] = useState(false);
+  const [standaloneEmployeeSearch, setStandaloneEmployeeSearch] = useState("");
+  const [selectedStandaloneEmployeeId, setSelectedStandaloneEmployeeId] = useState<string | null>(null);
   const [addendumForm, setAddendumForm] = useState({
     addendumType: "salary_revision",
     effectiveDate: "",
@@ -1604,6 +1606,35 @@ export function OfferLettersDashboard() {
     queryKey: ["/api/hr/tools/addendums/standalone"],
   });
 
+  const { data: standaloneUsersData } = useQuery<{ users: any[]; counts?: any } | any[]>({
+    queryKey: ["/api/admin/users", "all_non_deleted"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=all_non_deleted", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+  const standaloneEmployees: any[] = Array.isArray(standaloneUsersData) ? standaloneUsersData : (standaloneUsersData?.users ?? []);
+
+  const { data: standaloneDepartments } = useQuery<any[]>({
+    queryKey: ["/api/departments"],
+  });
+  const standaloneDeptMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    (Array.isArray(standaloneDepartments) ? standaloneDepartments : []).forEach((d: any) => { m[d.id] = d.name; });
+    return m;
+  }, [standaloneDepartments]);
+
+  const filteredStandaloneEmployees = useMemo(() => {
+    if (!standaloneEmployeeSearch) return standaloneEmployees.slice(0, 20);
+    const s = standaloneEmployeeSearch.toLowerCase();
+    return standaloneEmployees.filter((e: any) =>
+      `${e.firstName} ${e.lastName}`.toLowerCase().includes(s) ||
+      e.employeeId?.toLowerCase().includes(s) ||
+      e.email?.toLowerCase().includes(s)
+    ).slice(0, 20);
+  }, [standaloneEmployees, standaloneEmployeeSearch]);
+
   const resetStandaloneForm = () => {
     setStandaloneForm({
       employeeName: "", employeeEmail: "", employeeDesignation: "",
@@ -1620,6 +1651,39 @@ export function OfferLettersDashboard() {
       ccEmails: "",
     });
     setStandaloneAnnexures([]);
+    setSelectedStandaloneEmployeeId(null);
+    setStandaloneEmployeeSearch("");
+  };
+
+  const selectStandaloneEmployee = (emp: any) => {
+    const mgr = emp.managerId ? standaloneEmployees.find((e: any) => e.id === emp.managerId) : undefined;
+    const deptName = emp.departmentId ? (standaloneDeptMap[emp.departmentId] || "") : "";
+    const designation = emp.designation || "";
+    setSelectedStandaloneEmployeeId(emp.id);
+    setStandaloneForm(f => ({
+      ...f,
+      employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
+      employeeEmail: emp.email || "",
+      employeeDesignation: designation,
+      employeeDepartment: deptName,
+      employeeJoiningDate: emp.joiningDate || "",
+      employeeReportingManager: mgr ? `${mgr.firstName} ${mgr.lastName}`.trim() : "",
+      oldDesignation: designation,
+      oldDepartment: deptName,
+      oldSalary: emp.salary || "",
+    }));
+    setStandaloneEmployeeSearch("");
+  };
+
+  const clearStandaloneEmployee = () => {
+    setSelectedStandaloneEmployeeId(null);
+    setStandaloneEmployeeSearch("");
+    setStandaloneForm(f => ({
+      ...f,
+      employeeName: "", employeeEmail: "", employeeDesignation: "",
+      employeeDepartment: "", employeeJoiningDate: "", employeeReportingManager: "",
+      oldDesignation: "", oldDepartment: "", oldSalary: "",
+    }));
   };
 
   const handleCreateStandaloneAddendum = async () => {
@@ -1628,11 +1692,45 @@ export function OfferLettersDashboard() {
     try {
       const res = await apiRequest("POST", "/api/hr/tools/addendums/standalone", {
         ...standaloneForm,
+        forEmployeeId: selectedStandaloneEmployeeId || undefined,
         annexureData: standaloneAnnexures.length > 0 ? standaloneAnnexures : undefined,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] });
       toast({ title: "Standalone addendum created and sent!", description: "The employee has been emailed a link to sign." });
+
+      if (selectedStandaloneEmployeeId && standaloneAnnexures.length > 0) {
+        const referenceNumber = result?.referenceNumber || result?.id;
+        const goalsToCreate: { title: string; description?: string; startDate?: string; targetDate?: string }[] = [];
+        for (const ann of standaloneAnnexures) {
+          if (!ann.table || !ann.goalPush?.enabled || ann.goalPush.selectedRows.length === 0) continue;
+          for (const rowIdx of ann.goalPush.selectedRows) {
+            const row = ann.table.rows[rowIdx];
+            if (!row || !row[0].trim()) continue;
+            goalsToCreate.push({
+              title: row[0].trim(),
+              description: row[1]?.trim() || undefined,
+              startDate: standaloneForm.effectiveDate || undefined,
+              targetDate: ann.goalPush.dueDate || undefined,
+            });
+          }
+        }
+        if (goalsToCreate.length > 0 && referenceNumber) {
+          try {
+            await apiRequest("POST", "/api/performance/goals/batch", {
+              employeeId: selectedStandaloneEmployeeId,
+              sourceRef: referenceNumber,
+              goals: goalsToCreate,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/performance/goals"] });
+            toast({ title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`, description: `Linked to addendum ${referenceNumber}` });
+          } catch {
+            toast({ title: "Goals could not be pushed", description: "Addendum was created. Goals may need to be added manually.", variant: "destructive" });
+          }
+        }
+      }
+
       setStandaloneDialog(false);
       resetStandaloneForm();
     } catch (err: any) {
@@ -2621,13 +2719,59 @@ export function OfferLettersDashboard() {
               New Standalone Addendum
             </DialogTitle>
             <DialogDescription>
-              Issue an addendum for a legacy employee who has no offer letter in the system. Fill in employee details manually and select the amendment type.
+              Look up an existing employee to auto-fill their details (so goals can be attached), or enter details manually for a legacy employee with no offer letter in the system.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <div className="border rounded-lg p-4 space-y-3 bg-purple-50/30 border-purple-100">
               <h4 className="text-sm font-semibold text-purple-900">Employee Details</h4>
+
+              {selectedStandaloneEmployeeId ? (
+                <div className="flex items-center justify-between rounded-md border border-purple-200 bg-white px-3 py-2" data-testid="standalone-selected-employee">
+                  <div className="text-sm">
+                    <span className="font-medium" data-testid="text-standalone-selected-name">{standaloneForm.employeeName}</span>
+                    <span className="text-xs text-emerald-700 ml-2">System employee — goals can be attached</span>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={clearStandaloneEmployee} data-testid="button-clear-standalone-employee">
+                    Clear & enter manually
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <Label className="text-xs">Look up existing employee <span className="text-muted-foreground font-normal">(optional — leave blank for a legacy employee)</span></Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, ID, or email..."
+                      value={standaloneEmployeeSearch}
+                      onChange={e => setStandaloneEmployeeSearch(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-standalone-employee-search"
+                    />
+                  </div>
+                  {standaloneEmployeeSearch && filteredStandaloneEmployees.length > 0 && (
+                    <div className="border rounded-md mt-1 max-h-44 overflow-y-auto bg-white">
+                      {filteredStandaloneEmployees.map((emp: any) => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          onClick={() => selectStandaloneEmployee(emp)}
+                          className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b last:border-0"
+                          data-testid={`btn-select-standalone-employee-${emp.id}`}
+                        >
+                          <span className="font-medium">{emp.firstName} {emp.lastName}</span>
+                          <span className="text-muted-foreground ml-2">{emp.employeeId || ""} · {emp.email}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {standaloneEmployeeSearch && filteredStandaloneEmployees.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">No matching employees found — you can still enter details manually below.</p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Full Name *</Label>
@@ -2765,7 +2909,13 @@ export function OfferLettersDashboard() {
               <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
 
-            <AnnexureEditor annexures={standaloneAnnexures} onChange={setStandaloneAnnexures} />
+            <AnnexureEditor
+              annexures={standaloneAnnexures}
+              onChange={setStandaloneAnnexures}
+              effectiveDate={standaloneForm.effectiveDate || undefined}
+              goalPushDisabled={!selectedStandaloneEmployeeId}
+              goalPushDisabledReason="Look up and select a system employee above to push annexure rows as their performance goals."
+            />
           </div>
 
           <DialogFooter>
