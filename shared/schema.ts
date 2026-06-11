@@ -1762,6 +1762,45 @@ export type PraiseComment = typeof praiseComments.$inferSelect;
 // ROLE SUMMARY TEMPLATES (configurable role library)
 // ==========================================
 
+// ==========================================
+// SALARY REPORT RUNS (approval gate)
+// ==========================================
+
+export const salaryReportStatusEnum = pgEnum("salary_report_status", ["pending_approval", "approved", "sent"]);
+
+export const salaryReportRuns = pgTable("salary_report_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  status: salaryReportStatusEnum("status").notNull().default("pending_approval"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by").references(() => adminUsers.id),
+  reportData: jsonb("report_data").notNull().default(sql`'[]'::jsonb`),
+  adjustments: jsonb("adjustments").notNull().default(sql`'{}'::jsonb`),
+  emailSentAt: timestamp("email_sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSalaryReportRunSchema = createInsertSchema(salaryReportRuns).omit({
+  id: true,
+  createdAt: true,
+  generatedAt: true,
+});
+
+export type SalaryReportRun = typeof salaryReportRuns.$inferSelect;
+export type InsertSalaryReportRun = z.infer<typeof insertSalaryReportRunSchema>;
+
+export const salaryReportRunsRelations = relations(salaryReportRuns, ({ one }) => ({
+  approver: one(adminUsers, {
+    fields: [salaryReportRuns.approvedBy],
+    references: [adminUsers.id],
+    relationName: "reportApprover",
+  }),
+}));
+
+// ==========================================
+
 export const roleSummaryTemplates = pgTable("role_summary_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   roleKey: varchar("role_key").notNull().unique(),

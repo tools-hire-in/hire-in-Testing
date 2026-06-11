@@ -14,6 +14,7 @@ interface EmployeeReportRow {
   paidLeaves: number;
   lopLeaves: number;
   holidays: number;
+  regionalHolidayDays: number;
   totalHours: number;
   attendancePercentage: number;
   grossSalary: number;
@@ -210,6 +211,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
       paidLeaves: Math.round(paidLeaves * 100) / 100,
       lopLeaves: Math.round(lopLeaves * 100) / 100,
       holidays: totalHolidaysForUser,
+      regionalHolidayDays,
       totalHours: Math.round(totalHours * 100) / 100,
       attendancePercentage,
       grossSalary: monthlySalary,

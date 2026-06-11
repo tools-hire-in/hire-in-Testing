@@ -421,6 +421,21 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const peopleHRTrainingBadge = ["hr", "admin", "super_admin"].includes(userRole) ? trainingReqBadge : 0;
   const peopleHRBadge = (pendingEndorseCount ?? 0) + peopleHRTrainingBadge;
 
+  // Salary report pending approval badge (admin/super_admin only)
+  const { data: salaryRunPending } = useQuery<{ count: number }>({
+    queryKey: ["/api/hr/reports/salary/runs/pending-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/reports/salary/runs/pending-count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && ["admin", "super_admin"].includes(user?.role || ""),
+  });
+  const salaryPendingCount = salaryRunPending?.count ?? 0;
+
   const personalNavItems: NavItem[] = [
     {
       href: "/admin/hr",
@@ -480,6 +495,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     ...(hasFinanceAccess ? [{
       href: "/admin/finance",
       label: "Finance & Contracts",
+      badge: salaryPendingCount > 0 ? salaryPendingCount : undefined,
       icon: FileText,
       roles: ["super_admin", "admin"],
     }] : []),

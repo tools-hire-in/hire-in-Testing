@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
@@ -14,7 +14,7 @@ import { setupSession, requireAuth as requireAuthImported, requireRole as requir
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, type SalaryReportAdjustment } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -4735,28 +4735,110 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/reports/salary", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  // Salary report send/generate endpoint.
+  // - Current or future month: approval-gate flow (creates pending_approval run; admin-level only)
+  // - Past month (historical): direct email send (admin-level only); no approval step needed
+  app.post("/api/hr/reports/salary", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const isPastMonth = year < currentYear || (year === currentYear && month < currentMonth);
+
       const report = await generateMonthlySalaryReport(year, month);
 
-      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
-      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+      if (isPastMonth) {
+        // Historical month — send directly without requiring approval, but persist a "sent" run
+        // so the history table reflects the action.
+        const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
+        const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+        const emailResult = await sendSalaryReport({
+          csvContent: report.csv,
+          summary: report.summary,
+          recipients,
+        });
+        if (!emailResult.success) {
+          return res.status(500).json({ error: "Report generated but email failed to send" });
+        }
 
-      const emailResult = await sendSalaryReport({
-        csvContent: report.csv,
-        summary: report.summary,
-        recipients,
+        // Upsert a salary_report_runs record so the history table shows this send
+        const existingHistorical = await db.select({ id: salaryReportRuns.id })
+          .from(salaryReportRuns)
+          .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+          .limit(1);
+
+        const now2 = new Date();
+        if (existingHistorical.length > 0) {
+          await db.update(salaryReportRuns)
+            .set({ status: "sent", reportData: report.rows as any, emailSentAt: now2, approvedBy: req.session.userId!, approvedAt: now2 })
+            .where(eq(salaryReportRuns.id, existingHistorical[0].id));
+        } else {
+          await db.insert(salaryReportRuns).values({
+            year,
+            month,
+            status: "sent",
+            reportData: report.rows as any,
+            adjustments: {} as any,
+            emailSentAt: now2,
+            approvedBy: req.session.userId!,
+            approvedAt: now2,
+          });
+        }
+
+        await storage.createAuditLog({
+          action: "salary_report_sent_historical",
+          actorId: req.session.userId!,
+          changes: { year, month, employeeCount: report.rows.length },
+        });
+        return res.json({ success: true, summary: report.summary, requiresApproval: false });
+      }
+
+      // Current/future month — route through approval gate
+      const existing = await db.select({ id: salaryReportRuns.id, status: salaryReportRuns.status })
+        .from(salaryReportRuns)
+        .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+        .limit(1);
+
+      if (existing.length > 0 && existing[0].status === "approved") {
+        return res.status(409).json({ error: "A report for this month has already been approved and sent." });
+      }
+
+      if (existing.length > 0) {
+        await db.update(salaryReportRuns)
+          .set({
+            reportData: report.rows as any,
+            adjustments: {} as any,
+            status: "pending_approval",
+            generatedAt: new Date(),
+            approvedAt: null,
+            approvedBy: null,
+            emailSentAt: null,
+          })
+          .where(eq(salaryReportRuns.id, existing[0].id));
+        const [updated] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, existing[0].id));
+        return res.json({ success: true, run: updated, requiresApproval: true, summary: report.summary });
+      }
+
+      const [created] = await db.insert(salaryReportRuns).values({
+        year,
+        month,
+        status: "pending_approval",
+        reportData: report.rows as any,
+        adjustments: {} as any,
+      }).returning();
+
+      await storage.createAuditLog({
+        action: "salary_report_generated",
+        actorId: req.session.userId!,
+        changes: { year, month, employeeCount: report.rows.length },
       });
 
-      if (emailResult.success) {
-        res.json({ success: true, summary: report.summary });
-      } else {
-        res.status(500).json({ error: "Report generated but email failed to send" });
-      }
+      res.status(201).json({ success: true, run: created, requiresApproval: true, summary: report.summary });
     } catch (error) {
-      res.status(500).json({ error: "Failed to generate and send salary report" });
+      res.status(500).json({ error: "Failed to generate salary report run" });
     }
   });
 
@@ -4771,6 +4853,386 @@ export async function registerRoutes(
       res.send(report.csv);
     } catch (error) {
       res.status(500).json({ error: "Failed to download salary report" });
+    }
+  });
+
+  // ==========================================
+  // SALARY REPORT RUNS (approval gate)
+  // ==========================================
+
+  // Count pending-approval runs (for nav badge)
+  app.get("/api/hr/reports/salary/runs/pending-count", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const runs = await db.select({ id: salaryReportRuns.id })
+        .from(salaryReportRuns)
+        .where(eq(salaryReportRuns.status, "pending_approval"));
+      res.json({ count: runs.length });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch pending count" });
+    }
+  });
+
+  // List all runs (meta only, no full report data)
+  app.get("/api/hr/reports/salary/runs", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+    try {
+      const runs = await db.select({
+        id: salaryReportRuns.id,
+        year: salaryReportRuns.year,
+        month: salaryReportRuns.month,
+        status: salaryReportRuns.status,
+        generatedAt: salaryReportRuns.generatedAt,
+        approvedAt: salaryReportRuns.approvedAt,
+        approvedBy: salaryReportRuns.approvedBy,
+        emailSentAt: salaryReportRuns.emailSentAt,
+        createdAt: salaryReportRuns.createdAt,
+      }).from(salaryReportRuns)
+        .orderBy(desc(salaryReportRuns.year), desc(salaryReportRuns.month));
+
+      // Attach approver name
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+      const enriched = runs.map(r => {
+        const adjustedCount = 0; // We'll compute this per-run on the full fetch
+        return {
+          ...r,
+          approverName: r.approvedBy ? (userMap.get(r.approvedBy) || null) : null,
+          adjustedCount,
+        };
+      });
+
+      // Fetch adjustment counts efficiently
+      const fullRuns = await db.select({
+        id: salaryReportRuns.id,
+        adjustments: salaryReportRuns.adjustments,
+      }).from(salaryReportRuns);
+      const adjCountMap = new Map(fullRuns.map(r => [r.id, Object.keys((r.adjustments as Record<string, any>) || {}).length]));
+
+      const result = enriched.map(r => ({ ...r, adjustedCount: adjCountMap.get(r.id) || 0 }));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary runs" });
+    }
+  });
+
+  // Get single run (full data including adjustments)
+  app.get("/api/hr/reports/salary/runs/:id", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+      res.json({
+        ...run,
+        approverName: run.approvedBy ? (userMap.get(run.approvedBy) || null) : null,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch run" });
+    }
+  });
+
+  // Manually generate a run for a given month (or refresh existing pending run)
+  app.post("/api/hr/reports/salary/runs/generate", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const year = parseInt(req.body.year) || new Date().getFullYear();
+      const month = parseInt(req.body.month) || (new Date().getMonth() + 1);
+
+      const report = await generateMonthlySalaryReport(year, month);
+
+      const existing = await db.select({ id: salaryReportRuns.id, status: salaryReportRuns.status })
+        .from(salaryReportRuns)
+        .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        if (existing[0].status === "approved") {
+          return res.status(409).json({ error: "A report for this month has already been approved and sent. Cannot regenerate." });
+        }
+        await db.update(salaryReportRuns)
+          .set({
+            reportData: report.rows as any,
+            adjustments: {} as any,
+            status: "pending_approval",
+            generatedAt: new Date(),
+            approvedAt: null,
+            approvedBy: null,
+            emailSentAt: null,
+          })
+          .where(eq(salaryReportRuns.id, existing[0].id));
+        const [updated] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, existing[0].id));
+        return res.json(updated);
+      }
+
+      const [created] = await db.insert(salaryReportRuns).values({
+        year,
+        month,
+        status: "pending_approval",
+        reportData: report.rows as any,
+        adjustments: {} as any,
+      }).returning();
+
+      res.status(201).json(created);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate salary run" });
+    }
+  });
+
+  // Save a row-level adjustment on a pending run
+  app.patch("/api/hr/reports/salary/runs/:id/adjust", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status !== "pending_approval") return res.status(409).json({ error: "Only pending runs can be adjusted" });
+
+      const { email, fields, comment } = req.body;
+      if (!email || !fields || !comment?.trim()) {
+        return res.status(400).json({ error: "email, fields, and comment are required" });
+      }
+
+      // Find the row in report data and update it
+      const rows = (run.reportData as any[]) || [];
+      const rowIdx = rows.findIndex((r: any) => r.email === email);
+      if (rowIdx === -1) return res.status(404).json({ error: "Employee not found in this run" });
+
+      const row = { ...rows[rowIdx] };
+      const existingAdj = (run.adjustments as Record<string, any>) || {};
+
+      // Snapshot the COMPLETE original row on first adjustment for this employee.
+      // This allows atomic full restoration if the adjustment is later removed,
+      // and provides all context (salary, workingDays, regionalHolidayDays, etc.)
+      // needed for canonical recomputation.
+      const originalRow: Record<string, any> = existingAdj[email]?.originalRow || { ...rows[rowIdx] };
+      if (!existingAdj[email]) {
+        // First time adjusting — deep-clone entire original row as the restoration baseline
+        Object.assign(originalRow, rows[rowIdx]);
+      }
+
+      const allowed = ["presentDays", "absentDays", "paidLeaves", "lopLeaves", "deductions", "netPayable", "grossSalary", "totalHours"];
+      const adjustmentFields: Record<string, { oldValue: number; newValue: number }> = {};
+
+      for (const [field, newVal] of Object.entries(fields as Record<string, number>)) {
+        if (!allowed.includes(field)) continue;
+        // oldValue is always relative to the true original, not an intermediate edit
+        adjustmentFields[field] = { oldValue: originalRow[field] ?? row[field], newValue: Number(newVal) };
+        row[field] = Number(newVal);
+      }
+
+      // Canonical server-side recomputation — matches generateMonthlySalaryReport formula exactly:
+      //   effectivePresentDays = presentDays + paidLeaves + regionalHolidayDays
+      //   absentDays = max(0, workingDays - effectivePresentDays)
+      //   deductions = absentDays * (grossSalary / workingDays)
+      //   netPayable = max(0, grossSalary - deductions)
+      const attendanceFieldsChanged = ["presentDays", "paidLeaves", "lopLeaves"].some(f => f in fields);
+      const salaryFieldsChanged = ["grossSalary", "deductions"].some(f => f in fields);
+
+      if (attendanceFieldsChanged) {
+        const wDays = Number(row.workingDays) || 1;
+        const gross = Number(row.grossSalary);
+        const regionalHolidayDays = Number(row.regionalHolidayDays) || 0;
+        const dailyRate = gross / wDays;
+        // LOP leaves are NOT in effectivePresentDays — they become absent days naturally
+        const effectivePresentDays = Number(row.presentDays) + Number(row.paidLeaves) + regionalHolidayDays;
+        const newAbsentDays = Math.max(0, wDays - effectivePresentDays);
+        const newDeductions = Math.round(newAbsentDays * dailyRate * 100) / 100;
+        const newNetPayable = Math.max(0, Math.round((gross - newDeductions) * 100) / 100);
+        const newAttendancePct = wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0;
+
+        const captureIfChanged = (field: string, newVal: number) => {
+          if (row[field] !== newVal) {
+            adjustmentFields[field] = { oldValue: originalRow[field] ?? rows[rowIdx][field], newValue: newVal };
+            row[field] = newVal;
+          }
+        };
+
+        captureIfChanged("absentDays", newAbsentDays);
+        captureIfChanged("deductions", newDeductions);
+        captureIfChanged("netPayable", newNetPayable);
+        captureIfChanged("attendancePercentage", newAttendancePct);
+      } else if (salaryFieldsChanged && !("netPayable" in fields)) {
+        // grossSalary or deductions changed without explicit netPayable override — compute it
+        const gross = Number(row.grossSalary);
+        const ded = Number(row.deductions);
+        const net = Math.max(0, Math.round((gross - ded) * 100) / 100);
+        adjustmentFields["netPayable"] = { oldValue: originalRow["netPayable"] ?? rows[rowIdx].netPayable, newValue: net };
+        row.netPayable = net;
+      }
+
+      rows[rowIdx] = row;
+
+      existingAdj[email] = {
+        employeeName: row.employeeName,
+        email,
+        comment: comment.trim(),
+        originalRow,
+        // Accumulate all field diffs across multiple edits — each field tracks true original vs. current
+        fields: {
+          ...(existingAdj[email]?.fields || {}),
+          ...adjustmentFields,
+        },
+      };
+
+      await db.update(salaryReportRuns)
+        .set({ reportData: rows as any, adjustments: existingAdj as any })
+        .where(eq(salaryReportRuns.id, req.params.id));
+
+      res.json({ success: true, row: rows[rowIdx] });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save adjustment" });
+    }
+  });
+
+  // Remove an adjustment from a pending run — atomically restores original row values
+  app.delete("/api/hr/reports/salary/runs/:id/adjust/:email", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status !== "pending_approval") return res.status(409).json({ error: "Only pending runs can be adjusted" });
+
+      const emailToRemove = decodeURIComponent(req.params.email);
+      const existingAdj = (run.adjustments as Record<string, any>) || {};
+      const adjEntry = existingAdj[emailToRemove];
+
+      const rows = (run.reportData as any[]) || [];
+      const rowIdx = rows.findIndex((r: any) => r.email === emailToRemove);
+
+      // Atomically restore the COMPLETE original row snapshot captured at adjustment-creation time.
+      // originalRow contains every field so nothing is left modified without an adjustment flag.
+      if (adjEntry?.originalRow && rowIdx !== -1) {
+        rows[rowIdx] = { ...adjEntry.originalRow };
+      } else if (adjEntry?.originalValues && rowIdx !== -1) {
+        // Backward-compat: older entries may still use originalValues subset
+        const restoredRow = { ...rows[rowIdx] };
+        for (const [field, val] of Object.entries(adjEntry.originalValues as Record<string, number>)) {
+          restoredRow[field] = val;
+        }
+        rows[rowIdx] = restoredRow;
+      }
+
+      delete existingAdj[emailToRemove];
+
+      await db.update(salaryReportRuns)
+        .set({ reportData: rows as any, adjustments: existingAdj as any })
+        .where(eq(salaryReportRuns.id, req.params.id));
+
+      res.json({ success: true, restoredRow: rowIdx !== -1 ? rows[rowIdx] : null });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove adjustment" });
+    }
+  });
+
+  // Approve and send a pending run
+  app.post("/api/hr/reports/salary/runs/:id/approve", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status !== "pending_approval") return res.status(409).json({ error: "Only pending runs can be approved" });
+
+      const actorId = req.session.userId!;
+      const rows = (run.reportData as any[]) || [];
+      const adjustments = (run.adjustments as Record<string, SalaryReportAdjustment>) || {};
+
+      // Build summary from rows
+      const totalPayable = rows.reduce((s: number, r: any) => s + Number(r.netPayable), 0);
+      const totalDeductions = rows.reduce((s: number, r: any) => s + Number(r.deductions), 0);
+      const totalHoursWorked = rows.reduce((s: number, r: any) => s + Number(r.totalHours), 0);
+      const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
+
+      const summary = {
+        year: run.year,
+        month: run.month,
+        monthName,
+        totalEmployees: rows.length,
+        totalPayable: Math.round(totalPayable * 100) / 100,
+        totalDeductions: Math.round(totalDeductions * 100) / 100,
+        totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
+        generatedAt: (run.generatedAt || new Date()).toISOString(),
+      };
+
+      // Build CSV with ADJUSTED column
+      const csvHeaders = [
+        "Employee Name", "Email", "Designation", "Department", "Salary",
+        "Working Days", "Present Days", "Absent Days", "Paid Leaves", "LOP Leaves (Unpaid)", "Holidays",
+        "Total Hours", "Attendance %", "Gross Salary", "Deductions", "Net Payable",
+        "ADJUSTED", "ADJUSTMENT_COMMENT",
+      ];
+      const csvRows = rows.map((r: any) => {
+        const adj = adjustments[r.email];
+        return [
+          `"${r.employeeName}"`, `"${r.email}"`, `"${r.designation}"`, `"${r.department}"`,
+          r.salary, r.workingDays, r.presentDays, r.absentDays, r.paidLeaves, r.lopLeaves, r.holidays,
+          r.totalHours, r.attendancePercentage, r.grossSalary, r.deductions, r.netPayable,
+          adj ? "Y" : "N", adj ? `"${adj.comment.replace(/"/g, '""')}"` : "",
+        ].join(",");
+      });
+      const csv = [csvHeaders.join(","), ...csvRows].join("\n");
+
+      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
+      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+
+      const emailResult = await sendSalaryReport({
+        csvContent: csv,
+        summary,
+        recipients,
+        adjustments,
+        rows,
+      });
+
+      if (!emailResult.success) {
+        return res.status(500).json({ error: "Email dispatch failed: " + emailResult.error });
+      }
+
+      const now = new Date();
+      await db.update(salaryReportRuns)
+        .set({ status: "approved", approvedAt: now, approvedBy: actorId, emailSentAt: now })
+        .where(eq(salaryReportRuns.id, req.params.id));
+
+      // Upsert adjusted salary_slips records
+      const allUsers = await storage.getAdminUsers();
+      const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
+
+      let upsertedCount = 0;
+      for (const row of rows) {
+        const adj = adjustments[row.email];
+        if (!adj) continue;
+        const userId = userEmailMap.get(row.email);
+        if (!userId) continue;
+        await db.delete(salarySlips).where(and(
+          eq(salarySlips.userId, userId),
+          eq(salarySlips.year, run.year),
+          eq(salarySlips.month, run.month),
+        ));
+        await db.insert(salarySlips).values({
+          userId,
+          year: run.year,
+          month: run.month,
+          basicSalary: String(row.salary),
+          grossSalary: String(row.grossSalary),
+          deductions: String(row.deductions),
+          netPayable: String(row.netPayable),
+          totalWorkingDays: row.workingDays,
+          daysPresent: row.presentDays,
+          daysAbsent: row.absentDays,
+          approvedLeaves: String(row.paidLeaves),
+          lopLeaves: String(row.lopLeaves),
+          totalHours: String(row.totalHours),
+          attendancePercentage: String(row.attendancePercentage),
+          generatedBy: actorId,
+        });
+        upsertedCount++;
+      }
+
+      await storage.createAuditLog({
+        action: "salary_report_approved",
+        actorId,
+        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount },
+      });
+
+      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount });
+    } catch (error) {
+      console.error("Failed to approve salary run:", error);
+      res.status(500).json({ error: "Failed to approve and send salary report" });
     }
   });
 

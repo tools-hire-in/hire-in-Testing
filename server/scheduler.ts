@@ -1,9 +1,9 @@
 import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
-import { sendSalaryReport } from "./email";
+import { sendSalaryReportApprovalReminder } from "./email";
 import { storage } from "./storage";
 import { db } from "./db";
-import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests } from "@shared/schema";
+import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns } from "@shared/schema";
 import { eq, and, lt, gt, isNull, sql } from "drizzle-orm";
 
 function isLastDayOfMonth(): boolean {
@@ -130,38 +130,115 @@ export async function runAbsentSweep(
 }
 
 export function startScheduler() {
-  // Salary report: last day of month at 6 PM CST
+  // Salary report: last day of month at 6 PM CST — generate and hold for approval
   cron.schedule("0 18 28-31 * *", async () => {
     if (!isLastDayOfMonth()) {
       console.log("[scheduler] Not the last day of the month, skipping salary report.");
       return;
     }
 
-    console.log("[scheduler] Last day of month detected. Generating salary report...");
+    console.log("[scheduler] Last day of month detected. Generating salary report (holding for approval)...");
     try {
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
 
       const report = await generateMonthlySalaryReport(year, month);
-      console.log(`[scheduler] Report generated: ${report.summary.totalEmployees} employees, $${report.summary.totalPayable} total payable.`);
+      console.log(`[scheduler] Report generated: ${report.summary.totalEmployees} employees, ₹${report.summary.totalPayable} total payable.`);
 
-      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
-      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+      // Save to salary_report_runs with pending_approval status — do NOT send email
+      const existing = await db.select({ id: salaryReportRuns.id })
+        .from(salaryReportRuns)
+        .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+        .limit(1);
 
-      const emailResult = await sendSalaryReport({
-        csvContent: report.csv,
-        summary: report.summary,
-        recipients,
-      });
-
-      if (emailResult.success) {
-        console.log("[scheduler] Salary report email sent successfully.");
+      if (existing.length > 0) {
+        // Update existing run (e.g. if cron re-fires)
+        await db.update(salaryReportRuns)
+          .set({
+            reportData: report.rows as any,
+            adjustments: {},
+            status: "pending_approval",
+            generatedAt: new Date(),
+            approvedAt: null,
+            approvedBy: null,
+            emailSentAt: null,
+          })
+          .where(eq(salaryReportRuns.id, existing[0].id));
+        console.log(`[scheduler] Updated existing salary run for ${month}/${year} — status: pending_approval.`);
       } else {
-        console.error("[scheduler] Failed to send salary report email:", emailResult.error);
+        await db.insert(salaryReportRuns).values({
+          year,
+          month,
+          status: "pending_approval",
+          reportData: report.rows as any,
+          adjustments: {} as any,
+        });
+        console.log(`[scheduler] Saved salary run for ${month}/${year} — status: pending_approval. Awaiting admin approval.`);
       }
     } catch (error) {
-      console.error("[scheduler] Error generating/sending salary report:", error);
+      console.error("[scheduler] Error generating salary report:", error);
+    }
+  }, {
+    timezone: "America/Chicago",
+  });
+
+  // Salary report approval reminder: 1st of every month at 8 PM CST
+  // If last month's run is still pending_approval, remind super admins
+  cron.schedule("0 20 1 * *", async () => {
+    console.log("[scheduler] Checking for pending salary report approval...");
+    try {
+      const now = new Date();
+      // Calculate prior month (CST context)
+      let remindYear = now.getFullYear();
+      let remindMonth = now.getMonth(); // getMonth() is 0-indexed, so this is "previous month"
+      if (remindMonth === 0) {
+        remindMonth = 12;
+        remindYear = remindYear - 1;
+      }
+
+      const pendingRuns = await db.select().from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.year, remindYear),
+          eq(salaryReportRuns.month, remindMonth),
+          eq(salaryReportRuns.status, "pending_approval"),
+        ));
+
+      if (pendingRuns.length === 0) {
+        console.log(`[scheduler] No pending salary run for ${remindMonth}/${remindYear} — skipping reminder.`);
+        return;
+      }
+
+      const superAdmins = await db.select({ email: adminUsers.email })
+        .from(adminUsers)
+        .where(and(eq(adminUsers.role, "super_admin"), eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+
+      const toEmails = superAdmins.map(u => u.email).filter(Boolean);
+      if (toEmails.length === 0) {
+        console.log("[scheduler] No super admin emails found — skipping reminder.");
+        return;
+      }
+
+      const monthName = new Date(remindYear, remindMonth - 1, 1).toLocaleString("en-US", { month: "long" });
+      const portalUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : (process.env.APP_URL || "https://hire-in.com");
+
+      const result = await sendSalaryReportApprovalReminder({
+        to: toEmails,
+        year: remindYear,
+        month: remindMonth,
+        monthName,
+        portalUrl,
+      });
+
+      if (result.success) {
+        console.log(`[scheduler] Salary report approval reminder sent to ${toEmails.join(", ")}`);
+      } else {
+        console.error("[scheduler] Failed to send approval reminder:", result.error);
+      }
+    } catch (error) {
+      console.error("[scheduler] Salary report approval reminder failed:", error);
     }
   }, {
     timezone: "America/Chicago",
@@ -379,7 +456,8 @@ export function startScheduler() {
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
 
   console.log("[scheduler] All cron jobs scheduled:");
-  console.log("  - Salary report: last day of month at 6 PM CST");
+  console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
+  console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
   console.log("  - End-of-day absent sweep: daily at 23:59 IST");

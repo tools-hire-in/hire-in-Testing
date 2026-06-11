@@ -310,27 +310,79 @@ export async function sendPasswordResetEmail(options: {
   }
 }
 
+export interface SalaryReportAdjustment {
+  employeeName: string;
+  email: string;
+  comment: string;
+  fields: Record<string, { oldValue: number; newValue: number }>;
+}
+
 export async function sendSalaryReport(options: {
   csvContent: string;
   summary: { year: number; month: number; monthName: string; totalEmployees: number; totalPayable: number; totalHoursWorked: number; generatedAt: string };
   recipients?: { to: string[]; cc: string[] };
+  adjustments?: Record<string, SalaryReportAdjustment>;
+  rows?: any[];
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
 
-    const csvBase64 = Buffer.from(options.csvContent).toString("base64");
-    const fileName = `Salary_Report_${options.summary.monthName}_${options.summary.year}.csv`;
+    const adjustments = options.adjustments || {};
+    const adjustedCount = Object.keys(adjustments).length;
 
     const toAddresses = options.recipients?.to?.length ? options.recipients.to : ["accounts@hire-in.com"];
     const ccAddresses = options.recipients?.cc?.length ? options.recipients.cc : ["simranjeet@hire-in.com"];
+
+    const adjustmentNote = adjustedCount > 0
+      ? `<div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 16px; margin: 0 0 20px;">
+           <p style="color: #c2410c; font-weight: 600; margin: 0 0 4px; font-size: 14px;">⚠ ${adjustedCount} row(s) manually adjusted before approval</p>
+           <p style="color: #9a3412; font-size: 13px; margin: 0;">Rows highlighted in orange below were reviewed and adjusted by an admin prior to dispatch. The original calculated values have been overridden.</p>
+         </div>`
+      : "";
+
+    let rowsHtml = "";
+    if (options.rows && options.rows.length > 0) {
+      const fmt = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
+      const headerRow = `<tr style="background:#f1f5f9;">
+        <th style="padding:8px 10px;text-align:left;font-size:12px;color:#475569;">Employee</th>
+        <th style="padding:8px 10px;text-align:right;font-size:12px;color:#475569;">Present</th>
+        <th style="padding:8px 10px;text-align:right;font-size:12px;color:#475569;">LOP</th>
+        <th style="padding:8px 10px;text-align:right;font-size:12px;color:#475569;">Deductions</th>
+        <th style="padding:8px 10px;text-align:right;font-size:12px;color:#475569;">Net Payable</th>
+      </tr>`;
+      const dataRows = options.rows.map((r: any) => {
+        const isAdj = !!adjustments[r.email];
+        const bg = isAdj ? "background:#fff7ed;" : "";
+        const commentCell = isAdj
+          ? `<tr style="${bg}"><td colspan="5" style="padding:2px 10px 8px;font-size:11px;color:#c2410c;font-style:italic;">Adjusted: ${adjustments[r.email].comment}</td></tr>`
+          : "";
+        return `<tr style="border-top:1px solid #e2e8f0;${bg}">
+          <td style="padding:7px 10px;font-size:13px;">${r.employeeName}${isAdj ? ' <span style="background:#f97316;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600;">ADJUSTED</span>' : ""}</td>
+          <td style="padding:7px 10px;text-align:right;font-size:13px;">${r.presentDays}</td>
+          <td style="padding:7px 10px;text-align:right;font-size:13px;color:${r.lopLeaves > 0 ? "#c2410c" : "inherit"};">${r.lopLeaves}</td>
+          <td style="padding:7px 10px;text-align:right;font-size:13px;">${fmt(r.deductions)}</td>
+          <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:600;">${fmt(r.netPayable)}</td>
+        </tr>${commentCell}`;
+      }).join("");
+      rowsHtml = `<div style="margin:20px 0;">
+        <p style="color:#1e293b;font-weight:600;margin:0 0 8px;font-size:14px;">Employee Breakdown</p>
+        <table style="width:100%;border-collapse:collapse;font-family:'Segoe UI',Arial,sans-serif;">
+          <thead>${headerRow}</thead>
+          <tbody>${dataRows}</tbody>
+        </table>
+      </div>`;
+    }
+
+    const fileName = `Salary_Report_${options.summary.monthName}_${options.summary.year}.csv`;
+    const csvBase64 = Buffer.from(options.csvContent).toString("base64");
 
     const msg: any = {
       to: toAddresses,
       cc: ccAddresses,
       from: { email: fromEmail, name: "Alina Carter" },
-      subject: `Monthly Salary Processing Report - ${options.summary.monthName} ${options.summary.year}`,
+      subject: `Monthly Salary Processing Report - ${options.summary.monthName} ${options.summary.year}${adjustedCount > 0 ? ` [${adjustedCount} Adjusted]` : ""}`,
       html: `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff;">
           <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
             <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Monthly Salary Processing Report</p>
@@ -339,6 +391,7 @@ export async function sendSalaryReport(options: {
             <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">
               Salary Report: ${options.summary.monthName} ${options.summary.year}
             </h2>
+            ${adjustmentNote}
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
@@ -351,10 +404,11 @@ export async function sendSalaryReport(options: {
                 </tr>
                 <tr style="border-top: 2px solid #e2e8f0;">
                   <td style="color: #1e40af; padding: 12px 0; font-weight: 600; font-size: 16px;">Total Payable:</td>
-                  <td style="color: #1e40af; font-weight: 700; padding: 12px 0; text-align: right; font-size: 16px;">$${options.summary.totalPayable.toLocaleString()}</td>
+                  <td style="color: #1e40af; font-weight: 700; padding: 12px 0; text-align: right; font-size: 16px;">₹${options.summary.totalPayable.toLocaleString()}</td>
                 </tr>
               </table>
             </div>
+            ${rowsHtml}
             <p style="color: #475569; line-height: 1.6; margin: 0 0 8px;">
               The detailed salary processing report is attached as a CSV file. Please review and process accordingly.
             </p>
@@ -370,7 +424,7 @@ export async function sendSalaryReport(options: {
           </div>
         </div>
       `,
-      text: `Salary Report: ${options.summary.monthName} ${options.summary.year}\n\nTotal Employees: ${options.summary.totalEmployees}\nTotal Hours Worked: ${options.summary.totalHoursWorked}\nTotal Payable: $${options.summary.totalPayable}\n\nPlease see the attached CSV for details.${SIGNOFF_TEXT}`,
+      text: `Salary Report: ${options.summary.monthName} ${options.summary.year}\n\nTotal Employees: ${options.summary.totalEmployees}\nTotal Hours Worked: ${options.summary.totalHoursWorked}\nTotal Payable: ₹${options.summary.totalPayable}${adjustedCount > 0 ? `\n\nNote: ${adjustedCount} row(s) were manually adjusted before dispatch.` : ""}\n\nPlease see the attached CSV for details.${SIGNOFF_TEXT}`,
       attachments: [{
         content: csvBase64,
         filename: fileName,
@@ -380,10 +434,63 @@ export async function sendSalaryReport(options: {
     };
 
     await client.send(msg);
-    console.log(`Salary report email sent to accounts@hire-in.com`);
+    console.log(`Salary report email sent to ${toAddresses.join(", ")}`);
     return { success: true };
   } catch (error: any) {
     console.error("Failed to send salary report email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendSalaryReportApprovalReminder(options: {
+  to: string[];
+  year: number;
+  month: number;
+  monthName: string;
+  portalUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `Action Required: Salary Report Pending Approval — ${options.monthName} ${options.year}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Payroll Approval Reminder</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Salary Report Awaiting Approval</h2>
+            <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px;">
+              <p style="color: #c2410c; font-weight: 600; margin: 0 0 6px;">⚠ Pending action required</p>
+              <p style="color: #9a3412; margin: 0; font-size: 14px;">
+                The salary report for <strong>${options.monthName} ${options.year}</strong> is still in <em>pending approval</em> status.
+                Please log in to review, adjust if needed, and approve the report so it can be dispatched to accounts.
+              </p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.portalUrl}/admin/hr/salary-reports" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Review & Approve Report
+              </a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `The salary report for ${options.monthName} ${options.year} is still pending approval. Please log in and approve it at ${options.portalUrl}/admin/hr/salary-reports${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Salary report approval reminder sent to ${options.to.join(", ")}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send salary report approval reminder:", error?.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }
