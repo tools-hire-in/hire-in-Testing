@@ -1,17 +1,29 @@
 import { useState } from "react";
 import { Clock, FileCheck, Repeat, Scale, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "Contract Staffing Solutions",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "Contract Staffing",
+  description: "Flexible contract staffing for Healthcare, IT, Engineering, Finance, and Professional Services. Hire'in Solutions handles sourcing, compliance, and onboarding.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
+
 export default function ContractStaffing() {
   useSEO({
     title: "Contract Staffing Solutions | Hire'in Solutions",
     description:
       "Scale your workforce flexibly with Hire'in Solutions contract staffing. We handle sourcing, compliance, and onboarding so you can focus on results.",
+    canonical: "https://hire-in.com/services/contract-staffing",
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);
@@ -27,6 +39,7 @@ export default function ContractStaffing() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

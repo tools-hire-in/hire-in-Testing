@@ -2,17 +2,29 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { Wrench, Factory, Zap, Cog, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "Engineering & Technical Staffing",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "Engineering Staffing",
+  description: "Hire'in Solutions sources and places mechanical, electrical, civil, and technical engineers for contract and direct-hire roles across the United States.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
+
 export default function EngineeringTechnical() {
   useSEO({
     title: "Engineering & Technical Staffing | Hire'in Solutions",
     description:
       "Hire'in Solutions sources and places mechanical, electrical, civil, and technical engineers for contract and direct-hire roles across industries.",
+    canonical: "https://hire-in.com/services/engineering-technical",
   });
   const [consultationOpen, setConsultationOpen] = useState(false);
 
@@ -25,6 +37,7 @@ export default function EngineeringTechnical() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

@@ -24,12 +24,28 @@ function setOgMeta(property: string, content: string) {
   el.setAttribute("content", content);
 }
 
+function setCanonical(href: string) {
+  let el = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+  if (!el) {
+    el = document.createElement("link");
+    el.setAttribute("rel", "canonical");
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href", href);
+}
+
+function removeCanonical() {
+  const el = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+  if (el) el.remove();
+}
+
 interface SEOOptions {
   title: string;
   description: string;
+  canonical?: string;
 }
 
-export function useSEO({ title, description }: SEOOptions) {
+export function useSEO({ title, description, canonical }: SEOOptions) {
   useEffect(() => {
     const prevTitle = document.title;
     document.title = title;
@@ -38,9 +54,15 @@ export function useSEO({ title, description }: SEOOptions) {
     setOgMeta("og:description", description);
     setOgMeta("og:type", "website");
 
+    if (canonical) {
+      setCanonical(canonical);
+      setOgMeta("og:url", canonical);
+    }
+
     return () => {
       document.title = prevTitle || DEFAULT_TITLE;
       setMeta("description", DEFAULT_DESCRIPTION);
+      if (canonical) removeCanonical();
     };
-  }, [title, description]);
+  }, [title, description, canonical]);
 }

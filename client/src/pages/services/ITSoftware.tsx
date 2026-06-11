@@ -3,16 +3,28 @@ import { useSEO } from "@/hooks/use-seo";
 import { Link } from "wouter";
 import { Code, Brain, Globe, Shield, Cloud, Database, Lock, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
+
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "IT & Software Development Staffing",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "IT Staffing",
+  description: "Full-spectrum IT and software development staffing — engineers, DevOps, cloud, data, cybersecurity. AI-powered matching with kleriq.AI. 24-hour first candidate submissions.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
 
 export default function ITSoftware() {
   useSEO({
     title: "IT & Software Development Staffing | Hire'in Solutions",
     description:
       "Find top IT and software development talent with Hire'in Solutions. We staff engineers, developers, architects, and technology leaders for contract and permanent roles.",
+    canonical: "https://hire-in.com/services/it-software",
   });
   const [consultationOpen, setConsultationOpen] = useState(false);
 
@@ -25,6 +37,7 @@ export default function ITSoftware() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

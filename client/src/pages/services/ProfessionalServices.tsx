@@ -1,17 +1,29 @@
 import { useState } from "react";
 import { Briefcase, TrendingUp, Users, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "Professional Services Staffing",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "Professional Services Staffing",
+  description: "Hire'in Solutions delivers skilled professionals in finance, HR, operations, and business management across all 50 US states.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
+
 export default function ProfessionalServices() {
   useSEO({
     title: "Professional Services Staffing | Hire'in Solutions",
     description:
       "Hire'in Solutions delivers skilled professionals in finance, HR, operations, and business management. Build your team with confidence using our vetted talent network.",
+    canonical: "https://hire-in.com/services/non-it-professional",
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);
@@ -25,6 +37,7 @@ export default function ProfessionalServices() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

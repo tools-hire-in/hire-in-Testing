@@ -74,6 +74,33 @@ export function Footer() {
               </li>
               <li>
                 <Link
+                  href="/why-hire-in-solutions"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-why"
+                >
+                  Why Hire'in Solutions
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/staffing-faq"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-faq"
+                >
+                  Staffing FAQ
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/request-a-quote"
+                  className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  data-testid="link-request-quote"
+                >
+                  Request a Quote
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/contact"
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                   data-testid="link-contact"

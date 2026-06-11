@@ -15,9 +15,20 @@ import {
   Zap,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
 import { HEALTHCARE_SLIDES, HEALTHCARE_TOTAL_SLIDES, HealthcareSlideNumberContext } from "@/components/deck/HealthcareDeckSlides";
 import { COMPANY, CONTACT } from "@/lib/constants";
+
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "eHealthcare Staffing Services",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "Healthcare Staffing",
+  description: "AI-powered healthcare staffing with Joint Commission-aligned workflows. Travel nursing, locum tenens, allied health, and clinical recruitment across all 50 US states.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
 
 export default function EHealthcareStaffing() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -43,9 +54,19 @@ export default function EHealthcareStaffing() {
     setMeta("og:title", "eHealthcare Staffing Services | Hire'in Solutions", true);
     setMeta("og:description", "AI-powered healthcare staffing with Joint Commission-aligned workflows, verified documents & compliant submission packages. Travel nursing, locum tenens, allied health. View our interactive deck.", true);
     setMeta("og:type", "website", true);
-    setMeta("og:url", `${window.location.origin}/ehealthcare-staffing`, true);
+    setMeta("og:url", "https://hire-in.com/ehealthcare-staffing", true);
     setMeta("keywords", "healthcare staffing, travel nursing, locum tenens, allied health staffing, Joint Commission aligned, proKred, clinical recruitment, healthcare MSP, nurse staffing agency");
-    return () => { document.title = "Hire'in Solutions"; };
+    let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", "https://hire-in.com/ehealthcare-staffing");
+    return () => {
+      document.title = "Hire'in Solutions";
+      document.querySelector('link[rel="canonical"]')?.remove();
+    };
   }, []);
 
   const goTo = useCallback((idx: number) => {
@@ -138,6 +159,7 @@ export default function EHealthcareStaffing() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       <section className="relative overflow-hidden bg-gradient-to-br from-foreground via-foreground/95 to-primary/30 py-20 md:py-28 px-4" data-testid="section-hc-staffing-hero">
         <div className="absolute inset-0 opacity-[0.07]">
           <div className="absolute top-10 left-[10%] w-60 h-60 bg-primary rounded-full blur-3xl" />

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
+import { SchemaHead, ORGANIZATION_SCHEMA, WEBSITE_SCHEMA } from "@/components/SchemaHead";
 import type { CTAType } from "@/lib/constants";
 
 interface LayoutProps {
@@ -21,6 +22,7 @@ export function Layout({ children, hideFooter = false, transparentHeader = false
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SchemaHead schema={[ORGANIZATION_SCHEMA, WEBSITE_SCHEMA]} />
       <Header onOpenConsultation={handleOpenConsultation} transparent={transparentHeader} />
       <main className={`flex-1 ${transparentHeader ? "" : "pt-16"}`}>{children}</main>
       {!hideFooter && <Footer />}

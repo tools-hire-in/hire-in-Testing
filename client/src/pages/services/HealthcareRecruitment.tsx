@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,11 +22,22 @@ import { Badge } from "@/components/ui/badge";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 import type { CTAType } from "@/lib/constants";
 
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "Healthcare Recruitment Services",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "Healthcare Recruitment",
+  description: "AI-powered healthcare recruitment for nurses, physicians, and allied health professionals. Joint Commission-aligned workflows, credential verification via CredentialRx.ai, across all 50 US states.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
+
 export default function HealthcareRecruitment() {
   useSEO({
     title: "Healthcare Recruitment Services | Hire'in Solutions",
     description:
       "Hire'in Solutions places qualified healthcare professionals — nurses, physicians, allied health staff — quickly and compliantly. Partner with us for your clinical staffing needs.",
+    canonical: "https://hire-in.com/services/healthcare-recruitment",
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);
@@ -66,6 +78,7 @@ export default function HealthcareRecruitment() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

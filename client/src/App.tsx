@@ -19,6 +19,11 @@ import ContractStaffing from "@/pages/services/ContractStaffing";
 import CapabilityDeck from "@/pages/CapabilityDeck";
 import ITStaffing from "@/pages/ITStaffing";
 import EHealthcareStaffing from "@/pages/EHealthcareStaffing";
+import WhyHireIn from "@/pages/WhyHireIn";
+import ITStaffingGuide from "@/pages/ITStaffingGuide";
+import HealthcareStaffingGuide from "@/pages/HealthcareStaffingGuide";
+import StaffingFAQ from "@/pages/StaffingFAQ";
+import RequestAQuote from "@/pages/RequestAQuote";
 import AdminContacts from "@/pages/admin/Contacts";
 import AdminLogin from "@/pages/admin/Login";
 import ForgotPassword from "@/pages/admin/ForgotPassword";
@@ -101,6 +106,11 @@ function PublicRouter() {
       <Route path="/capability-deck" component={CapabilityDeck} />
       <Route path="/it-staffing" component={ITStaffing} />
       <Route path="/ehealthcare-staffing" component={EHealthcareStaffing} />
+      <Route path="/why-hire-in-solutions" component={WhyHireIn} />
+      <Route path="/it-staffing-guide" component={ITStaffingGuide} />
+      <Route path="/healthcare-staffing-guide" component={HealthcareStaffingGuide} />
+      <Route path="/staffing-faq" component={StaffingFAQ} />
+      <Route path="/request-a-quote" component={RequestAQuote} />
       <Route path="/onboard/:token" component={OnboardAccept} />
       <Route path="/addendum/:token" component={AddendumAccept} />
       <Route path="/verify" component={VerifyLetter} />

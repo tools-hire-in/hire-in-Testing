@@ -15,9 +15,20 @@ import {
   Zap,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
 import { SLIDES, SlideNumberContext, TOTAL_SLIDES } from "@/components/deck/HiringDeckSlides";
 import { COMPANY, CONTACT } from "@/lib/constants";
+
+const SERVICE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "IT Staffing Services",
+  provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
+  serviceType: "IT Staffing",
+  description: "AI-powered IT staffing with 100+ successful talent engagements, 24-hour submissions, and 95% client retention. Engineers, developers, architects, and technology leaders.",
+  areaServed: { "@type": "Country", name: "United States" },
+};
 
 export default function ITStaffing() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -44,8 +55,18 @@ export default function ITStaffing() {
     setMeta("og:title", "IT Staffing Services | Hire'in Solutions", true);
     setMeta("og:description", "AI-powered IT staffing with 100+ successful talent engagements, 24-hour submissions, and 95% client retention. View our interactive deck.", true);
     setMeta("og:type", "website", true);
-    setMeta("og:url", `${window.location.origin}/it-staffing`, true);
-    return () => { document.title = "Hire'in Solutions"; };
+    setMeta("og:url", "https://hire-in.com/it-staffing", true);
+    let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", "https://hire-in.com/it-staffing");
+    return () => {
+      document.title = "Hire'in Solutions";
+      document.querySelector('link[rel="canonical"]')?.remove();
+    };
   }, []);
 
   const goTo = useCallback((idx: number) => {
@@ -138,6 +159,7 @@ export default function ITStaffing() {
 
   return (
     <Layout>
+      <SchemaHead schema={SERVICE_SCHEMA} />
       {/* HERO */}
       <section className="relative overflow-hidden bg-gradient-to-br from-foreground via-foreground/95 to-primary/30 py-20 md:py-28 px-4" data-testid="section-it-staffing-hero">
         <div className="absolute inset-0 opacity-[0.07]">

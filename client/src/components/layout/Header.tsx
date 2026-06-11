@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, ChevronDown } from "lucide-react";
+import { Menu, ChevronDown, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -149,7 +149,19 @@ export function Header({ onOpenConsultation, transparent = false }: HeaderProps)
           )}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-3" />
+        <div className="hidden lg:flex items-center gap-3">
+          <Button
+            size="sm"
+            asChild
+            className="gap-1.5"
+            data-testid="button-header-get-quote"
+          >
+            <Link href="/request-a-quote">
+              <FileText className="h-3.5 w-3.5" />
+              Get a Quote
+            </Link>
+          </Button>
+        </div>
 
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild className="lg:hidden">
