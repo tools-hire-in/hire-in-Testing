@@ -14,8 +14,10 @@ import {
   AlertCircle,
   TrendingUp,
   BarChart3,
+  Rows3,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { BulkAddGoalsDialog } from "@/components/performance/BulkAddGoalsDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -479,6 +481,7 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
 export function TeamGoalsContent() {
   const { user } = useAuth();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const allowedRoles = ["super_admin", "admin", "hr", "manager"];
   const hasAccess = user?.role && allowedRoles.includes(user.role);
@@ -532,10 +535,16 @@ export function TeamGoalsContent() {
               Overview of your team's performance goals
             </p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-team-goal">
-            <Plus className="h-4 w-4 mr-2" />
-            Assign Goal
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-team-goals">
+              <Rows3 className="h-4 w-4 mr-2" />
+              Add Multiple
+            </Button>
+            <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-team-goal">
+              <Plus className="h-4 w-4 mr-2" />
+              Assign Goal
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -603,6 +612,17 @@ export function TeamGoalsContent() {
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
           members={data?.members || []}
+        />
+
+        <BulkAddGoalsDialog
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          members={(data?.members || []).map((m) => ({
+            userId: m.userId,
+            firstName: m.firstName,
+            lastName: m.lastName,
+          }))}
+          invalidateKey="/api/performance/team-goals"
         />
       </div>
   );

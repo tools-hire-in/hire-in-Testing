@@ -14,8 +14,10 @@ import {
   Filter,
   ExternalLink,
   GraduationCap,
+  Rows3,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { BulkAddGoalsDialog } from "@/components/performance/BulkAddGoalsDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -595,6 +597,7 @@ export function MyGoalsContent() {
   const { toast } = useToast();
   const [filter, setFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<PerformanceGoal | null>(null);
   const [deleteGoal, setDeleteGoal] = useState<PerformanceGoal | null>(null);
 
@@ -651,10 +654,16 @@ export function MyGoalsContent() {
               Track and manage your performance goals
             </p>
           </div>
-          <Button onClick={handleCreate} data-testid="button-create-goal">
-            <Plus className="h-4 w-4 mr-2" />
-            New Goal
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-goals">
+              <Rows3 className="h-4 w-4 mr-2" />
+              Add Multiple
+            </Button>
+            <Button onClick={handleCreate} data-testid="button-create-goal">
+              <Plus className="h-4 w-4 mr-2" />
+              New Goal
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -736,6 +745,12 @@ export function MyGoalsContent() {
             if (!open) setEditGoal(null);
           }}
           editGoal={editGoal}
+        />
+
+        <BulkAddGoalsDialog
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          invalidateKey="/api/performance/goals"
         />
 
         <AlertDialog open={!!deleteGoal} onOpenChange={(open) => !open && setDeleteGoal(null)}>

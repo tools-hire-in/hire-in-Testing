@@ -67,6 +67,8 @@ interface AuditLogChanges {
   employeeId?: string;
   feedbackId?: string;
   type?: string;
+  sourceRef?: string;
+  bulk?: boolean;
   changes?: Record<string, unknown>;
 }
 
@@ -227,48 +229,66 @@ export function registerPerformanceRoutes(app: Express) {
     }
   });
 
-  // Batch create goals from annexure rows
+  // Batch create goals — from annexure rows (with sourceRef) or manual bulk paste (no sourceRef)
   app.post("/api/performance/goals/batch", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, ALL_ROLES);
     if (!userId) return;
 
     try {
-      const { employeeId, goals: goalItems, sourceRef } = req.body as {
-        employeeId: string;
-        sourceRef: string;
+      const {
+        employeeId,
+        goals: goalItems,
+        sourceRef,
+        startDate: batchStartDate,
+        targetDate: batchTargetDate,
+      } = req.body as {
+        employeeId?: string;
+        sourceRef?: string;
+        startDate?: string;
+        targetDate?: string;
         goals: { title: string; description?: string; startDate?: string; targetDate?: string }[];
       };
 
-      if (!employeeId) return res.status(400).json({ error: "employeeId is required" });
       if (!Array.isArray(goalItems) || goalItems.length === 0) return res.status(400).json({ error: "goals array is required" });
-      if (!sourceRef) return res.status(400).json({ error: "sourceRef is required" });
 
-      // Authorization: admin/hr/super_admin can push for any employee;
-      // managers can only push for their direct reports.
+      const cleanedItems = goalItems
+        .map(g => ({ ...g, title: (g.title || "").trim() }))
+        .filter(g => g.title.length > 0);
+      if (cleanedItems.length === 0) return res.status(400).json({ error: "At least one goal with a title is required" });
+
+      // Default to self when no employee specified (manual bulk-add on My Goals).
+      const targetEmployee = employeeId || userId;
+
+      // Authorization: admin/hr/super_admin can create for any employee;
+      // managers can only create for their direct reports; everyone can create for themselves.
       const role = req.session.role!;
-      if (!ADMIN_ROLES.includes(role)) {
+      if (targetEmployee !== userId && !ADMIN_ROLES.includes(role)) {
         const teamIds = await getTeamMemberIds(userId);
-        if (!teamIds.includes(employeeId)) {
+        if (!teamIds.includes(targetEmployee)) {
           return res.status(403).json({ error: "Not authorized to create goals for this employee" });
         }
       }
 
       const inserted = await db.insert(performanceGoals).values(
-        goalItems.map(g => ({
-          employeeId,
-          managerId: userId,
+        cleanedItems.map(g => ({
+          employeeId: targetEmployee,
+          managerId: targetEmployee !== userId ? userId : null,
           title: g.title,
-          description: g.description || null,
+          description: g.description?.trim() || null,
           category: "individual" as const,
-          startDate: g.startDate || null,
-          targetDate: g.targetDate || null,
+          startDate: g.startDate || batchStartDate || null,
+          targetDate: g.targetDate || batchTargetDate || null,
           weight: 3,
-          sourceRef,
+          sourceRef: sourceRef || null,
         }))
       ).returning();
 
       for (const g of inserted) {
-        await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef }, employeeId);
+        if (sourceRef) {
+          await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef }, targetEmployee !== userId ? targetEmployee : undefined);
+        } else {
+          await createAuditLog(userId, "performance_goal_created", { goalId: g.id, title: g.title, bulk: true }, targetEmployee !== userId ? targetEmployee : undefined);
+        }
       }
 
       res.status(201).json({ created: inserted.length, goals: inserted });
