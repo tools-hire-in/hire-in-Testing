@@ -15,7 +15,11 @@ import {
   ExternalLink,
   GraduationCap,
   Rows3,
+  ChevronDown,
+  ChevronRight,
+  Flag,
 } from "lucide-react";
+import { GoalDetailPanel } from "@/components/performance/GoalDetailPanel";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { BulkAddGoalsDialog } from "@/components/performance/BulkAddGoalsDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +74,7 @@ interface PerformanceGoal {
   status: string;
   successCriteria: string | null;
   rayoAcademyTrackId: string | null;
+  autoProgressFromMilestones: boolean;
   sourceRef: string | null;
   createdAt: string;
   updatedAt: string;
@@ -499,6 +504,7 @@ function GoalCard({
   onEdit: (goal: PerformanceGoal) => void;
   onDelete: (goal: PerformanceGoal) => void;
 }) {
+  const [showDetail, setShowDetail] = useState(false);
   const statusIcon = () => {
     switch (goal.status) {
       case "completed":
@@ -565,7 +571,23 @@ function GoalCard({
                 <Calendar className="h-3 w-3" />
                 {formatDate(goal.startDate)} - {formatDate(goal.targetDate)}
               </span>
+              {goal.autoProgressFromMilestones && (
+                <span className="flex items-center gap-1 text-emerald-600">
+                  <Flag className="h-3 w-3" /> Auto-progress
+                </span>
+              )}
             </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 mt-2 px-2 text-xs text-muted-foreground"
+              onClick={() => setShowDetail((s) => !s)}
+              data-testid={`button-toggle-detail-${goal.id}`}
+            >
+              {showDetail ? <ChevronDown className="h-3.5 w-3.5 mr-1" /> : <ChevronRight className="h-3.5 w-3.5 mr-1" />}
+              Milestones & check-ins
+            </Button>
           </div>
 
           <div className="flex flex-col gap-1 shrink-0">
@@ -587,6 +609,15 @@ function GoalCard({
             </Button>
           </div>
         </div>
+
+        {showDetail && (
+          <GoalDetailPanel
+            goalId={goal.id}
+            autoProgressFromMilestones={goal.autoProgressFromMilestones}
+            canEdit={true}
+            onGoalChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/performance/goals"] })}
+          />
+        )}
       </CardContent>
     </Card>
   );

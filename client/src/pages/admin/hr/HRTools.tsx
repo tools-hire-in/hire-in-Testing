@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescrip
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { LetterGenerator } from "@/components/hr/LetterGenerator";
 import { LettersDashboard } from "@/components/hr/LettersDashboard";
-import { AnnexureEditor, type AnnexureItem } from "@/components/hr/AnnexureEditor";
+import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "@/components/hr/AnnexureEditor";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
@@ -1561,28 +1561,21 @@ export function OfferLettersDashboard() {
       const employeeId = addendumDialog.resultingUserId;
       const referenceNumber = addendumResult?.referenceNumber || addendumResult?.id;
       if (employeeId && referenceNumber && addendumAnnexures.length > 0) {
-        const goalsToCreate: { title: string; description?: string; startDate?: string; targetDate?: string }[] = [];
-        for (const ann of addendumAnnexures) {
-          if (!ann.table || !ann.goalPush?.enabled || ann.goalPush.selectedRows.length === 0) continue;
-          for (const rowIdx of ann.goalPush.selectedRows) {
-            const row = ann.table.rows[rowIdx];
-            if (!row || !row[0].trim()) continue;
-            goalsToCreate.push({
-              title: row[0].trim(),
-              description: row[1]?.trim() || undefined,
-              startDate: addendumForm.effectiveDate || undefined,
-              targetDate: ann.goalPush.dueDate || undefined,
-            });
-          }
-        }
+        const goalsToCreate = buildGoalsFromAnnexures(addendumAnnexures, addendumForm.effectiveDate);
         if (goalsToCreate.length > 0) {
+          const milestoneCount = goalsToCreate.reduce((sum, g) => sum + (g.milestones?.length || 0), 0);
           try {
             await apiRequest("POST", "/api/performance/goals/batch", {
               employeeId,
               sourceRef: referenceNumber,
               goals: goalsToCreate,
             });
-            toast({ title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`, description: `Linked to addendum ${referenceNumber}` });
+            toast({
+              title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`,
+              description: milestoneCount > 0
+                ? `${milestoneCount} milestone${milestoneCount > 1 ? "s" : ""} linked to addendum ${referenceNumber}`
+                : `Linked to addendum ${referenceNumber}`,
+            });
           } catch {
             toast({ title: "Goals could not be pushed", description: "Addendum was created. Goals may need to be added manually.", variant: "destructive" });
           }

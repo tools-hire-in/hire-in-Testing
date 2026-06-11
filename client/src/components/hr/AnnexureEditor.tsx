@@ -18,6 +18,66 @@ export interface AnnexureGoalPush {
   enabled: boolean;
   dueDate: string;
   selectedRows: number[];
+  // When true, all selected rows become milestones of ONE goal (goalTitle)
+  // instead of each row becoming its own goal.
+  asMilestones?: boolean;
+  goalTitle?: string;
+}
+
+export interface GoalPushMilestone {
+  title: string;
+  targetDate?: string;
+}
+
+export interface GoalPushItem {
+  title: string;
+  description?: string;
+  startDate?: string;
+  targetDate?: string;
+  autoProgressFromMilestones?: boolean;
+  milestones?: GoalPushMilestone[];
+}
+
+// Shared helper used by every annexure goal-push flow. Maps the annexure tables'
+// selected rows into either one-goal-per-row (default) or a single goal whose
+// milestones are the selected rows (when goalPush.asMilestones is set).
+export function buildGoalsFromAnnexures(
+  annexures: AnnexureItem[],
+  startDate?: string,
+): GoalPushItem[] {
+  const goals: GoalPushItem[] = [];
+  for (const ann of annexures) {
+    const gp = ann.goalPush;
+    if (!ann.table || !gp?.enabled || gp.selectedRows.length === 0) continue;
+    const rows = gp.selectedRows
+      .map(idx => ann.table!.rows[idx])
+      .filter((row): row is [string, string] => !!row && !!row[0].trim());
+    if (rows.length === 0) continue;
+
+    if (gp.asMilestones) {
+      const goalTitle = (gp.goalTitle || ann.title || "Goals").trim() || "Goals";
+      goals.push({
+        title: goalTitle,
+        startDate: startDate || undefined,
+        targetDate: gp.dueDate || undefined,
+        autoProgressFromMilestones: true,
+        milestones: rows.map(row => ({
+          title: row[0].trim(),
+          targetDate: row[1]?.trim() || undefined,
+        })),
+      });
+    } else {
+      for (const row of rows) {
+        goals.push({
+          title: row[0].trim(),
+          description: row[1]?.trim() || undefined,
+          startDate: startDate || undefined,
+          targetDate: gp.dueDate || undefined,
+        });
+      }
+    }
+  }
+  return goals;
 }
 
 export interface AnnexureItem {
@@ -268,9 +328,37 @@ function TableEditor({
 
           {!goalPushDisabled && goalPush?.enabled && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2 space-y-2">
-              <p className="text-[11px] text-emerald-700">
-                Col 1 → goal title · Col 2 → description. Deselect rows to skip them.
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-emerald-800 font-medium">
+                  Create one goal with milestones
+                </span>
+                <Switch
+                  checked={!!goalPush.asMilestones}
+                  onCheckedChange={(checked) => onGoalPushChange({ ...goalPush, asMilestones: checked })}
+                  data-testid={`switch-as-milestones-${annexureIdx}`}
+                />
+              </div>
+              {goalPush.asMilestones ? (
+                <>
+                  <p className="text-[11px] text-emerald-700">
+                    Each selected row becomes a milestone (Col 1 → milestone title · Col 2 → target date) of a single goal.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[11px] text-muted-foreground whitespace-nowrap">Goal title</Label>
+                    <Input
+                      value={goalPush.goalTitle || ""}
+                      onChange={e => onGoalPushChange({ ...goalPush, goalTitle: e.target.value })}
+                      placeholder="e.g. Onboarding plan"
+                      className="h-6 text-xs flex-1"
+                      data-testid={`input-goal-title-${annexureIdx}`}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11px] text-emerald-700">
+                  Col 1 → goal title · Col 2 → description. Deselect rows to skip them.
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <Label className="text-[11px] text-muted-foreground whitespace-nowrap">Due date</Label>
                 <Input
@@ -286,7 +374,9 @@ function TableEditor({
               )}
               {goalPush.selectedRows.length > 0 && (
                 <p className="text-[11px] text-emerald-700 font-medium">
-                  {goalPush.selectedRows.length} goal{goalPush.selectedRows.length > 1 ? "s" : ""} will be created on generation.
+                  {goalPush.asMilestones
+                    ? `1 goal with ${goalPush.selectedRows.length} milestone${goalPush.selectedRows.length > 1 ? "s" : ""} will be created on generation.`
+                    : `${goalPush.selectedRows.length} goal${goalPush.selectedRows.length > 1 ? "s" : ""} will be created on generation.`}
                 </p>
               )}
             </div>

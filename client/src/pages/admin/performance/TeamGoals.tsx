@@ -15,7 +15,9 @@ import {
   TrendingUp,
   BarChart3,
   Rows3,
+  Flag,
 } from "lucide-react";
+import { GoalDetailPanel } from "@/components/performance/GoalDetailPanel";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { BulkAddGoalsDialog } from "@/components/performance/BulkAddGoalsDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +65,7 @@ interface PerformanceGoal {
   progress: number;
   status: string;
   successCriteria: string | null;
+  autoProgressFromMilestones: boolean;
   sourceRef: string | null;
   createdAt: string;
 }
@@ -368,6 +371,16 @@ function CreateGoalForMemberDialog({
 
 function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set());
+  const { user } = useAuth();
+  const canEdit = !!user?.role && ["super_admin", "admin", "hr", "manager"].includes(user.role);
+
+  const toggleGoal = (goalId: string) =>
+    setExpandedGoals((prev) => {
+      const next = new Set(prev);
+      if (next.has(goalId)) next.delete(goalId); else next.add(goalId);
+      return next;
+    });
 
   const completedCount = member.goals.filter((g) => g.status === "completed").length;
   const totalCount = member.goals.length;
@@ -466,7 +479,32 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
                           Source: Addendum {goal.sourceRef}
                         </Badge>
                       )}
+                      {goal.autoProgressFromMilestones && (
+                        <span className="flex items-center gap-1 text-emerald-600 text-[10px]">
+                          <Flag className="h-3 w-3" /> Auto-progress
+                        </span>
+                      )}
                     </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-muted-foreground"
+                      onClick={() => toggleGoal(goal.id)}
+                      data-testid={`button-toggle-team-detail-${goal.id}`}
+                    >
+                      {expandedGoals.has(goal.id) ? <ChevronDown className="h-3.5 w-3.5 mr-1" /> : <ChevronRight className="h-3.5 w-3.5 mr-1" />}
+                      Milestones & check-ins
+                    </Button>
+
+                    {expandedGoals.has(goal.id) && (
+                      <GoalDetailPanel
+                        goalId={goal.id}
+                        autoProgressFromMilestones={goal.autoProgressFromMilestones}
+                        canEdit={canEdit}
+                        onGoalChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/performance/team-goals"] })}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

@@ -835,8 +835,21 @@ export const performanceGoals = pgTable("performance_goals", {
   weight: integer("weight").default(0),
   status: performanceGoalStatusEnum("status").notNull().default("not_started"),
   progress: integer("progress").notNull().default(0),
+  autoProgressFromMilestones: boolean("auto_progress_from_milestones").notNull().default(false),
   rayoAcademyTrackId: varchar("rayo_academy_track_id"),
   sourceRef: varchar("source_ref"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const goalMilestones = pgTable("goal_milestones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  goalId: varchar("goal_id").notNull().references(() => performanceGoals.id, { onDelete: "cascade" }),
+  title: varchar("title").notNull(),
+  targetDate: varchar("target_date"),
+  done: boolean("done").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -845,6 +858,7 @@ export const checkIns = pgTable("check_ins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
   managerId: varchar("manager_id").references(() => adminUsers.id),
+  goalId: varchar("goal_id").references(() => performanceGoals.id, { onDelete: "set null" }),
   scheduledDate: varchar("scheduled_date").notNull(),
   status: checkInStatusEnum("status").notNull().default("scheduled"),
   employeeNotes: text("employee_notes"),
@@ -895,14 +909,21 @@ export const performanceFeedback = pgTable("performance_feedback", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const performanceGoalsRelations = relations(performanceGoals, ({ one }) => ({
+export const performanceGoalsRelations = relations(performanceGoals, ({ one, many }) => ({
   employee: one(adminUsers, { fields: [performanceGoals.employeeId], references: [adminUsers.id], relationName: "goalEmployee" }),
   manager: one(adminUsers, { fields: [performanceGoals.managerId], references: [adminUsers.id], relationName: "goalManager" }),
+  milestones: many(goalMilestones),
+  checkIns: many(checkIns),
+}));
+
+export const goalMilestonesRelations = relations(goalMilestones, ({ one }) => ({
+  goal: one(performanceGoals, { fields: [goalMilestones.goalId], references: [performanceGoals.id] }),
 }));
 
 export const checkInsRelations = relations(checkIns, ({ one }) => ({
   employee: one(adminUsers, { fields: [checkIns.employeeId], references: [adminUsers.id], relationName: "checkInEmployee" }),
   manager: one(adminUsers, { fields: [checkIns.managerId], references: [adminUsers.id], relationName: "checkInManager" }),
+  goal: one(performanceGoals, { fields: [checkIns.goalId], references: [performanceGoals.id] }),
 }));
 
 export const reviewCyclesRelations = relations(reviewCycles, ({ one, many }) => ({
@@ -923,6 +944,7 @@ export const performanceFeedbackRelations = relations(performanceFeedback, ({ on
 }));
 
 export const insertPerformanceGoalSchema = createInsertSchema(performanceGoals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGoalMilestoneSchema = createInsertSchema(goalMilestones).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
 export const insertCheckInSchema = createInsertSchema(checkIns).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
 export const insertReviewCycleSchema = createInsertSchema(reviewCycles).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true, submittedAt: true });
@@ -1280,6 +1302,8 @@ export type NightShiftConsent = typeof nightShiftConsents.$inferSelect;
 export type InsertNightShiftConsent = z.infer<typeof insertNightShiftConsentSchema>;
 export type PerformanceGoal = typeof performanceGoals.$inferSelect;
 export type InsertPerformanceGoal = z.infer<typeof insertPerformanceGoalSchema>;
+export type GoalMilestone = typeof goalMilestones.$inferSelect;
+export type InsertGoalMilestone = z.infer<typeof insertGoalMilestoneSchema>;
 export type CheckIn = typeof checkIns.$inferSelect;
 export type InsertCheckIn = z.infer<typeof insertCheckInSchema>;
 export type ReviewCycle = typeof reviewCycles.$inferSelect;

@@ -1,11 +1,11 @@
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import {
-  performanceGoals, checkIns, reviewCycles, reviews, performanceFeedback,
+  performanceGoals, goalMilestones, checkIns, reviewCycles, reviews, performanceFeedback,
   systemSettings, adminUsers, auditLogs,
-  type PerformanceGoal, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
+  type PerformanceGoal, type GoalMilestone, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
 } from "@shared/schema";
-import { eq, and, or, inArray, sql, desc } from "drizzle-orm";
+import { eq, and, or, inArray, sql, desc, asc } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
 import { sendCheckInReminderEmail } from "./email";
 
@@ -66,6 +66,10 @@ interface AuditLogChanges {
   reviewId?: string;
   employeeId?: string;
   feedbackId?: string;
+  milestoneId?: string;
+  order?: string[];
+  done?: boolean;
+  sourceRef?: string;
   type?: string;
   sourceRef?: string;
   bulk?: boolean;
@@ -79,6 +83,31 @@ async function createAuditLog(actorId: string, action: string, changes?: AuditLo
     changes,
     targetId: targetId || null,
   });
+}
+
+// Returns the goal if the user may access (view/edit) it, otherwise null.
+async function getAccessibleGoal(userId: string, role: string, goalId: string): Promise<PerformanceGoal | null> {
+  const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
+  if (!goal) return null;
+  if (goal.employeeId === userId) return goal;
+  if (ADMIN_ROLES.includes(role)) return goal;
+  const teamIds = await getTeamMemberIds(userId);
+  if (teamIds.includes(goal.employeeId)) return goal;
+  return null;
+}
+
+// Recomputes a goal's progress from milestone completion when auto-progress is enabled.
+// Progress only; status remains a manual field.
+async function recomputeGoalProgress(goalId: string): Promise<void> {
+  const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
+  if (!goal || !goal.autoProgressFromMilestones) return;
+  const milestones = await db.select().from(goalMilestones).where(eq(goalMilestones.goalId, goalId));
+  if (milestones.length === 0) return;
+  const doneCount = milestones.filter(m => m.done).length;
+  const progress = Math.round((doneCount / milestones.length) * 100);
+  await db.update(performanceGoals)
+    .set({ progress, updatedAt: new Date() })
+    .where(eq(performanceGoals.id, goalId));
 }
 
 export function registerPerformanceRoutes(app: Express) {
@@ -171,6 +200,7 @@ export function registerPerformanceRoutes(app: Express) {
           progress: g.progress,
           status: g.status,
           successCriteria: g.successCriteria,
+          autoProgressFromMilestones: g.autoProgressFromMilestones,
           sourceRef: g.sourceRef,
           createdAt: g.createdAt,
         })),
@@ -198,7 +228,7 @@ export function registerPerformanceRoutes(app: Express) {
     const role = req.session.role!;
 
     try {
-      const { title, description, category, startDate, targetDate, weight, employeeId, rayoAcademyTrackId } = req.body;
+      const { title, description, category, startDate, targetDate, weight, employeeId, rayoAcademyTrackId, autoProgressFromMilestones } = req.body;
       if (!title) return res.status(400).json({ error: "Title is required" });
 
       const targetEmployee = employeeId || userId;
@@ -219,6 +249,7 @@ export function registerPerformanceRoutes(app: Express) {
         targetDate: targetDate || null,
         weight: weight || 0,
         rayoAcademyTrackId: rayoAcademyTrackId || null,
+        autoProgressFromMilestones: autoProgressFromMilestones === true,
       }).returning();
 
       await createAuditLog(userId, "performance_goal_created", { goalId: goal.id, title }, targetEmployee !== userId ? targetEmployee : undefined);
@@ -246,7 +277,14 @@ export function registerPerformanceRoutes(app: Express) {
         sourceRef?: string;
         startDate?: string;
         targetDate?: string;
-        goals: { title: string; description?: string; startDate?: string; targetDate?: string }[];
+        goals: {
+          title: string;
+          description?: string;
+          startDate?: string;
+          targetDate?: string;
+          autoProgressFromMilestones?: boolean;
+          milestones?: { title: string; targetDate?: string }[];
+        }[];
       };
 
       if (!Array.isArray(goalItems) || goalItems.length === 0) return res.status(400).json({ error: "goals array is required" });
@@ -280,10 +318,26 @@ export function registerPerformanceRoutes(app: Express) {
           targetDate: g.targetDate || batchTargetDate || null,
           weight: 3,
           sourceRef: sourceRef || null,
+          autoProgressFromMilestones: g.autoProgressFromMilestones === true,
         }))
       ).returning();
 
-      for (const g of inserted) {
+      let milestonesCreated = 0;
+      for (let i = 0; i < inserted.length; i++) {
+        const g = inserted[i];
+        const milestoneDefs = cleanedItems[i]?.milestones || [];
+        if (milestoneDefs.length > 0) {
+          const insertedMilestones = await db.insert(goalMilestones).values(
+            milestoneDefs.map((m, idx) => ({
+              goalId: g.id,
+              title: m.title,
+              targetDate: m.targetDate || null,
+              sortOrder: idx,
+            }))
+          ).returning();
+          milestonesCreated += insertedMilestones.length;
+          await createAuditLog(userId, "goal_milestones_created_from_addendum", { goalId: g.id, sourceRef: sourceRef || undefined, changes: { count: insertedMilestones.length } }, targetEmployee !== userId ? targetEmployee : undefined);
+        }
         if (sourceRef) {
           await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef }, targetEmployee !== userId ? targetEmployee : undefined);
         } else {
@@ -291,7 +345,7 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
-      res.status(201).json({ created: inserted.length, goals: inserted });
+      res.status(201).json({ created: inserted.length, milestonesCreated, goals: inserted });
     } catch (error) {
       console.error("Error batch creating goals:", error);
       res.status(500).json({ error: "Failed to create goals" });
@@ -315,7 +369,7 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
-      const { title, description, category, startDate, targetDate, weight, status, progress, rayoAcademyTrackId } = req.body;
+      const { title, description, category, startDate, targetDate, weight, status, progress, rayoAcademyTrackId, autoProgressFromMilestones } = req.body;
       const updates: Partial<PerformanceGoal> = { updatedAt: new Date() };
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
@@ -326,10 +380,16 @@ export function registerPerformanceRoutes(app: Express) {
       if (status !== undefined) updates.status = status;
       if (progress !== undefined) updates.progress = Math.min(100, Math.max(0, progress));
       if (rayoAcademyTrackId !== undefined) updates.rayoAcademyTrackId = rayoAcademyTrackId;
+      if (autoProgressFromMilestones !== undefined) updates.autoProgressFromMilestones = autoProgressFromMilestones === true;
 
       const [updated] = await db.update(performanceGoals).set(updates).where(eq(performanceGoals.id, req.params.id)).returning();
+      // If auto-progress was just turned on, recompute from existing milestones immediately.
+      if (updates.autoProgressFromMilestones === true) {
+        await recomputeGoalProgress(req.params.id);
+      }
+      const [finalGoal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, req.params.id));
       await createAuditLog(userId, "performance_goal_updated", { goalId: req.params.id, changes: updates as Record<string, unknown> }, existing.employeeId);
-      res.json(updated);
+      res.json(finalGoal || updated);
     } catch (error) {
       console.error("Error updating goal:", error);
       res.status(500).json({ error: "Failed to update goal" });
@@ -359,6 +419,213 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error deleting goal:", error);
       res.status(500).json({ error: "Failed to delete goal" });
+    }
+  });
+
+  // ==========================================
+  // GOAL MILESTONES
+  // ==========================================
+
+  // List milestones for a goal
+  app.get("/api/performance/goals/:goalId/milestones", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const goal = await getAccessibleGoal(userId, req.session.role!, req.params.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+      const milestones = await db.select().from(goalMilestones)
+        .where(eq(goalMilestones.goalId, req.params.goalId))
+        .orderBy(asc(goalMilestones.sortOrder), asc(goalMilestones.createdAt));
+      res.json(milestones);
+    } catch (error) {
+      console.error("Error fetching milestones:", error);
+      res.status(500).json({ error: "Failed to fetch milestones" });
+    }
+  });
+
+  // Create a milestone on a goal
+  app.post("/api/performance/goals/:goalId/milestones", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const goal = await getAccessibleGoal(userId, req.session.role!, req.params.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+      const { title, targetDate } = req.body;
+      if (!title || !title.trim()) return res.status(400).json({ error: "Title is required" });
+
+      const [maxRow] = await db.select({ max: sql<number>`coalesce(max(${goalMilestones.sortOrder}), -1)::int` })
+        .from(goalMilestones).where(eq(goalMilestones.goalId, req.params.goalId));
+      const nextOrder = (maxRow?.max ?? -1) + 1;
+
+      const [milestone] = await db.insert(goalMilestones).values({
+        goalId: req.params.goalId,
+        title: title.trim(),
+        targetDate: targetDate || null,
+        sortOrder: nextOrder,
+      }).returning();
+
+      await recomputeGoalProgress(req.params.goalId);
+      await createAuditLog(userId, "goal_milestone_created", { goalId: req.params.goalId, milestoneId: milestone.id, title: milestone.title }, goal.employeeId);
+      res.status(201).json(milestone);
+    } catch (error) {
+      console.error("Error creating milestone:", error);
+      res.status(500).json({ error: "Failed to create milestone" });
+    }
+  });
+
+  // Update a milestone (title, target date, done state)
+  app.patch("/api/performance/milestones/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const [existing] = await db.select().from(goalMilestones).where(eq(goalMilestones.id, req.params.id));
+      if (!existing) return res.status(404).json({ error: "Milestone not found" });
+
+      const goal = await getAccessibleGoal(userId, req.session.role!, existing.goalId);
+      if (!goal) return res.status(403).json({ error: "Not authorized to update this milestone" });
+
+      const { title, targetDate, done } = req.body;
+      const updates: Partial<GoalMilestone> = { updatedAt: new Date() };
+      if (title !== undefined) updates.title = title;
+      if (targetDate !== undefined) updates.targetDate = targetDate || null;
+      if (done !== undefined) {
+        updates.done = done === true;
+        updates.completedAt = done === true ? new Date() : null;
+      }
+
+      const [updated] = await db.update(goalMilestones).set(updates).where(eq(goalMilestones.id, req.params.id)).returning();
+      await recomputeGoalProgress(existing.goalId);
+      await createAuditLog(userId, "goal_milestone_updated", { goalId: existing.goalId, milestoneId: req.params.id, done: updates.done, changes: updates as Record<string, unknown> }, goal.employeeId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating milestone:", error);
+      res.status(500).json({ error: "Failed to update milestone" });
+    }
+  });
+
+  // Delete a milestone
+  app.delete("/api/performance/milestones/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const [existing] = await db.select().from(goalMilestones).where(eq(goalMilestones.id, req.params.id));
+      if (!existing) return res.status(404).json({ error: "Milestone not found" });
+
+      const goal = await getAccessibleGoal(userId, req.session.role!, existing.goalId);
+      if (!goal) return res.status(403).json({ error: "Not authorized to delete this milestone" });
+
+      await db.delete(goalMilestones).where(eq(goalMilestones.id, req.params.id));
+      await recomputeGoalProgress(existing.goalId);
+      await createAuditLog(userId, "goal_milestone_deleted", { goalId: existing.goalId, milestoneId: req.params.id, title: existing.title }, goal.employeeId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting milestone:", error);
+      res.status(500).json({ error: "Failed to delete milestone" });
+    }
+  });
+
+  // Reorder milestones within a goal
+  app.post("/api/performance/goals/:goalId/milestones/reorder", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const goal = await getAccessibleGoal(userId, req.session.role!, req.params.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+      const { orderedIds } = req.body as { orderedIds: string[] };
+      if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: "orderedIds array is required" });
+      }
+
+      const existing = await db.select().from(goalMilestones).where(eq(goalMilestones.goalId, req.params.goalId));
+      const existingIds = new Set(existing.map(m => m.id));
+      if (!orderedIds.every(id => existingIds.has(id))) {
+        return res.status(400).json({ error: "orderedIds contains unknown milestones" });
+      }
+
+      for (let i = 0; i < orderedIds.length; i++) {
+        await db.update(goalMilestones).set({ sortOrder: i, updatedAt: new Date() }).where(eq(goalMilestones.id, orderedIds[i]));
+      }
+
+      await createAuditLog(userId, "goal_milestones_reordered", { goalId: req.params.goalId, order: orderedIds }, goal.employeeId);
+
+      const milestones = await db.select().from(goalMilestones)
+        .where(eq(goalMilestones.goalId, req.params.goalId))
+        .orderBy(asc(goalMilestones.sortOrder), asc(goalMilestones.createdAt));
+      res.json(milestones);
+    } catch (error) {
+      console.error("Error reordering milestones:", error);
+      res.status(500).json({ error: "Failed to reorder milestones" });
+    }
+  });
+
+  // List check-ins linked to a specific goal
+  app.get("/api/performance/goals/:goalId/check-ins", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const goal = await getAccessibleGoal(userId, req.session.role!, req.params.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+      const list = await db.select().from(checkIns)
+        .where(eq(checkIns.goalId, req.params.goalId))
+        .orderBy(desc(checkIns.scheduledDate));
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+      const enriched = list.map(ci => {
+        const mgr = ci.managerId ? userMap.get(ci.managerId) : null;
+        return { ...ci, managerName: mgr ? `${mgr.firstName} ${mgr.lastName}` : null };
+      });
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching goal check-ins:", error);
+      res.status(500).json({ error: "Failed to fetch goal check-ins" });
+    }
+  });
+
+  // Create a check-in linked to a specific goal (owner or manager/admin of the owner)
+  app.post("/api/performance/goals/:goalId/check-ins", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const goal = await getAccessibleGoal(userId, req.session.role!, req.params.goalId);
+      if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+      const { scheduledDate, employeeNotes, managerNotes, actionItems } = req.body;
+      if (!scheduledDate) return res.status(400).json({ error: "Scheduled date is required" });
+
+      const [ci] = await db.insert(checkIns).values({
+        employeeId: goal.employeeId,
+        managerId: goal.managerId || (goal.employeeId !== userId ? userId : null),
+        goalId: goal.id,
+        scheduledDate,
+        employeeNotes: employeeNotes || null,
+        managerNotes: managerNotes || null,
+        actionItems: actionItems || null,
+      }).returning();
+
+      await createAuditLog(userId, "goal_check_in_created", { goalId: goal.id, checkInId: ci.id, scheduledDate }, goal.employeeId);
+      res.status(201).json(ci);
+    } catch (error) {
+      console.error("Error creating goal check-in:", error);
+      res.status(500).json({ error: "Failed to create goal check-in" });
     }
   });
 
@@ -419,12 +686,20 @@ export function registerPerformanceRoutes(app: Express) {
     if (!(await requireFeatureAccess(req, res))) return;
 
     try {
-      const { employeeId, scheduledDate, employeeNotes, managerNotes, actionItems } = req.body;
+      const { employeeId, scheduledDate, employeeNotes, managerNotes, actionItems, goalId } = req.body;
       if (!employeeId || !scheduledDate) return res.status(400).json({ error: "Employee and scheduled date required" });
 
       const teamIds = await getTeamMemberIds(userId);
       if (!teamIds.includes(employeeId) && !ADMIN_ROLES.includes(req.session.role!)) {
         return res.status(403).json({ error: "Cannot schedule check-in for this employee" });
+      }
+
+      // Validate optional goal link belongs to the employee being checked in.
+      if (goalId) {
+        const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
+        if (!goal || goal.employeeId !== employeeId) {
+          return res.status(400).json({ error: "Linked goal does not belong to this employee" });
+        }
       }
 
       const [ci] = await db.insert(checkIns).values({
@@ -434,9 +709,10 @@ export function registerPerformanceRoutes(app: Express) {
         employeeNotes: employeeNotes || null,
         managerNotes: managerNotes || null,
         actionItems: actionItems || null,
+        goalId: goalId || null,
       }).returning();
 
-      await createAuditLog(userId, "check_in_created", { checkInId: ci.id, scheduledDate }, employeeId);
+      await createAuditLog(userId, "check_in_created", { checkInId: ci.id, scheduledDate, goalId: goalId || undefined }, employeeId);
 
       // Send notification email to the employee (non-blocking)
       (async () => {
@@ -479,7 +755,7 @@ export function registerPerformanceRoutes(app: Express) {
         return res.status(403).json({ error: "Not authorized to update this check-in" });
       }
 
-      const { status, employeeNotes, managerNotes, actionItems, rating } = req.body;
+      const { status, employeeNotes, managerNotes, actionItems, rating, goalId } = req.body;
       const updates: Partial<CheckIn> = { updatedAt: new Date() };
       if (status !== undefined) {
         updates.status = status;
@@ -489,6 +765,15 @@ export function registerPerformanceRoutes(app: Express) {
       if (managerNotes !== undefined) updates.managerNotes = managerNotes;
       if (actionItems !== undefined) updates.actionItems = actionItems;
       if (rating !== undefined) updates.rating = rating;
+      if (goalId !== undefined) {
+        if (goalId) {
+          const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
+          if (!goal || goal.employeeId !== existing.employeeId) {
+            return res.status(400).json({ error: "Linked goal does not belong to this employee" });
+          }
+        }
+        updates.goalId = goalId || null;
+      }
 
       const [updated] = await db.update(checkIns).set(updates).where(eq(checkIns.id, req.params.id)).returning();
       await createAuditLog(userId, "check_in_updated", { checkInId: req.params.id, changes: updates as Record<string, unknown> }, existing.employeeId);

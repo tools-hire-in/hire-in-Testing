@@ -71,6 +71,13 @@ interface CheckInsResponse {
   userRole: string;
 }
 
+interface TeamGoalsResponse {
+  members: {
+    userId: string;
+    goals: { id: string; title: string }[];
+  }[];
+}
+
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "Scheduled",
   in_progress: "In Progress",
@@ -156,8 +163,23 @@ function CreateCheckInDialog({
     employeeId: isManager ? "" : userId,
     scheduledDate: "",
     discussionTopics: "",
+    goalId: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Goals available to link, scoped to the chosen employee.
+  const { data: ownGoals } = useQuery<{ id: string; title: string }[]>({
+    queryKey: ["/api/performance/goals"],
+    enabled: open && !isManager,
+  });
+  const { data: teamGoalsResp } = useQuery<TeamGoalsResponse>({
+    queryKey: ["/api/performance/team-goals"],
+    enabled: open && isManager,
+  });
+
+  const linkableGoals: { id: string; title: string }[] = isManager
+    ? (teamGoalsResp?.members.find((m) => m.userId === form.employeeId)?.goals ?? []).map((g) => ({ id: g.id, title: g.title }))
+    : (ownGoals ?? []).map((g) => ({ id: g.id, title: g.title }));
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -176,7 +198,7 @@ function CreateCheckInDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/performance/check-ins"] });
       toast({ title: "Check-in scheduled successfully" });
       onOpenChange(false);
-      setForm({ employeeId: isManager ? "" : userId, scheduledDate: "", discussionTopics: "" });
+      setForm({ employeeId: isManager ? "" : userId, scheduledDate: "", discussionTopics: "", goalId: "" });
     },
     onError: (err: Error) => {
       toast({ title: "Failed to create check-in", description: err.message, variant: "destructive" });
@@ -225,6 +247,30 @@ function CreateCheckInDialog({
               onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
             />
             {errors.scheduledDate && <p className="text-xs text-red-600">{errors.scheduledDate}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Linked Goal (optional)</Label>
+            <Select
+              value={form.goalId || "none"}
+              onValueChange={(val) => setForm({ ...form, goalId: val === "none" ? "" : val })}
+              disabled={isManager && !form.employeeId}
+            >
+              <SelectTrigger data-testid="select-checkin-goal">
+                <SelectValue placeholder="No goal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No goal</SelectItem>
+                {linkableGoals.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isManager && !form.employeeId && (
+              <p className="text-[11px] text-muted-foreground">Select a team member to link a goal.</p>
+            )}
           </div>
 
           <div className="space-y-2">

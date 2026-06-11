@@ -1,2 +1,3 @@
 - [Replit env store model](replit-env-store.md) — secrets:true in viewEnvVars reflects shared-env availability, NOT a separate encrypted store; must requestEnvVar before deleteEnvVars when moving to Secrets.
 - [Prod migration path](prod-migration-path.md) — prod uses runMigrations (journal 0000-12) + idempotent ensure block; db:push only runs in dev post-merge; drizzle drift preview must NOT be applied raw to prod.
+- [Goal milestones & auto-progress](goal-milestones-progress.md) — milestone auto-progress recomputes progress ONLY (status stays manual); access via getAccessibleGoal; annexure push reuses buildGoalsFromAnnexures.

@@ -4,7 +4,7 @@ import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
   TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail,
 } from "lucide-react";
-import { AnnexureEditor, type AnnexureItem } from "./AnnexureEditor";
+import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "./AnnexureEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -296,21 +296,9 @@ export function LetterGenerator() {
     startDate: string,
     currentAnnexures: AnnexureItem[]
   ) {
-    const goalsToCreate: { title: string; description?: string; startDate?: string; targetDate?: string }[] = [];
-    for (const ann of currentAnnexures) {
-      if (!ann.table || !ann.goalPush?.enabled || ann.goalPush.selectedRows.length === 0) continue;
-      for (const rowIdx of ann.goalPush.selectedRows) {
-        const row = ann.table.rows[rowIdx];
-        if (!row || !row[0].trim()) continue;
-        goalsToCreate.push({
-          title: row[0].trim(),
-          description: row[1]?.trim() || undefined,
-          startDate: startDate || undefined,
-          targetDate: ann.goalPush.dueDate || undefined,
-        });
-      }
-    }
+    const goalsToCreate = buildGoalsFromAnnexures(currentAnnexures, startDate);
     if (goalsToCreate.length === 0) return;
+    const milestoneCount = goalsToCreate.reduce((sum, g) => sum + (g.milestones?.length || 0), 0);
     try {
       await apiRequest("POST", "/api/performance/goals/batch", {
         employeeId,
@@ -318,7 +306,12 @@ export function LetterGenerator() {
         goals: goalsToCreate,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/performance/goals"] });
-      toast({ title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`, description: `Linked to addendum ${referenceNumber}` });
+      toast({
+        title: `${goalsToCreate.length} performance goal${goalsToCreate.length > 1 ? "s" : ""} pushed`,
+        description: milestoneCount > 0
+          ? `${milestoneCount} milestone${milestoneCount > 1 ? "s" : ""} linked to addendum ${referenceNumber}`
+          : `Linked to addendum ${referenceNumber}`,
+      });
     } catch {
       toast({ title: "Goals could not be pushed", description: "Addendum was created. Goals may need to be added manually.", variant: "destructive" });
     }

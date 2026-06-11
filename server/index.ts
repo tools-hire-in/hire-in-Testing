@@ -250,6 +250,30 @@ async function ensurePerformanceTables() {
 
 }
 
+async function ensureGoalMilestonesAndLinks() {
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS auto_progress_from_milestones boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS goal_id varchar REFERENCES performance_goals(id) ON DELETE SET NULL`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS goal_milestones (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        goal_id VARCHAR NOT NULL REFERENCES performance_goals(id) ON DELETE CASCADE,
+        title VARCHAR NOT NULL,
+        target_date VARCHAR,
+        done BOOLEAN NOT NULL DEFAULT false,
+        completed_at TIMESTAMP,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS goal_milestones_goal_id_idx ON goal_milestones(goal_id)`);
+    log("Ensured goal_milestones table, check_ins.goal_id, and performance_goals.auto_progress_from_milestones");
+  } catch (err) {
+    console.error("goal milestones / links migration error:", err);
+  }
+}
+
 async function ensureHrLettersTables() {
   try {
     log("Ensuring HR letters enum types, table, and indexes...");
@@ -1076,6 +1100,7 @@ async function backfillHolidayAttendance() {
 
   await runMigrations();
   await ensurePerformanceTables();
+  await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();
   await ensureHrLetterAmendmentTypes();
   try {
