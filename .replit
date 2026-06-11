@@ -60,4 +60,4 @@ BASE_URL = "https://employee.hire-in.com"
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 180000

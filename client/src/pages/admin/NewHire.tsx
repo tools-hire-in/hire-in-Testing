@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, FileText, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield } from "lucide-react";
+import { Loader2, FileText, FilePlus, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -371,11 +371,20 @@ export default function NewHire() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [tab, setTab] = useState<string>(() => {
     try {
-      return new URLSearchParams(window.location.search).get("tab") || "offer-letters";
+      const param = new URLSearchParams(window.location.search).get("tab");
+      // Back-compat: the old single "offer-letters" tab is now split; default to the list.
+      if (!param || param === "offer-letters") return "letters";
+      return param;
     } catch {
-      return "offer-letters";
+      return "letters";
     }
   });
+
+  const { data: offerLetters } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/offer-letters"],
+    enabled: isAuthenticated,
+  });
+  const pendingCount = offerLetters?.filter((l: any) => l.status === "pending_approval").length ?? 0;
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -393,7 +402,7 @@ export default function NewHire() {
   const handleTabChange = (t: string) => {
     setTab(t);
     const url = new URL(window.location.href);
-    t === "offer-letters" ? url.searchParams.delete("tab") : url.searchParams.set("tab", t);
+    t === "letters" ? url.searchParams.delete("tab") : url.searchParams.set("tab", t);
     window.history.replaceState({}, "", url.toString());
   };
 
@@ -407,9 +416,21 @@ export default function NewHire() {
 
         <Tabs value={tab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList data-testid="tabs-new-hire" className="flex-wrap h-auto gap-1">
-            <TabsTrigger value="offer-letters" data-testid="tab-new-hire-offer-letters">
+            <TabsTrigger value="new-offer-letter" data-testid="tab-new-hire-new-offer">
+              <FilePlus className="h-4 w-4 mr-2" />
+              New Offer Letter
+            </TabsTrigger>
+            <TabsTrigger value="letters" data-testid="tab-new-hire-letters">
               <FileText className="h-4 w-4 mr-2" />
-              Offer Letters
+              Letters
+              {pendingCount > 0 && (
+                <span
+                  className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#F47C20] text-white"
+                  data-testid="badge-tab-pending"
+                >
+                  {pendingCount}
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="onboarding" data-testid="tab-new-hire-onboarding">
               <Users className="h-4 w-4 mr-2" />
@@ -421,11 +442,12 @@ export default function NewHire() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="offer-letters" className="space-y-8">
+          <TabsContent value="new-offer-letter">
             <OfferLetterGenerator />
-            <div className="border-t pt-6">
-              <OfferLettersDashboard />
-            </div>
+          </TabsContent>
+
+          <TabsContent value="letters">
+            <OfferLettersDashboard />
           </TabsContent>
 
           <TabsContent value="onboarding">

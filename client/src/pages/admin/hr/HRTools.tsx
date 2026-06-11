@@ -1272,16 +1272,16 @@ export function OfferLetterGenerator() {
   );
 }
 
-const STATUS_BADGES: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; icon: any }> = {
-  sent: { variant: "secondary", label: "Sent", icon: Mail },
-  viewed: { variant: "default", label: "Viewed", icon: Eye },
-  accepted: { variant: "outline", label: "Accepted", icon: CheckCircle },
-  onboarded: { variant: "default", label: "Onboarded", icon: UserPlus },
-  countersigned: { variant: "default", label: "Countersigned", icon: CheckCircle },
-  expired: { variant: "destructive", label: "Expired", icon: Clock },
-  cancelled: { variant: "destructive", label: "Cancelled", icon: XCircle },
-  pending_approval: { variant: "outline", label: "Pending HR Approval", icon: Clock },
-  rejected: { variant: "destructive", label: "Rejected", icon: XCircle },
+const STATUS_BADGES: Record<string, { label: string; className: string; icon: any }> = {
+  sent: { label: "Sent", className: "bg-blue-50 text-blue-700 border-blue-200", icon: Mail },
+  viewed: { label: "Viewed", className: "bg-indigo-50 text-indigo-700 border-indigo-200", icon: Eye },
+  accepted: { label: "Accepted", className: "bg-amber-50 text-amber-700 border-amber-200", icon: CheckCircle },
+  onboarded: { label: "Onboarded", className: "bg-green-50 text-green-700 border-green-200", icon: UserPlus },
+  countersigned: { label: "Countersigned", className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle },
+  expired: { label: "Expired", className: "bg-gray-100 text-gray-600 border-gray-200", icon: Clock },
+  cancelled: { label: "Cancelled", className: "bg-red-50 text-red-600 border-red-200", icon: XCircle },
+  pending_approval: { label: "Pending Approval", className: "bg-orange-50 text-[#F47C20] border-orange-300", icon: Clock },
+  rejected: { label: "Rejected", className: "bg-red-50 text-red-700 border-red-200", icon: XCircle },
 };
 
 const ADDENDUM_TYPE_LABELS: Record<string, string> = {
@@ -1745,43 +1745,59 @@ export function OfferLettersDashboard() {
     : (letters ?? []);
 
   return (
-    <div className="space-y-4">
-      {isHrOrAdmin && (
-        <div className="flex gap-2 items-center justify-between">
-          <div className="flex gap-2 items-center">
-            <Button
-              variant={activeFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setActiveFilter("all")}
-              data-testid="filter-tab-all"
-            >
-              All Letters
-            </Button>
-            <Button
-              variant={activeFilter === "pending_approval" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setActiveFilter("pending_approval")}
-              data-testid="filter-tab-pending"
-              className="relative"
-            >
-              Pending Approval
-              {pendingLetters.length > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-amber-500 text-white">
-                  {pendingLetters.length}
-                </span>
-              )}
-            </Button>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#1F3A6E]" data-testid="text-letters-heading">Letters</h2>
+          <p className="text-sm text-muted-foreground">
+            Review, approve, and counter-sign offer letters and standalone addendums.
+          </p>
+        </div>
+        {isHrOrAdmin && (
           <Button
             size="sm"
             variant="outline"
-            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50 shrink-0"
             onClick={() => { resetStandaloneForm(); setStandaloneDialog(true); }}
             data-testid="button-new-standalone-addendum"
           >
-            <FilePlus className="h-4 w-4 mr-1" />
+            <FilePlus className="h-4 w-4 mr-1.5" />
             New Standalone Addendum
           </Button>
+        )}
+      </div>
+
+      {isHrOrAdmin && (
+        <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1" role="tablist">
+          <button
+            type="button"
+            onClick={() => setActiveFilter("all")}
+            data-testid="filter-tab-all"
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              activeFilter === "all"
+                ? "bg-white text-[#1F3A6E] shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All Letters
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveFilter("pending_approval")}
+            data-testid="filter-tab-pending"
+            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              activeFilter === "pending_approval"
+                ? "bg-white text-[#F47C20] shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Pending Approval
+            {pendingLetters.length > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#F47C20] text-white">
+                {pendingLetters.length}
+              </span>
+            )}
+          </button>
         </div>
       )}
 
@@ -1795,7 +1811,7 @@ export function OfferLettersDashboard() {
             <p className="text-muted-foreground text-sm">
               {activeFilter === "pending_approval"
                 ? "All offer letters have been reviewed."
-                : "Send your first offer letter from the \"Offer Letter Generator\" tab."}
+                : "Send your first offer letter from the \"New Offer Letter\" tab."}
             </p>
           </CardContent>
         </Card>
@@ -1805,16 +1821,16 @@ export function OfferLettersDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="text-left p-3 font-medium">Candidate</th>
-                    <th className="text-left p-3 font-medium">Personal Email</th>
-                    <th className="text-left p-3 font-medium">Designation</th>
-                    <th className="text-left p-3 font-medium">Department</th>
-                    <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-left p-3 font-medium">Sent</th>
-                    <th className="text-left p-3 font-medium">Sent By</th>
-                    <th className="text-left p-3 font-medium">Hire-in Email</th>
-                    <th className="text-left p-3 font-medium">Actions</th>
+                  <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="text-left px-4 py-3 font-semibold">Candidate</th>
+                    <th className="text-left px-4 py-3 font-semibold">Personal Email</th>
+                    <th className="text-left px-4 py-3 font-semibold">Designation</th>
+                    <th className="text-left px-4 py-3 font-semibold">Department</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Sent</th>
+                    <th className="text-left px-4 py-3 font-semibold">Sent By</th>
+                    <th className="text-left px-4 py-3 font-semibold">Hire-in Email</th>
+                    <th className="text-right px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1826,8 +1842,8 @@ export function OfferLettersDashboard() {
                     const isPending = letter.status === "pending_approval";
                     return (
                       <>
-                        <tr key={letter.id} className={`border-b hover:bg-muted/20 ${isPending ? "bg-amber-50/50" : ""}`} data-testid={`row-offer-${letter.id}`}>
-                          <td className="p-3 font-medium" data-testid={`text-candidate-${letter.id}`}>
+                        <tr key={letter.id} className={`border-b transition-colors hover:bg-muted/20 ${isPending ? "bg-orange-50/60" : ""}`} data-testid={`row-offer-${letter.id}`}>
+                          <td className="px-4 py-3 font-medium text-[#1F3A6E]" data-testid={`text-candidate-${letter.id}`}>
                             <div className="flex items-center gap-2">
                               {canHaveAddendum && (
                                 <button
@@ -1845,22 +1861,25 @@ export function OfferLettersDashboard() {
                               )}
                             </div>
                           </td>
-                          <td className="p-3 text-muted-foreground">{letter.candidatePersonalEmail}</td>
-                          <td className="p-3">{letter.designation}</td>
-                          <td className="p-3">{letter.departmentName || "—"}</td>
-                          <td className="p-3">
-                            <Badge variant={statusInfo.variant} className={`gap-1 ${isPending ? "border-amber-400 text-amber-700" : ""}`} data-testid={`badge-status-${letter.id}`}>
+                          <td className="px-4 py-3 text-muted-foreground">{letter.candidatePersonalEmail}</td>
+                          <td className="px-4 py-3">{letter.designation}</td>
+                          <td className="px-4 py-3">{letter.departmentName || "—"}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusInfo.className}`}
+                              data-testid={`badge-status-${letter.id}`}
+                            >
                               <StatusIcon className="h-3 w-3" />
                               {statusInfo.label}
-                            </Badge>
+                            </span>
                           </td>
-                          <td className="p-3 text-muted-foreground">
+                          <td className="px-4 py-3 text-muted-foreground">
                             {letter.createdAt ? new Date(letter.createdAt).toLocaleDateString() : "—"}
                           </td>
-                          <td className="p-3">{letter.creatorName}</td>
-                          <td className="p-3">{letter.hireInEmail || "—"}</td>
-                          <td className="p-3">
-                            <div className="flex gap-1 flex-wrap">
+                          <td className="px-4 py-3">{letter.creatorName}</td>
+                          <td className="px-4 py-3">{letter.hireInEmail || "—"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1 flex-wrap justify-end">
                               {letter.status !== "cancelled" && letter.status !== "expired" && letter.status !== "rejected" && (
                                 <Button
                                   size="sm"
@@ -1997,44 +2016,44 @@ export function OfferLettersDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="text-left p-3 font-medium">Employee</th>
-                    <th className="text-left p-3 font-medium">Type</th>
-                    <th className="text-left p-3 font-medium">Effective Date</th>
-                    <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-left p-3 font-medium">Issued</th>
-                    <th className="text-left p-3 font-medium">Actions</th>
+                  <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="text-left px-4 py-3 font-semibold">Employee</th>
+                    <th className="text-left px-4 py-3 font-semibold">Type</th>
+                    <th className="text-left px-4 py-3 font-semibold">Effective Date</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Issued</th>
+                    <th className="text-right px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {standaloneAddendums.map((addendum: any) => {
                     const statusInfo = ADDENDUM_STATUS_BADGES[addendum.status] || ADDENDUM_STATUS_BADGES.sent;
                     return (
-                      <tr key={addendum.id} className="border-b hover:bg-muted/20" data-testid={`row-standalone-${addendum.id}`}>
-                        <td className="p-3">
-                          <div className="font-medium">{addendum.candidateName}</div>
+                      <tr key={addendum.id} className="border-b transition-colors hover:bg-muted/20" data-testid={`row-standalone-${addendum.id}`}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-[#1F3A6E]">{addendum.candidateName}</div>
                           <div className="text-xs text-muted-foreground">
                             {(addendum.manualEmployeeData as any)?.designation || "—"}
                             {(addendum.manualEmployeeData as any)?.department ? ` · ${(addendum.manualEmployeeData as any).department}` : ""}
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-medium">{ADDENDUM_TYPE_LABELS[addendum.addendumType] || addendum.addendumType}</span>
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-300 text-purple-700">Standalone</Badge>
                           </div>
                         </td>
-                        <td className="p-3 text-muted-foreground">{addendum.effectiveDate || "—"}</td>
-                        <td className="p-3">
+                        <td className="px-4 py-3 text-muted-foreground">{addendum.effectiveDate || "—"}</td>
+                        <td className="px-4 py-3">
                           <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
                             {statusInfo.label}
                           </span>
                         </td>
-                        <td className="p-3 text-muted-foreground text-xs">
+                        <td className="px-4 py-3 text-muted-foreground text-xs">
                           {addendum.issuedAt ? new Date(addendum.issuedAt).toLocaleDateString() : "—"}
                         </td>
-                        <td className="p-3">
-                          <div className="flex gap-1 flex-wrap">
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 flex-wrap justify-end">
                             <Button
                               size="sm"
                               variant="outline"
