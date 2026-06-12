@@ -425,6 +425,12 @@ async function ensureOfferLetterAddendumsTable() {
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS for_employee_id VARCHAR REFERENCES admin_users(id)
       `);
       await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS is_standalone BOOLEAN NOT NULL DEFAULT false
+      `);
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS manual_employee_data JSONB
+      `);
+      await db.execute(sql`
         ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
       `);
       return;
@@ -435,6 +441,8 @@ async function ensureOfferLetterAddendumsTable() {
       CREATE TABLE IF NOT EXISTS offer_letter_addendums (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
         offer_letter_id VARCHAR NOT NULL REFERENCES offer_letters(id),
+        is_standalone BOOLEAN NOT NULL DEFAULT false,
+        manual_employee_data JSONB,
         token VARCHAR NOT NULL UNIQUE,
         addendum_type VARCHAR NOT NULL,
         status VARCHAR NOT NULL DEFAULT 'draft',
