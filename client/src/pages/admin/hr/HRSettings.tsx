@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
 
 interface LeaveType {
   id: string;
@@ -471,6 +472,262 @@ function FeatureFlagsSection() {
             </div>
           );
         })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CompanyProfileSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+
+  const { data, isLoading } = useQuery<CompanyProfile>({
+    queryKey: ["/api/company-profile"],
+    enabled: isAdmin,
+  });
+
+  const [form, setForm] = useState<CompanyProfile>(DEFAULT_COMPANY_PROFILE);
+
+  useEffect(() => {
+    if (data) setForm(data);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: CompanyProfile) => {
+      const res = await apiRequest("PATCH", "/api/company-profile", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-profile"] });
+      toast({ title: "Company profile updated" });
+    },
+    onError: () => toast({ title: "Failed to update company profile", variant: "destructive" }),
+  });
+
+  if (!isAdmin) return null;
+
+  const set = <K extends keyof CompanyProfile>(key: K, value: CompanyProfile[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  const setAddress = (which: "addressUS" | "addressIndia", field: keyof CompanyProfile["addressUS"], value: string) =>
+    setForm((prev) => ({ ...prev, [which]: { ...prev[which], [field]: value } }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Building2 className="h-4 w-4" />
+          Company Profile
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Government contracting credentials and company details shown across the public site and capability decks.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Identity */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-name">Company Name</Label>
+            <Input id="cp-name" value={form.name} onChange={(e) => set("name", e.target.value)} data-testid="input-cp-name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-legalName">Legal Name</Label>
+            <Input id="cp-legalName" value={form.legalName} onChange={(e) => set("legalName", e.target.value)} data-testid="input-cp-legalname" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-established">Established</Label>
+            <Input id="cp-established" value={form.established} onChange={(e) => set("established", e.target.value)} data-testid="input-cp-established" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-brandLine">Brand Line</Label>
+            <Input id="cp-brandLine" value={form.brandLine} onChange={(e) => set("brandLine", e.target.value)} data-testid="input-cp-brandline" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-uei">UEI</Label>
+            <Input id="cp-uei" value={form.uei} onChange={(e) => set("uei", e.target.value)} data-testid="input-cp-uei" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-cage">CAGE / NCAGE Code</Label>
+            <Input id="cp-cage" value={form.cage} onChange={(e) => set("cage", e.target.value)} data-testid="input-cp-cage" />
+          </div>
+        </div>
+
+        {/* NAICS Codes */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>NAICS Codes</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => set("naicsCodes", [...form.naicsCodes, { code: "", label: "" }])}
+              data-testid="button-cp-add-naics"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add Code
+            </Button>
+          </div>
+          {form.naicsCodes.map((naics, i) => (
+            <div key={i} className="flex items-center gap-2" data-testid={`row-cp-naics-${i}`}>
+              <Input
+                className="w-32"
+                placeholder="Code"
+                value={naics.code}
+                onChange={(e) => {
+                  const next = [...form.naicsCodes];
+                  next[i] = { ...next[i], code: e.target.value };
+                  set("naicsCodes", next);
+                }}
+                data-testid={`input-cp-naics-code-${i}`}
+              />
+              <Input
+                placeholder="Label"
+                value={naics.label}
+                onChange={(e) => {
+                  const next = [...form.naicsCodes];
+                  next[i] = { ...next[i], label: e.target.value };
+                  set("naicsCodes", next);
+                }}
+                data-testid={`input-cp-naics-label-${i}`}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => set("naicsCodes", form.naicsCodes.filter((_, idx) => idx !== i))}
+                data-testid={`button-cp-remove-naics-${i}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {/* SAM.gov status */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          <div className="flex items-center justify-between gap-4 py-1">
+            <div>
+              <p className="font-medium text-sm">SAM.gov Active</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Mark whether the SAM.gov registration is active.</p>
+            </div>
+            <Switch
+              checked={form.samStatus.active}
+              onCheckedChange={(v) => set("samStatus", { ...form.samStatus, active: v })}
+              data-testid="switch-cp-sam-active"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-sam-exp">SAM.gov Expiration Date</Label>
+            <Input
+              id="cp-sam-exp"
+              type="date"
+              value={form.samStatus.expirationDate}
+              onChange={(e) => set("samStatus", { ...form.samStatus, expirationDate: e.target.value })}
+              data-testid="input-cp-sam-expiration"
+            />
+          </div>
+        </div>
+
+        {/* Certifications */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Certifications</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => set("certifications", [...form.certifications, { name: "", issuingBody: "" }])}
+              data-testid="button-cp-add-cert"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add Certification
+            </Button>
+          </div>
+          {form.certifications.map((cert, i) => (
+            <div key={i} className="flex items-center gap-2" data-testid={`row-cp-cert-${i}`}>
+              <Input
+                placeholder="Name"
+                value={cert.name}
+                onChange={(e) => {
+                  const next = [...form.certifications];
+                  next[i] = { ...next[i], name: e.target.value };
+                  set("certifications", next);
+                }}
+                data-testid={`input-cp-cert-name-${i}`}
+              />
+              <Input
+                placeholder="Issuing body (optional)"
+                value={cert.issuingBody}
+                onChange={(e) => {
+                  const next = [...form.certifications];
+                  next[i] = { ...next[i], issuingBody: e.target.value };
+                  set("certifications", next);
+                }}
+                data-testid={`input-cp-cert-body-${i}`}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => set("certifications", form.certifications.filter((_, idx) => idx !== i))}
+                data-testid={`button-cp-remove-cert-${i}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {/* Addresses */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(["addressUS", "addressIndia"] as const).map((which) => (
+            <div key={which} className="space-y-2">
+              <Label>{which === "addressUS" ? "US Address" : "India Address"}</Label>
+              <Input placeholder="Street" value={form[which].street} onChange={(e) => setAddress(which, "street", e.target.value)} data-testid={`input-cp-${which}-street`} />
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="City" value={form[which].city} onChange={(e) => setAddress(which, "city", e.target.value)} data-testid={`input-cp-${which}-city`} />
+                <Input placeholder="State" value={form[which].state} onChange={(e) => setAddress(which, "state", e.target.value)} data-testid={`input-cp-${which}-state`} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="ZIP" value={form[which].zip} onChange={(e) => setAddress(which, "zip", e.target.value)} data-testid={`input-cp-${which}-zip`} />
+                <Input placeholder="Country" value={form[which].country} onChange={(e) => setAddress(which, "country", e.target.value)} data-testid={`input-cp-${which}-country`} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Phones & Emails */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-phone-main">Main Phone</Label>
+            <Input id="cp-phone-main" value={form.phones.main} onChange={(e) => set("phones", { ...form.phones, main: e.target.value })} data-testid="input-cp-phone-main" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-phone-healthcare">Healthcare Phone</Label>
+            <Input id="cp-phone-healthcare" value={form.phones.healthcare} onChange={(e) => set("phones", { ...form.phones, healthcare: e.target.value })} data-testid="input-cp-phone-healthcare" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-phone-it">IT Phone</Label>
+            <Input id="cp-phone-it" value={form.phones.it} onChange={(e) => set("phones", { ...form.phones, it: e.target.value })} data-testid="input-cp-phone-it" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-email-general">General Email</Label>
+            <Input id="cp-email-general" value={form.emails.general} onChange={(e) => set("emails", { ...form.emails, general: e.target.value })} data-testid="input-cp-email-general" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cp-email-careers">Careers Email</Label>
+            <Input id="cp-email-careers" value={form.emails.careers} onChange={(e) => set("emails", { ...form.emails, careers: e.target.value })} data-testid="input-cp-email-careers" />
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={() => saveMutation.mutate(form)}
+            disabled={isLoading || saveMutation.isPending}
+            data-testid="button-cp-save"
+          >
+            {saveMutation.isPending ? "Saving..." : "Save Company Profile"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -2015,6 +2272,8 @@ export default function HRSettings() {
         )}
 
         <FeatureFlagsSection />
+
+        <CompanyProfileSection />
 
         <TrainingSettingsSection />
 

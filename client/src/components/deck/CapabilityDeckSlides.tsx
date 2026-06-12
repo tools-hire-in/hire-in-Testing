@@ -31,6 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
+import { useCompanyProfile } from "@/hooks/use-company-profile";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
@@ -105,6 +106,7 @@ function SectionHeader({ label, title, light = false }: { label: string; title: 
 
 function Slide1Cover() {
   const { slideNumber, totalSlides } = useContext(CapabilitySlideNumberContext);
+  const profile = useCompanyProfile();
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
@@ -166,7 +168,7 @@ function Slide1Cover() {
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Confidential · 2026</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
-          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: {profile.uei} · CAGE: {profile.cage}</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
         </div>
@@ -598,6 +600,7 @@ function Slide10Founder() {
 
 function Slide11Contact() {
   const { slideNumber, totalSlides } = useContext(CapabilitySlideNumberContext);
+  const profile = useCompanyProfile();
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "36px 56px", position: "relative", overflow: "hidden" }}>
@@ -650,7 +653,7 @@ function Slide11Contact() {
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Confidential · 2026</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
-          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: {profile.uei} · CAGE: {profile.cage}</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
         </div>

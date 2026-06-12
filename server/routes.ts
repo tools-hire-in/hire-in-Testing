@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
+import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
@@ -8203,6 +8204,32 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Update feature flags error:", error);
       res.status(500).json({ error: "Failed to update feature flags" });
+    }
+  });
+
+  // Company Profile — public read (DB value merged over defaults)
+  app.get("/api/company-profile", async (_req: Request, res: Response) => {
+    try {
+      const setting = await storage.getSystemSetting("company_profile");
+      res.json(mergeCompanyProfile(setting?.value));
+    } catch (error) {
+      console.error("Get company profile error:", error);
+      res.status(500).json({ error: "Failed to fetch company profile" });
+    }
+  });
+
+  // Company Profile — admin-only upsert
+  app.patch("/api/company-profile", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+    try {
+      const result = companyProfileSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid company profile data", details: result.error.issues });
+      }
+      await storage.upsertSystemSetting("company_profile", result.data, req.session.userId);
+      res.json(mergeCompanyProfile(result.data));
+    } catch (error) {
+      console.error("Update company profile error:", error);
+      res.status(500).json({ error: "Failed to update company profile" });
     }
   });
 

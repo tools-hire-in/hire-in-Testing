@@ -19,25 +19,27 @@ import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
-import { COMPANY, CONTACT } from "@/lib/constants";
+import { CONTACT } from "@/lib/constants";
+import { useCompanyProfile } from "@/hooks/use-company-profile";
+import { formatCompanyAddress, type CompanyProfile } from "@shared/companyProfile";
 
-const ORGANIZATION_SCHEMA = {
+const buildOrganizationSchema = (profile: CompanyProfile) => ({
   "@context": "https://schema.org",
   "@type": "Organization",
   "@id": "https://hire-in.com/#organization",
-  name: "Hire'in Solutions",
-  legalName: "Rayomind Software Solutions LLC",
+  name: profile.name,
+  legalName: profile.legalName,
   url: "https://hire-in.com",
-  foundingDate: "2014",
+  foundingDate: profile.established,
   description:
     "Hire'in Solutions is an AI-powered staffing agency specializing in Healthcare, IT, Engineering, and Professional Services recruitment across all 50 US states.",
   areaServed: { "@type": "Country", name: "United States" },
   address: {
     "@type": "PostalAddress",
-    streetAddress: "2621 Leigh Ave.",
-    addressLocality: "San Jose",
-    addressRegion: "CA",
-    postalCode: "95124",
+    streetAddress: profile.addressUS.street,
+    addressLocality: profile.addressUS.city,
+    addressRegion: profile.addressUS.state,
+    postalCode: profile.addressUS.zip,
     addressCountry: "US",
   },
   sameAs: ["https://www.linkedin.com/company/hirein-solutions"],
@@ -48,9 +50,9 @@ const ORGANIZATION_SCHEMA = {
     "Contract Staffing",
     "AI-Powered Recruitment",
   ],
-};
+});
 
-const FAQ_SCHEMA = {
+const buildFaqSchema = (profile: CompanyProfile) => ({
   "@context": "https://schema.org",
   "@type": "FAQPage",
   mainEntity: [
@@ -59,7 +61,7 @@ const FAQ_SCHEMA = {
       name: "What is Hire'in Solutions?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Hire'in Solutions (legal name: Rayomind Software Solutions LLC) is an AI-powered staffing agency founded in 2014, headquartered in San Jose, California. The agency specializes in Healthcare, IT, Engineering, and Professional Services staffing across all 50 US states.",
+        text: `Hire'in Solutions (legal name: ${profile.legalName}) is an AI-powered staffing agency founded in ${profile.established}, headquartered in ${profile.addressUS.city}, ${profile.addressUS.state}. The agency specializes in Healthcare, IT, Engineering, and Professional Services staffing across all 50 US states.`,
       },
     },
     {
@@ -83,7 +85,7 @@ const FAQ_SCHEMA = {
       name: "Where is Hire'in Solutions located?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Hire'in Solutions has its US headquarters at 2621 Leigh Ave., San Jose, CA 95124, and a delivery center in Rohini, New Delhi, India.",
+        text: `Hire'in Solutions has its US headquarters at ${formatCompanyAddress(profile.addressUS)}, and a delivery center in ${formatCompanyAddress(profile.addressIndia)}.`,
       },
     },
     {
@@ -91,11 +93,11 @@ const FAQ_SCHEMA = {
       name: "Does Hire'in Solutions work with government contracts?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. Hire'in Solutions holds a CAGE code (206Q6) and UEI number (J36BQRPL2WN3) for government contracting purposes.",
+        text: `Yes. Hire'in Solutions holds a CAGE code (${profile.cage}) and UEI number (${profile.uei}) for government contracting purposes.`,
       },
     },
   ],
-};
+});
 
 const DIFFERENTIATORS = [
   {
@@ -160,10 +162,11 @@ export default function WhyHireIn() {
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);
+  const profile = useCompanyProfile();
 
   return (
     <Layout>
-      <SchemaHead schema={[ORGANIZATION_SCHEMA, FAQ_SCHEMA]} />
+      <SchemaHead schema={[buildOrganizationSchema(profile), buildFaqSchema(profile)]} />
 
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">
@@ -174,7 +177,7 @@ export default function WhyHireIn() {
             Why Hire'in Solutions?
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto mb-8 leading-relaxed">
-            {COMPANY.name} is an AI-powered staffing agency founded in 2014 and headquartered in San Jose, California. We connect employers across all 50 US states with pre-vetted talent in Healthcare, IT, Engineering, and Professional Services — using proprietary AI tools that outpace traditional recruiting.
+            {profile.name} is an AI-powered staffing agency founded in {profile.established} and headquartered in {profile.addressUS.city}, {profile.addressUS.state}. We connect employers across all 50 US states with pre-vetted talent in Healthcare, IT, Engineering, and Professional Services — using proprietary AI tools that outpace traditional recruiting.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" onClick={() => setConsultationOpen(true)} data-testid="button-why-cta">
@@ -211,12 +214,12 @@ export default function WhyHireIn() {
               <CardContent className="p-6 space-y-3">
                 <h3 className="font-semibold text-lg">Legal Identity</h3>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li><span className="font-medium text-foreground">Trade name:</span> Hire'in Solutions</li>
-                  <li><span className="font-medium text-foreground">Legal name:</span> Rayomind Software Solutions LLC</li>
-                  <li><span className="font-medium text-foreground">Founded:</span> 2014</li>
-                  <li><span className="font-medium text-foreground">HQ:</span> 2621 Leigh Ave., San Jose, CA 95124</li>
-                  <li><span className="font-medium text-foreground">CAGE Code:</span> {COMPANY.cage}</li>
-                  <li><span className="font-medium text-foreground">UEI:</span> {COMPANY.uei}</li>
+                  <li><span className="font-medium text-foreground">Trade name:</span> {profile.name}</li>
+                  <li><span className="font-medium text-foreground">Legal name:</span> {profile.legalName}</li>
+                  <li><span className="font-medium text-foreground">Founded:</span> {profile.established}</li>
+                  <li><span className="font-medium text-foreground">HQ:</span> {formatCompanyAddress(profile.addressUS)}</li>
+                  <li><span className="font-medium text-foreground">CAGE Code:</span> <span data-testid="text-why-cage">{profile.cage}</span></li>
+                  <li><span className="font-medium text-foreground">UEI:</span> <span data-testid="text-why-uei">{profile.uei}</span></li>
                 </ul>
               </CardContent>
             </Card>
@@ -265,16 +268,16 @@ export default function WhyHireIn() {
                   <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">US Headquarters</p>
-                    <p>2621 Leigh Ave., San Jose, CA 95124</p>
-                    <p>Phone: {CONTACT.phones.main}</p>
+                    <p>{formatCompanyAddress(profile.addressUS)}</p>
+                    <p>Phone: {profile.phones.main || CONTACT.phones.main}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">India Delivery Center</p>
-                    <p>Suite No-101, Pocket-6, Sector-2</p>
-                    <p>Rohini, New Delhi, 110085</p>
+                    <p>{profile.addressIndia.street}</p>
+                    <p>{[profile.addressIndia.city, profile.addressIndia.zip].filter(Boolean).join(", ")}</p>
                   </div>
                 </div>
               </CardContent>
@@ -332,7 +335,7 @@ export default function WhyHireIn() {
               },
               {
                 q: "Does Hire'in Solutions work with government agencies?",
-                a: "Yes. Hire'in Solutions holds CAGE code 206Q6 and UEI J36BQRPL2WN3, enabling work on federal and state government contracts.",
+                a: `Yes. Hire'in Solutions holds CAGE code ${profile.cage} and UEI ${profile.uei}, enabling work on federal and state government contracts.`,
               },
             ].map(({ q, a }) => (
               <div key={q} className="border rounded-lg p-6">

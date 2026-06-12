@@ -6,8 +6,10 @@ import { SchemaHead } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
+import { useCompanyProfile } from "@/hooks/use-company-profile";
+import type { CompanyProfile } from "@shared/companyProfile";
 
-const ALL_FAQS = [
+const buildAllFaqs = (profile: CompanyProfile) => [
   {
     category: "General Staffing",
     questions: [
@@ -29,11 +31,11 @@ const ALL_FAQS = [
       },
       {
         q: "Does Hire'in Solutions work with job seekers or only employers?",
-        a: "Both. Employers submit hiring requirements and receive pre-screened candidates. Job seekers can submit their profiles to be considered for current and upcoming roles. Contact careers@hire-in.com to explore opportunities.",
+        a: `Both. Employers submit hiring requirements and receive pre-screened candidates. Job seekers can submit their profiles to be considered for current and upcoming roles. Contact ${profile.emails.careers} to explore opportunities.`,
       },
       {
         q: "Does Hire'in Solutions work with government clients?",
-        a: "Yes. Hire'in Solutions (Rayomind Software Solutions LLC) holds CAGE code 206Q6 and UEI J36BQRPL2WN3, enabling participation in federal and state government contracts.",
+        a: `Yes. Hire'in Solutions (${profile.legalName}) holds CAGE code ${profile.cage} and UEI ${profile.uei}, enabling participation in federal and state government contracts.`,
       },
     ],
   },
@@ -168,10 +170,10 @@ const ALL_FAQS = [
   },
 ];
 
-const FAQ_SCHEMA = {
+const buildFaqSchema = (faqs: ReturnType<typeof buildAllFaqs>) => ({
   "@context": "https://schema.org",
   "@type": "FAQPage",
-  mainEntity: ALL_FAQS.flatMap((cat) =>
+  mainEntity: faqs.flatMap((cat) =>
     cat.questions.map(({ q, a }) => ({
       "@type": "Question",
       name: q,
@@ -181,7 +183,7 @@ const FAQ_SCHEMA = {
       },
     }))
   ),
-};
+});
 
 export default function StaffingFAQ() {
   useSEO({
@@ -193,14 +195,16 @@ export default function StaffingFAQ() {
 
   const [consultationOpen, setConsultationOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const profile = useCompanyProfile();
 
+  const allFaqs = buildAllFaqs(profile);
   const displayedFAQs = activeCategory
-    ? ALL_FAQS.filter((c) => c.category === activeCategory)
-    : ALL_FAQS;
+    ? allFaqs.filter((c) => c.category === activeCategory)
+    : allFaqs;
 
   return (
     <Layout>
-      <SchemaHead schema={FAQ_SCHEMA} />
+      <SchemaHead schema={buildFaqSchema(allFaqs)} />
 
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">
@@ -239,7 +243,7 @@ export default function StaffingFAQ() {
             >
               All Topics
             </button>
-            {ALL_FAQS.map((cat) => (
+            {allFaqs.map((cat) => (
               <button
                 key={cat.category}
                 onClick={() => setActiveCategory(cat.category === activeCategory ? null : cat.category)}

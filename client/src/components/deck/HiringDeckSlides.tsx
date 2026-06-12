@@ -28,6 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
+import { useCompanyProfile } from "@/hooks/use-company-profile";
 import worldMapImage from "@assets/worldMap_cropped.png";
 
 const NAVY = "#1F3A6E";
@@ -121,6 +122,7 @@ function SlideWrapper({ children, bg = WHITE, noFooter = false }: { children: Re
 
 function Slide1Cover() {
   const { slideNumber, totalSlides } = useContext(SlideNumberContext);
+  const profile = useCompanyProfile();
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
@@ -182,7 +184,7 @@ function Slide1Cover() {
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Confidential · 2026</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
-          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>UEI: {profile.uei} · CAGE: {profile.cage}</span>
           <div style={{ width: 4, height: 4, borderRadius: "50%", background: ORANGE, opacity: 0.6 }} />
           <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
         </div>
@@ -657,6 +659,7 @@ function Slide11WorldMap() {
 
 function Slide11Connect() {
   const { slideNumber, totalSlides } = useContext(SlideNumberContext);
+  const profile = useCompanyProfile();
   return (
     <SlideWrapper bg={NAVY} noFooter>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
@@ -735,7 +738,7 @@ function Slide11Connect() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>© 2026 Hire&apos;in Solutions · US IT Staffing · Confidential · UEI: J36BQRPL2WN3 · CAGE: 206Q6</span>
+            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>© 2026 Hire&apos;in Solutions · US IT Staffing · Confidential · UEI: {profile.uei} · CAGE: {profile.cage}</span>
             <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9.5, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", letterSpacing: 0.5 }}>{slideNumber} / {totalSlides}</span>
           </div>
         </div>
