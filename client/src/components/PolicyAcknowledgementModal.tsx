@@ -4,6 +4,7 @@ import { Shield, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 
 interface PolicyStatus {
   accepted: boolean;
@@ -18,6 +19,7 @@ interface PolicyConfig {
 
 export function PolicyAcknowledgementModal() {
   const { isAuthenticated, user } = useAuth();
+  const { toast } = useToast();
   const [dismissed, setDismissed] = useState(false);
 
   const { data: policyStatus, isLoading: statusLoading } = useQuery<PolicyStatus>({
@@ -37,6 +39,13 @@ export function PolicyAcknowledgementModal() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/policy-acknowledgements/status"] });
       setDismissed(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not record your acceptance",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 

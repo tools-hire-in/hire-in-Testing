@@ -824,7 +824,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </DialogContent>
         </Dialog>
 
-        <PolicyAcknowledgementModal />
+        {!userNeeds2FASetup && <PolicyAcknowledgementModal />}
 
         <Dialog open={showWarning} onOpenChange={() => dismissWarning()}>
           <DialogContent className="sm:max-w-md" data-testid="dialog-session-timeout">

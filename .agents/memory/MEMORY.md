@@ -3,3 +3,4 @@
 - [Goal milestones & auto-progress](goal-milestones-progress.md) — milestone auto-progress recomputes progress ONLY (status stays manual); access via getAccessibleGoal; annexure push reuses buildGoalsFromAnnexures.
 - [Company profile data model](company-profile-data-model.md) — company identity (UEI/CAGE/NAICS/SAM) is a single company_profile system_settings entry merged over defaults; constants.ts COMPANY/CONTACT still authoritative for ~20 other files.
 - [Performance salary clauses](performance-salary-clauses.md) — offer/addendum perf clauses seeded as editable letter_template_sentences; admin-only edit+DOCX, HR toggle-only; offer preview uses client default not the managed template.
+- [Login-blocking modals vs 2FA gate](login-blocking-modals-2fa.md) — require2FA (prod-only) 403s all /api/hr & /api/admin for non-2FA users; any login-time blocking modal must defer behind !userNeeds2FASetup or it deadlocks.
