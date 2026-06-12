@@ -10,9 +10,9 @@ export function AboutSection() {
   ];
 
   return (
-    <section className="py-20 px-4 lg:px-6" data-testid="section-about">
+    <section className="py-12 px-4 lg:px-6" data-testid="section-about">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4" data-testid="text-about-title">
             About Hire'in Solutions
           </h2>
@@ -29,9 +29,9 @@ export function AboutSection() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {stats.map((stat) => (
             <Card key={stat.label} className="text-center hover-elevate">
-              <CardContent className="pt-8 pb-6">
-                <stat.icon className="h-10 w-10 text-primary mx-auto mb-4" />
-                <div className="text-4xl font-bold text-primary mb-2">{stat.value}</div>
+              <CardContent className="pt-5 pb-4">
+                <stat.icon className="h-8 w-8 text-primary mx-auto mb-3" />
+                <div className="text-3xl md:text-4xl font-bold text-primary mb-2">{stat.value}</div>
                 <div className="text-muted-foreground font-medium">{stat.label}</div>
               </CardContent>
             </Card>

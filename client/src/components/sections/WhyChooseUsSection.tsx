@@ -20,9 +20,9 @@ export function WhyChooseUsSection() {
   ];
 
   return (
-    <section className="py-20 px-4 lg:px-6" data-testid="section-why-choose">
+    <section className="py-12 px-4 lg:px-6" data-testid="section-why-choose">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
             Why Choose Hire'in Solutions?
           </h2>
@@ -33,17 +33,17 @@ export function WhyChooseUsSection() {
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
           {FEATURES.map((feature) => {
             const Icon = iconMap[feature.icon];
             return (
               <Card key={feature.title} className="text-center hover-elevate">
-                <CardContent className="pt-8 pb-6">
-                  <Badge variant="secondary" className="mb-4">
+                <CardContent className="pt-5 pb-4">
+                  <Badge variant="secondary" className="mb-3">
                     {feature.badge}
                   </Badge>
-                  <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <Icon className="h-7 w-7 text-primary" />
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <Icon className="h-6 w-6 text-primary" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
                   <p className="text-sm text-muted-foreground">{feature.description}</p>
@@ -54,7 +54,7 @@ export function WhyChooseUsSection() {
         </div>
 
         {/* Proven Results */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h3 className="text-2xl font-bold mb-2">Proven Results That Speak for Themselves</h3>
           <p className="text-muted-foreground">
             Our AI-human hybrid approach delivers measurable success
@@ -70,9 +70,9 @@ export function WhyChooseUsSection() {
                 key={metric.label}
                 className="text-center bg-primary/5 border-primary/20"
               >
-                <CardContent className="py-8">
-                  <Icon className="h-8 w-8 text-primary mx-auto mb-4" />
-                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">
+                <CardContent className="pt-5 pb-4">
+                  <Icon className="h-8 w-8 text-primary mx-auto mb-3" />
+                  <div className="text-3xl md:text-4xl font-bold text-primary mb-2">
                     {metric.value}
                   </div>
                   <div className="text-muted-foreground font-medium">{metric.label}</div>

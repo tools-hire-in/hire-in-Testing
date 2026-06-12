@@ -12,9 +12,9 @@ const iconMap: Record<string, React.ElementType> = {
 
 export function ServicesSection() {
   return (
-    <section className="py-20 px-4 lg:px-6 bg-muted/30" data-testid="section-services">
+    <section className="py-12 px-4 lg:px-6 bg-muted/30" data-testid="section-services">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">Our Services</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Specialized talent solutions across three critical sectors, delivering vetted
