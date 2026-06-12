@@ -420,3 +420,31 @@
     display: none !important;
   }
 }
+
+/* Clients logo marquee */
+@keyframes clients-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.clients-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: clients-marquee 40s linear infinite;
+}
+
+.clients-marquee:hover .clients-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clients-marquee-track {
+    animation: none;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

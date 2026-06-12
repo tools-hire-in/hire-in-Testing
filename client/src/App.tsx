@@ -35,6 +35,7 @@ import AddendumAccept from "@/pages/AddendumAccept";
 import PerformanceReviewCycles from "@/pages/admin/performance/ReviewCycles";
 import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
 import VerifyLetter from "@/pages/VerifyLetter";
+import Contracts from "@/pages/Contracts";
 
 // Consolidated tab pages (new nav)
 import MyWork from "@/pages/admin/hr/MyWork";
@@ -93,6 +94,7 @@ function PublicRouter() {
       {/* Public pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
+      <Route path="/contracts" component={Contracts} />
       <Route path="/jobs" component={Jobs} />
       <Route path="/jobs/:id" component={JobDetail} />
       <Route path="/contact" component={Contact} />

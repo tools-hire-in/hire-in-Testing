@@ -74,6 +74,15 @@ export function Footer() {
               </li>
               <li>
                 <Link
+                  href="/contracts"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-contracts"
+                >
+                  Contracts & Clients
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/why-hire-in-solutions"
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                   data-testid="link-why"
