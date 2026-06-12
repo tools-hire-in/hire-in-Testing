@@ -44,7 +44,7 @@ export interface ClientEntry {
 // Commercial clients shown as rotating logos with the name below each logo.
 // Entries without a logo fall back to a styled wordmark.
 export const COMMERCIAL_CLIENTS: ClientEntry[] = [
-  { name: "22nd Century Technology & Healthcare", logo: century22Logo },
+  { name: "22nd Century Technology & Healthcare" },
   { name: "HonorVet Technologies", logo: honorVetLogo },
   { name: "RC4VET", logo: rc4vetLogo },
   { name: "Fortuna Partners", logo: fortunaPartnersLogo },

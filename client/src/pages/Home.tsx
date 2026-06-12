@@ -4,6 +4,7 @@ import { HeroCarousel } from "@/components/sections/HeroCarousel";
 import { AboutSection } from "@/components/sections/AboutSection";
 import { ServicesSection } from "@/components/sections/ServicesSection";
 import { WhyChooseUsSection } from "@/components/sections/WhyChooseUsSection";
+import { ClientsStrip } from "@/components/sections/ClientsStrip";
 import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 import { useSEO } from "@/hooks/use-seo";
@@ -33,6 +34,7 @@ export default function Home() {
       <AboutSection />
       <ServicesSection />
       <WhyChooseUsSection />
+      <ClientsStrip />
       <HowItWorksSection onStartHiring={() => openConsultation("hero-start-hiring")} />
       <ConsultationModal
         open={consultationOpen}

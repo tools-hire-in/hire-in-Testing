@@ -3,41 +3,10 @@ import { Landmark, ShieldCheck, ArrowRight } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
-import { CONTRACT_GROUPS, COMMERCIAL_CLIENTS, type ClientEntry } from "@/lib/contracts";
+import { CONTRACT_GROUPS } from "@/lib/contracts";
 
 const NAVY = "#1F3A6E";
 const ORANGE = "#F47C20";
-
-function ClientLogo({ client }: { client: ClientEntry }) {
-  return (
-    <div
-      className="flex w-44 shrink-0 flex-col items-center gap-3 px-4"
-      data-testid={`client-${client.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`}
-    >
-      <div className="flex h-20 w-full items-center justify-center rounded-xl border bg-white p-3 shadow-sm transition-all duration-300 group-hover:shadow-md">
-        {client.logo ? (
-          <img
-            src={client.logo}
-            alt={`${client.name} logo`}
-            loading="lazy"
-            className="max-h-14 max-w-full object-contain grayscale transition-all duration-300 hover:grayscale-0"
-          />
-        ) : (
-          <span
-            className="text-center text-lg font-extrabold tracking-tight"
-            style={{ color: NAVY }}
-            aria-label={`${client.name} logo`}
-          >
-            {client.name}
-          </span>
-        )}
-      </div>
-      <span className="text-center text-xs font-medium text-muted-foreground">
-        {client.name}
-      </span>
-    </div>
-  );
-}
 
 export default function Contracts() {
   useSEO({
@@ -45,9 +14,6 @@ export default function Contracts() {
     description:
       "Explore Hire'in Solutions' contract vehicles and engagements — including the State of Texas DIR IT Staff Augmentation Contract (ITSAC) — and the commercial clients we proudly serve.",
   });
-
-  // Duplicate the client list so the marquee scroll loops seamlessly.
-  const marqueeClients = [...COMMERCIAL_CLIENTS, ...COMMERCIAL_CLIENTS];
 
   return (
     <Layout>
@@ -120,42 +86,6 @@ export default function Contracts() {
               </div>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Clients */}
-      <section className="bg-muted/30 px-4 py-16 lg:px-6 lg:py-20">
-        <div className="container mx-auto max-w-6xl">
-          <div className="mb-10 text-center">
-            <p
-              className="mb-3 text-xs font-bold uppercase tracking-[0.25em]"
-              style={{ color: ORANGE }}
-              data-testid="text-clients-eyebrow"
-            >
-              // Clients
-            </p>
-            <h2 className="mb-3 text-3xl font-bold md:text-4xl" data-testid="text-clients-title">
-              Trusted by Leading Organizations
-            </h2>
-            <p className="mx-auto max-w-2xl text-muted-foreground">
-              We've delivered talent and staffing solutions for commercial clients
-              across technology, healthcare, banking, and professional services.
-            </p>
-          </div>
-
-          <div
-            className="clients-marquee group relative overflow-hidden"
-            data-testid="marquee-clients"
-          >
-            {/* edge fades */}
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-muted/30 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-muted/30 to-transparent" />
-            <div className="clients-marquee-track py-2">
-              {marqueeClients.map((client, i) => (
-                <ClientLogo key={`${client.name}-${i}`} client={client} />
-              ))}
-            </div>
-          </div>
         </div>
       </section>
 
