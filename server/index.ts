@@ -1106,7 +1106,23 @@ async function backfillHolidayAttendance() {
     console.error("learning_tracks migration error:", err);
   }
 
-  await runMigrations();
+  // Auto-running of the agent-generated migration files (migrations/ folder) is
+  // DISABLED by default per request. The idempotent "ensure" blocks below already
+  // create/patch all required schema on every boot, so the app stays healthy without it.
+  // To apply the committed migration files manually, start with RUN_MIGRATIONS=true
+  // (e.g. `RUN_MIGRATIONS=true npm run dev`).
+  if (process.env.RUN_MIGRATIONS === "true") {
+    log("RUN_MIGRATIONS=true — applying migration files from migrations/ folder");
+    await runMigrations();
+    log("Migration files applied");
+  } else {
+    log(
+      "WARNING: auto-migrations are DISABLED. Committed migration files in migrations/ " +
+        "are NOT being applied. The idempotent ensure blocks below still create/patch core " +
+        "schema, but any seed/backfill data inside migration files (e.g. template/letter " +
+        "seeds) will NOT run. To apply migration files, restart with RUN_MIGRATIONS=true.",
+    );
+  }
   await ensurePerformanceTables();
   await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();
