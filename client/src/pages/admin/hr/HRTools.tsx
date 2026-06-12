@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AdminUsersResponse } from "@shared/schema";
+import { renderOfferClause, OFFER_CLAUSE_DEFAULT_TEXT, renderAddendumClause, ADDENDUM_CLAUSE_DEFAULT_TEXT } from "@shared/performanceClauses";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -665,6 +666,9 @@ interface OfferFormData {
   hrManagerName: string;
   offerDate: string;
   splitProbationSalary: boolean;
+  performanceProbationReview: boolean;
+  maxRevisionSalary: number;
+  maxRevisionSalaryInWords: string;
   probationSalary: number;
   probationSalaryInWords: string;
   postProbationSalary: number;
@@ -698,6 +702,9 @@ function getDefaultOfferData(): OfferFormData {
     hrManagerName: "Alina Carter",
     offerDate: today,
     splitProbationSalary: false,
+    performanceProbationReview: false,
+    maxRevisionSalary: 0,
+    maxRevisionSalaryInWords: "",
     probationSalary: 0,
     probationSalaryInWords: "",
     postProbationSalary: 0,
@@ -749,6 +756,12 @@ export function OfferLetterGenerator() {
       updateField("postProbationSalaryInWords", numberToWords(formData.postProbationSalary));
     }
   }, [formData.postProbationSalary]);
+
+  useEffect(() => {
+    if (formData.maxRevisionSalary > 0) {
+      updateField("maxRevisionSalaryInWords", numberToWords(formData.maxRevisionSalary));
+    }
+  }, [formData.maxRevisionSalary]);
 
   const { data: departments } = useQuery<any[]>({
     queryKey: ["/api/departments"],
@@ -819,8 +832,19 @@ export function OfferLetterGenerator() {
       probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || null : null,
       postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? String(formData.postProbationSalary) : null,
       postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || null : null,
-      probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : null,
-      extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : null,
+      probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : null,
+      extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : null,
+      performanceProbationReview: formData.performanceProbationReview,
+      maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? String(formData.maxRevisionSalary) : null,
+      maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || null : null,
+      performanceClauseText: formData.performanceProbationReview
+        ? renderOfferClause(OFFER_CLAUSE_DEFAULT_TEXT, {
+            probationSalary: formData.probationSalary ? String(formData.probationSalary) : "",
+            probationPeriodMonths: formData.probationPeriodMonths ? String(formData.probationPeriodMonths) : "",
+            maxRevisionSalary: formData.maxRevisionSalary ? String(formData.maxRevisionSalary) : "",
+            extendedProbationMonths: formData.extendedProbationMonths ? String(formData.extendedProbationMonths) : "",
+          })
+        : null,
     };
   }, [formData, departments, users]);
 
@@ -845,12 +869,16 @@ export function OfferLetterGenerator() {
             ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
             : "",
           annexureData: annexures.length > 0 ? annexures : undefined,
-          probationSalary: formData.splitProbationSalary && formData.probationSalary ? formData.probationSalary : undefined,
-          probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || undefined : undefined,
+          salary: (formData.splitProbationSalary || formData.performanceProbationReview) ? undefined : (formData.salary || undefined),
+          probationSalary: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.probationSalary ? formData.probationSalary : undefined,
+          probationSalaryInWords: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationSalaryInWords || undefined : undefined,
           postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
           postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
-          probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : undefined,
-          extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
+          probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : undefined,
+          extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
+          performanceProbationReview: formData.performanceProbationReview,
+          maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
+          maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
         }),
       });
 
@@ -887,7 +915,7 @@ export function OfferLetterGenerator() {
     try {
       const res = await apiRequest("POST", "/api/hr/tools/offer-letters", {
         ...formData,
-        salary: formData.salary ? String(formData.salary) : null,
+        salary: (formData.splitProbationSalary || formData.performanceProbationReview) ? null : (formData.salary ? String(formData.salary) : null),
         offerDate: formData.offerDate
           ? parseDateLocal(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : undefined,
@@ -895,12 +923,15 @@ export function OfferLetterGenerator() {
           ? parseDateLocal(formData.proposedStartDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : "",
         annexureData: annexures.length > 0 ? annexures : undefined,
-        probationSalary: formData.splitProbationSalary && formData.probationSalary ? formData.probationSalary : undefined,
-        probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || undefined : undefined,
+        probationSalary: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.probationSalary ? formData.probationSalary : undefined,
+        probationSalaryInWords: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationSalaryInWords || undefined : undefined,
         postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
         postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
-        probationPeriodMonths: formData.splitProbationSalary ? formData.probationPeriodMonths : undefined,
-        extendedProbationMonths: formData.splitProbationSalary && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
+        probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : undefined,
+        extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
+        performanceProbationReview: formData.performanceProbationReview,
+        maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
+        maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
       });
 
       if (!res.ok) {
@@ -1080,18 +1111,35 @@ export function OfferLetterGenerator() {
               <Input data-testid="input-offer-start-date" type="date" value={formData.proposedStartDate} onChange={e => updateField("proposedStartDate", e.target.value)} />
             </div>
             <div className="border rounded-lg p-3 space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer" data-testid="check-split-probation-salary">
-                <input
-                  type="checkbox"
-                  checked={formData.splitProbationSalary}
-                  onChange={e => updateField("splitProbationSalary", e.target.checked)}
-                  className="rounded border-border"
-                />
-                <span className="text-sm font-medium">Different salary during probation</span>
-                <span className="text-xs text-muted-foreground">(two-stage compensation)</span>
-              </label>
+              <div>
+                <Label>Compensation Structure</Label>
+                <Select
+                  value={formData.performanceProbationReview ? "performance" : (formData.splitProbationSalary ? "committed" : "standard")}
+                  onValueChange={v => {
+                    if (v === "standard") {
+                      updateField("splitProbationSalary", false);
+                      updateField("performanceProbationReview", false);
+                    } else if (v === "committed") {
+                      updateField("splitProbationSalary", true);
+                      updateField("performanceProbationReview", false);
+                    } else {
+                      updateField("splitProbationSalary", false);
+                      updateField("performanceProbationReview", true);
+                    }
+                  }}
+                >
+                  <SelectTrigger data-testid="select-compensation-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Single fixed salary</SelectItem>
+                    <SelectItem value="committed">Two-stage probation (committed post-probation salary)</SelectItem>
+                    <SelectItem value="performance">Performance-based probation review (no committed amount)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-              {!formData.splitProbationSalary ? (
+              {!formData.splitProbationSalary && !formData.performanceProbationReview ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Monthly Salary / CTC (₹)</Label>
@@ -1100,6 +1148,61 @@ export function OfferLetterGenerator() {
                   <div>
                     <Label>Salary in Words</Label>
                     <Input data-testid="input-offer-salary-words" value={formData.salaryInWords} onChange={e => updateField("salaryInWords", e.target.value)} />
+                  </div>
+                </div>
+              ) : formData.performanceProbationReview ? (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    Probation salary is committed; the post-probation figure is reviewed on performance with no committed amount. An optional ceiling and extended-probation period may be specified.
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 items-end">
+                    <div>
+                      <Label>Probation Duration</Label>
+                      <Select value={String(formData.probationPeriodMonths)} onValueChange={v => updateField("probationPeriodMonths", parseInt(v))}>
+                        <SelectTrigger data-testid="select-perf-probation-months">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5, 6].map(m => (
+                            <SelectItem key={m} value={String(m)}>{m} month{m !== 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Extended Probation <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Select value={String(formData.extendedProbationMonths)} onValueChange={v => updateField("extendedProbationMonths", parseInt(v))}>
+                        <SelectTrigger data-testid="select-perf-extended-probation-months">
+                          <SelectValue placeholder="No extension" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">No extension</SelectItem>
+                          {[4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                            <SelectItem key={m} value={String(m)}>Up to {m} months</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Probation Salary (₹/month)</Label>
+                      <Input data-testid="input-perf-probation-salary" type="number" value={formData.probationSalary || ""} onChange={e => updateField("probationSalary", parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div>
+                      <Label>Probation Salary in Words</Label>
+                      <Input data-testid="input-perf-probation-salary-words" value={formData.probationSalaryInWords} onChange={e => updateField("probationSalaryInWords", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Revision Ceiling "up to ₹" <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Input data-testid="input-max-revision-salary" type="number" value={formData.maxRevisionSalary || ""} onChange={e => updateField("maxRevisionSalary", parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div>
+                      <Label>Ceiling in Words</Label>
+                      <Input data-testid="input-max-revision-salary-words" value={formData.maxRevisionSalaryInWords} onChange={e => updateField("maxRevisionSalaryInWords", e.target.value)} />
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1495,6 +1598,9 @@ export function OfferLettersDashboard() {
     customClauseTitle: "", customClauseText: "",
     deviceItems: [] as { description: string; serialNumber: string; assetTag: string; condition: string }[],
     ccEmails: "",
+    includeGrowthPlanClause: false,
+    growthPlanCurrentSalary: "",
+    growthPlanMaxRevisionSalary: "",
   });
   const [submittingStandalone, setSubmittingStandalone] = useState(false);
   const [standaloneEmployeeSearch, setStandaloneEmployeeSearch] = useState("");
@@ -1512,6 +1618,9 @@ export function OfferLettersDashboard() {
     customClauseTitle: "", customClauseText: "",
     deviceItems: [] as { description: string; serialNumber: string; assetTag: string; condition: string }[],
     ccEmails: "",
+    includeGrowthPlanClause: false,
+    growthPlanCurrentSalary: "",
+    growthPlanMaxRevisionSalary: "",
   });
   const [submittingAddendum, setSubmittingAddendum] = useState(false);
   const [addendumAnnexures, setAddendumAnnexures] = useState<AnnexureItem[]>([]);
@@ -1539,12 +1648,19 @@ export function OfferLettersDashboard() {
       customClauseTitle: "", customClauseText: "",
       deviceItems: [],
       ccEmails: "",
+      includeGrowthPlanClause: false,
+      growthPlanCurrentSalary: "",
+      growthPlanMaxRevisionSalary: "",
     });
     setAddendumAnnexures([]);
   };
 
   const handleCreateAddendum = async () => {
     if (!addendumDialog || !addendumForm.effectiveDate) return;
+    if (addendumForm.includeGrowthPlanClause && !addendumForm.growthPlanCurrentSalary.trim()) {
+      toast({ title: "Current salary is required for the 90-day performance review clause", variant: "destructive" });
+      return;
+    }
     setSubmittingAddendum(true);
     try {
       const payload = {
@@ -1642,6 +1758,9 @@ export function OfferLettersDashboard() {
       customClauseTitle: "", customClauseText: "",
       deviceItems: [],
       ccEmails: "",
+      includeGrowthPlanClause: false,
+      growthPlanCurrentSalary: "",
+      growthPlanMaxRevisionSalary: "",
     });
     setStandaloneAnnexures([]);
     setSelectedStandaloneEmployeeId(null);
@@ -1681,6 +1800,10 @@ export function OfferLettersDashboard() {
 
   const handleCreateStandaloneAddendum = async () => {
     if (!standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate) return;
+    if (standaloneForm.includeGrowthPlanClause && !standaloneForm.growthPlanCurrentSalary.trim()) {
+      toast({ title: "Current salary is required for the 90-day performance review clause", variant: "destructive" });
+      return;
+    }
     setSubmittingStandalone(true);
     try {
       const res = await apiRequest("POST", "/api/hr/tools/addendums/standalone", {
@@ -2622,6 +2745,30 @@ export function OfferLettersDashboard() {
               <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
 
+            <div className="border rounded-lg p-3 space-y-3 bg-amber-50/40 border-amber-200">
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="check-addendum-growth-plan">
+                <input
+                  type="checkbox"
+                  checked={addendumForm.includeGrowthPlanClause}
+                  onChange={e => setAddendumForm(f => ({ ...f, includeGrowthPlanClause: e.target.checked }))}
+                  className="rounded border-border"
+                />
+                <span className="text-sm font-medium">Include 90-Day Performance Review &amp; Salary Revision Eligibility clause</span>
+              </label>
+              {addendumForm.includeGrowthPlanClause && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Current Salary (₹/month)</Label>
+                    <Input data-testid="input-addendum-growth-current-salary" className="mt-1" type="number" placeholder="e.g. 50000" value={addendumForm.growthPlanCurrentSalary} onChange={e => setAddendumForm(f => ({ ...f, growthPlanCurrentSalary: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Revision Ceiling "up to ₹" <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Input data-testid="input-addendum-growth-max-salary" className="mt-1" type="number" placeholder="optional" value={addendumForm.growthPlanMaxRevisionSalary} onChange={e => setAddendumForm(f => ({ ...f, growthPlanMaxRevisionSalary: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Annexures */}
             <AnnexureEditor annexures={addendumAnnexures} onChange={setAddendumAnnexures} effectiveDate={addendumForm.effectiveDate || undefined} />
 
@@ -2902,6 +3049,30 @@ export function OfferLettersDashboard() {
               <p className="text-xs text-muted-foreground mt-1">Separate multiple emails with commas</p>
             </div>
 
+            <div className="border rounded-lg p-3 space-y-3 bg-amber-50/40 border-amber-200">
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="check-standalone-growth-plan">
+                <input
+                  type="checkbox"
+                  checked={standaloneForm.includeGrowthPlanClause}
+                  onChange={e => setStandaloneForm(f => ({ ...f, includeGrowthPlanClause: e.target.checked }))}
+                  className="rounded border-border"
+                />
+                <span className="text-sm font-medium">Include 90-Day Performance Review &amp; Salary Revision Eligibility clause</span>
+              </label>
+              {standaloneForm.includeGrowthPlanClause && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Current Salary (₹/month)</Label>
+                    <Input data-testid="input-standalone-growth-current-salary" className="mt-1" type="number" placeholder="e.g. 50000" value={standaloneForm.growthPlanCurrentSalary} onChange={e => setStandaloneForm(f => ({ ...f, growthPlanCurrentSalary: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Revision Ceiling "up to ₹" <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Input data-testid="input-standalone-growth-max-salary" className="mt-1" type="number" placeholder="optional" value={standaloneForm.growthPlanMaxRevisionSalary} onChange={e => setStandaloneForm(f => ({ ...f, growthPlanMaxRevisionSalary: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <AnnexureEditor
               annexures={standaloneAnnexures}
               onChange={setStandaloneAnnexures}
@@ -3053,6 +3224,10 @@ export function OfferLettersDashboard() {
                   postProbationSalaryInWords: viewLetterModal.postProbationSalaryInWords,
                   probationPeriodMonths: viewLetterModal.probationPeriodMonths,
                   extendedProbationMonths: viewLetterModal.extendedProbationMonths,
+                  performanceProbationReview: viewLetterModal.performanceProbationReview,
+                  maxRevisionSalary: viewLetterModal.maxRevisionSalary,
+                  maxRevisionSalaryInWords: viewLetterModal.maxRevisionSalaryInWords,
+                  performanceClauseText: viewLetterModal.performanceClauseText,
                 }}
               />
 

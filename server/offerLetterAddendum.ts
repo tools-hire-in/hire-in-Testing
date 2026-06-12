@@ -56,6 +56,7 @@ export interface AddendumData {
   deviceItems?: DeviceItem[];
   reason?: string;
   annexures?: AnnexureItem[];
+  growthPlanClauseText?: string;
 }
 
 function heading(text: string): Paragraph {
@@ -257,6 +258,17 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     bodyParagraphs.push(bodyText(data.reason));
   }
 
+  if (data.growthPlanClauseText && data.growthPlanClauseText.trim()) {
+    bodyParagraphs.push(heading("90-Day Performance Review & Salary Revision Eligibility"));
+    for (const line of data.growthPlanClauseText.split(/\r?\n/)) {
+      if (line.trim() === "") {
+        bodyParagraphs.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+      } else {
+        bodyParagraphs.push(bodyText(line));
+      }
+    }
+  }
+
   // Annexure sections (appended after signature via extra section children)
   const annexureChildren: (Paragraph | Table)[] = [];
   if (data.annexures && data.annexures.length > 0) {
@@ -386,6 +398,34 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     ],
   });
 
+  const buffer = await Packer.toBuffer(doc);
+  return buffer as Buffer;
+}
+
+export async function generateClauseDocx(title: string, clauseText: string): Promise<Buffer> {
+  const children: Paragraph[] = [];
+  children.push(new Paragraph({
+    spacing: { after: 240 },
+    children: [new TextRun({ text: title, bold: true, size: 28 })],
+  }));
+  for (const line of (clauseText || "").split(/\r?\n/)) {
+    if (line.trim() === "") {
+      children.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
+    } else {
+      children.push(new Paragraph({
+        spacing: { after: 120 },
+        children: [new TextRun({ text: line, size: 22 })],
+      }));
+    }
+  }
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children,
+      },
+    ],
+  });
   const buffer = await Packer.toBuffer(doc);
   return buffer as Buffer;
 }

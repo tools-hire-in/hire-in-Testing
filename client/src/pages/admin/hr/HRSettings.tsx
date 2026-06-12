@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
+import { OFFER_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_CATEGORY, PERFORMANCE_CLAUSE_CATEGORY_LABELS } from "@shared/performanceClauses";
 
 interface LeaveType {
   id: string;
@@ -747,7 +748,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   conduct_band: "Conduct Band Sentences",
   completion_band: "Completion Band Phrases",
   closing_line: "Closing Line Sentences",
+  ...PERFORMANCE_CLAUSE_CATEGORY_LABELS,
 };
+
+const CLAUSE_DOWNLOAD_CATEGORIES = [OFFER_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_CATEGORY];
 
 function LetterTemplatesSection() {
   const { toast } = useToast();
@@ -811,7 +815,25 @@ function LetterTemplatesSection() {
     return acc;
   }, {});
 
-  const categories = ["performance_band", "conduct_band", "completion_band", "closing_line"];
+  const categories = ["performance_band", "conduct_band", "completion_band", "closing_line", OFFER_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_CATEGORY];
+
+  const handleDownloadClause = async (id: string, label: string) => {
+    try {
+      const res = await fetch(`/api/hr/letter-templates/sentences/${id}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${label.replace(/[^a-z0-9]+/gi, "_")}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({ title: "Failed to download clause", variant: "destructive" });
+    }
+  };
 
   return (
     <Card>
@@ -855,14 +877,26 @@ function LetterTemplatesSection() {
                             <div className="flex items-center justify-between">
                               <Label className="text-xs font-semibold">{sentence.label}</Label>
                               {!isEditing ? (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => setEditing(prev => ({ ...prev, [sentence.id]: sentence.sentence }))}
-                                  data-testid={`btn-edit-sentence-${sentence.id}`}
-                                >
-                                  <Pencil className="h-3 w-3 mr-1" />Edit
-                                </Button>
+                                <div className="flex gap-2">
+                                  {CLAUSE_DOWNLOAD_CATEGORIES.includes(sentence.category) && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDownloadClause(sentence.id, sentence.label)}
+                                      data-testid={`btn-download-clause-${sentence.id}`}
+                                    >
+                                      <Download className="h-3 w-3 mr-1" />DOCX
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setEditing(prev => ({ ...prev, [sentence.id]: sentence.sentence }))}
+                                    data-testid={`btn-edit-sentence-${sentence.id}`}
+                                  >
+                                    <Pencil className="h-3 w-3 mr-1" />Edit
+                                  </Button>
+                                </div>
                               ) : (
                                 <div className="flex gap-2">
                                   <Button

@@ -23,7 +23,12 @@ import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferL
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
-import { generateAddendumDocx, type AddendumData } from "./offerLetterAddendum";
+import { generateAddendumDocx, generateClauseDocx, type AddendumData } from "./offerLetterAddendum";
+import {
+  OFFER_CLAUSE_CATEGORY, OFFER_CLAUSE_KEY, OFFER_CLAUSE_DEFAULT_TEXT,
+  ADDENDUM_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_KEY, ADDENDUM_CLAUSE_DEFAULT_TEXT,
+  renderOfferClause, renderAddendumClause,
+} from "@shared/performanceClauses";
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes } from "./performanceRoutes";
@@ -108,6 +113,18 @@ async function generateEmployeeId(departmentName: string | null): Promise<string
   return `${prefix}${word}`;
 }
 const objectStorageService = new ObjectStorageService();
+
+// Fetch the managed (Admin-editable) template text for a performance clause,
+// falling back to the seeded default if the row is missing.
+async function getManagedClauseText(category: string, key: string, fallback: string): Promise<string> {
+  try {
+    const rows = await storage.getLetterTemplateSentences(category);
+    const match = rows.find((r) => r.key === key);
+    return match?.sentence?.trim() ? match.sentence : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * ROLE-BASED ACCESS CONTROL (RBAC) DOCUMENTATION
@@ -5946,6 +5963,17 @@ export async function registerRoutes(
         extendedProbationMonths: req.body.extendedProbationMonths ? parseInt(req.body.extendedProbationMonths) : undefined,
       };
 
+      if (req.body.performanceProbationReview) {
+        const template = await getManagedClauseText(OFFER_CLAUSE_CATEGORY, OFFER_CLAUSE_KEY, OFFER_CLAUSE_DEFAULT_TEXT);
+        data.performanceProbationReview = true;
+        data.performanceClauseText = renderOfferClause(template, {
+          probationSalary: req.body.probationSalary,
+          probationPeriodMonths: req.body.probationPeriodMonths,
+          maxRevisionSalary: req.body.maxRevisionSalary,
+          extendedProbationMonths: req.body.extendedProbationMonths,
+        });
+      }
+
       if (!data.candidateName || !data.designation) {
         return res.status(400).json({ error: "Candidate name and designation are required" });
       }
@@ -5974,14 +6002,47 @@ export async function registerRoutes(
         employmentType, proposedStartDate, salary, salaryInWords,
         location, jurisdiction, hrManagerName, offerDate, ccEmails,
         probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
-        probationPeriodMonths, extendedProbationMonths } = req.body;
+        probationPeriodMonths, extendedProbationMonths,
+        performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
       }
 
+      // Validate the performance-based probation review mode when selected
+      let renderedPerformanceClauseText: string | null = null;
+      if (performanceProbationReview) {
+        const pSal = parseFloat(probationSalary);
+        if (!probationSalary || isNaN(pSal) || pSal <= 0) {
+          return res.status(400).json({ error: "Probation salary must be a positive number for performance-based probation review" });
+        }
+        const pMonths = probationPeriodMonths ? parseInt(probationPeriodMonths) : 3;
+        if (isNaN(pMonths) || pMonths < 1 || pMonths > 6) {
+          return res.status(400).json({ error: "Probation duration must be between 1 and 6 months" });
+        }
+        if (maxRevisionSalary !== undefined && maxRevisionSalary !== null && maxRevisionSalary !== "") {
+          const mSal = parseFloat(maxRevisionSalary);
+          if (isNaN(mSal) || mSal <= 0) {
+            return res.status(400).json({ error: "Revision ceiling must be a positive number when provided" });
+          }
+        }
+        if (extendedProbationMonths !== undefined && extendedProbationMonths !== null && extendedProbationMonths !== "") {
+          const epMonths = parseInt(extendedProbationMonths);
+          if (isNaN(epMonths) || epMonths < 4 || epMonths > 12) {
+            return res.status(400).json({ error: "Extended probation duration must be between 4 and 12 months" });
+          }
+        }
+        const template = await getManagedClauseText(OFFER_CLAUSE_CATEGORY, OFFER_CLAUSE_KEY, OFFER_CLAUSE_DEFAULT_TEXT);
+        renderedPerformanceClauseText = renderOfferClause(template, {
+          probationSalary,
+          probationPeriodMonths,
+          maxRevisionSalary,
+          extendedProbationMonths,
+        });
+      }
+
       // Validate probation salary fields when split compensation is used
-      const hasProbationFields = probationSalary || postProbationSalary;
+      const hasProbationFields = !performanceProbationReview && (probationSalary || postProbationSalary);
       if (hasProbationFields) {
         const pSal = parseFloat(probationSalary);
         const ppSal = parseFloat(postProbationSalary);
@@ -6064,6 +6125,10 @@ export async function registerRoutes(
         postProbationSalaryInWords: postProbationSalaryInWords || null,
         probationPeriodMonths: probationPeriodMonths ? parseInt(probationPeriodMonths) : null,
         extendedProbationMonths: extendedProbationMonths ? parseInt(extendedProbationMonths) : null,
+        performanceProbationReview: !!performanceProbationReview,
+        maxRevisionSalary: (performanceProbationReview && maxRevisionSalary) ? String(maxRevisionSalary) : null,
+        maxRevisionSalaryInWords: (performanceProbationReview && maxRevisionSalaryInWords) ? maxRevisionSalaryInWords : null,
+        performanceClauseText: renderedPerformanceClauseText,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -6376,6 +6441,10 @@ export async function registerRoutes(
         postProbationSalaryInWords: letter.postProbationSalaryInWords,
         probationPeriodMonths: letter.probationPeriodMonths,
         extendedProbationMonths: letter.extendedProbationMonths,
+        performanceProbationReview: letter.performanceProbationReview,
+        maxRevisionSalary: letter.maxRevisionSalary,
+        maxRevisionSalaryInWords: letter.maxRevisionSalaryInWords,
+        performanceClauseText: letter.performanceClauseText,
       });
     } catch (error) {
       console.error("View offer letter error:", error);
@@ -6537,10 +6606,23 @@ export async function registerRoutes(
         oldConfirmationDate, newConfirmationDate,
         customClauseTitle, customClauseText,
         deviceItems, ccEmails, annexures,
+        includeGrowthPlanClause, growthPlanCurrentSalary, growthPlanMaxRevisionSalary,
       } = req.body;
 
       if (!addendumType || !effectiveDate) {
         return res.status(400).json({ error: "addendumType and effectiveDate are required" });
+      }
+
+      let renderedGrowthPlanText: string | null = null;
+      if (includeGrowthPlanClause) {
+        if (!growthPlanCurrentSalary || !String(growthPlanCurrentSalary).trim()) {
+          return res.status(400).json({ error: "Current salary is required for the 90-day performance review clause" });
+        }
+        const template = await getManagedClauseText(ADDENDUM_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_KEY, ADDENDUM_CLAUSE_DEFAULT_TEXT);
+        renderedGrowthPlanText = renderAddendumClause(template, {
+          currentSalary: growthPlanCurrentSalary,
+          maxRevisionSalary: growthPlanMaxRevisionSalary,
+        });
       }
 
       const token = crypto.randomBytes(32).toString("hex");
@@ -6571,6 +6653,10 @@ export async function registerRoutes(
         deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
         annexures: annexures && Array.isArray(annexures) && annexures.length > 0 ? annexures : null,
         ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
+        includeGrowthPlanClause: !!includeGrowthPlanClause,
+        growthPlanCurrentSalary: includeGrowthPlanClause ? (growthPlanCurrentSalary || null) : null,
+        growthPlanMaxRevisionSalary: includeGrowthPlanClause ? (growthPlanMaxRevisionSalary || null) : null,
+        growthPlanClauseText: renderedGrowthPlanText,
       });
 
       await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
@@ -6642,6 +6728,7 @@ export async function registerRoutes(
         deviceItems: Array.isArray(addendum.deviceItems) && addendum.deviceItems.length > 0 ? addendum.deviceItems as any[] : undefined,
         annexures: Array.isArray(addendum.annexures) && addendum.annexures.length > 0 ? addendum.annexures as any[] : undefined,
         reason: addendum.reason || undefined,
+        growthPlanClauseText: addendum.growthPlanClauseText || undefined,
       });
 
       const fileName = `${addendum.candidateName.replace(/\s+/g, "_")}_Addendum_${addendum.addendumType}.docx`;
@@ -6765,6 +6852,10 @@ export async function registerRoutes(
         customClauseTitle: addendum.customClauseTitle,
         customClauseText: addendum.customClauseText,
         deviceItems: addendum.deviceItems,
+        includeGrowthPlanClause: addendum.includeGrowthPlanClause,
+        growthPlanCurrentSalary: addendum.growthPlanCurrentSalary,
+        growthPlanMaxRevisionSalary: addendum.growthPlanMaxRevisionSalary,
+        growthPlanClauseText: addendum.growthPlanClauseText,
         acceptedName: addendum.acceptedName,
         authCode: addendum.authCode,
         originalOfferDate,
@@ -6890,10 +6981,23 @@ export async function registerRoutes(
         customClauseTitle, customClauseText,
         deviceItems, ccEmails, annexureData,
         forEmployeeId,
+        includeGrowthPlanClause, growthPlanCurrentSalary, growthPlanMaxRevisionSalary,
       } = req.body;
 
       if (!employeeName || !employeeEmail || !addendumType || !effectiveDate) {
         return res.status(400).json({ error: "employeeName, employeeEmail, addendumType, and effectiveDate are required" });
+      }
+
+      let renderedStandaloneGrowthPlanText: string | null = null;
+      if (includeGrowthPlanClause) {
+        if (!growthPlanCurrentSalary || !String(growthPlanCurrentSalary).trim()) {
+          return res.status(400).json({ error: "Current salary is required for the 90-day performance review clause" });
+        }
+        const template = await getManagedClauseText(ADDENDUM_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_KEY, ADDENDUM_CLAUSE_DEFAULT_TEXT);
+        renderedStandaloneGrowthPlanText = renderAddendumClause(template, {
+          currentSalary: growthPlanCurrentSalary,
+          maxRevisionSalary: growthPlanMaxRevisionSalary,
+        });
       }
 
       // Validate annexures if provided (max 5, each must have title + body)
@@ -6959,6 +7063,10 @@ export async function registerRoutes(
         deviceItems: deviceItems && Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : null,
         annexures: validatedAnnexures,
         ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
+        includeGrowthPlanClause: !!includeGrowthPlanClause,
+        growthPlanCurrentSalary: includeGrowthPlanClause ? (growthPlanCurrentSalary || null) : null,
+        growthPlanMaxRevisionSalary: includeGrowthPlanClause ? (growthPlanMaxRevisionSalary || null) : null,
+        growthPlanClauseText: renderedStandaloneGrowthPlanText,
       } as any);
 
       await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
@@ -7039,6 +7147,7 @@ export async function registerRoutes(
         deviceItems: Array.isArray(addendum.deviceItems) && addendum.deviceItems.length > 0 ? addendum.deviceItems as any[] : undefined,
         annexures: Array.isArray(addendum.annexures) && (addendum.annexures as any[]).length > 0 ? addendum.annexures as any[] : undefined,
         reason: addendum.reason || undefined,
+        growthPlanClauseText: addendum.growthPlanClauseText || undefined,
       });
 
       const fileName = `${addendum.candidateName.replace(/\s+/g, "_")}_Addendum_${addendum.addendumType}.docx`;
@@ -8346,6 +8455,29 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update letter template sentence" });
+    }
+  });
+
+  app.get("/api/hr/letter-templates/sentences/:id/download", requireAdminLevel, async (req, res) => {
+    try {
+      const all = await storage.getLetterTemplateSentences();
+      const sentence = all.find((s) => s.id === req.params.id);
+      if (!sentence) {
+        return res.status(404).json({ error: "Template sentence not found" });
+      }
+      const title = sentence.category === OFFER_CLAUSE_CATEGORY
+        ? "Performance-Based Probation Review Clause (Offer Letter)"
+        : sentence.category === ADDENDUM_CLAUSE_CATEGORY
+          ? "90-Day Performance Review & Salary Revision Eligibility (Addendum)"
+          : (sentence.label || "Letter Clause");
+      const buffer = await generateClauseDocx(title, sentence.sentence);
+      const fileName = `${title.replace(/[^a-zA-Z0-9]+/g, "_")}.docx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error("Download clause docx error:", error);
+      res.status(500).json({ error: "Failed to generate clause document" });
     }
   });
 

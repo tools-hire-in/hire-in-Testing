@@ -2,3 +2,4 @@
 - [Prod migration path](prod-migration-path.md) — prod uses runMigrations (journal 0000-12) + idempotent ensure block; db:push only runs in dev post-merge; drizzle drift preview must NOT be applied raw to prod.
 - [Goal milestones & auto-progress](goal-milestones-progress.md) — milestone auto-progress recomputes progress ONLY (status stays manual); access via getAccessibleGoal; annexure push reuses buildGoalsFromAnnexures.
 - [Company profile data model](company-profile-data-model.md) — company identity (UEI/CAGE/NAICS/SAM) is a single company_profile system_settings entry merged over defaults; constants.ts COMPANY/CONTACT still authoritative for ~20 other files.
+- [Performance salary clauses](performance-salary-clauses.md) — offer/addendum perf clauses seeded as editable letter_template_sentences; admin-only edit+DOCX, HR toggle-only; offer preview uses client default not the managed template.

@@ -38,6 +38,8 @@ export interface OfferLetterData {
   postProbationSalaryInWords?: string;
   probationPeriodMonths?: number;
   extendedProbationMonths?: number;
+  performanceProbationReview?: boolean;
+  performanceClauseText?: string;
 }
 
 function heading(text: string): Paragraph {
@@ -320,7 +322,18 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           ),
 
           heading("5. Compensation & Structure"),
-          ...(data.probationSalary && data.postProbationSalary ? (() => {
+          ...(data.performanceProbationReview && data.performanceClauseText ? (() => {
+            const paras: Paragraph[] = [];
+            for (const line of data.performanceClauseText.split(/\r?\n/)) {
+              if (line.trim() === "") {
+                paras.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+              } else {
+                paras.push(bodyText(line));
+              }
+            }
+            paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
+            return paras;
+          })() : data.probationSalary && data.postProbationSalary ? (() => {
             const probMonths = data.probationPeriodMonths ?? 3;
             const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
             const probSalaryStr = `₹${data.probationSalary.toLocaleString("en-IN")}${data.probationSalaryInWords ? ` (${data.probationSalaryInWords})` : ""}`;

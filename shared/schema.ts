@@ -678,6 +678,10 @@ export const offerLetters = pgTable("offer_letters", {
   postProbationSalaryInWords: varchar("post_probation_salary_in_words"),
   probationPeriodMonths: integer("probation_period_months").default(3),
   extendedProbationMonths: integer("extended_probation_months"),
+  performanceProbationReview: boolean("performance_probation_review").notNull().default(false),
+  maxRevisionSalary: numeric("max_revision_salary"),
+  maxRevisionSalaryInWords: varchar("max_revision_salary_in_words"),
+  performanceClauseText: text("performance_clause_text"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
@@ -1162,6 +1166,11 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   deviceItems: jsonb("device_items"),
   annexures: jsonb("annexures"),
   ccEmails: text("cc_emails"),
+
+  includeGrowthPlanClause: boolean("include_growth_plan_clause").notNull().default(false),
+  growthPlanCurrentSalary: varchar("growth_plan_current_salary"),
+  growthPlanMaxRevisionSalary: varchar("growth_plan_max_revision_salary"),
+  growthPlanClauseText: text("growth_plan_clause_text"),
 
   effectiveDate: varchar("effective_date"),
   reason: text("reason"),

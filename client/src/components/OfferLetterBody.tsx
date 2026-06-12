@@ -25,10 +25,15 @@ export interface OfferLetterViewProps {
   postProbationSalaryInWords?: string | null;
   probationPeriodMonths?: number | null;
   extendedProbationMonths?: number | null;
+  performanceProbationReview?: boolean | null;
+  maxRevisionSalary?: string | null;
+  maxRevisionSalaryInWords?: string | null;
+  performanceClauseText?: string | null;
 }
 
 export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
-  const hasSplitSalary = !!(offer.probationSalary && offer.postProbationSalary);
+  const hasPerformanceReview = !!(offer.performanceProbationReview && offer.performanceClauseText);
+  const hasSplitSalary = !hasPerformanceReview && !!(offer.probationSalary && offer.postProbationSalary);
   const probMonths = offer.probationPeriodMonths ?? 3;
   const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
 
@@ -114,7 +119,23 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
             </div>
           </div>
 
-          {hasSplitSalary ? (
+          {hasPerformanceReview ? (
+            <div className="flex items-start gap-3 md:col-span-2">
+              <DollarSign className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="space-y-3 w-full">
+                <p className="text-sm text-muted-foreground">Compensation Structure</p>
+                <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 space-y-1" data-testid="text-performance-clause">
+                  {offer.performanceClauseText!.split(/\r?\n/).map((line, idx) =>
+                    line.trim() === "" ? (
+                      <div key={idx} className="h-2" />
+                    ) : (
+                      <p key={idx} className="text-sm text-foreground leading-relaxed">{line}</p>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : hasSplitSalary ? (
             <div className="flex items-start gap-3 md:col-span-2">
               <DollarSign className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
               <div className="space-y-3 w-full">

@@ -99,6 +99,20 @@
       "when": 1781247000000,
       "tag": "0014_salary_report_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781333400000,
+      "tag": "0015_performance_clauses",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1781419800000,
+      "tag": "0016_performance_clause_fragments",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,10 @@ interface AddendumData {
   originalDesignation: string | null;
   offerDate: string | null;
   deviceItems: Array<{ description: string; serialNumber: string | null; assetTag: string | null; condition: string | null }> | null;
+  includeGrowthPlanClause?: boolean | null;
+  growthPlanCurrentSalary?: string | null;
+  growthPlanMaxRevisionSalary?: string | null;
+  growthPlanClauseText?: string | null;
   isStandalone?: boolean;
 }
 
@@ -352,6 +356,21 @@ export default function AddendumAccept() {
               <div className="mt-4 p-3 bg-gray-50 rounded-md">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Reason / Remarks</p>
                 <p className="text-sm">{addendum.reason}</p>
+              </div>
+            )}
+
+            {addendum.growthPlanClauseText && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-md" data-testid="text-growth-plan-clause">
+                <p className="text-xs text-amber-800 uppercase tracking-wide mb-2 font-semibold">90-Day Performance Review &amp; Salary Revision Eligibility</p>
+                <div className="space-y-1">
+                  {addendum.growthPlanClauseText.split(/\r?\n/).map((line, idx) =>
+                    line.trim() === "" ? (
+                      <div key={idx} className="h-2" />
+                    ) : (
+                      <p key={idx} className="text-sm text-gray-700 leading-relaxed">{line}</p>
+                    )
+                  )}
+                </div>
               </div>
             )}
           </CardContent>
