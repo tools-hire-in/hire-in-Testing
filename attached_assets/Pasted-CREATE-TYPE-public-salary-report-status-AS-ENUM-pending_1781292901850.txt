@@ -1,0 +1,44 @@
+CREATE TYPE "public"."salary_report_status" AS ENUM('pending_approval', 'approved', 'sent');
+CREATE TABLE "salary_report_runs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"year" integer NOT NULL,
+	"month" integer NOT NULL,
+	"status" "salary_report_status" DEFAULT 'pending_approval' NOT NULL,
+	"generated_at" timestamp DEFAULT now(),
+	"approved_at" timestamp,
+	"approved_by" varchar,
+	"report_data" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"adjustments" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"email_sent_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "goal_milestones" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"goal_id" varchar NOT NULL,
+	"title" varchar NOT NULL,
+	"target_date" varchar,
+	"done" boolean DEFAULT false NOT NULL,
+	"completed_at" timestamp,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+ALTER TABLE "check_ins" ADD COLUMN "goal_id" varchar;
+ALTER TABLE "performance_goals" ADD COLUMN "auto_progress_from_milestones" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "for_employee_id" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "include_growth_plan_clause" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "growth_plan_current_salary" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "growth_plan_max_revision_salary" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "growth_plan_clause_text" text;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "is_standalone" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "manual_employee_data" jsonb;
+ALTER TABLE "offer_letters" ADD COLUMN "performance_probation_review" boolean DEFAULT false NOT NULL;
+ALTER TABLE "offer_letters" ADD COLUMN "max_revision_salary" numeric;
+ALTER TABLE "offer_letters" ADD COLUMN "max_revision_salary_in_words" varchar;
+ALTER TABLE "offer_letters" ADD COLUMN "performance_clause_text" text;
+ALTER TABLE "salary_report_runs" ADD CONSTRAINT "salary_report_runs_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "goal_milestones" ADD CONSTRAINT "goal_milestones_goal_id_fkey" FOREIGN KEY ("goal_id") REFERENCES "public"."performance_goals"("id") ON DELETE cascade ON UPDATE no action;
+CREATE UNIQUE INDEX "uq_salary_run_year_month" ON "salary_report_runs" USING btree ("year","month");
+CREATE INDEX "goal_milestones_goal_id_idx" ON "goal_milestones" USING btree ("goal_id");
+ALTER TABLE "check_ins" ADD CONSTRAINT "check_ins_goal_id_fkey" FOREIGN KEY ("goal_id") REFERENCES "public"."performance_goals"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_for_employee_id_fkey" FOREIGN KEY ("for_employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
