@@ -3335,7 +3335,18 @@ export async function registerRoutes(
   app.post("/api/hr/tickets", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const body = { ...req.body, userId };
+      const rawBody = req.body;
+      const body: any = { ...rawBody, userId };
+      if (rawBody.requestedPunchIn && typeof rawBody.requestedPunchIn === "string") {
+        body.requestedPunchIn = rawBody.requestedPunchIn.includes("T")
+          ? new Date(rawBody.requestedPunchIn)
+          : new Date(`${rawBody.date}T${rawBody.requestedPunchIn}:00`);
+      }
+      if (rawBody.requestedPunchOut && typeof rawBody.requestedPunchOut === "string") {
+        body.requestedPunchOut = rawBody.requestedPunchOut.includes("T")
+          ? new Date(rawBody.requestedPunchOut)
+          : new Date(`${rawBody.date}T${rawBody.requestedPunchOut}:00`);
+      }
       const result = insertTicketSchema.safeParse(body);
       if (!result.success) {
         return res.status(400).json({ error: "Invalid ticket data", details: result.error.issues });
