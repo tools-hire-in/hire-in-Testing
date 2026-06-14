@@ -5986,6 +5986,10 @@ export async function registerRoutes(
         });
       }
 
+      if (Array.isArray(req.body.policyAnnexures) && req.body.policyAnnexures.length > 0) {
+        data.policyAnnexures = req.body.policyAnnexures;
+      }
+
       if (!data.candidateName || !data.designation) {
         return res.status(400).json({ error: "Candidate name and designation are required" });
       }
@@ -6015,7 +6019,8 @@ export async function registerRoutes(
         location, jurisdiction, hrManagerName, offerDate, ccEmails,
         probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
         probationPeriodMonths, extendedProbationMonths,
-        performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords } = req.body;
+        performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords,
+        policyAnnexures } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
@@ -6141,6 +6146,7 @@ export async function registerRoutes(
         maxRevisionSalary: (performanceProbationReview && maxRevisionSalary) ? String(maxRevisionSalary) : null,
         maxRevisionSalaryInWords: (performanceProbationReview && maxRevisionSalaryInWords) ? maxRevisionSalaryInWords : null,
         performanceClauseText: renderedPerformanceClauseText,
+        policyAnnexures: Array.isArray(policyAnnexures) && policyAnnexures.length > 0 ? policyAnnexures : null,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -6457,6 +6463,7 @@ export async function registerRoutes(
         maxRevisionSalary: letter.maxRevisionSalary,
         maxRevisionSalaryInWords: letter.maxRevisionSalaryInWords,
         performanceClauseText: letter.performanceClauseText,
+        policyAnnexures: letter.policyAnnexures ?? null,
       });
     } catch (error) {
       console.error("View offer letter error:", error);

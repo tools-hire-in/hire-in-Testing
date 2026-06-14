@@ -403,6 +403,13 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("annexure_data migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS policy_annexures TEXT[]`);
+    log("Ensured policy_annexures column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters policy_annexures column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {

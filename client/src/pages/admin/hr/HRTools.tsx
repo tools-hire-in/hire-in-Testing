@@ -789,6 +789,7 @@ export function OfferLetterGenerator() {
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
+  const [policyAnnexures, setPolicyAnnexures] = useState<string[]>([]);
 
   const getReportingToName = () => {
     if (!formData.reportingToUserId) return "";
@@ -846,8 +847,9 @@ export function OfferLetterGenerator() {
             extendedProbationMonths: formData.extendedProbationMonths ? String(formData.extendedProbationMonths) : "",
           })
         : null,
+      policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : null,
     };
-  }, [formData, departments, users]);
+  }, [formData, departments, users, policyAnnexures]);
 
   const handleGenerate = async () => {
     if (!formData.candidateName || !formData.designation) {
@@ -880,6 +882,7 @@ export function OfferLetterGenerator() {
           performanceProbationReview: formData.performanceProbationReview,
           maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
           maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
+          policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : undefined,
         }),
       });
 
@@ -933,6 +936,7 @@ export function OfferLetterGenerator() {
         performanceProbationReview: formData.performanceProbationReview,
         maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
         maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
+        policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : undefined,
       });
 
       if (!res.ok) {
@@ -955,6 +959,7 @@ export function OfferLetterGenerator() {
       setFormData(getDefaultOfferData());
       setSelectedUserId("");
       setAnnexures([]);
+      setPolicyAnnexures([]);
       setShowPreview(false);
     } catch (err: any) {
       toast({ title: err.message || "Failed to send offer letter", variant: "destructive" });
@@ -1320,6 +1325,41 @@ export function OfferLetterGenerator() {
       </div>
 
       <AnnexureEditor annexures={annexures} onChange={setAnnexures} />
+
+      <Card>
+        <CardContent className="pt-6 space-y-3">
+          <div>
+            <p className="text-sm font-medium mb-0.5">Policy Annexures</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Select policies to append as Annexures A–D in the DOCX. The candidate will be asked to acknowledge them at acceptance.
+            </p>
+            <div className="space-y-2">
+              {([
+                { key: "leave_policy", label: "Annexure A — Leave Policy" },
+                { key: "attendance_policy", label: "Annexure B — Attendance & Regularization Policy" },
+                { key: "code_of_conduct", label: "Annexure C — Code of Conduct" },
+                { key: "nda", label: "Annexure D — Confidentiality & Non-Disclosure Agreement" },
+              ] as const).map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
+                  <input
+                    type="checkbox"
+                    checked={policyAnnexures.includes(key)}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setPolicyAnnexures(prev => [...prev, key]);
+                      } else {
+                        setPolicyAnnexures(prev => prev.filter(k => k !== key));
+                      }
+                    }}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="pt-6">
@@ -2445,6 +2485,23 @@ export function OfferLettersDashboard() {
                 <span className="text-muted-foreground">Candidate Auth Code:</span>
                 <code className="bg-muted p-1 rounded font-mono text-[10px] break-all">{countersignModal?.authCode}</code>
               </div>
+              {Array.isArray(countersignModal?.policyAnnexures) && countersignModal.policyAnnexures.length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1 border-t pt-1">
+                  <span className="text-muted-foreground">Attached Policy Annexures:</span>
+                  <div className="flex flex-wrap gap-1" data-testid="countersign-policy-annexures">
+                    {countersignModal.policyAnnexures.map((key: string) => (
+                      <span key={key} className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-800">
+                        {{
+                          leave_policy: "Annexure A — Leave Policy",
+                          attendance_policy: "Annexure B — Attendance",
+                          code_of_conduct: "Annexure C — Code of Conduct",
+                          nda: "Annexure D — NDA",
+                        }[key] ?? key}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -3229,6 +3286,7 @@ export function OfferLettersDashboard() {
                   maxRevisionSalary: viewLetterModal.maxRevisionSalary,
                   maxRevisionSalaryInWords: viewLetterModal.maxRevisionSalaryInWords,
                   performanceClauseText: viewLetterModal.performanceClauseText,
+                  policyAnnexures: viewLetterModal.policyAnnexures,
                 }}
               />
 

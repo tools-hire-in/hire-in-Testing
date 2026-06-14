@@ -35,6 +35,9 @@ interface OfferData {
   postProbationSalaryInWords?: string | null;
   probationPeriodMonths?: number | null;
   extendedProbationMonths?: number | null;
+  performanceProbationReview?: boolean | null;
+  performanceClauseText?: string | null;
+  policyAnnexures?: string[] | null;
 }
 
 export default function OnboardAccept() {
@@ -208,6 +211,9 @@ export default function OnboardAccept() {
             postProbationSalaryInWords: offer.postProbationSalaryInWords,
             probationPeriodMonths: offer.probationPeriodMonths,
             extendedProbationMonths: offer.extendedProbationMonths,
+            performanceProbationReview: offer.performanceProbationReview,
+            performanceClauseText: offer.performanceClauseText,
+            policyAnnexures: offer.policyAnnexures,
           }}
         />
 
@@ -228,7 +234,7 @@ export default function OnboardAccept() {
                     data-testid="checkbox-agree"
                   />
                   <label htmlFor="agree" className="text-sm leading-relaxed cursor-pointer">
-                    I have read and understood the terms and conditions of this offer letter, including all sections and the BYOD Annexure. I agree to accept this offer of employment.
+                    I have read and understood the terms and conditions of this offer letter, including all sections, the BYOD Annexure, and all attached policy annexures (if any). I agree to abide by the policies set out therein and accept this offer of employment.
                   </label>
                 </div>
 

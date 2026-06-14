@@ -682,6 +682,7 @@ export const offerLetters = pgTable("offer_letters", {
   maxRevisionSalary: numeric("max_revision_salary"),
   maxRevisionSalaryInWords: varchar("max_revision_salary_in_words"),
   performanceClauseText: text("performance_clause_text"),
+  policyAnnexures: text("policy_annexures").array(),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({

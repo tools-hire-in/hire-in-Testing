@@ -12,8 +12,10 @@ import {
   TableCell,
   WidthType,
   BorderStyle,
+  PageBreak,
 } from "docx";
 import type { AnnexureItem } from "./offerLetterAddendum";
+import { POLICY_ANNEXURES, type PolicyAnnexureKey } from "./annexureContent";
 
 export interface OfferLetterData {
   candidateTitle: string;
@@ -32,6 +34,7 @@ export interface OfferLetterData {
   hrManagerName: string;
   offerDate: string;
   annexures?: AnnexureItem[];
+  policyAnnexures?: string[];
   probationSalary?: number;
   probationSalaryInWords?: string;
   postProbationSalary?: number;
@@ -81,6 +84,32 @@ function buildAnnexureChildren(annexures?: AnnexureItem[]): Paragraph[] {
         spacing: { after: 80 },
         children: [new TextRun({ text: line, size: 20 })],
       }));
+    }
+  }
+  return result;
+}
+
+function buildPolicyAnnexureChildren(policyAnnexures?: string[]): Paragraph[] {
+  if (!policyAnnexures || policyAnnexures.length === 0) return [];
+  const result: Paragraph[] = [];
+  for (const key of policyAnnexures) {
+    const policy = POLICY_ANNEXURES[key as PolicyAnnexureKey];
+    if (!policy) continue;
+    result.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+    result.push(new Paragraph({
+      spacing: { after: 200 },
+      children: [new TextRun({ text: policy.title, bold: true, size: 26, underline: {} })],
+    }));
+    const lines = policy.body.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.trim() === "") {
+        result.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+      } else {
+        result.push(new Paragraph({
+          spacing: { after: 60 },
+          children: [new TextRun({ text: line, size: 20 })],
+        }));
+      }
     }
   }
   return result;
@@ -232,6 +261,77 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
     ],
   });
 
+  const compensationParagraphs: Paragraph[] = (() => {
+    if (data.performanceProbationReview && data.performanceClauseText) {
+      const paras: Paragraph[] = [];
+      for (const line of data.performanceClauseText.split(/\r?\n/)) {
+        if (line.trim() === "") {
+          paras.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+        } else {
+          paras.push(bodyText(line));
+        }
+      }
+      paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
+      return paras;
+    }
+
+    if (data.probationSalary && data.postProbationSalary) {
+      const probMonths = data.probationPeriodMonths ?? 3;
+      const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
+      const probSalaryStr = `₹${data.probationSalary.toLocaleString("en-IN")}${data.probationSalaryInWords ? ` (${data.probationSalaryInWords})` : ""}`;
+      const postSalaryStr = `₹${data.postProbationSalary.toLocaleString("en-IN")}${data.postProbationSalaryInWords ? ` (${data.postProbationSalaryInWords})` : ""}`;
+      return [
+        subHeading("During Probation Period"),
+        bodyText(`Probation Duration: ${probMonthLabel}`),
+        bodyText(`Monthly Compensation: ${probSalaryStr} per month`),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        subHeading("Post-Probation (subject to performance review)"),
+        bodyText(`Monthly Compensation: ${postSalaryStr} per month`),
+        bodyText("The above post-probation compensation is conditional upon satisfactory completion of the probationary period and achievement of agreed performance milestones. Any salary revision shall be confirmed separately in writing."),
+        bodyText("Note: Salary will be credited by the 10th of the following month."),
+      ];
+    }
+
+    return [
+      bodyText(`Your Annual Cost to Company (CTC) will be ${salaryStr}.`),
+      bodyText("Note: Salary will be credited by the 10th of the following month."),
+    ];
+  })();
+
+  const probationParagraphs: Paragraph[] = [
+    subHeading("2a. Probationary Period and Performance Review"),
+    bodyText(
+      "Your employment will commence with an initial probation period of three (3) months from your date of joining. During this probation period, either party may terminate the employment by providing one (1) week's written notice."
+    ),
+    new Paragraph({ spacing: { after: 80 }, children: [] }),
+    bodyText(
+      "Upon completion of the initial probation period, the Company will conduct a performance and delivery review. Subject to your performance, achievement of assigned goals, quality of delivery, consistency, professional conduct, and overall contribution, your compensation may be reconsidered."
+    ),
+    new Paragraph({ spacing: { after: 80 }, children: [] }),
+    bodyText(
+      "Employees who significantly exceed the expected goals and demonstrate strong ownership, consistent delivery, and measurable business impact may be considered for a salary revision up to the post-probation amount stated above. Any salary revision shall not be automatic and will be at the sole discretion of the Company, subject to management review, business requirements, and confirmed separately in writing. Mention of a review amount does not constitute a guarantee or automatic entitlement to a salary increase."
+    ),
+    new Paragraph({ spacing: { after: 80 }, children: [] }),
+    bodyText(
+      "The Company may extend the probation period up to six (6) months if required, based on performance, delivery, conduct, or business needs."
+    ),
+  ];
+
+  const policyAnnexureListParagraphs: Paragraph[] = (() => {
+    if (!data.policyAnnexures || data.policyAnnexures.length === 0) return [];
+    const result: Paragraph[] = [
+      new Paragraph({ spacing: { before: 200, after: 80 }, children: [new TextRun({ text: "Attached Policy Annexures:", bold: true, size: 20 })] }),
+    ];
+    for (const key of data.policyAnnexures) {
+      const policy = POLICY_ANNEXURES[key as PolicyAnnexureKey];
+      if (policy) {
+        result.push(bodyText(`  • ${policy.title}`));
+      }
+    }
+    result.push(bodyText("The above policy documents are attached to this offer letter and form an integral part of your terms of employment."));
+    return result;
+  })();
+
   const doc = new Document({
     sections: [
       {
@@ -280,11 +380,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           bodyText(`Proposed Start Date: ${data.proposedStartDate}`),
 
           heading("2. Probation Period, Leave Entitlement & Holiday Policy"),
-
-          subHeading("2a. Probation Period"),
-          bodyText(
-            "The first three (3) months of your employment shall constitute a probationary period. During this period, your performance and suitability will be assessed. The Company may terminate your employment during probation by giving seven (7) days' written notice or salary in lieu thereof. At the Company's sole discretion, the probation period may be extended by up to a further three (3) months, with written notice provided to you prior to the original probation end date."
-          ),
+          ...probationParagraphs,
 
           subHeading("2b. Earned Leave (EL)"),
           bodyText(
@@ -322,36 +418,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           ),
 
           heading("5. Compensation & Structure"),
-          ...(data.performanceProbationReview && data.performanceClauseText ? (() => {
-            const paras: Paragraph[] = [];
-            for (const line of data.performanceClauseText.split(/\r?\n/)) {
-              if (line.trim() === "") {
-                paras.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
-              } else {
-                paras.push(bodyText(line));
-              }
-            }
-            paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
-            return paras;
-          })() : data.probationSalary && data.postProbationSalary ? (() => {
-            const probMonths = data.probationPeriodMonths ?? 3;
-            const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
-            const probSalaryStr = `₹${data.probationSalary.toLocaleString("en-IN")}${data.probationSalaryInWords ? ` (${data.probationSalaryInWords})` : ""}`;
-            const postSalaryStr = `₹${data.postProbationSalary.toLocaleString("en-IN")}${data.postProbationSalaryInWords ? ` (${data.postProbationSalaryInWords})` : ""}`;
-            const paras: Paragraph[] = [
-              bodyText(`For the initial probation period of ${probMonthLabel}, the proposed compensation will be ${probSalaryStr} per month.`),
-              bodyText(`Based on successful completion of probation and achievement of agreed performance expectations, the compensation may be revised to ${postSalaryStr} per month after the ${probMonthLabel} performance review.`),
-            ];
-            if (data.extendedProbationMonths) {
-              const extLabel = data.extendedProbationMonths === 1 ? "1 month" : `${data.extendedProbationMonths} months`;
-              paras.push(bodyText(`If performance is progressing but requires additional evaluation, the probation period may be extended up to ${extLabel}, and the compensation revision may be reviewed again at that time.`));
-            }
-            paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
-            return paras;
-          })() : [
-            bodyText(`Your Annual Cost to Company (CTC) will be ${salaryStr}.`),
-            bodyText("Note: Salary will be credited by the 10th of the following month."),
-          ]),
+          ...compensationParagraphs,
 
           heading("6. Tools, Infrastructure & Reimbursements"),
           bodyText(
@@ -388,6 +455,11 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
             `This letter is governed by the laws of India. Disputes shall be referred to arbitration under the Arbitration and Conciliation Act, 1996 (seat: ${data.jurisdiction}) before a sole arbitrator. Subject to arbitration, courts at ${data.jurisdiction} shall have exclusive jurisdiction.`
           ),
 
+          ...(policyAnnexureListParagraphs.length > 0 ? [
+            heading("13. Policy Annexures"),
+            ...policyAnnexureListParagraphs,
+          ] : []),
+
           new Paragraph({ spacing: { before: 400 }, children: [] }),
           heading("Acceptance"),
           bodyText("Please sign the offer letter."),
@@ -411,8 +483,11 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           bodyText("• Consent to limited telemetry of work data/containers; Company may remotely wipe Company data on exit/incidents."),
           bodyText("• Report device loss/breach within 24 hours; cooperate with investigation and remediation."),
 
-          // User-supplied annexures appended after Annexure-R
+          // User-supplied custom annexures (performance KPI tables etc.)
           ...buildAnnexureChildren(data.annexures),
+
+          // Policy annexures (Leave Policy, Attendance, Code of Conduct, NDA)
+          ...buildPolicyAnnexureChildren(data.policyAnnexures),
         ],
       },
     ],
