@@ -2430,6 +2430,96 @@ If you believe your salary slip contains an error, raise the issue with HR withi
 };
 
 // ==========================================
+// ATTENDANCE REGULARIZATION POLICY
+// ==========================================
+
+const ATTENDANCE_REGULARIZATION_POLICY: TrackSeed = {
+  title: "Attendance Regularization Policy",
+  description: "Understand how to raise and manage attendance correction requests, the approval window, and what happens when a request is approved or missed.",
+  sections: [
+    {
+      title: "What is an Attendance Regularization Request?",
+      estimatedMinutes: 3,
+      minDwellSeconds: 45,
+      body: `## Attendance Regularization Policy
+
+Hire'in Solutions has introduced a dedicated Attendance Regularization system to help you report and correct attendance issues quickly and transparently.
+
+### What is a Regularization Request?
+
+If your attendance was incorrectly recorded — a missed punch-in or punch-out, a wrong absence mark, or any other discrepancy — you can raise a **Regularization Request** directly from your Attendance tab instead of using a generic Ticket.
+
+This keeps your attendance record accurate and ensures that any resulting payroll impact (LWP deductions, leave balance) is resolved through a proper, auditable process.
+
+### When Should You Raise One?
+
+Raise a regularization request as soon as you notice an attendance discrepancy. Common reasons include:
+
+- You forgot to punch in or out and the record shows an absence.
+- You were present but the system marked you absent due to a technical issue.
+- Your punch times are incorrect (e.g., show the wrong shift hours).
+- You were on approved leave but the system shows an unplanned absence.
+
+Do not wait — requests are time-limited (see the next section).`,
+      quiz: {
+        questionText: "When should you raise an Attendance Regularization Request?",
+        explanation: "Regularization Requests exist to correct attendance discrepancies through an auditable process. They should be raised as soon as you notice a problem — the system has a strict time window, and waiting too long means the request will not be accepted.",
+        options: [
+          { optionText: "Only at the end of the month before payroll", isCorrect: false },
+          { optionText: "As soon as you notice an attendance discrepancy", isCorrect: true },
+          { optionText: "Only when HR asks you to", isCorrect: false },
+          { optionText: "You don't need to — HR fixes all errors automatically", isCorrect: false },
+        ],
+      },
+    },
+    {
+      title: "Submission Window, Manager Review & HR Authority",
+      estimatedMinutes: 4,
+      minDwellSeconds: 50,
+      body: `## Timelines, Approval Chain & Authority
+
+### 7-Working-Day Submission Window
+
+You may only raise a regularization request within **7 working days** (weekends and public holidays are excluded) of the attendance date in question.
+
+Requests submitted outside this window will not be accepted by the system. Please act promptly when you notice an issue — waiting until the end of the month is too late for most dates.
+
+### Manager Review & Monthly Cutoff
+
+Your manager can approve or reject regularization requests for dates within the **current month on or before the 20th of that month**. Requests that have not been reviewed by your manager by the cutoff are automatically escalated to HR for review.
+
+### HR Authority
+
+HR and administrators can approve, reject, or directly correct any attendance record **at any time with no date restriction**. If you have missed the 7-working-day window or the manager cutoff has passed, contact HR directly.
+
+### On Approval
+
+When your request is approved:
+
+1. Your attendance record is automatically updated.
+2. Any related payroll impact (LWP deduction or leave balance) is recalculated.
+3. You receive an in-app notification with the decision and any reviewer comments.
+
+### What Happens if You Miss the Window?
+
+After 7 working days, the system will not accept a regularization request for that date. You will need to contact HR directly — corrections beyond the window require manual HR intervention and may not be possible after payroll is processed.
+
+> **Important:** All regularization requests are logged for audit purposes and are subject to review by your manager and HR.`,
+      quiz: {
+        questionText: "How many working days do you have to raise a regularization request for an attendance discrepancy?",
+        explanation: "The system enforces a strict 7-working-day window from the attendance date. Weekends and public holidays are excluded from this count. Requests outside the window are rejected automatically — contact HR directly if you have missed the window.",
+        options: [
+          { optionText: "Until the end of the current month", isCorrect: false },
+          { optionText: "3 calendar days", isCorrect: false },
+          { optionText: "7 working days (excluding weekends and public holidays)", isCorrect: true },
+          { optionText: "There is no time limit — you can raise a request any time", isCorrect: false },
+        ],
+      },
+    },
+  ],
+};
+
+// ==========================================
 // SEED FUNCTIONS
 // ==========================================
 
@@ -2464,7 +2554,7 @@ async function insertSectionWithQuiz(
 }
 
 export async function seedUniversalPolicies(createdBy: string): Promise<{ created: string[]; skipped: string[]; assigned: number; assignSkipped: number }> {
-  const universalTracks = [BREAK_LEAVE_POLICY, SHIFT_SETUP_GUIDE, PUNCH_IN_OUT_GUIDE];
+  const universalTracks = [BREAK_LEAVE_POLICY, SHIFT_SETUP_GUIDE, PUNCH_IN_OUT_GUIDE, ATTENDANCE_REGULARIZATION_POLICY];
   const created: string[] = [];
   const skipped: string[] = [];
   let assigned = 0;

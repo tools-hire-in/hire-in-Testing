@@ -60,7 +60,6 @@ import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { COMPANY } from "@/lib/constants";
 import { NotificationBell } from "@/components/NotificationBell";
-import { PolicyAcknowledgementModal } from "@/components/PolicyAcknowledgementModal";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
 // Context to detect nested AdminLayout (tab rendering)
@@ -824,7 +823,6 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </DialogContent>
         </Dialog>
 
-        {!userNeeds2FASetup && <PolicyAcknowledgementModal />}
 
         <Dialog open={showWarning} onOpenChange={() => dismissWarning()}>
           <DialogContent className="sm:max-w-md" data-testid="dialog-session-timeout">

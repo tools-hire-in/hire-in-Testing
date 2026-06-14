@@ -49,18 +49,6 @@ interface RegularizationRequest {
   createdAt: string;
 }
 
-interface PolicyAck {
-  userId: string;
-  userName: string;
-  userEmail: string;
-  userRole: string;
-  policyType: string;
-  policyVersion: string;
-  acknowledged: boolean;
-  acceptedAt: string | null;
-  acknowledgedVersion: string | null;
-}
-
 interface PolicyConfig {
   employeeWindowDays: number;
   managerCutoffDay: number;
@@ -772,71 +760,6 @@ function PolicySettingsCard() {
   );
 }
 
-function AcknowledgementsSection() {
-  const { data: acks, isLoading } = useQuery<PolicyAck[]>({
-    queryKey: ["/api/hr/policy-acknowledgements"],
-  });
-
-  if (isLoading) return <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>;
-
-  const all = acks ?? [];
-  const acceptedCount = all.filter(a => a.acknowledged).length;
-  const pendingCount = all.length - acceptedCount;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-3 text-sm">
-        <span className="flex items-center gap-1.5 text-green-700 dark:text-green-400 font-medium">
-          <CheckCircle2 className="h-4 w-4" /> {acceptedCount} accepted
-        </span>
-        <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium">
-          <Clock className="h-4 w-4" /> {pendingCount} pending
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/30">
-              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Employee</th>
-              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Email</th>
-              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
-              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Accepted At</th>
-            </tr>
-          </thead>
-          <tbody>
-            {all.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="text-center py-8 text-muted-foreground">No users found</td>
-              </tr>
-            ) : all.map(a => (
-              <tr key={a.userId} className="border-b last:border-0 hover:bg-muted/20" data-testid={`ack-row-${a.userId}`}>
-                <td className="py-2.5 px-4 font-medium">{a.userName}</td>
-                <td className="py-2.5 px-4 text-muted-foreground text-xs">{a.userEmail}</td>
-                <td className="py-2.5 px-4">
-                  {a.acknowledged ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Accepted v{a.acknowledgedVersion}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      <Clock className="h-3.5 w-3.5" /> Pending
-                    </span>
-                  )}
-                </td>
-                <td className="py-2.5 px-4 text-muted-foreground text-xs">
-                  {a.acceptedAt
-                    ? new Date(a.acceptedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 export default function RegularizationsPanel() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -847,7 +770,7 @@ export default function RegularizationsPanel() {
   const [reviewRequest, setReviewRequest] = useState<RegularizationRequest | null>(null);
   const [showOverride, setShowOverride] = useState(false);
   const [showBulkOverride, setShowBulkOverride] = useState(false);
-  const [activeSection, setActiveSection] = useState<"requests" | "acks" | "settings">("requests");
+  const [activeSection, setActiveSection] = useState<"requests" | "settings">("requests");
   const [auditDetailId, setAuditDetailId] = useState<string | null>(null);
 
   const canBulkOverride = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
@@ -903,7 +826,6 @@ export default function RegularizationsPanel() {
       <div className="flex gap-2 flex-wrap border-b pb-2">
         {[
           { key: "requests", label: "Requests", badge: pendingCount > 0 ? pendingCount : null },
-          { key: "acks",     label: "Policy Acknowledgements" },
           { key: "settings", label: "Policy Settings" },
         ].map(s => (
           <button
@@ -1053,24 +975,6 @@ export default function RegularizationsPanel() {
                   </table>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Acknowledgements section */}
-      {activeSection === "acks" && (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-semibold flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Policy Acknowledgements
-            </h3>
-            <p className="text-xs text-muted-foreground">Employees who have accepted the current attendance regularization policy</p>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <AcknowledgementsSection />
             </CardContent>
           </Card>
         </div>

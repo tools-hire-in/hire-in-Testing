@@ -89,11 +89,8 @@ import {
   type Notification,
   type InsertNotification,
   attendanceRegularizations,
-  policyAcknowledgements,
   type AttendanceRegularization,
   type InsertAttendanceRegularization,
-  type PolicyAcknowledgement,
-  type InsertPolicyAcknowledgement,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -326,11 +323,6 @@ export interface IStorage {
   getRegularizationRequest(id: string): Promise<AttendanceRegularization | undefined>;
   updateRegularizationRequest(id: string, updates: Partial<AttendanceRegularization>): Promise<AttendanceRegularization | undefined>;
   applyRegularizationOverride(data: { actorId: string; employeeId: string; attendanceDate: string; requestedPunchIn?: string; requestedPunchOut?: string; requestType: string; reason: string; comment: string }): Promise<AttendanceRegularization>;
-
-  // Policy Acknowledgements
-  recordPolicyAcknowledgement(data: InsertPolicyAcknowledgement): Promise<PolicyAcknowledgement>;
-  getPolicyAcknowledgementStatus(userId: string, policyType: string, policyVersion: string): Promise<boolean>;
-  getPolicyAcknowledgementsByPolicy(policyType: string, policyVersion: string): Promise<PolicyAcknowledgement[]>;
 
   // Stats
   getStats(): Promise<{
@@ -2723,51 +2715,6 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  // ==========================================
-  // POLICY ACKNOWLEDGEMENTS
-  // ==========================================
-
-  async recordPolicyAcknowledgement(data: InsertPolicyAcknowledgement): Promise<PolicyAcknowledgement> {
-    // Upsert: if the user already has an entry for this policy type, update it
-    const existing = await db.select().from(policyAcknowledgements)
-      .where(and(
-        eq(policyAcknowledgements.userId, data.userId),
-        eq(policyAcknowledgements.policyType, data.policyType),
-      )).limit(1);
-
-    if (existing.length > 0) {
-      const [updated] = await db.update(policyAcknowledgements)
-        .set({ policyVersion: data.policyVersion, acceptedAt: new Date() })
-        .where(eq(policyAcknowledgements.id, existing[0].id))
-        .returning();
-      return updated;
-    }
-
-    const [created] = await db.insert(policyAcknowledgements).values({
-      ...data,
-      acceptedAt: new Date(),
-    }).returning();
-    return created;
-  }
-
-  async getPolicyAcknowledgementStatus(userId: string, policyType: string, policyVersion: string): Promise<boolean> {
-    const [row] = await db.select().from(policyAcknowledgements)
-      .where(and(
-        eq(policyAcknowledgements.userId, userId),
-        eq(policyAcknowledgements.policyType, policyType),
-        eq(policyAcknowledgements.policyVersion, policyVersion),
-      )).limit(1);
-    return !!row;
-  }
-
-  async getPolicyAcknowledgementsByPolicy(policyType: string, policyVersion: string): Promise<PolicyAcknowledgement[]> {
-    return db.select().from(policyAcknowledgements)
-      .where(and(
-        eq(policyAcknowledgements.policyType, policyType),
-        eq(policyAcknowledgements.policyVersion, policyVersion),
-      ))
-      .orderBy(desc(policyAcknowledgements.acceptedAt));
-  }
 }
 
 export const storage = new DatabaseStorage();
