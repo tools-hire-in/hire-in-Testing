@@ -1288,6 +1288,46 @@ async function backfillHolidayAttendance() {
     console.error("Attendance regularization table migration error:", err);
   }
 
+  // Policy signing tables
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS policy_documents (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        title varchar NOT NULL,
+        content jsonb NOT NULL,
+        version integer NOT NULL DEFAULT 1,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS policy_signing_requests (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        policy_document_id varchar NOT NULL REFERENCES policy_documents(id),
+        employee_id varchar NOT NULL REFERENCES admin_users(id),
+        sent_at timestamp DEFAULT now(),
+        sent_by_user_id varchar REFERENCES admin_users(id),
+        status varchar NOT NULL DEFAULT 'pending',
+        due_date timestamp,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS policy_signatures (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        signing_request_id varchar NOT NULL REFERENCES policy_signing_requests(id),
+        employee_id varchar NOT NULL REFERENCES admin_users(id),
+        signed_at timestamp DEFAULT now(),
+        ip_address varchar,
+        page_initials jsonb NOT NULL,
+        final_signature varchar NOT NULL,
+        pdf_path varchar,
+        created_at timestamp DEFAULT now()
+      );
+    `);
+    log("Policy signing tables ensured");
+  } catch (err) {
+    console.error("Policy signing table migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

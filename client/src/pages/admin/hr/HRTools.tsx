@@ -6,8 +6,9 @@ import {
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
   ChevronDown, ChevronUp, RefreshCw, ArrowRight,
-  Plus, Trash2, Laptop,
+  Plus, Trash2, Laptop, Shield,
 } from "lucide-react";
+import { PolicySignoffsContent } from "./PolicySignoffs";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -3378,6 +3379,10 @@ export default function HRTools() {
               <FileStack className="h-4 w-4 mr-2" />
               Letters
             </TabsTrigger>
+            <TabsTrigger value="policy-signoffs" data-testid="tab-policy-signoffs">
+              <Shield className="h-4 w-4 mr-2" />
+              Policy Sign-offs
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="salary-slip">
@@ -3390,6 +3395,10 @@ export default function HRTools() {
 
           <TabsContent value="letters">
             <LettersDashboard />
+          </TabsContent>
+
+          <TabsContent value="policy-signoffs">
+            <PolicySignoffsContent />
           </TabsContent>
         </Tabs>
       </div>

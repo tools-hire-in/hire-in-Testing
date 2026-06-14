@@ -70,6 +70,7 @@ import PolicyGate from "@/pages/admin/PolicyGate";
 import NewHire from "@/pages/admin/NewHire";
 import ContractsHub from "@/pages/admin/finance/ContractsHub";
 import ContractSign from "@/pages/ContractSign";
+import PolicySigningPage from "@/pages/admin/hr/PolicySigningPage";
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -161,6 +162,7 @@ function PublicRouter() {
       <Route path="/admin/hr/reports" component={ReportsCompliance} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/policy-gate" component={PolicyGate} />
+      <Route path="/admin/hr/documents/policy/:signingId" component={PolicySigningPage} />
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
@@ -242,6 +244,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/reports" component={ReportsCompliance} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/policy-gate" component={PolicyGate} />
+      <Route path="/admin/hr/documents/policy/:signingId" component={PolicySigningPage} />
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>

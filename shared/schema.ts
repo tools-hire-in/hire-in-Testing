@@ -1855,3 +1855,101 @@ export const insertRoleSummaryTemplateSchema = createInsertSchema(roleSummaryTem
 });
 export type RoleSummaryTemplate = typeof roleSummaryTemplates.$inferSelect;
 export type InsertRoleSummaryTemplate = z.infer<typeof insertRoleSummaryTemplateSchema>;
+
+// ==========================================
+// POLICY SIGNING SYSTEM
+// ==========================================
+
+export const policyDocuments = pgTable("policy_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title").notNull(),
+  content: jsonb("content").notNull(), // array of {page: number, body: string}
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const policySigningRequests = pgTable("policy_signing_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  policyDocumentId: varchar("policy_document_id").notNull().references(() => policyDocuments.id),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  sentAt: timestamp("sent_at").defaultNow(),
+  sentByUserId: varchar("sent_by_user_id").references(() => adminUsers.id),
+  status: varchar("status").notNull().default("pending"), // pending | signed | cancelled
+  dueDate: timestamp("due_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const policySignatures = pgTable("policy_signatures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  signingRequestId: varchar("signing_request_id").notNull().references(() => policySigningRequests.id),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  signedAt: timestamp("signed_at").defaultNow(),
+  ipAddress: varchar("ip_address"),
+  pageInitials: jsonb("page_initials").notNull(), // array of {page: number, initial: string}
+  finalSignature: varchar("final_signature").notNull(),
+  pdfPath: varchar("pdf_path"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const policyDocumentsRelations = relations(policyDocuments, ({ many }) => ({
+  signingRequests: many(policySigningRequests),
+}));
+
+export const policySigningRequestsRelations = relations(policySigningRequests, ({ one }) => ({
+  policyDocument: one(policyDocuments, {
+    fields: [policySigningRequests.policyDocumentId],
+    references: [policyDocuments.id],
+  }),
+  employee: one(adminUsers, {
+    fields: [policySigningRequests.employeeId],
+    references: [adminUsers.id],
+    relationName: "signingEmployee",
+  }),
+  sentBy: one(adminUsers, {
+    fields: [policySigningRequests.sentByUserId],
+    references: [adminUsers.id],
+    relationName: "signingRequestSender",
+  }),
+  signature: one(policySignatures, {
+    fields: [policySigningRequests.id],
+    references: [policySignatures.signingRequestId],
+  }),
+}));
+
+export const policySignaturesRelations = relations(policySignatures, ({ one }) => ({
+  signingRequest: one(policySigningRequests, {
+    fields: [policySignatures.signingRequestId],
+    references: [policySigningRequests.id],
+  }),
+  employee: one(adminUsers, {
+    fields: [policySignatures.employeeId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const insertPolicyDocumentSchema = createInsertSchema(policyDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertPolicySigningRequestSchema = createInsertSchema(policySigningRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+});
+export const insertPolicySignatureSchema = createInsertSchema(policySignatures).omit({
+  id: true,
+  createdAt: true,
+  signedAt: true,
+});
+
+export type PolicyDocument = typeof policyDocuments.$inferSelect;
+export type InsertPolicyDocument = z.infer<typeof insertPolicyDocumentSchema>;
+export type PolicySigningRequest = typeof policySigningRequests.$inferSelect;
+export type InsertPolicySigningRequest = z.infer<typeof insertPolicySigningRequestSchema>;
+export type PolicySignature = typeof policySignatures.$inferSelect;
+export type InsertPolicySignature = z.infer<typeof insertPolicySignatureSchema>;

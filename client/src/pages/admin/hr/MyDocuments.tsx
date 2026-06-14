@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Link } from "wouter";
 import {
   Card,
   CardContent,
@@ -41,6 +42,8 @@ import {
   Shield,
   GraduationCap,
   Briefcase,
+  PenLine,
+  ChevronRight,
 } from "lucide-react";
 
 interface EmployeeDocument {
@@ -180,6 +183,12 @@ export default function MyDocuments() {
   const uploadedRequired = requiredDocs.filter((d) => d.status !== "pending").length;
   const progressPercent = requiredDocs.length > 0 ? Math.round((uploadedRequired / requiredDocs.length) * 100) : 0;
 
+  const { data: policyRequests } = useQuery<any[]>({
+    queryKey: ["/api/hr/my-policy-requests"],
+  });
+  const pendingPolicies = (policyRequests || []).filter(r => r.status === "pending");
+  const signedPolicies = (policyRequests || []).filter(r => r.status === "signed");
+
   const groupedByCategory = (documents || []).reduce<Record<string, EmployeeDocument[]>>((acc, doc) => {
     if (!acc[doc.category]) acc[doc.category] = [];
     acc[doc.category].push(doc);
@@ -227,6 +236,43 @@ export default function MyDocuments() {
           Upload your onboarding documents and complete your profile
         </p>
       </div>
+
+      {pendingPolicies.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="card-pending-policies">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-300">
+              <PenLine className="h-4 w-4" />
+              Action Required — Policy Acknowledgements
+            </CardTitle>
+            <CardDescription>
+              You have {pendingPolicies.length} company polic{pendingPolicies.length === 1 ? "y" : "ies"} waiting for your signature.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingPolicies.map((req: any) => (
+              <div
+                key={req.requestId}
+                className="flex items-center justify-between gap-3 bg-white dark:bg-background border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2.5"
+                data-testid={`policy-pending-${req.requestId}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-amber-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">{req.policyTitle}</p>
+                    <p className="text-xs text-muted-foreground">Version {req.policyVersion}</p>
+                  </div>
+                </div>
+                <Link href={`/admin/hr/documents/policy/${req.requestId}`}>
+                  <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 hover:bg-amber-100" data-testid={`button-sign-policy-${req.requestId}`}>
+                    Read & Sign
+                    <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
@@ -353,6 +399,57 @@ export default function MyDocuments() {
           </Card>
         );
       })}
+
+      {signedPolicies.length > 0 && (
+        <Card data-testid="card-signed-policies">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              Signed Policy Acknowledgements
+            </CardTitle>
+            <CardDescription>
+              {signedPolicies.length} polic{signedPolicies.length === 1 ? "y" : "ies"} acknowledged
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {signedPolicies.map((req: any) => (
+              <div
+                key={req.requestId}
+                className="flex items-center justify-between gap-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-md px-3 py-2.5"
+                data-testid={`policy-signed-${req.requestId}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">{req.policyTitle}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Version {req.policyVersion}
+                      {req.signedAt && ` · Signed ${new Date(req.signedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50 text-xs">Signed</Badge>
+                  {req.signatureId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-green-700 hover:text-green-900 hover:bg-green-100"
+                      asChild
+                      data-testid={`button-download-signed-${req.requestId}`}
+                    >
+                      <a href={`/api/hr/policy-signatures/${req.signatureId}/download`} target="_blank" rel="noreferrer">
+                        <Download className="h-3.5 w-3.5 mr-1" />
+                        PDF
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-testid="card-bank-details">
         <CardHeader className="pb-3">
