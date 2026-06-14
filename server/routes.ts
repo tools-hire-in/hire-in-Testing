@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -10015,6 +10015,218 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get shift history error:", error);
       res.status(500).json({ error: "Failed to fetch shift history" });
+    }
+  });
+
+  // ==========================================
+  // POLICY ACKNOWLEDGEMENTS (attendance regularization)
+  // ==========================================
+
+  app.get("/api/hr/policy-acknowledgements/status", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const currentVersion = versionSetting ? String(versionSetting.value) : "2";
+      const rows = await db.select().from(policyAcknowledgements)
+        .where(and(
+          eq(policyAcknowledgements.userId, userId),
+          eq(policyAcknowledgements.policyType, "attendance_regularization"),
+          eq(policyAcknowledgements.policyVersion, currentVersion)
+        ));
+      res.json({ accepted: rows.length > 0, policyVersion: currentVersion });
+    } catch (error) {
+      console.error("Policy acknowledgement status error:", error);
+      res.status(500).json({ error: "Failed to fetch policy status" });
+    }
+  });
+
+  app.post("/api/hr/policy-acknowledgements", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const currentVersion = versionSetting ? String(versionSetting.value) : "2";
+      const existing = await db.select().from(policyAcknowledgements)
+        .where(and(
+          eq(policyAcknowledgements.userId, userId),
+          eq(policyAcknowledgements.policyType, "attendance_regularization"),
+          eq(policyAcknowledgements.policyVersion, currentVersion)
+        ));
+      if (existing.length === 0) {
+        await db.insert(policyAcknowledgements).values({
+          userId,
+          policyType: "attendance_regularization",
+          policyVersion: currentVersion,
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Policy acknowledgement record error:", error);
+      res.status(500).json({ error: "Failed to record acknowledgement" });
+    }
+  });
+
+  app.get("/api/hr/policy-acknowledgements", requireRole("hr", "manager"), async (req, res) => {
+    try {
+      const rows = await db.select({
+        id: policyAcknowledgements.id,
+        userId: policyAcknowledgements.userId,
+        policyType: policyAcknowledgements.policyType,
+        policyVersion: policyAcknowledgements.policyVersion,
+        acceptedAt: policyAcknowledgements.acceptedAt,
+      }).from(policyAcknowledgements).orderBy(desc(policyAcknowledgements.acceptedAt));
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch acknowledgements" });
+    }
+  });
+
+  // ==========================================
+  // ANNOUNCEMENTS — employee-facing
+  // ==========================================
+
+  app.get("/api/hr/announcements/status", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const [versionSetting, contentSetting] = await Promise.all([
+        storage.getSystemSetting("app_announcement_version"),
+        storage.getSystemSetting("app_announcement_content"),
+      ]);
+      const currentVersion = versionSetting ? String(versionSetting.value) : "2024-06";
+      const content = contentSetting?.value ?? null;
+
+      const rows = await db.select().from(policyAcknowledgements)
+        .where(and(
+          eq(policyAcknowledgements.userId, userId),
+          eq(policyAcknowledgements.policyType, "app_announcement"),
+          eq(policyAcknowledgements.policyVersion, currentVersion)
+        ));
+
+      res.json({ hasNew: rows.length === 0, version: currentVersion, content });
+    } catch (error) {
+      console.error("Announcement status error:", error);
+      res.status(500).json({ error: "Failed to fetch announcement status" });
+    }
+  });
+
+  app.post("/api/hr/announcements/dismiss", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const versionSetting = await storage.getSystemSetting("app_announcement_version");
+      const currentVersion = versionSetting ? String(versionSetting.value) : "2024-06";
+      const existing = await db.select().from(policyAcknowledgements)
+        .where(and(
+          eq(policyAcknowledgements.userId, userId),
+          eq(policyAcknowledgements.policyType, "app_announcement"),
+          eq(policyAcknowledgements.policyVersion, currentVersion)
+        ));
+      if (existing.length === 0) {
+        await db.insert(policyAcknowledgements).values({
+          userId,
+          policyType: "app_announcement",
+          policyVersion: currentVersion,
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Announcement dismiss error:", error);
+      res.status(500).json({ error: "Failed to dismiss announcement" });
+    }
+  });
+
+  // ==========================================
+  // ANNOUNCEMENTS — admin management
+  // ==========================================
+
+  app.get("/api/admin/announcements", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const [versionSetting, contentSetting, lastSentSetting] = await Promise.all([
+        storage.getSystemSetting("app_announcement_version"),
+        storage.getSystemSetting("app_announcement_content"),
+        storage.getSystemSetting("app_announcement_last_sent"),
+      ]);
+      res.json({
+        version: versionSetting?.value ?? "2024-06",
+        content: contentSetting?.value ?? null,
+        lastSent: lastSentSetting?.value ?? null,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch announcement settings" });
+    }
+  });
+
+  app.patch("/api/admin/announcements", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const { version, content } = req.body;
+      const adminId = req.session.userId!;
+      if (version !== undefined) {
+        await storage.upsertSystemSetting("app_announcement_version", version, adminId);
+      }
+      if (content !== undefined) {
+        await storage.upsertSystemSetting("app_announcement_content", content, adminId);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Announcement update error:", error);
+      res.status(500).json({ error: "Failed to update announcement" });
+    }
+  });
+
+  app.get("/api/admin/announcements/recipient-count", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const allActive = await storage.getAllActiveEmployees();
+      const targetRoles = ["employee", "manager", "recruiter", "operations", "finance"];
+      const recipients = allActive.filter(u => targetRoles.includes(u.role || ""));
+      res.json({ count: recipients.length });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get recipient count" });
+    }
+  });
+
+  app.post("/api/admin/announcements/send-email", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const adminId = req.session.userId!;
+      const featureFlags = await (async () => {
+        const setting = await storage.getSystemSetting("feature_flags");
+        return (setting?.value as Record<string, boolean>) || {};
+      })();
+
+      if (!featureFlags.notifications_enabled) {
+        return res.status(403).json({ error: "Email notifications are disabled. Enable the notifications feature flag first." });
+      }
+
+      const contentSetting = await storage.getSystemSetting("app_announcement_content");
+      if (!contentSetting?.value) {
+        return res.status(400).json({ error: "No announcement content configured" });
+      }
+
+      const allActive = await storage.getAllActiveEmployees();
+      const targetRoles = ["employee", "manager", "recruiter", "operations", "finance"];
+      const recipients = allActive.filter(u => targetRoles.includes(u.role || "")).map(u => ({
+        email: u.email,
+        firstName: u.firstName,
+      }));
+
+      if (recipients.length === 0) {
+        return res.status(400).json({ error: "No eligible recipients found" });
+      }
+
+      const { sendWhatsNewEmail } = await import("./email");
+      const result = await sendWhatsNewEmail({
+        employees: recipients,
+        content: contentSetting.value as any,
+      });
+
+      await storage.upsertSystemSetting("app_announcement_last_sent", {
+        sentAt: new Date().toISOString(),
+        recipientCount: result.sent,
+        failedCount: result.failed,
+        sentBy: adminId,
+      }, adminId);
+
+      res.json({ success: true, sent: result.sent, failed: result.failed });
+    } catch (error: any) {
+      console.error("Announcement email blast error:", error);
+      res.status(500).json({ error: "Failed to send announcement emails" });
     }
   });
 

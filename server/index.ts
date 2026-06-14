@@ -1296,6 +1296,47 @@ async function backfillHolidayAttendance() {
     console.error("Attendance regularization table migration error:", err);
   }
 
+  // Seed What's New announcement defaults
+  try {
+    const announcementContent = JSON.stringify({
+      title: "What's new at Hire'in",
+      subtitle: "Three updates made just for you",
+      blocks: [
+        {
+          icon: "star",
+          title: "Praise Board",
+          body: "Recognise the people who make the difference. Send a badge, give a clap, or pin a shout-out to a colleague's profile — right from the portal.",
+          cta_label: "Give your first badge",
+          cta_path: "/admin/praise",
+        },
+        {
+          icon: "message",
+          title: "Feedback",
+          body: "Honest conversations, professionally handled. Share private praise or constructive notes with a colleague — all logged, all confidential.",
+          cta_label: "Send feedback",
+          cta_path: "/admin/feedback",
+        },
+        {
+          icon: "clock",
+          title: "Attendance Corrections Update",
+          body: "Faster corrections, cleaner payslips. You now have 24 hours to raise a correction request. All open requests must be resolved by the 25th of each month so payroll can be processed on time.",
+          cta_label: "See what changed",
+          cta_path: "/admin/hr",
+        },
+      ],
+    });
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES
+        ('app_announcement_version', '"2024-06"'),
+        ('app_announcement_content', ${announcementContent}::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("App announcement system settings seeded");
+  } catch (err) {
+    console.error("App announcement seed error (non-fatal):", err);
+  }
+
   // Policy signing tables
   try {
     await db.execute(sql`

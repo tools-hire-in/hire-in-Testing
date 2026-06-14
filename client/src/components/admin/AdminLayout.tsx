@@ -1,3 +1,4 @@
+import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { Link, useLocation } from "wouter";
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -844,6 +845,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </DialogContent>
         </Dialog>
       </SidebarProvider>
+      <AnnouncementModal />
     </AdminLayoutMounted.Provider>
   );
 }

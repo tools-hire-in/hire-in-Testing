@@ -2177,3 +2177,92 @@ export async function sendManagerRegularizationDigestEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export interface AnnouncementBlock {
+  icon: string;
+  title: string;
+  body: string;
+  cta_label: string;
+  cta_path: string;
+}
+
+export interface AnnouncementContent {
+  title: string;
+  subtitle: string;
+  blocks: AnnouncementBlock[];
+}
+
+const ICON_EMOJI: Record<string, string> = {
+  star: "⭐",
+  message: "💬",
+  clock: "🕐",
+  bell: "🔔",
+  heart: "❤️",
+  award: "🏆",
+};
+
+export async function sendWhatsNewEmail(options: {
+  employees: Array<{ email: string; firstName: string }>;
+  content: AnnouncementContent;
+  portalUrl?: string;
+}): Promise<{ sent: number; failed: number }> {
+  const { client, fromEmail } = await getUncachableSendGridClient();
+  const portalUrl = options.portalUrl || "https://hire-in.com/admin/hr";
+  let sent = 0;
+  let failed = 0;
+
+  const blockCards = options.content.blocks.map((block) => {
+    const emoji = ICON_EMOJI[block.icon] || "✨";
+    const ctaUrl = block.cta_path.startsWith("http") ? block.cta_path : `https://hire-in.com${block.cta_path}`;
+    return `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin:0 0 16px;">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <span style="font-size:22px;line-height:1;">${emoji}</span>
+          <div style="flex:1;">
+            <p style="color:#1e293b;font-weight:700;font-size:15px;margin:0 0 6px;">${block.title}</p>
+            <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 14px;">${block.body}</p>
+            <a href="${ctaUrl}" style="display:inline-block;background:#1e40af;color:#ffffff;text-decoration:none;padding:8px 20px;border-radius:6px;font-weight:600;font-size:13px;">${block.cta_label}</a>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  for (const emp of options.employees) {
+    try {
+      const msg = {
+        to: emp.email,
+        from: { email: fromEmail, name: "Alina Carter" },
+        subject: `${options.content.title} — Hire'in Solutions`,
+        html: `
+          <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+            <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:32px;text-align:center;">
+              <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Hire'in Solutions</h1>
+              <p style="color:#dbeafe;margin:8px 0 0;font-size:14px;">Employee Portal</p>
+            </div>
+            <div style="padding:32px;">
+              <h2 style="color:#1e293b;margin:0 0 4px;font-size:22px;font-weight:700;">${options.content.title}</h2>
+              <p style="color:#64748b;margin:0 0 24px;font-size:15px;">${options.content.subtitle}</p>
+              <p style="color:#1e293b;margin:0 0 20px;font-size:15px;">Hi ${emp.firstName},</p>
+              <p style="color:#475569;margin:0 0 24px;font-size:14px;line-height:1.6;">We've made some updates to the Hire'in portal that are worth exploring. Here's a quick look at what's new:</p>
+              ${blockCards}
+              <div style="text-align:center;margin:28px 0 8px;">
+                <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:#ffffff;text-decoration:none;padding:13px 36px;border-radius:6px;font-weight:600;font-size:15px;">Open My Portal</a>
+              </div>
+              ${SIGNOFF_HTML}
+            </div>
+            <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.</p>
+            </div>
+          </div>`,
+        text: `Hi ${emp.firstName},\n\n${options.content.title}\n${options.content.subtitle}\n\n${options.content.blocks.map(b => `${b.title}\n${b.body}\n${b.cta_label}: https://hire-in.com${b.cta_path}`).join("\n\n")}\n\nOpen your portal: ${portalUrl}${SIGNOFF_TEXT}`,
+      };
+      await client.send(msg);
+      sent++;
+    } catch (error: any) {
+      console.error(`sendWhatsNewEmail failed for ${emp.email}:`, error?.response?.body || error.message);
+      failed++;
+    }
+  }
+
+  return { sent, failed };
+}
