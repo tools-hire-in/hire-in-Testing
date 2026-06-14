@@ -13,6 +13,5 @@ export const modules: ModuleMap = {
   "./components/mockups/social-media/DownloadAll.tsx": () => import("../components/mockups/social-media/DownloadAll.tsx"),
   "./components/mockups/social-media/FacebookCover.tsx": () => import("../components/mockups/social-media/FacebookCover.tsx"),
   "./components/mockups/social-media/InstagramStory.tsx": () => import("../components/mockups/social-media/InstagramStory.tsx"),
-  "./components/mockups/social-media/ProfilePicture.tsx": () => import("../components/mockups/social-media/ProfilePicture.tsx"),
-  "./components/mockups/payslip/Enterprise.tsx": () => import("../components/mockups/payslip/Enterprise.tsx")
+  "./components/mockups/social-media/ProfilePicture.tsx": () => import("../components/mockups/social-media/ProfilePicture.tsx")
 };
