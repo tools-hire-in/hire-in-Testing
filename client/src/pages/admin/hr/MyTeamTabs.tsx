@@ -7,8 +7,9 @@ import MyTeam from "./MyTeam";
 import TeamAttendance from "./TeamAttendance";
 import LeaveApprovals from "./LeaveApprovals";
 import TrainingProgress from "./TrainingProgress";
+import AttendanceApproval from "./AttendanceApproval";
 
-const TABS = ["overview", "attendance", "leave-approvals", "training-progress"] as const;
+const TABS = ["overview", "attendance", "leave-approvals", "training-progress", "attendance-approval"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -53,14 +54,15 @@ export default function MyTeamTabs() {
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-myteam-title">My Team</h1>
-          <p className="text-sm text-muted-foreground">Team overview, attendance, leave approvals, and training progress</p>
+          <p className="text-sm text-muted-foreground">Team overview, attendance, leave approvals, training progress, and month-end approval</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-myteam">
-          <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+          <TabsList className="grid grid-cols-5 w-full max-w-3xl">
             <TabsTrigger value="overview" data-testid="tab-team-overview">Overview</TabsTrigger>
             <TabsTrigger value="attendance" data-testid="tab-team-attendance">Attendance</TabsTrigger>
             <TabsTrigger value="leave-approvals" data-testid="tab-team-leave-approvals">Leave Approvals</TabsTrigger>
-            <TabsTrigger value="training-progress" data-testid="tab-team-training-progress">Training Progress</TabsTrigger>
+            <TabsTrigger value="training-progress" data-testid="tab-team-training-progress">Training</TabsTrigger>
+            <TabsTrigger value="attendance-approval" data-testid="tab-team-attendance-approval">Month Approval</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="mt-4">
             <MyTeam />
@@ -73,6 +75,9 @@ export default function MyTeamTabs() {
           </TabsContent>
           <TabsContent value="training-progress" className="mt-4">
             <TrainingProgress />
+          </TabsContent>
+          <TabsContent value="attendance-approval" className="mt-4">
+            <AttendanceApproval />
           </TabsContent>
         </Tabs>
       </div>

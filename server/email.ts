@@ -1736,6 +1736,132 @@ export async function sendPraiseEmail(options: {
   }
 }
 
+export async function sendAttendanceApprovalRequestEmail(options: {
+  to: string;
+  managerName: string;
+  month: string;
+  year: number;
+  deadlineAt: Date;
+  approvalUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const deadline = options.deadlineAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+    const msg: any = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `Action Required: Review Attendance Report for ${options.month} ${options.year}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2563eb 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:13px;">Monthly Attendance Approval</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1e293b;margin:0 0 16px;font-size:18px;">Hi ${options.managerName},</h2>
+            <p style="color:#475569;line-height:1.6;">Your team's attendance report for <strong>${options.month} ${options.year}</strong> is ready for your review.</p>
+            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:16px;margin:16px 0;">
+              <p style="color:#92400e;font-weight:600;margin:0 0 4px;">⏰ Deadline: ${deadline} IST</p>
+              <p style="color:#78350f;font-size:13px;margin:0;">Please approve or submit corrections before the deadline. Salary run is gated until all managers respond.</p>
+            </div>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.approvalUrl}" style="display:inline-block;background:#1F3A6E;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Review & Approve</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Hire'in Solutions</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.managerName},\n\nYour team's attendance report for ${options.month} ${options.year} requires your review.\nDeadline: ${deadline} IST\n\nReview here: ${options.approvalUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendAttendanceApprovalRequestEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendAttendanceEditsSubmittedEmail(options: {
+  toEmails: string[];
+  managerName: string;
+  month: string;
+  year: number;
+  correctionCount: number;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg: any = {
+      to: options.toEmails,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `Attendance Corrections Submitted — ${options.month} ${options.year}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2563eb 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:13px;">Attendance Edit Review</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1e293b;margin:0 0 16px;font-size:18px;">Corrections Pending HR Review</h2>
+            <p style="color:#475569;line-height:1.6;"><strong>${options.managerName}</strong> has submitted <strong>${options.correctionCount}</strong> attendance correction(s) for <strong>${options.month} ${options.year}</strong> that require your review.</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.reviewUrl}" style="display:inline-block;background:#1F3A6E;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Review Corrections</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>
+      `,
+      text: `${options.managerName} submitted ${options.correctionCount} attendance correction(s) for ${options.month} ${options.year}.\n\nReview here: ${options.reviewUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendAttendanceEditsSubmittedEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendAttendanceDeadlineExpiredEmail(options: {
+  toEmails: string[];
+  month: string;
+  year: number;
+  overrideUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg: any = {
+      to: options.toEmails,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `⚠ Attendance Approval Deadline Expired — ${options.month} ${options.year}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#fecaca;margin:8px 0 0;font-size:13px;">Attendance Approval Deadline Alert</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1e293b;margin:0 0 16px;font-size:18px;">Approval Deadline Expired</h2>
+            <p style="color:#475569;line-height:1.6;">The 24-hour approval window for <strong>${options.month} ${options.year}</strong> attendance has expired without all managers responding. An HR override is required to unlock the salary run.</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.overrideUrl}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Override & Unlock</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>
+      `,
+      text: `The attendance approval deadline for ${options.month} ${options.year} has expired. Override required.\n\nOverride here: ${options.overrideUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendAttendanceDeadlineExpiredEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendContractDispatchEmail(options: {
   to: string;
   clientName: string;
@@ -1816,6 +1942,93 @@ export async function sendContractDispatchEmail(options: {
     return { success: true };
   } catch (error: any) {
     console.error("Failed to send contract dispatch email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendAttendanceApprovalCompleteEmail(options: {
+  toEmails: string[];
+  month: string;
+  year: number;
+  overridden: boolean;
+  salaryRunUrl: string;
+  entrySummary: Array<{ name: string; employeeId: string; presentDays: number; absentDays: number; lopDays: number; leaveDays: number; holidayDays: number; totalHours: number }>;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+
+    const csvHeader = "Employee ID,Name,Present Days,Absent Days,LOP Days,Leave Days,Holiday Days,Total Hours";
+    const csvRows = options.entrySummary.map(e =>
+      `${e.employeeId},"${e.name}",${e.presentDays},${e.absentDays},${e.lopDays},${e.leaveDays},${e.holidayDays},${e.totalHours}`
+    );
+    const csvContent = [csvHeader, ...csvRows].join("\n");
+    const csvBase64 = Buffer.from(csvContent).toString("base64");
+
+    const tableRows = options.entrySummary.slice(0, 20).map(e => `
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:8px 12px;color:#334155;">${e.employeeId}</td>
+        <td style="padding:8px 12px;color:#334155;">${e.name}</td>
+        <td style="padding:8px 12px;text-align:center;color:#334155;">${e.presentDays}</td>
+        <td style="padding:8px 12px;text-align:center;color:#334155;">${e.absentDays}</td>
+        <td style="padding:8px 12px;text-align:center;color:#dc2626;">${e.lopDays}</td>
+        <td style="padding:8px 12px;text-align:center;color:#334155;">${e.leaveDays}</td>
+        <td style="padding:8px 12px;text-align:center;color:#334155;">${e.totalHours.toFixed(1)}h</td>
+      </tr>`).join("");
+
+    const moreRow = options.entrySummary.length > 20
+      ? `<tr><td colspan="7" style="padding:8px 12px;color:#94a3b8;font-style:italic;text-align:center;">... and ${options.entrySummary.length - 20} more employees — see attached CSV</td></tr>`
+      : "";
+
+    const msg: any = {
+      to: options.toEmails,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `✅ Attendance ${options.overridden ? "Overridden" : "Approved"} — ${options.month} ${options.year} Salary Run Unlocked`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#166534 0%,#16a34a 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#bbf7d0;margin:8px 0 0;font-size:13px;">Monthly Attendance ${options.overridden ? "Override Applied" : "Approval Complete"}</p>
+          </div>
+          <div style="padding:32px;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:24px;">
+              <p style="color:#166534;font-weight:600;margin:0;">✅ Attendance for <strong>${options.month} ${options.year}</strong> has been ${options.overridden ? "overridden by HR" : "approved by all managers"}.</p>
+              <p style="color:#15803d;font-size:13px;margin:8px 0 0;">You can now generate the salary run for this month.</p>
+            </div>
+            <h3 style="color:#1e293b;margin:0 0 12px;font-size:15px;">Attendance Snapshot (${options.entrySummary.length} employees)</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Emp ID</th>
+                  <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Name</th>
+                  <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:600;">Present</th>
+                  <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:600;">Absent</th>
+                  <th style="padding:8px 12px;text-align:center;color:#dc2626;font-weight:600;">LOP</th>
+                  <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:600;">Leave</th>
+                  <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:600;">Hours</th>
+                </tr>
+              </thead>
+              <tbody>${tableRows}${moreRow}</tbody>
+            </table>
+            <p style="color:#64748b;font-size:12px;">Full attendance snapshot attached as CSV.</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.salaryRunUrl}" style="display:inline-block;background:#166534;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Generate Salary Run</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>
+      `,
+      text: `Attendance for ${options.month} ${options.year} has been ${options.overridden ? "overridden by HR" : "approved"}. Salary run is now unlocked.\n\nGenerate here: ${options.salaryRunUrl}${SIGNOFF_TEXT}`,
+      attachments: [{
+        content: csvBase64,
+        filename: `attendance_${options.month.toLowerCase()}_${options.year}.csv`,
+        type: "text/csv",
+        disposition: "attachment",
+      }],
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendAttendanceApprovalCompleteEmail error:", error?.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }

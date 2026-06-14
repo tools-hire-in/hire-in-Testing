@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns } from "@shared/schema";
 import { eq, and, lt, gt, isNull, sql } from "drizzle-orm";
+import { generateAttendanceReportRun } from "./attendanceReport";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -455,10 +456,182 @@ export function startScheduler() {
   // Admin route to update shift grace period: handled in routes.ts
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
 
+  // Attendance report auto-creation: 1st of month at 00:05 IST
+  // Creates the attendance report run for the prior month if none exists yet
+  cron.schedule("5 0 1 * *", async () => {
+    console.log("[scheduler] Auto-creating attendance report run for prior month...");
+    try {
+      const { year, month } = getIstDateTime();
+      let prevMonth = month - 1;
+      let prevYear = year;
+      if (prevMonth === 0) { prevMonth = 12; prevYear = year - 1; }
+
+      const existing = (await db.execute(sql`
+        SELECT id FROM attendance_report_runs WHERE month = ${prevMonth} AND year = ${prevYear} LIMIT 1
+      `)) as any[];
+
+      if (existing.length > 0) {
+        console.log(`[scheduler] Attendance report run for ${prevMonth}/${prevYear} already exists — skipping.`);
+        return;
+      }
+
+      const { runId, managerIds } = await generateAttendanceReportRun(prevMonth, prevYear);
+      console.log(`[scheduler] Attendance report run created for ${prevMonth}/${prevYear}: ${runId}, managers: ${managerIds.length}`);
+
+      if (managerIds.length > 0) {
+        const managers = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers)
+          .where(and(isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
+        const managerList = managers.filter(m => managerIds.includes(m.id));
+        const monthName = new Date(prevYear, prevMonth - 1, 1).toLocaleString("en-US", { month: "long" });
+        const { sendAttendanceApprovalRequestEmail } = await import("./email");
+        const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const appUrl = process.env.APP_URL || "https://hire-in.com";
+
+        for (const mgr of managerList) {
+          sendAttendanceApprovalRequestEmail({
+            to: mgr.email,
+            managerName: `${mgr.firstName} ${mgr.lastName}`,
+            month: monthName,
+            year: prevYear,
+            deadlineAt,
+            approvalUrl: `${appUrl}/admin/hr/my-team?tab=attendance-approval`,
+          }).catch(console.error);
+        }
+
+        // In-app notifications for managers
+        const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+        if (flags?.notifications_enabled) {
+          for (const mgr of managerList) {
+            await storage.createNotification({
+              userId: mgr.id,
+              title: "Attendance Approval Required",
+              message: `Your team's attendance report for ${monthName} ${prevYear} is ready for review. Please approve within 24 hours.`,
+              type: "action",
+            }).catch(console.error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[scheduler] Attendance report auto-create failed:", error);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
+  // Attendance T-2h reminder: runs every hour, sends reminder to managers who haven't responded within T-2h of deadline
+  cron.schedule("0 * * * *", async () => {
+    try {
+      const now = new Date();
+      const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+      // Find runs with deadline within the next 2 hours that are not yet in terminal state
+      const runs = Array.from((await db.execute(sql`
+        SELECT id, month, year, deadline_at, status FROM attendance_report_runs
+        WHERE status != 'approved' AND status != 'overridden' AND status != 'deadline_expired'
+          AND deadline_at IS NOT NULL
+          AND deadline_at > ${now.toISOString()}
+          AND deadline_at <= ${twoHoursFromNow.toISOString()}
+      `)) as any) as any[];
+
+      for (const run of runs) {
+        const pendingManagers = Array.from((await db.execute(sql`
+          SELECT ma.manager_id, u.email, u.first_name, u.last_name
+          FROM attendance_report_manager_approvals ma
+          JOIN admin_users u ON u.id = ma.manager_id
+          WHERE ma.run_id = ${run.id} AND (ma.status = 'pending' OR ma.status = 'edits_submitted')
+        `)) as any) as any[];
+
+        if (pendingManagers.length === 0) continue;
+
+        const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
+        const deadline = new Date(run.deadline_at);
+        const { sendAttendanceApprovalRequestEmail } = await import("./email");
+        const appUrl = process.env.APP_URL || "https://hire-in.com";
+        const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+
+        for (const mgr of pendingManagers) {
+          sendAttendanceApprovalRequestEmail({
+            to: mgr.email,
+            managerName: `${mgr.first_name} ${mgr.last_name}`,
+            month: monthName,
+            year: run.year,
+            deadlineAt: deadline,
+            approvalUrl: `${appUrl}/admin/hr/my-team?tab=attendance-approval`,
+          }).catch(console.error);
+
+          if (flags?.notifications_enabled) {
+            await storage.createNotification({
+              userId: mgr.manager_id,
+              title: "Reminder: Attendance Approval Due Soon",
+              message: `You have less than 2 hours to approve your team's attendance for ${monthName} ${run.year}.`,
+              type: "warning",
+            }).catch(console.error);
+          }
+        }
+
+        console.log(`[scheduler] T-2h attendance reminder sent for ${run.month}/${run.year} to ${pendingManagers.length} manager(s)`);
+      }
+    } catch (error) {
+      console.error("[scheduler] T-2h attendance reminder failed:", error);
+    }
+  });
+
+  // Attendance deadline expiry processor: runs every 15 minutes
+  // Marks any run whose deadline_at has passed (and is not yet in a terminal state) as deadline_expired
+  // and sends a one-time HR escalation email.  The once-monthly cron at 08:00 IST on the 1st remains
+  // as a belt-and-suspenders catch, but this is the primary processor.
+  const processExpiredDeadlines = async () => {
+    try {
+      const now = new Date();
+      const expiredRuns = Array.from((await db.execute(sql`
+        SELECT id, month, year FROM attendance_report_runs
+        WHERE deadline_at IS NOT NULL
+          AND deadline_at < ${now.toISOString()}
+          AND status != 'approved' AND status != 'overridden' AND status != 'deadline_expired'
+      `)) as any) as any[];
+
+      for (const run of expiredRuns) {
+        await db.execute(sql`
+          UPDATE attendance_report_runs SET status = 'deadline_expired', updated_at = NOW()
+          WHERE id = ${run.id}
+        `);
+
+        const hrAdmins = await db.select({ id: adminUsers.id, email: adminUsers.email, role: adminUsers.role })
+          .from(adminUsers)
+          .where(and(isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
+        const hrEmails = hrAdmins.filter(u => ["super_admin", "admin", "hr"].includes(u.role || "")).map(u => u.email);
+        const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
+        const { sendAttendanceDeadlineExpiredEmail } = await import("./email");
+
+        if (hrEmails.length > 0) {
+          sendAttendanceDeadlineExpiredEmail({
+            toEmails: hrEmails,
+            month: monthName,
+            year: run.year,
+            overrideUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/reports?tab=attendance-approvals`,
+          }).catch(console.error);
+        }
+
+        console.log(`[scheduler] Attendance deadline expired for ${run.month}/${run.year} — HR notified`);
+      }
+    } catch (error) {
+      console.error("[scheduler] Deadline expiry processor failed:", error);
+    }
+  };
+
+  cron.schedule("*/15 * * * *", processExpiredDeadlines);
+
+  // Belt-and-suspenders: also check on the 1st at 08:00 IST (kept for timezone correctness)
+  cron.schedule("0 8 1 * *", processExpiredDeadlines, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
+  console.log("  - Attendance report auto-create: 1st of month at 00:05 IST → generates run + notifies managers");
+  console.log("  - Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)");
+  console.log("  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
   console.log("  - End-of-day absent sweep: daily at 23:59 IST");
 }

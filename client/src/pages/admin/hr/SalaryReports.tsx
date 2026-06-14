@@ -819,9 +819,13 @@ export function SalaryReportsContent() {
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showApprovalTable, setShowApprovalTable] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [showAttApprovalPanel, setShowAttApprovalPanel] = useState(false);
+  const [attOverrideManagerId, setAttOverrideManagerId] = useState<string | null>(null);
+  const [attOverrideNote, setAttOverrideNote] = useState("");
+  const [attOverrideDialogOpen, setAttOverrideDialogOpen] = useState(false);
 
   const canRegenerate = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
-  const isAdminLevel = user?.role && ["super_admin", "admin"].includes(user.role);
+  const isAdminLevel = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
 
   const currentYear = now.getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
@@ -834,6 +838,64 @@ export function SalaryReportsContent() {
 
   // Pending runs for the banner
   const pendingRuns = runs.filter(r => r.status === "pending_approval");
+
+  // Attendance approval status for the selected month/year
+  const { data: attStatus, refetch: refetchAttStatus } = useQuery<any>({
+    queryKey: ["/api/hr/attendance-report/status", selectedMonth, selectedYear],
+    queryFn: () => fetch(`/api/hr/attendance-report/status?month=${selectedMonth}&year=${selectedYear}`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  // Pending attendance edits (for HR review)
+  const { data: pendingEdits = [], refetch: refetchEdits } = useQuery<any[]>({
+    queryKey: ["/api/hr/attendance-report/edits/pending"],
+    enabled: showAttApprovalPanel,
+  });
+
+  const attRunMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hr/attendance-report/generate", {
+      month: parseInt(selectedMonth),
+      year: parseInt(selectedYear),
+    }),
+    onSuccess: async (res) => {
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "Error", description: err.error || "Failed to generate attendance report", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Attendance report run created", description: "Managers have been notified to approve their team's attendance." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const attOverrideMutation = useMutation({
+    mutationFn: ({ runId, managerId, note }: { runId: string; managerId: string | null; note: string }) =>
+      apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/override`, { managerId, overrideNote: note }),
+    onSuccess: async () => {
+      toast({ title: "Override applied" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchAttStatus();
+      setAttOverrideDialogOpen(false);
+      setAttOverrideNote("");
+      setAttOverrideManagerId(null);
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const editReviewMutation = useMutation({
+    mutationFn: ({ editId, action, rejectionNote }: { editId: string; action: string; rejectionNote?: string }) =>
+      apiRequest("PATCH", `/api/hr/attendance-report/edits/${editId}/review`, { action, rejectionNote }),
+    onSuccess: async () => {
+      toast({ title: "Edit reviewed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/edits/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchEdits();
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const { refetch: fetchPreview, isLoading: previewLoading, isFetching: previewFetching } = useQuery<SalaryReportResult>({
     queryKey: ["/api/hr/reports/salary/preview", { year: selectedYear, month: selectedMonth }],
@@ -853,7 +915,7 @@ export function SalaryReportsContent() {
     onSuccess: async (res) => {
       if (!res.ok) {
         const err = await res.json();
-        toast({ title: "Error", description: err.error, variant: "destructive" });
+        toast({ title: err.error || "Error", description: err.message || err.error, variant: "destructive" });
         return;
       }
       const run: SalaryRun = await res.json();
@@ -943,6 +1005,211 @@ export function SalaryReportsContent() {
         </div>
       )}
 
+      {/* Attendance Approval Gate Banner */}
+      {isAdminLevel && attStatus && (
+        <div
+          className={`flex flex-wrap items-start gap-3 p-4 rounded-lg border ${
+            attStatus.approved
+              ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700"
+              : attStatus.exists
+              ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"
+              : "bg-slate-50 dark:bg-slate-900/20 border-slate-300 dark:border-slate-700"
+          }`}
+          data-testid="banner-attendance-gate"
+        >
+          {attStatus.approved
+            ? <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+            : <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />}
+          <div className="flex-1 min-w-0">
+            <p className={`font-semibold ${attStatus.approved ? "text-green-800 dark:text-green-200" : "text-amber-800 dark:text-amber-200"}`}>
+              {attStatus.approved
+                ? `Attendance Approved — ${mLabel} ${selectedYear} ✓`
+                : attStatus.exists
+                ? `Attendance Approval Pending — ${mLabel} ${selectedYear}`
+                : `No Attendance Report Run — ${mLabel} ${selectedYear}`}
+            </p>
+            <p className={`text-sm mt-0.5 ${attStatus.approved ? "text-green-700 dark:text-green-300" : "text-amber-700 dark:text-amber-300"}`}>
+              {attStatus.approved
+                ? `Salary run generation is unlocked.${attStatus.overridden ? " (HR override applied)" : ""}`
+                : attStatus.exists
+                ? `${(attStatus.managerApprovals || []).filter((a: any) => a.status === "pending" || a.status === "edits_submitted").length} manager(s) pending. Salary run is gated until all managers approve.`
+                : "Generate an attendance report run first. Managers will have 24 hours to approve their team's data."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!attStatus.exists && (
+              <Button
+                size="sm"
+                onClick={() => attRunMutation.mutate()}
+                disabled={attRunMutation.isPending}
+                data-testid="button-generate-att-run"
+              >
+                {attRunMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                Generate Attendance Run
+              </Button>
+            )}
+            {attStatus.exists && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowAttApprovalPanel(!showAttApprovalPanel)}
+                data-testid="button-toggle-att-panel"
+              >
+                {showAttApprovalPanel ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                Manage Approvals
+              </Button>
+            )}
+            {attStatus.exists && !attStatus.approved && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50 dark:text-red-400"
+                onClick={() => { setAttOverrideManagerId(null); setAttOverrideDialogOpen(true); }}
+                data-testid="button-override-att-all"
+              >
+                <ShieldCheck className="h-4 w-4 mr-1" />
+                Override All & Approve
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Attendance HR Approval Panel */}
+      {showAttApprovalPanel && attStatus?.exists && (
+        <Card className="border-2 border-blue-200 dark:border-blue-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Attendance Approval Status — {mLabel} {selectedYear}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setShowAttApprovalPanel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Per-manager status */}
+            <div className="space-y-2">
+              {(attStatus.managerApprovals || []).map((mgr: any) => (
+                <div key={mgr.manager_id} className="flex items-center justify-between p-3 border rounded-lg" data-testid={`row-manager-approval-${mgr.manager_id}`}>
+                  <div>
+                    <p className="text-sm font-medium">{mgr.first_name} {mgr.last_name}</p>
+                    <p className="text-xs text-muted-foreground">{mgr.status}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {mgr.status === "approved" && <Badge className="bg-green-100 text-green-700">Approved</Badge>}
+                    {mgr.status === "edits_submitted" && <Badge className="bg-orange-100 text-orange-700">Edits Submitted</Badge>}
+                    {mgr.status === "overridden" && <Badge className="bg-blue-100 text-blue-700">Overridden</Badge>}
+                    {mgr.status === "pending" && <Badge variant="secondary">Pending</Badge>}
+                    {(mgr.status === "pending" || mgr.status === "edits_submitted") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => { setAttOverrideManagerId(mgr.manager_id); setAttOverrideDialogOpen(true); }}
+                        data-testid={`button-override-manager-${mgr.manager_id}`}
+                      >
+                        Override
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {(attStatus.managerApprovals || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No managers to approve for this period.</p>
+              )}
+            </div>
+
+            {/* Pending edits review */}
+            {pendingEdits.filter((e: any) => String(e.month) === selectedMonth && String(e.year) === selectedYear).length > 0 && (
+              <div>
+                <p className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Pending Correction Reviews
+                </p>
+                <div className="space-y-2">
+                  {pendingEdits
+                    .filter((e: any) => String(e.month) === selectedMonth && String(e.year) === selectedYear)
+                    .map((edit: any) => (
+                      <div key={edit.id} className="border rounded-lg p-3 text-sm" data-testid={`card-edit-${edit.id}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{edit.emp_first_name} {edit.emp_last_name} <span className="text-muted-foreground text-xs">({edit.emp_employee_id})</span></p>
+                            <p className="text-xs text-muted-foreground">By {edit.mgr_first_name} {edit.mgr_last_name}</p>
+                            <p className="text-xs mt-1">
+                              <span className="font-medium">{edit.field}</span>: {Number(edit.original_value).toFixed(1)} → {Number(edit.proposed_value).toFixed(1)}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5 italic">{edit.reason}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                              onClick={() => editReviewMutation.mutate({ editId: edit.id, action: "approve" })}
+                              disabled={editReviewMutation.isPending}
+                              data-testid={`button-approve-edit-${edit.id}`}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-red-300 text-red-700"
+                              onClick={() => editReviewMutation.mutate({ editId: edit.id, action: "reject", rejectionNote: "HR rejected" })}
+                              disabled={editReviewMutation.isPending}
+                              data-testid={`button-reject-edit-${edit.id}`}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Attendance Override Dialog */}
+      <Dialog open={attOverrideDialogOpen} onOpenChange={setAttOverrideDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {attOverrideManagerId ? "Override Manager Approval" : "Override All & Approve Attendance"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {attOverrideManagerId
+              ? "This will mark this manager's attendance as approved by HR and bypass their pending action."
+              : "This will mark the entire attendance report as approved by HR and unlock the salary run."}
+          </p>
+          <div className="mt-2">
+            <Label className="text-sm">Reason for Override *</Label>
+            <Textarea
+              className="mt-1 h-24"
+              placeholder="Explain why you are overriding the attendance approval…"
+              value={attOverrideNote}
+              onChange={e => setAttOverrideNote(e.target.value)}
+              data-testid="textarea-override-note"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAttOverrideDialogOpen(false); setAttOverrideNote(""); }}>Cancel</Button>
+            <Button
+              disabled={!attOverrideNote.trim() || attOverrideMutation.isPending}
+              onClick={() => attOverrideMutation.mutate({ runId: attStatus?.runId, managerId: attOverrideManagerId, note: attOverrideNote.trim() })}
+              data-testid="button-confirm-override"
+            >
+              {attOverrideMutation.isPending ? "Applying…" : "Confirm Override"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Approval table (shown when a run is selected) */}
       {showApprovalTable && selectedRun && (
         <Card className="border-2 border-amber-300 dark:border-amber-700">
@@ -1002,11 +1269,18 @@ export function SalaryReportsContent() {
               <Button
                 variant="default"
                 onClick={() => generateRunMutation.mutate()}
-                disabled={generateRunMutation.isPending}
+                disabled={generateRunMutation.isPending || !attStatus?.approved}
+                title={
+                  !attStatus?.exists
+                    ? "No attendance run exists for this month — generate one first from the Attendance Approvals panel"
+                    : !attStatus?.approved
+                    ? "Attendance approval is pending — salary run will unlock once all managers have approved"
+                    : "Generate salary run for this month"
+                }
                 data-testid="button-generate-run"
               >
                 {generateRunMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-                Generate for Approval
+                Generate Salary Run
               </Button>
             )}
             {canRegenerate && (

@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1954,3 +1954,89 @@ export type PolicySigningRequest = typeof policySigningRequests.$inferSelect;
 export type InsertPolicySigningRequest = z.infer<typeof insertPolicySigningRequestSchema>;
 export type PolicySignature = typeof policySignatures.$inferSelect;
 export type InsertPolicySignature = z.infer<typeof insertPolicySignatureSchema>;
+
+// ==========================================
+// Attendance Report Approval System
+// ==========================================
+
+export const attendanceReportRuns = pgTable("attendance_report_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  status: varchar("status").notNull().default("pending"),
+  deadlineAt: timestamp("deadline_at"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  overrideBy: varchar("override_by").references(() => adminUsers.id),
+  overrideNote: text("override_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAttendanceReportRunSchema = createInsertSchema(attendanceReportRuns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type AttendanceReportRunStatus = "pending" | "in_review" | "edits_pending_hr" | "approved" | "overridden" | "deadline_expired";
+export type AttendanceReportRun = typeof attendanceReportRuns.$inferSelect;
+export type InsertAttendanceReportRun = z.infer<typeof insertAttendanceReportRunSchema>;
+
+export const attendanceReportEntries = pgTable("attendance_report_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull().references(() => attendanceReportRuns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  origPresentDays: integer("orig_present_days").notNull().default(0),
+  origAbsentDays: integer("orig_absent_days").notNull().default(0),
+  origLopDays: integer("orig_lop_days").notNull().default(0),
+  origLeaveDays: integer("orig_leave_days").notNull().default(0),
+  origHolidayDays: integer("orig_holiday_days").notNull().default(0),
+  origTotalHours: real("orig_total_hours").notNull().default(0),
+  curPresentDays: integer("cur_present_days").notNull().default(0),
+  curAbsentDays: integer("cur_absent_days").notNull().default(0),
+  curLopDays: integer("cur_lop_days").notNull().default(0),
+  curLeaveDays: integer("cur_leave_days").notNull().default(0),
+  curHolidayDays: integer("cur_holiday_days").notNull().default(0),
+  curTotalHours: real("cur_total_hours").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAttendanceReportEntrySchema = createInsertSchema(attendanceReportEntries).omit({ id: true, createdAt: true });
+export type AttendanceReportEntry = typeof attendanceReportEntries.$inferSelect;
+export type InsertAttendanceReportEntry = z.infer<typeof insertAttendanceReportEntrySchema>;
+
+export const attendanceReportEdits = pgTable("attendance_report_edits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull().references(() => attendanceReportRuns.id, { onDelete: "cascade" }),
+  entryId: varchar("entry_id").notNull().references(() => attendanceReportEntries.id, { onDelete: "cascade" }),
+  managerId: varchar("manager_id").notNull().references(() => adminUsers.id),
+  field: varchar("field").notNull(),
+  originalValue: varchar("original_value"),
+  proposedValue: varchar("proposed_value"),
+  reason: text("reason"),
+  status: varchar("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionNote: text("rejection_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAttendanceReportEditSchema = createInsertSchema(attendanceReportEdits).omit({ id: true, createdAt: true });
+export type AttendanceReportEdit = typeof attendanceReportEdits.$inferSelect;
+export type InsertAttendanceReportEdit = z.infer<typeof insertAttendanceReportEditSchema>;
+
+export const attendanceReportManagerApprovals = pgTable("attendance_report_manager_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull().references(() => attendanceReportRuns.id, { onDelete: "cascade" }),
+  managerId: varchar("manager_id").notNull().references(() => adminUsers.id),
+  status: varchar("status").notNull().default("pending"),
+  approvedAt: timestamp("approved_at"),
+  overriddenAt: timestamp("overridden_at"),
+  overrideBy: varchar("override_by").references(() => adminUsers.id),
+  overrideNote: text("override_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAttendanceReportManagerApprovalSchema = createInsertSchema(attendanceReportManagerApprovals).omit({ id: true, createdAt: true });
+export type AttendanceReportManagerApproval = typeof attendanceReportManagerApprovals.$inferSelect;
+export type InsertAttendanceReportManagerApproval = z.infer<typeof insertAttendanceReportManagerApprovalSchema>;

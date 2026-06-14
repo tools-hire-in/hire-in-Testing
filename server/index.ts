@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
+import { checkAndAutoCreateRun } from "./attendanceReport";
 import { db, runMigrations } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
@@ -1334,6 +1335,92 @@ async function backfillHolidayAttendance() {
   } catch (err) {
     console.error("Policy signing table migration error:", err);
   }
+
+  // ── Attendance Report Approval tables ─────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_report_runs (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        month INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        status VARCHAR NOT NULL DEFAULT 'pending',
+        deadline_at TIMESTAMP NOT NULL,
+        locked_at TIMESTAMP,
+        override_by VARCHAR REFERENCES admin_users(id),
+        override_note TEXT,
+        created_by VARCHAR REFERENCES admin_users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (month, year)
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_report_entries (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id VARCHAR NOT NULL REFERENCES attendance_report_runs(id) ON DELETE CASCADE,
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        manager_id VARCHAR REFERENCES admin_users(id),
+        orig_present_days NUMERIC NOT NULL DEFAULT 0,
+        orig_absent_days NUMERIC NOT NULL DEFAULT 0,
+        orig_lop_days NUMERIC NOT NULL DEFAULT 0,
+        orig_leave_days NUMERIC NOT NULL DEFAULT 0,
+        orig_holiday_days NUMERIC NOT NULL DEFAULT 0,
+        orig_total_hours NUMERIC NOT NULL DEFAULT 0,
+        cur_present_days NUMERIC NOT NULL DEFAULT 0,
+        cur_absent_days NUMERIC NOT NULL DEFAULT 0,
+        cur_lop_days NUMERIC NOT NULL DEFAULT 0,
+        cur_leave_days NUMERIC NOT NULL DEFAULT 0,
+        cur_holiday_days NUMERIC NOT NULL DEFAULT 0,
+        cur_total_hours NUMERIC NOT NULL DEFAULT 0,
+        manager_approved_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_entries_run ON attendance_report_entries(run_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_entries_manager ON attendance_report_entries(manager_id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_report_edits (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id VARCHAR NOT NULL REFERENCES attendance_report_runs(id) ON DELETE CASCADE,
+        entry_id VARCHAR NOT NULL REFERENCES attendance_report_entries(id) ON DELETE CASCADE,
+        manager_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        field VARCHAR NOT NULL,
+        original_value NUMERIC NOT NULL,
+        proposed_value NUMERIC NOT NULL,
+        reason TEXT NOT NULL,
+        status VARCHAR NOT NULL DEFAULT 'pending',
+        reviewed_by VARCHAR REFERENCES admin_users(id),
+        reviewed_at TIMESTAMP,
+        rejection_note TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_edits_run ON attendance_report_edits(run_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_edits_status ON attendance_report_edits(status)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_report_manager_approvals (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id VARCHAR NOT NULL REFERENCES attendance_report_runs(id) ON DELETE CASCADE,
+        manager_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        status VARCHAR NOT NULL DEFAULT 'pending',
+        approved_at TIMESTAMP,
+        overridden_at TIMESTAMP,
+        override_by VARCHAR REFERENCES admin_users(id),
+        override_note TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (run_id, manager_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_mgr_approvals_run ON attendance_report_manager_approvals(run_id)`);
+    log("Attendance report approval tables ensured");
+  } catch (err) {
+    console.error("Attendance report approval table migration error:", err);
+  }
+
+  // Auto-create attendance report run for current month on server start if none exists
+  checkAndAutoCreateRun().catch(err =>
+    console.error("[index] Attendance auto-create on startup failed:", err)
+  );
 
   await registerRoutes(httpServer, app);
 

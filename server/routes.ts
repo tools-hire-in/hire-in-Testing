@@ -35,6 +35,7 @@ import { registerPerformanceRoutes } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
+import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -4969,6 +4970,20 @@ export async function registerRoutes(
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || (new Date().getMonth() + 1);
 
+      // Gate: attendance approval must be complete (approved or overridden) before salary run
+      const [attRun] = (await db.execute(sql`
+        SELECT id, status FROM attendance_report_runs
+        WHERE month = ${month} AND year = ${year}
+        LIMIT 1
+      `)) as any[];
+      if (!attRun || (attRun.status !== "approved" && attRun.status !== "overridden")) {
+        return res.status(409).json({
+          error: "Attendance approval incomplete",
+          message: "All managers must approve the attendance report before a salary run can be generated. Go to Salary Reports → Attendance Approvals to trigger or override.",
+          attendanceStatus: attRun?.status || "not_created",
+        });
+      }
+
       const report = await generateMonthlySalaryReport(year, month);
 
       const existing = await db.select({ id: salaryReportRuns.id, status: salaryReportRuns.status })
@@ -9719,6 +9734,7 @@ export async function registerRoutes(
   registerContractRoutes(app);
   registerPraiseRoutes(app);
   registerPolicySigningRoutes(app);
+  registerAttendanceReportRoutes(app);
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);
