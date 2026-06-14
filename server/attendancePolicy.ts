@@ -200,32 +200,16 @@ export function canSubmitRegularization(requestDate: string, today: string, wind
 
 /**
  * Checks whether the acting role can take action on a regularization request.
+ * Under the new run-lock model managers may act any time during the month
+ * (until the attendance run is locked); HR/admin/super_admin always allowed.
  *
- * Semantics:
- * - HR / admin / super_admin: always allowed.
- * - Manager: allowed only when the **request's attendance date** is in the current month
- *   AND the attendance date's day-of-month is on or before the cutoff day.
- *   Once the attendance date's day exceeds the cutoff (e.g., date is the 25th and
- *   cutoff is the 20th) the request is considered payroll-sensitive and must be
- *   escalated to HR.
+ * @deprecated The monthly-run-lock mechanism supersedes the old day-of-month
+ * cutoff. This function is retained only for reference; do not add new callers.
  */
 export function canActOnRegularization(
   actorRole: string,
-  requestDate: string,
-  cutoffDay: number,
 ): boolean {
-  if (["hr", "admin", "super_admin"].includes(actorRole)) return true;
-  if (actorRole === "manager") {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const [rYear, rMonth, rDay] = requestDate.split("-").map(Number);
-    // Must be the current calendar month
-    if (rYear !== year || rMonth !== month) return false;
-    // The request's attendance date must be on/before the cutoff day
-    return rDay <= cutoffDay;
-  }
-  return false;
+  return ["hr", "admin", "super_admin", "manager"].includes(actorRole);
 }
 
 /**
@@ -279,4 +263,58 @@ export async function queryGraceUsage(
     shift:      r.shift_label ?? "—",
     lateCount:  r.late_count,
   }));
+}
+
+/**
+ * Check if an attendance date is within the strict 24-hour filing window.
+ *
+ * Two rules must BOTH pass:
+ *  1. Current time ≤ end-of-attendanceDate (23:59:59 IST) + 24 hours
+ *  2. Employee has not yet punched in on any date AFTER attendanceDate
+ *     (once you start a new working day the prior day is locked)
+ *
+ * Returns { allowed: true } when filing is permitted.
+ * Returns { allowed: false, reason: "24_hours_exceeded" | "next_punch_in_exists" } otherwise.
+ */
+export async function isWithinFilingWindow(
+  employeeId: string,
+  attendanceDate: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  // Window end = end-of-attendance-day in IST (23:59:59 IST) + 24 h.
+  // Explicitly specify the IST offset (+05:30) so Date parsing is locale-independent.
+  // "2024-06-10T23:59:59+05:30" → the JS Date constructor always interprets
+  // the offset literally and produces a correct UTC epoch regardless of server TZ.
+  const dayEndIST = new Date(`${attendanceDate}T23:59:59+05:30`);
+  const windowEndMs = dayEndIST.getTime() + 24 * 60 * 60 * 1000;
+
+  if (Date.now() > windowEndMs) {
+    return { allowed: false, reason: "24_hours_exceeded" };
+  }
+
+  // Next-punch-in rule: any attendance record with a punchIn AFTER attendanceDate locks the prior day
+  const rows = await db.execute(sql`
+    SELECT id FROM attendance
+    WHERE user_id = ${employeeId}
+      AND date > ${attendanceDate}
+      AND punch_in IS NOT NULL
+    LIMIT 1
+  `);
+
+  if ((rows.rows as any[]).length > 0) {
+    return { allowed: false, reason: "next_punch_in_exists" };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Check whether an attendance date falls in the month-end blackout period.
+ * The blackout covers the last `blackoutDays` calendar days of the month.
+ * e.g. blackoutDays=3 with a 30-day month → days 28, 29, 30 are blacked out.
+ */
+export function isBlackoutDate(attendanceDate: string, blackoutDays: number): boolean {
+  if (blackoutDays <= 0) return false;
+  const [year, month, day] = attendanceDate.split("-").map(Number);
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  return day > lastDayOfMonth - blackoutDays;
 }

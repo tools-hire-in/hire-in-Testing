@@ -15,6 +15,7 @@ import {
   X,
   Check,
   Info,
+  Lock,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,9 +82,8 @@ interface RegularizationRequest {
 }
 
 interface PolicyConfig {
-  employeeWindowDays: number;
-  managerCutoffDay: number;
   policyVersion: string;
+  monthEndBlackoutDays: number;
 }
 
 const TARGET_HOURS = 8;
@@ -158,41 +158,68 @@ function getWorkingDaysBack(date: string, today: string, holidaySet: Set<string>
   return wd;
 }
 
+const MIN_REASON_CHARS = 20;
+
+const WINDOW_CLOSED_MESSAGES: Record<string, string> = {
+  month_end_blackout: "This date falls in the month-end payroll lock period. Self-service filing is closed. Please contact HR directly.",
+  next_punch_in_exists: "Your filing window has closed — you have already punched in for a subsequent day, which locks the prior record.",
+  "24_hours_exceeded": "The 24-hour filing window for this date has expired. Please contact HR for assistance.",
+  month_attendance_run_locked: "The attendance report for this month has been approved and locked. Self-service filing is no longer available. Please contact HR to request a correction directly.",
+};
+
 function ReportIssueModal({
   date,
   onClose,
-  windowDays,
 }: {
   date: string;
   onClose: () => void;
-  windowDays: number;
 }) {
   const { toast } = useToast();
   const [requestType, setRequestType] = useState("");
   const [requestedPunchIn, setRequestedPunchIn] = useState("");
   const [requestedPunchOut, setRequestedPunchOut] = useState("");
   const [reason, setReason] = useState("");
+  const [windowClosedMsg, setWindowClosedMsg] = useState<string | null>(null);
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/hr/attendance/regularization", {
-        attendanceDate: date,
-        requestType,
-        requestedPunchIn: requestedPunchIn || undefined,
-        requestedPunchOut: requestedPunchOut || undefined,
-        reason,
-      }),
+    mutationFn: async () => {
+      const res = await fetch("/api/hr/attendance/regularization", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attendanceDate: date,
+          requestType,
+          requestedPunchIn: requestedPunchIn || undefined,
+          requestedPunchOut: requestedPunchOut || undefined,
+          reason,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409 && body.code === "REGULARIZATION_WINDOW_CLOSED") {
+          const friendly = WINDOW_CLOSED_MESSAGES[body.reason] ?? body.message ?? "The filing window for this date is closed.";
+          setWindowClosedMsg(friendly);
+          throw new Error("WINDOW_CLOSED");
+        }
+        throw new Error(body.error || "Failed to submit");
+      }
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/my"] });
       toast({ title: "Request Submitted", description: "Your regularization request has been submitted." });
       onClose();
     },
     onError: (err: any) => {
+      if (err.message === "WINDOW_CLOSED") return; // already handled inline
       toast({ title: "Error", description: err.message || "Failed to submit", variant: "destructive" });
     },
   });
 
   const needsPunchFields = ["missed_punch_in", "missed_punch_out", "correction"].includes(requestType);
+  const reasonLen = reason.trim().length;
+  const reasonValid = reasonLen >= MIN_REASON_CHARS;
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -205,6 +232,17 @@ function ReportIssueModal({
             <Label>Date</Label>
             <p className="text-sm font-medium text-foreground">{date}</p>
           </div>
+
+          {windowClosedMsg ? (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800" data-testid="alert-window-closed">
+              <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-800 dark:text-red-300">Filing Window Closed</p>
+                <p className="text-xs text-red-700 dark:text-red-400 mt-1">{windowClosedMsg}</p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <Label>Issue Type</Label>
             <Select value={requestType} onValueChange={setRequestType}>
@@ -241,19 +279,30 @@ function ReportIssueModal({
               </div>
             </div>
           )}
-          <div className="space-y-2">
-            <Label>Reason</Label>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label>Reason</Label>
+              <span className={`text-xs font-mono ${reasonValid ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`} data-testid="text-reason-char-count">
+                {reasonLen}/{MIN_REASON_CHARS} min
+              </span>
+            </div>
             <Textarea
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Explain what happened..."
+              onChange={(e) => { setReason(e.target.value); setWindowClosedMsg(null); }}
+              placeholder="Explain what happened (minimum 20 characters)..."
               data-testid="input-reg-reason"
+              className={!reasonValid && reasonLen > 0 ? "border-amber-400 focus-visible:ring-amber-400" : ""}
             />
+            {!reasonValid && reasonLen > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {MIN_REASON_CHARS - reasonLen} more character{MIN_REASON_CHARS - reasonLen === 1 ? "" : "s"} needed
+              </p>
+            )}
           </div>
           <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
             <span>
-              Requests must be submitted within <strong>{windowDays} working days</strong> of the incident. You have until {windowDays} working days after {date}.
+              Requests must be filed within <strong>24 hours</strong> of end-of-day and before your next punch-in.
             </span>
           </div>
         </div>
@@ -261,7 +310,7 @@ function ReportIssueModal({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={!requestType || !reason || submitMutation.isPending}
+            disabled={!requestType || !reasonValid || submitMutation.isPending}
             data-testid="button-submit-regularization"
           >
             {submitMutation.isPending ? "Submitting..." : "Submit Request"}
@@ -275,11 +324,6 @@ function ReportIssueModal({
 function MyRegularizationsSection() {
   const { data: requests, isLoading } = useQuery<RegularizationRequest[]>({
     queryKey: ["/api/hr/attendance/regularization/my"],
-    queryFn: async () => {
-      const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
   });
 
   if (isLoading) {
@@ -302,6 +346,7 @@ function MyRegularizationsSection() {
           <tr className="border-b bg-muted/30">
             <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Date</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Type</th>
+            <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Reason</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Reviewer Note</th>
           </tr>
@@ -311,16 +356,19 @@ function MyRegularizationsSection() {
             const cfg = REG_STATUS_STYLE[r.status] || { label: r.status, cls: "" };
             return (
               <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
-                <td className="py-2.5 px-4 font-mono">{r.attendanceDate}</td>
-                <td className="py-2.5 px-4">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
+                <td className="py-2.5 px-4 font-mono whitespace-nowrap">{r.attendanceDate}</td>
+                <td className="py-2.5 px-4 whitespace-nowrap">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
+                <td className="py-2.5 px-4 text-muted-foreground max-w-[180px]">
+                  <span className="text-xs">{r.reason}</span>
+                </td>
                 <td className="py-2.5 px-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${cfg.cls}`}>
                     {cfg.label}
                   </span>
                 </td>
-                <td className="py-2.5 px-4 text-muted-foreground">
+                <td className="py-2.5 px-4 text-muted-foreground text-xs">
                   {r.reviewerComment || "—"}
-                  {r.reviewerName && <span className="text-xs ml-1">({r.reviewerName})</span>}
+                  {r.reviewerName && <span className="ml-1 text-xs opacity-70">({r.reviewerName})</span>}
                 </td>
               </tr>
             );
@@ -469,11 +517,6 @@ export default function Attendance() {
 
   const { data: myRegularizations } = useQuery<RegularizationRequest[]>({
     queryKey: ["/api/hr/attendance/regularization/my"],
-    queryFn: async () => {
-      const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
     enabled: isAuthenticated,
   });
 
@@ -486,12 +529,6 @@ export default function Attendance() {
     enabled: isAuthenticated,
   });
 
-  // Fetch server-computed submission window so frontend doesn't duplicate holiday/working-day logic
-  const { data: submissionWindow } = useQuery<{ windowStart: string; windowEnd: string }>({
-    queryKey: ["/api/hr/attendance/regularization/window"],
-    enabled: isAuthenticated,
-    staleTime: 10 * 60 * 1000,
-  });
 
   useEffect(() => {
     if (stats?.punchInTime && stats.todayStatus === "punched_in") {
@@ -552,8 +589,42 @@ export default function Attendance() {
   const progressPct = Math.min(100, (liveMs / (TARGET_HOURS * 3600000)) * 100);
   const todayDate = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  const windowDays = policyConfig?.employeeWindowDays ?? 7;
+  const blackoutDays = policyConfig?.monthEndBlackoutDays ?? 3;
   const recentRecords = [...(records || [])].sort((a, b) => b.date.localeCompare(a.date));
+
+  // Per-date blackout check: mirrors backend isBlackoutDate().
+  // A date is blacked out if it falls in the last N calendar days of ITS OWN month,
+  // regardless of what today's date is.
+  // (distinct from the global banner which checks if TODAY is in the current month's blackout window)
+  const isBlackoutDate = (dateStr: string): boolean => {
+    if (blackoutDays <= 0) return false;
+    const d = new Date(dateStr + "T12:00:00");
+    const lastDayOfDateMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return d.getDate() > lastDayOfDateMonth - blackoutDays;
+  };
+
+  // Global banner: true when TODAY is in the current month's blackout window
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const isBlackoutNow = now.getDate() > lastDayOfMonth - blackoutDays;
+
+  // Build a map of dates → whether the next-day has a punch-in (locks that date)
+  const laterPunchedInDates = new Set<string>();
+  const sortedRecords = [...(records || [])].sort((a, b) => a.date.localeCompare(b.date));
+  for (let i = 0; i < sortedRecords.length; i++) {
+    if (sortedRecords[i].punchIn) {
+      // All earlier dates in the same records list are locked by this punch-in
+      for (let j = 0; j < i; j++) {
+        laterPunchedInDates.add(sortedRecords[j].date);
+      }
+    }
+  }
+
+  // Per-date filing window check — mirrors server rules client-side for UX hints
+  // Uses IST end-of-day (UTC+5:30) to match server-side isWithinFilingWindow
+  const isWithin24h = (dateStr: string) => {
+    const dayEndIST = new Date(`${dateStr}T23:59:59+05:30`);
+    return (now.getTime() - dayEndIST.getTime()) < 24 * 60 * 60 * 1000;
+  };
 
   // Build a set of dates with pending regularization requests
   const pendingDates = new Set(
@@ -758,7 +829,8 @@ export default function Attendance() {
                   <div className="px-5 py-3.5 border-b">
                     <h3 className="text-sm font-semibold">Recent Records</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Click "Report Issue" on any row within {windowDays} working days to request a correction.
+                      You have 24 hours from each attendance date to raise a correction. The lock icon indicates a closed filing window.
+                      {isBlackoutNow && <span className="ml-1 text-amber-600 dark:text-amber-400 font-medium">Month-end payroll lock is active — self-service filing is suspended.</span>}
                     </p>
                   </div>
                   <div className="overflow-x-auto">
@@ -785,9 +857,12 @@ export default function Attendance() {
                           const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
                           const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                           const isToday = r.date === todayStr;
-                          const canReport = submissionWindow
-                            ? r.date >= submissionWindow.windowStart && r.date <= submissionWindow.windowEnd && r.status !== "weekend" && r.status !== "holiday"
-                            : false;
+                          const isEligibleType = r.status !== "weekend" && r.status !== "holiday";
+                          const within24h = isWithin24h(r.date);
+                          const lockedByNextPunchIn = laterPunchedInDates.has(r.date);
+                          const isBlackoutForRow = isBlackoutDate(r.date);
+                          const windowOpen = isEligibleType && within24h && !lockedByNextPunchIn && !isBlackoutForRow;
+                          const windowClosed = isEligibleType && (!within24h || lockedByNextPunchIn || isBlackoutForRow);
                           const hasPending = pendingDates.has(r.date);
                           return (
                             <tr
@@ -813,7 +888,7 @@ export default function Attendance() {
                                     <AlertCircle className="h-3.5 w-3.5" />
                                     Pending
                                   </span>
-                                ) : canReport ? (
+                                ) : windowOpen ? (
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -824,6 +899,15 @@ export default function Attendance() {
                                     <AlertCircle className="h-3.5 w-3.5 mr-1" />
                                     Report Issue
                                   </Button>
+                                ) : windowClosed ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                                    title="Filing window closed — contact HR for corrections"
+                                    data-testid={`lock-${r.date}`}
+                                  >
+                                    <Lock className="h-3.5 w-3.5" />
+                                    Window closed
+                                  </span>
                                 ) : null}
                               </td>
                             </tr>
@@ -864,7 +948,6 @@ export default function Attendance() {
       {reportIssueDate && (
         <ReportIssueModal
           date={reportIssueDate}
-          windowDays={windowDays}
           onClose={() => setReportIssueDate(null)}
         />
       )}

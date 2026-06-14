@@ -18,6 +18,8 @@ import {
   X,
   Layers,
   Loader2,
+  ListChecks,
+  CalendarClock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -50,9 +53,8 @@ interface RegularizationRequest {
 }
 
 interface PolicyConfig {
-  employeeWindowDays: number;
-  managerCutoffDay: number;
   policyVersion: string;
+  monthEndBlackoutDays: number;
 }
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
@@ -629,45 +631,39 @@ function OverrideModal({ onClose }: { onClose: () => void }) {
 function PolicySettingsCard() {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
-  const [windowDays, setWindowDays] = useState("7");
-  const [cutoffDay, setCutoffDay] = useState("20");
-  const [policyVersion, setPolicyVersion] = useState("1");
+  const [policyVersion, setPolicyVersion] = useState("2");
+  const [blackoutDays, setBlackoutDays] = useState("3");
 
   const { data: config, isLoading } = useQuery<PolicyConfig>({
     queryKey: ["/api/hr/attendance/regularization/policy"],
-    onSuccess: (d) => {
-      setWindowDays(String(d.employeeWindowDays));
-      setCutoffDay(String(d.managerCutoffDay));
+    onSuccess: (d: PolicyConfig) => {
       setPolicyVersion(d.policyVersion);
+      setBlackoutDays(String(d.monthEndBlackoutDays ?? 3));
     },
   } as any);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Auto-bump policy version when window days or cutoff day changes,
+      // Auto-bump policy version when blackout days change,
       // ensuring all employees are prompted to re-acknowledge the updated policy.
       let effectiveVersion = policyVersion;
-      const origWindowDays = String(config?.employeeWindowDays ?? 7);
-      const origCutoffDay = String(config?.managerCutoffDay ?? 20);
-      const policyChanged = windowDays !== origWindowDays || cutoffDay !== origCutoffDay;
-      if (policyChanged && effectiveVersion === String(config?.policyVersion ?? "1")) {
-        // Increment numeric version; if non-numeric, append ".1"
+      const origBlackout = String(config?.monthEndBlackoutDays ?? 3);
+      const policyChanged = blackoutDays !== origBlackout;
+      if (policyChanged && effectiveVersion === String(config?.policyVersion ?? "2")) {
         const num = parseInt(effectiveVersion, 10);
         effectiveVersion = isNaN(num) ? `${effectiveVersion}.1` : String(num + 1);
       }
-      await apiRequest("PUT", "/api/system-settings/regularization_employee_window_days", { value: windowDays });
-      await apiRequest("PUT", "/api/system-settings/regularization_manager_cutoff_day", { value: cutoffDay });
       await apiRequest("PUT", "/api/system-settings/regularization_policy_version", { value: effectiveVersion });
+      await apiRequest("PUT", "/api/system-settings/regularization_month_end_blackout_days", { value: blackoutDays });
       return effectiveVersion;
     },
     onSuccess: (effectiveVersion) => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/policy"] });
-      const origWindowDays = String(config?.employeeWindowDays ?? 7);
-      const origCutoffDay = String(config?.managerCutoffDay ?? 20);
-      const policyChanged = windowDays !== origWindowDays || cutoffDay !== origCutoffDay;
+      const origBlackout = String(config?.monthEndBlackoutDays ?? 3);
+      const changed = blackoutDays !== origBlackout;
       toast({
         title: "Policy settings saved",
-        description: policyChanged
+        description: changed
           ? `Policy version updated to v${effectiveVersion}. All employees will be prompted to re-acknowledge.`
           : "Settings saved.",
       });
@@ -697,30 +693,18 @@ function PolicySettingsCard() {
           <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>
         ) : editing ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Employee Window (working days)</Label>
+                <Label>Month-End Blackout Days</Label>
                 <Input
                   type="number"
-                  min={1}
-                  max={30}
-                  value={windowDays}
-                  onChange={(e) => setWindowDays(e.target.value)}
-                  data-testid="input-window-days"
+                  min={0}
+                  max={10}
+                  value={blackoutDays}
+                  onChange={(e) => setBlackoutDays(e.target.value)}
+                  data-testid="input-blackout-days"
                 />
-                <p className="text-xs text-muted-foreground">Days from incident to raise request</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Manager Cutoff Day</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={28}
-                  value={cutoffDay}
-                  onChange={(e) => setCutoffDay(e.target.value)}
-                  data-testid="input-cutoff-day"
-                />
-                <p className="text-xs text-muted-foreground">Day of month after which HR handles it</p>
+                <p className="text-xs text-muted-foreground">Last N days of month when self-filing is suspended</p>
               </div>
               <div className="space-y-2">
                 <Label>Policy Version</Label>
@@ -729,7 +713,7 @@ function PolicySettingsCard() {
                   onChange={(e) => setPolicyVersion(e.target.value)}
                   data-testid="input-policy-version"
                 />
-                <p className="text-xs text-muted-foreground">Increment to re-prompt all employees</p>
+                <p className="text-xs text-muted-foreground">Increment to re-prompt all employees to re-acknowledge</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -740,23 +724,153 @@ function PolicySettingsCard() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="p-3 rounded-lg bg-muted/40 text-center">
-              <p className="text-2xl font-bold font-mono">{config?.employeeWindowDays ?? 7}</p>
-              <p className="text-xs text-muted-foreground mt-1">Working days window</p>
+              <p className="text-2xl font-bold font-mono">{config?.monthEndBlackoutDays ?? 3}</p>
+              <p className="text-xs text-muted-foreground mt-1">Month-end blackout days</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/40 text-center">
-              <p className="text-2xl font-bold font-mono">{config?.managerCutoffDay ?? 20}</p>
-              <p className="text-xs text-muted-foreground mt-1">Manager cutoff day</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/40 text-center">
-              <p className="text-2xl font-bold font-mono">v{config?.policyVersion ?? "1"}</p>
+              <p className="text-2xl font-bold font-mono">v{config?.policyVersion ?? "2"}</p>
               <p className="text-xs text-muted-foreground mt-1">Policy version</p>
             </div>
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function AcknowledgementsSection() {
+  const { data: acks, isLoading } = useQuery<PolicyAck[]>({
+    queryKey: ["/api/hr/policy-acknowledgements"],
+  });
+
+  if (isLoading) return <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>;
+
+  const all = acks ?? [];
+  const acceptedCount = all.filter(a => a.acknowledged).length;
+  const pendingCount = all.length - acceptedCount;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3 text-sm">
+        <span className="flex items-center gap-1.5 text-green-700 dark:text-green-400 font-medium">
+          <CheckCircle2 className="h-4 w-4" /> {acceptedCount} accepted
+        </span>
+        <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium">
+          <Clock className="h-4 w-4" /> {pendingCount} pending
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Employee</th>
+              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Email</th>
+              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Status</th>
+              <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Accepted At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {all.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="text-center py-8 text-muted-foreground">No users found</td>
+              </tr>
+            ) : all.map(a => (
+              <tr key={a.userId} className="border-b last:border-0 hover:bg-muted/20" data-testid={`ack-row-${a.userId}`}>
+                <td className="py-2.5 px-4 font-medium">{a.userName}</td>
+                <td className="py-2.5 px-4 text-muted-foreground text-xs">{a.userEmail}</td>
+                <td className="py-2.5 px-4">
+                  {a.acknowledged ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Accepted v{a.acknowledgedVersion}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                      <Clock className="h-3.5 w-3.5" /> Pending
+                    </span>
+                  )}
+                </td>
+                <td className="py-2.5 px-4 text-muted-foreground text-xs">
+                  {a.acceptedAt
+                    ? new Date(a.acceptedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BulkApproveDialog({
+  selectedIds,
+  onClose,
+  onSuccess,
+}: {
+  selectedIds: string[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [comment, setComment] = useState("");
+
+  const bulkMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/hr/attendance/regularization/bulk-approve", {
+        ids: selectedIds,
+        reviewerComment: comment,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/all"] });
+      toast({ title: "Bulk Approved", description: `${selectedIds.length} request(s) approved successfully.` });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: any) => {
+      toast({ title: "Bulk Approve Failed", description: err.message || "Failed to approve", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent data-testid="dialog-bulk-approve">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ListChecks className="h-4 w-4" />
+            Bulk Approve Requests
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="p-3 rounded-lg bg-muted/40">
+            <p className="font-medium">{selectedIds.length} request{selectedIds.length === 1 ? "" : "s"} selected for approval</p>
+            <p className="text-xs text-muted-foreground mt-1">Each employee will receive an email notification upon approval.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Reviewer Comment <span className="text-destructive">*</span></Label>
+            <Textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Provide a brief comment for all selected approvals..."
+              data-testid="input-bulk-approve-comment"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => bulkMutation.mutate()}
+            disabled={!comment.trim() || bulkMutation.isPending}
+            data-testid="button-confirm-bulk-approve"
+          >
+            {bulkMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+            Approve {selectedIds.length} Request{selectedIds.length === 1 ? "" : "s"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -770,16 +884,22 @@ export default function RegularizationsPanel() {
   const [reviewRequest, setReviewRequest] = useState<RegularizationRequest | null>(null);
   const [showOverride, setShowOverride] = useState(false);
   const [showBulkOverride, setShowBulkOverride] = useState(false);
-  const [activeSection, setActiveSection] = useState<"requests" | "settings">("requests");
+  const [showBulkApprove, setShowBulkApprove] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeSection, setActiveSection] = useState<"requests" | "acks" | "settings">("requests");
   const [auditDetailId, setAuditDetailId] = useState<string | null>(null);
 
   const canBulkOverride = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
+
+  const today = new Date();
+  const todayDay = today.getDate();
+  const isMonthEnd = todayDay >= 25;
 
   const { data: requests, isLoading, refetch } = useQuery<RegularizationRequest[]>({
     queryKey: ["/api/hr/attendance/regularization/all"],
     queryFn: async () => {
       const res = await fetch("/api/hr/attendance/regularization", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
+      if (!res.ok) throw new Error("Failed to fetch regularization requests");
       return res.json();
     },
   });
@@ -796,6 +916,24 @@ export default function RegularizationsPanel() {
   });
 
   const pendingCount = (requests || []).filter(r => r.status === "pending").length;
+  const pendingFilteredIds = filtered.filter(r => r.status === "pending").map(r => r.id);
+  const allPendingSelected = pendingFilteredIds.length > 0 && pendingFilteredIds.every(id => selectedIds.has(id));
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allPendingSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingFilteredIds));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -809,6 +947,12 @@ export default function RegularizationsPanel() {
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Refresh
           </Button>
+          {selectedIds.size > 0 && (
+            <Button size="sm" onClick={() => setShowBulkApprove(true)} data-testid="button-bulk-approve">
+              <ListChecks className="h-3.5 w-3.5 mr-1.5" />
+              Approve Selected ({selectedIds.size})
+            </Button>
+          )}
           <Button size="sm" onClick={() => setShowOverride(true)} data-testid="button-direct-override">
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
             Direct Override
@@ -851,6 +995,17 @@ export default function RegularizationsPanel() {
       {/* Requests section */}
       {activeSection === "requests" && (
         <div className="space-y-4">
+          {isMonthEnd && pendingCount > 0 && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800" data-testid="banner-month-end-urgency">
+              <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Month-End Reminder</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  Today is the {todayDay}th — payroll processing is approaching. There {pendingCount === 1 ? "is" : "are"} <strong>{pendingCount} pending</strong> regularization request{pendingCount === 1 ? "" : "s"} that need review before the salary run. Use bulk approve below to process them quickly.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[180px] max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -914,6 +1069,14 @@ export default function RegularizationsPanel() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/30">
+                        <th className="py-2.5 px-3 w-8">
+                          <Checkbox
+                            checked={allPendingSelected}
+                            onCheckedChange={toggleSelectAll}
+                            disabled={pendingFilteredIds.length === 0}
+                            data-testid="checkbox-select-all"
+                          />
+                        </th>
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Employee</th>
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Date</th>
                         <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground">Type</th>
@@ -926,24 +1089,36 @@ export default function RegularizationsPanel() {
                       {filtered.map(r => {
                         const cfg = STATUS_CFG[r.status] || { label: r.status, cls: "", icon: AlertCircle };
                         const StatusIcon = cfg.icon;
+                        const isPending = r.status === "pending";
                         return (
                           <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
+                            <td className="py-3 px-3">
+                              {isPending ? (
+                                <Checkbox
+                                  checked={selectedIds.has(r.id)}
+                                  onCheckedChange={() => toggleSelect(r.id)}
+                                  data-testid={`checkbox-select-${r.id}`}
+                                />
+                              ) : null}
+                            </td>
                             <td className="py-3 px-4">
                               <p className="font-medium">{r.employeeName}</p>
                               {r.employeeCode && <p className="text-xs text-muted-foreground">{r.employeeCode}</p>}
                             </td>
-                            <td className="py-3 px-4 font-mono">{r.attendanceDate}</td>
-                            <td className="py-3 px-4">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
-                            <td className="py-3 px-4 max-w-[200px] truncate text-muted-foreground" title={r.reason}>{r.reason}</td>
+                            <td className="py-3 px-4 font-mono whitespace-nowrap">{r.attendanceDate}</td>
+                            <td className="py-3 px-4 whitespace-nowrap">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
+                            <td className="py-3 px-4 text-muted-foreground max-w-[220px]">
+                              <p className="text-xs leading-relaxed">{r.reason}</p>
+                            </td>
                             <td className="py-3 px-4">
-                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${cfg.cls}`}>
                                 <StatusIcon className="h-3 w-3" />
                                 {cfg.label}
                               </span>
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
-                                {r.status === "pending" ? (
+                                {isPending ? (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -987,6 +1162,13 @@ export default function RegularizationsPanel() {
       {reviewRequest && <ReviewModal request={reviewRequest} onClose={() => setReviewRequest(null)} />}
       {showOverride && <OverrideModal onClose={() => setShowOverride(false)} />}
       {showBulkOverride && <BulkOverrideModal onClose={() => setShowBulkOverride(false)} />}
+      {showBulkApprove && (
+        <BulkApproveDialog
+          selectedIds={Array.from(selectedIds)}
+          onClose={() => setShowBulkApprove(false)}
+          onSuccess={() => setSelectedIds(new Set())}
+        />
+      )}
       {auditDetailId && <AuditDetailDialog requestId={auditDetailId} onClose={() => setAuditDetailId(null)} />}
     </div>
   );

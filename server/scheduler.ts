@@ -625,6 +625,83 @@ export function startScheduler() {
   // Belt-and-suspenders: also check on the 1st at 08:00 IST (kept for timezone correctness)
   cron.schedule("0 8 1 * *", processExpiredDeadlines, { timezone: "Asia/Kolkata" });
 
+  // ─── 25th-of-month: Manager Regularization Digest ───────────────────────────
+  // Sends each manager a list of their pending regularization requests so they
+  // resolve them before the month-end salary run.
+  // Guarded by the notifications_enabled feature flag.
+  cron.schedule("0 9 25 * *", async () => {
+    try {
+      const notifSetting = await storage.getSystemSetting("notifications_enabled");
+      if (notifSetting?.value === "false") return;
+
+      const { getIstDateTime: _getIst } = { getIstDateTime: () => getIstDateTime() };
+      const { year, month } = getIstDateTime();
+      const monthStr  = `${year}-${String(month).padStart(2, "0")}`;
+      const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+
+      // Fetch all pending regularizations for the current month
+      const pendingRows = (await db.execute(sql`
+        SELECT ar.id, ar.employee_id, ar.attendance_date, ar.request_type, ar.created_at,
+               u.first_name, u.last_name, u.manager_id
+        FROM attendance_regularizations ar
+        JOIN admin_users u ON u.id = ar.employee_id
+        WHERE ar.attendance_date >= ${monthStr + "-01"}
+          AND ar.attendance_date <  ${nextMonth + "-01"}
+          AND ar.status = 'pending'
+          AND u.is_active = true
+          AND u.deleted_at IS NULL
+        ORDER BY ar.created_at ASC
+      `)).rows as any[];
+
+      if (pendingRows.length === 0) {
+        console.log("[scheduler] 25th digest: no pending regularizations for the month");
+        return;
+      }
+
+      // Group by manager
+      const byManager: Map<string, Array<{ employeeName: string; attendanceDate: string; requestType: string; submittedAt: string }>> = new Map();
+      for (const row of pendingRows) {
+        if (!row.manager_id) continue;
+        if (!byManager.has(row.manager_id)) byManager.set(row.manager_id, []);
+        byManager.get(row.manager_id)!.push({
+          employeeName: `${row.first_name} ${row.last_name}`,
+          attendanceDate: row.attendance_date,
+          requestType: row.request_type,
+          submittedAt: row.created_at,
+        });
+      }
+
+      const { sendManagerRegularizationDigestEmail } = await import("./email");
+      const reviewUrl = `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/regularizations`;
+
+      for (const [managerId, requests] of byManager) {
+        const manager = await storage.getAdminUser(managerId);
+        if (!manager?.email) continue;
+
+        sendManagerRegularizationDigestEmail({
+          to: manager.email,
+          managerName: `${manager.firstName} ${manager.lastName}`,
+          pendingRequests: requests,
+          reviewUrl,
+        }).catch(console.error);
+
+        // In-app notification for the manager
+        await storage.createNotification({
+          userId: managerId,
+          type: "regularization_digest",
+          title: `${requests.length} Regularization Request${requests.length === 1 ? "" : "s"} Pending`,
+          message: `You have ${requests.length} attendance correction request${requests.length === 1 ? "" : "s"} pending review before month-end salary run.`,
+          isRead: false,
+          metadata: { month, year, pendingCount: requests.length },
+        });
+      }
+
+      console.log(`[scheduler] 25th digest sent to ${byManager.size} managers for ${pendingRows.length} pending requests`);
+    } catch (error) {
+      console.error("[scheduler] 25th regularization digest failed:", error);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -634,4 +711,5 @@ export function startScheduler() {
   console.log("  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
   console.log("  - End-of-day absent sweep: daily at 23:59 IST");
+  console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
 }

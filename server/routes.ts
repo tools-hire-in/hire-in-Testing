@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -3442,13 +3442,11 @@ export async function registerRoutes(
   // Get policy config (public to all authenticated users)
   app.get("/api/hr/attendance/regularization/policy", requireAuth, async (req, res) => {
     try {
-      const windowSetting = await storage.getSystemSetting("regularization_employee_window_days");
-      const cutoffSetting = await storage.getSystemSetting("regularization_manager_cutoff_day");
       const versionSetting = await storage.getSystemSetting("regularization_policy_version");
+      const blackoutSetting = await storage.getSystemSetting("regularization_month_end_blackout_days");
       res.json({
-        employeeWindowDays: windowSetting ? Number(windowSetting.value) : 7,
-        managerCutoffDay: cutoffSetting ? Number(cutoffSetting.value) : 20,
-        policyVersion: versionSetting ? String(versionSetting.value) : "1",
+        policyVersion: versionSetting ? String(versionSetting.value) : "2",
+        monthEndBlackoutDays: blackoutSetting ? Number(blackoutSetting.value) : 3,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch policy" });
@@ -3492,15 +3490,55 @@ export async function registerRoutes(
         return res.status(400).json({ error: "attendanceDate, requestType, and reason are required" });
       }
 
-      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-      const todayIST = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+      // Enforce minimum 20-character reason
+      if (reason.trim().length < 20) {
+        return res.status(400).json({ error: "Reason must be at least 20 characters. Please provide more detail about the issue." });
+      }
 
-      const windowSetting = await storage.getSystemSetting("regularization_employee_window_days");
-      const windowDays = windowSetting ? Number(windowSetting.value) : 7;
+      // Check month-end blackout period
+      const blackoutSetting = await storage.getSystemSetting("regularization_month_end_blackout_days");
+      const blackoutDays = blackoutSetting ? Number(blackoutSetting.value) : 3;
+      const { isWithinFilingWindow, isBlackoutDate } = await import("./attendancePolicy");
 
-      const { canSubmitRegularizationAsync } = await import("./attendancePolicy");
-      if (!await canSubmitRegularizationAsync(attendanceDate, todayIST, windowDays)) {
-        return res.status(400).json({ error: `Regularization must be submitted within ${windowDays} working days of the incident (weekends and public holidays excluded)` });
+      if (isBlackoutDate(attendanceDate, blackoutDays)) {
+        return res.status(409).json({
+          code: "REGULARIZATION_WINDOW_CLOSED",
+          reason: "month_end_blackout",
+          message: `Attendance corrections for this date cannot be filed during the last ${blackoutDays} days of the month (month-end payroll lock). Please contact HR for assistance.`,
+          canEscalateTo: "hr",
+        });
+      }
+
+      // Check if the month's attendance run is approved/locked — block filing if so
+      const attDateMonth = attendanceDate.substring(0, 7); // "YYYY-MM"
+      const lockedRunRows = (await db.execute(sql`
+        SELECT id, status FROM attendance_report_runs
+        WHERE year = ${parseInt(attDateMonth.split("-")[0])}
+          AND month = ${parseInt(attDateMonth.split("-")[1])}
+          AND (status = 'approved' OR status = 'overridden')
+        LIMIT 1
+      `)).rows as any[];
+      if (lockedRunRows.length > 0) {
+        return res.status(409).json({
+          code: "REGULARIZATION_WINDOW_CLOSED",
+          reason: "month_attendance_run_locked",
+          message: "The attendance run for this month has been approved and locked. Self-service filing is closed. Please contact HR to request a correction directly.",
+          canEscalateTo: "hr",
+        });
+      }
+
+      // Strict 24-hour + next-punch-in filing window
+      const windowCheck = await isWithinFilingWindow(userId, attendanceDate);
+      if (!windowCheck.allowed) {
+        const reason24h = windowCheck.reason === "next_punch_in_exists"
+          ? "The filing window for this date has closed because you have already punched in for a subsequent day."
+          : "The 24-hour filing window for this date has expired. Regularization must be requested within 24 hours of end-of-day.";
+        return res.status(409).json({
+          code: "REGULARIZATION_WINDOW_CLOSED",
+          reason: windowCheck.reason,
+          message: reason24h,
+          canEscalateTo: "hr",
+        });
       }
 
       // Check for existing pending request for this date
@@ -3589,6 +3627,31 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Regularization fetch error:", error);
       res.status(500).json({ error: "Failed to fetch regularization requests" });
+    }
+  });
+
+  // Dedicated employee self-service endpoint: always returns the caller's own requests
+  app.get("/api/hr/attendance/regularization/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const requests = await storage.getRegularizationRequests({ employeeId: userId });
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const enriched = requests.map(r => {
+        const reviewer = r.reviewedBy ? userMap.get(r.reviewedBy) : null;
+        return {
+          ...r,
+          employeeName: `${allUsers.find(u => u.id === userId)?.firstName ?? ""} ${allUsers.find(u => u.id === userId)?.lastName ?? ""}`.trim(),
+          reviewerName: reviewer ? `${reviewer.firstName} ${reviewer.lastName}` : null,
+        };
+      });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("My regularizations fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch your regularization requests" });
     }
   });
 
@@ -3685,13 +3748,22 @@ export async function registerRoutes(
         }
       }
 
-      const cutoffSetting = await storage.getSystemSetting("regularization_manager_cutoff_day");
-      const cutoffDay = cutoffSetting ? Number(cutoffSetting.value) : 20;
+      // Attendance run lock check: if the month has an approved/overridden attendance run,
+      // only HR and super_admin can still approve/reject (salary is being processed).
+      const [reqYear, reqMonth] = request.attendanceDate.split("-");
+      const lockedRun = (await db.execute(sql`
+        SELECT id FROM attendance_report_runs
+        WHERE year = ${parseInt(reqYear)}
+          AND month = ${parseInt(reqMonth)}
+          AND status IN ('approved', 'overridden')
+        LIMIT 1
+      `)).rows as any[];
 
-      const { canActOnRegularization } = await import("./attendancePolicy");
-      const canAct = canActOnRegularization(actorRole, request.attendanceDate, cutoffDay);
-      if (!canAct) {
-        return res.status(403).json({ error: "Request attendance date is past the manager cutoff day — please escalate to HR" });
+      if (lockedRun.length > 0 && !["hr", "admin", "super_admin"].includes(actorRole)) {
+        return res.status(403).json({
+          error: "The attendance report for this month has been approved and locked. Please contact HR to process this correction.",
+          code: "ATTENDANCE_RUN_LOCKED",
+        });
       }
 
       const updated = await storage.updateRegularizationRequest(req.params.id, {
@@ -3777,6 +3849,23 @@ export async function registerRoutes(
         isRead: false,
         metadata: { requestId: request.id, attendanceDate: request.attendanceDate, status, reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : null },
       });
+
+      // Send email notification to employee (fire-and-forget)
+      try {
+        const empUser = await storage.getAdminUser(request.employeeId);
+        if (empUser?.email) {
+          const { sendRegularizationDecisionEmail } = await import("./email");
+          sendRegularizationDecisionEmail({
+            to: empUser.email,
+            employeeName: `${empUser.firstName} ${empUser.lastName}`,
+            attendanceDate: request.attendanceDate,
+            requestType: request.requestType,
+            status: status as "approved" | "rejected",
+            reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "HR",
+            reviewerComment,
+          }).catch(console.error);
+        }
+      } catch { /* non-critical */ }
 
       await storage.createAuditLog({
         actorId,
@@ -3892,6 +3981,149 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Regularization override error:", error);
       res.status(500).json({ error: "Failed to apply override" });
+    }
+  });
+
+  // Bulk-approve multiple pending regularization requests (manager-scoped)
+  app.post("/api/hr/attendance/regularization/bulk-approve", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+      const { ids, reviewerComment } = req.body;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "ids must be a non-empty array" });
+      }
+      if (!reviewerComment || !reviewerComment.trim()) {
+        return res.status(400).json({ error: "reviewerComment is required for bulk approval" });
+      }
+
+      // For managers, validate all requests belong to their team
+      let teamIds: Set<string> | null = null;
+      if (actorRole === "manager") {
+        const team = await storage.getTeamMembers(actorId);
+        teamIds = new Set(team.map(m => m.id));
+      }
+
+      const results: { id: string; status: "approved" | "skipped"; reason?: string }[] = [];
+      const actorUser = await storage.getAdminUser(actorId);
+
+      for (const id of ids) {
+        try {
+          const request = await storage.getRegularizationRequest(id);
+          if (!request || request.status !== "pending") {
+            results.push({ id, status: "skipped", reason: "not_found_or_not_pending" });
+            continue;
+          }
+
+          if (teamIds && !teamIds.has(request.employeeId)) {
+            results.push({ id, status: "skipped", reason: "not_in_team" });
+            continue;
+          }
+
+          // Run-lock check
+          const [rYear, rMonth] = request.attendanceDate.split("-");
+          const locked = (await db.execute(sql`
+            SELECT id FROM attendance_report_runs
+            WHERE year = ${parseInt(rYear)} AND month = ${parseInt(rMonth)}
+              AND status IN ('approved', 'overridden')
+            LIMIT 1
+          `)).rows as any[];
+          if (locked.length > 0 && !["hr", "admin", "super_admin"].includes(actorRole)) {
+            results.push({ id, status: "skipped", reason: "attendance_run_locked" });
+            continue;
+          }
+
+          // Compute attendance correction values BEFORE the transaction
+          const empUser = await storage.getAdminUser(request.employeeId);
+          const punchIn = request.requestedPunchIn;
+          const punchOut = request.requestedPunchOut;
+          const existing = await storage.getAttendanceByUser(request.employeeId, request.attendanceDate, request.attendanceDate);
+          const rec = existing.length > 0 ? existing[0] : null;
+          const effectivePunchIn  = punchIn  ?? rec?.punchIn  ?? undefined;
+          const effectivePunchOut = punchOut ?? rec?.punchOut ?? undefined;
+          let totalHoursNum: string | undefined;
+          if (effectivePunchIn && effectivePunchOut) {
+            const diffMs = new Date(effectivePunchOut).getTime() - new Date(effectivePunchIn).getTime();
+            if (diffMs > 0) totalHoursNum = (diffMs / 3600000).toFixed(2);
+          }
+          let correctedStatus = "present";
+          if (empUser?.shiftId && effectivePunchIn) {
+            try {
+              const { computeLateStatus, computeHalfDayStatus } = await import("./attendancePolicy");
+              const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
+              if (lateResult) {
+                const halfResult = totalHoursNum
+                  ? await computeHalfDayStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                  : { status: lateResult.status };
+                correctedStatus = halfResult.status;
+              }
+            } catch { /* fall back to present */ }
+          }
+
+          // Atomic transaction: regularization status + attendance correction must succeed together
+          await db.transaction(async (tx) => {
+            await tx.update(attendanceRegularizations)
+              .set({ status: "approved", reviewedBy: actorId, reviewerComment, reviewedAt: new Date() } as any)
+              .where(eq(attendanceRegularizations.id, id));
+
+            if (rec) {
+              await tx.update(attendance)
+                .set({
+                  punchIn: effectivePunchIn, punchOut: effectivePunchOut,
+                  totalHours: totalHoursNum ?? rec.totalHours ?? undefined,
+                  isCorrect: true, correctionSource: "regularization",
+                  correctedById: actorId, correctionNote: reviewerComment, status: correctedStatus,
+                } as any)
+                .where(eq(attendance.id, rec.id));
+            } else if (request.requestType === "wrong_absent") {
+              await tx.insert(attendance).values({
+                userId: request.employeeId, date: request.attendanceDate,
+                punchIn: effectivePunchIn, punchOut: effectivePunchOut,
+                totalHours: totalHoursNum, status: correctedStatus, isCorrect: true,
+                correctionSource: "regularization", correctedById: actorId, correctionNote: reviewerComment,
+              } as any);
+            }
+          });
+
+          // Post-transaction: notifications, email, audit (fire-and-forget acceptable)
+          await storage.createNotification({
+            userId: request.employeeId, type: "regularization_decision",
+            title: "Regularization Approved",
+            message: `Your regularization request for ${request.attendanceDate} was approved. ${reviewerComment ? `Note: ${reviewerComment}` : ""}`,
+            isRead: false,
+            metadata: { requestId: id, attendanceDate: request.attendanceDate, status: "approved", reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : null },
+          });
+
+          if (empUser?.email) {
+            const { sendRegularizationDecisionEmail } = await import("./email");
+            sendRegularizationDecisionEmail({
+              to: empUser.email,
+              employeeName: `${empUser.firstName} ${empUser.lastName}`,
+              attendanceDate: request.attendanceDate,
+              requestType: request.requestType,
+              status: "approved",
+              reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "HR",
+              reviewerComment,
+            }).catch(console.error);
+          }
+
+          await storage.createAuditLog({
+            actorId, targetId: request.employeeId, action: "regularization_approved",
+            changes: { requestId: id, attendanceDate: request.attendanceDate, requestType: request.requestType, oldStatus: "pending", newStatus: "approved", reviewerComment, bulkApproval: true },
+          });
+
+          results.push({ id, status: "approved" });
+        } catch (err) {
+          results.push({ id, status: "skipped", reason: "internal_error" });
+        }
+      }
+
+      const approvedCount = results.filter(r => r.status === "approved").length;
+      res.json({ approvedCount, skippedCount: results.length - approvedCount, results });
+    } catch (error) {
+      console.error("Bulk approve error:", error);
+      res.status(500).json({ error: "Failed to bulk approve requests" });
     }
   });
 
@@ -4629,6 +4861,59 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // SALARY GATE STATUS
+  // ==========================================
+
+  // Pre-flight check before generating a salary run for a given month/year.
+  // Returns: attendanceRunApproved, pendingRegularizations count, canGenerate, blockingReasons[]
+  app.get("/api/hr/attendance-report/salary-gate-status", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+    try {
+      const year  = parseInt(req.query.year  as string) || new Date().getFullYear();
+      const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+
+      // 1. Check attendance run status
+      const runRows = (await db.execute(sql`
+        SELECT id, status FROM attendance_report_runs
+        WHERE year = ${year} AND month = ${month}
+        ORDER BY created_at DESC LIMIT 1
+      `)).rows as any[];
+
+      const run = runRows[0] ?? null;
+      const attendanceRunApproved = run?.status === "approved" || run?.status === "overridden";
+      const attendanceRunStatus   = run?.status ?? "none";
+
+      // 2. Count pending regularizations for this month
+      const monthStr  = `${year}-${String(month).padStart(2, "0")}`;
+      const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+      const pendingRows = (await db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM attendance_regularizations
+        WHERE attendance_date >= ${monthStr + "-01"}
+          AND attendance_date <  ${nextMonth + "-01"}
+          AND status = 'pending'
+      `)).rows as any[];
+      const pendingRegularizations = parseInt(pendingRows[0]?.cnt ?? "0", 10);
+
+      // Determine overall gate
+      const blockingReasons: string[] = [];
+      if (!attendanceRunApproved) blockingReasons.push("Attendance report for this month has not been approved yet.");
+      if (pendingRegularizations > 0) blockingReasons.push(`${pendingRegularizations} regularization request(s) are still pending review.`);
+
+      res.json({
+        year,
+        month,
+        attendanceRunApproved,
+        attendanceRunStatus,
+        pendingRegularizations,
+        canGenerate: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    } catch (error) {
+      console.error("Salary gate status error:", error);
+      res.status(500).json({ error: "Failed to fetch salary gate status" });
+    }
+  });
+
+  // ==========================================
   // SALARY REPORTS
   // ==========================================
 
@@ -4887,18 +5172,86 @@ export async function registerRoutes(
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || (new Date().getMonth() + 1);
+      const overridePendingRegularizations: boolean = req.body.overridePendingRegularizations === true;
+      const overrideReason: string = (req.body.overrideReason || "").trim();
+      const overrideAttendanceApproval: boolean = req.body.overrideAttendanceApproval === true;
+      const overrideAttendanceReason: string = (req.body.overrideAttendanceReason || "").trim();
+      const actorId = req.session.userId!;
+      const actorRole = req.session.role!;
+      const canOverride = ["hr", "super_admin"].includes(actorRole);
 
-      // Gate: attendance approval must be complete (approved or overridden) before salary run
-      const [attRun] = (await db.execute(sql`
+      // Gate 1: attendance approval must be complete (approved or overridden) before salary run
+      // HR/Super Admin may bypass with explicit overrideAttendanceApproval + mandatory reason
+      const attRunRows = (await db.execute(sql`
         SELECT id, status FROM attendance_report_runs
         WHERE month = ${month} AND year = ${year}
-        LIMIT 1
-      `)) as any[];
+        ORDER BY created_at DESC LIMIT 1
+      `)).rows as any[];
+      const attRun = attRunRows[0] ?? null;
       if (!attRun || (attRun.status !== "approved" && attRun.status !== "overridden")) {
-        return res.status(409).json({
-          error: "Attendance approval incomplete",
-          message: "All managers must approve the attendance report before a salary run can be generated. Go to Salary Reports → Attendance Approvals to trigger or override.",
-          attendanceStatus: attRun?.status || "not_created",
+        if (!canOverride) {
+          return res.status(409).json({
+            error: "Attendance approval incomplete",
+            message: "All managers must approve the attendance report before a salary run can be generated. Go to Salary Reports → Attendance Approvals to trigger or override.",
+            attendanceStatus: attRun?.status || "not_created",
+          });
+        }
+        if (!overrideAttendanceApproval) {
+          return res.status(409).json({
+            error: "Attendance approval incomplete",
+            message: "Attendance is not yet fully approved. As HR / Super Admin you can override — re-submit with overrideAttendanceApproval: true and a mandatory overrideAttendanceReason.",
+            attendanceStatus: attRun?.status || "not_created",
+            canOverride: true,
+          });
+        }
+        if (!overrideAttendanceReason) {
+          return res.status(400).json({ error: "overrideAttendanceReason is required when overriding attendance approval." });
+        }
+        // Audit-log the Gate 1 bypass
+        await storage.createAuditLog({
+          actorId,
+          targetId: actorId,
+          action: "salary_run_generated_with_unverified_attendance",
+          changes: { year, month, attendanceStatus: attRun?.status || "not_created", overrideAttendanceReason },
+        });
+      }
+
+      // Gate 2: pending regularizations must be zero (HR/Super Admin can override with mandatory reason)
+      const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+      const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+      const pendingRegRows = (await db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM attendance_regularizations
+        WHERE attendance_date >= ${monthStr + "-01"}
+          AND attendance_date < ${nextMonth + "-01"}
+          AND status = 'pending'
+      `)).rows as any[];
+      const pendingCount = parseInt(pendingRegRows[0]?.cnt ?? "0", 10);
+
+      if (pendingCount > 0) {
+        if (!canOverride) {
+          return res.status(409).json({
+            error: "Pending regularizations",
+            message: `There are ${pendingCount} unresolved regularization request(s) for this month. All requests must be reviewed before generating the salary run.`,
+            pendingRegularizations: pendingCount,
+          });
+        }
+        if (!overridePendingRegularizations) {
+          return res.status(409).json({
+            error: "Pending regularizations",
+            message: `There are ${pendingCount} unresolved regularization request(s). As HR/Super Admin you can override this gate — re-submit with overridePendingRegularizations: true and a mandatory overrideReason.`,
+            pendingRegularizations: pendingCount,
+            canOverride: true,
+          });
+        }
+        if (!overrideReason) {
+          return res.status(400).json({ error: "overrideReason is required when overriding pending regularizations." });
+        }
+        // Log the override in the audit trail
+        await storage.createAuditLog({
+          actorId,
+          targetId: actorId,
+          action: "salary_run_generated_with_pending_regularizations",
+          changes: { year, month, pendingRegularizations: pendingCount, overrideReason },
         });
       }
 
@@ -4909,6 +5262,24 @@ export async function registerRoutes(
         .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
         .limit(1);
 
+      // Build override metadata for durable persistence on the run record
+      const overrideMeta: Record<string, any> = {};
+      if (overrideAttendanceApproval && overrideAttendanceReason) {
+        overrideMeta.attendanceApprovalOverride = {
+          reason: overrideAttendanceReason,
+          actorId,
+          at: new Date().toISOString(),
+        };
+      }
+      if (overridePendingRegularizations && overrideReason) {
+        overrideMeta.pendingRegularizationsOverride = {
+          reason: overrideReason,
+          count: pendingCount,
+          actorId,
+          at: new Date().toISOString(),
+        };
+      }
+
       if (existing.length > 0) {
         if (existing[0].status === "approved") {
           return res.status(409).json({ error: "A report for this month has already been approved and sent. Cannot regenerate." });
@@ -4916,7 +5287,7 @@ export async function registerRoutes(
         await db.update(salaryReportRuns)
           .set({
             reportData: report.rows as any,
-            adjustments: {} as any,
+            adjustments: Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } as any : {} as any,
             status: "pending_approval",
             generatedAt: new Date(),
             approvedAt: null,
@@ -4933,7 +5304,7 @@ export async function registerRoutes(
         month,
         status: "pending_approval",
         reportData: report.rows as any,
-        adjustments: {} as any,
+        adjustments: Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } as any : {} as any,
       }).returning();
 
       res.status(201).json(created);

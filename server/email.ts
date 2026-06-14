@@ -2032,3 +2032,148 @@ export async function sendAttendanceApprovalCompleteEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+const REQUEST_TYPE_DISPLAY: Record<string, string> = {
+  missed_punch_in: "Missed Punch In",
+  missed_punch_out: "Missed Punch Out",
+  wrong_absent: "Wrong Absent Mark",
+  correction: "Time Correction",
+};
+
+export async function sendRegularizationDecisionEmail(options: {
+  to: string;
+  employeeName: string;
+  attendanceDate: string;
+  requestType: string;
+  status: "approved" | "rejected";
+  reviewerName: string;
+  reviewerComment: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const typeLabel = REQUEST_TYPE_DISPLAY[options.requestType] ?? options.requestType.replace(/_/g, " ");
+    const isApproved = options.status === "approved";
+    const headerBg = isApproved
+      ? "linear-gradient(135deg, #166534 0%, #16a34a 100%)"
+      : "linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)";
+    const headerSub = isApproved ? "Attendance Correction Approved" : "Attendance Correction Rejected";
+    const statusLabel = isApproved ? "✅ Approved" : "❌ Rejected";
+
+    const msg: any = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `Regularization ${isApproved ? "Approved" : "Rejected"} — ${options.attendanceDate}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:580px;margin:0 auto;background:#fff;">
+          <div style="background:${headerBg};padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#e0e7ff;margin:8px 0 0;font-size:13px;">${headerSub}</p>
+          </div>
+          <div style="padding:28px 32px;">
+            <p style="color:#1e293b;font-size:15px;margin:0 0 20px;">Dear ${options.employeeName},</p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:18px;margin-bottom:20px;">
+              <table style="width:100%;font-size:14px;border-collapse:collapse;">
+                <tr><td style="color:#64748b;padding:4px 0;width:40%;">Date</td><td style="color:#1e293b;font-weight:500;">${options.attendanceDate}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Type</td><td style="color:#1e293b;font-weight:500;">${typeLabel}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Decision</td><td style="font-weight:600;color:${isApproved ? "#166534" : "#7f1d1d"};">${statusLabel}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Reviewed by</td><td style="color:#1e293b;">${options.reviewerName}</td></tr>
+              </table>
+            </div>
+            ${options.reviewerComment ? `
+            <div style="background:${isApproved ? "#f0fdf4" : "#fef2f2"};border:1px solid ${isApproved ? "#bbf7d0" : "#fecaca"};border-radius:8px;padding:14px;margin-bottom:20px;">
+              <p style="color:${isApproved ? "#166534" : "#7f1d1d"};font-size:13px;font-weight:600;margin:0 0 6px;">Reviewer Note</p>
+              <p style="color:#374151;font-size:14px;margin:0;">${options.reviewerComment}</p>
+            </div>` : ""}
+            <p style="color:#64748b;font-size:13px;">
+              ${isApproved
+                ? "Your attendance record has been updated to reflect this correction."
+                : "Your original attendance record remains unchanged. If you believe this was incorrect, please contact HR."}
+            </p>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.employeeName},\n\nYour regularization request for ${options.attendanceDate} (${typeLabel}) has been ${options.status}.\nReviewed by: ${options.reviewerName}${options.reviewerComment ? `\nNote: ${options.reviewerComment}` : ""}${SIGNOFF_TEXT}`,
+    };
+
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendRegularizationDecisionEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendManagerRegularizationDigestEmail(options: {
+  to: string;
+  managerName: string;
+  pendingRequests: Array<{ employeeName: string; attendanceDate: string; requestType: string; submittedAt: string }>;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const now = new Date();
+    const tableRows = options.pendingRequests.slice(0, 20).map(r => {
+      const typeLabel = REQUEST_TYPE_DISPLAY[r.requestType] ?? r.requestType.replace(/_/g, " ");
+      const submittedDate = new Date(r.submittedAt);
+      const daysPending = Math.max(0, Math.floor((now.getTime() - submittedDate.getTime()) / 86400000));
+      const daysPendingLabel = daysPending === 0 ? "Today" : daysPending === 1 ? "1 day" : `${daysPending} days`;
+      const isUrgent = daysPending >= 3;
+      return `<tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:8px 12px;color:#1e293b;">${r.employeeName}</td>
+        <td style="padding:8px 12px;font-family:monospace;color:#334155;">${r.attendanceDate}</td>
+        <td style="padding:8px 12px;color:#334155;">${typeLabel}</td>
+        <td style="padding:8px 12px;font-size:12px;color:${isUrgent ? "#dc2626" : "#64748b"};font-weight:${isUrgent ? "600" : "400"};">${daysPendingLabel}</td>
+      </tr>`;
+    }).join("");
+
+    const moreRow = options.pendingRequests.length > 20
+      ? `<tr><td colspan="4" style="padding:8px 12px;color:#94a3b8;font-style:italic;text-align:center;">... and ${options.pendingRequests.length - 20} more — see portal</td></tr>`
+      : "";
+
+    const msg: any = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `Action Required: ${options.pendingRequests.length} Pending Regularization Request${options.pendingRequests.length === 1 ? "" : "s"} — Month-End`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#92400e 0%,#d97706 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#fef3c7;margin:8px 0 0;font-size:13px;">Month-End Regularization Reminder</p>
+          </div>
+          <div style="padding:28px 32px;">
+            <p style="color:#1e293b;font-size:15px;margin:0 0 12px;">Dear ${options.managerName},</p>
+            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:16px;margin-bottom:20px;">
+              <p style="color:#92400e;font-weight:600;margin:0 0 4px;">⏰ Month-End: Pending Approvals Require Immediate Action</p>
+              <p style="color:#78350f;font-size:13px;margin:0;">You have <strong>${options.pendingRequests.length} pending</strong> attendance correction request${options.pendingRequests.length === 1 ? "" : "s"} that must be approved or rejected before the salary run is processed.</p>
+            </div>
+            <h3 style="color:#1e293b;font-size:14px;margin:0 0 10px;">Pending Requests</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
+              <thead><tr style="background:#f8fafc;">
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Employee</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Date</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Type</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Days Pending</th>
+              </tr></thead>
+              <tbody>${tableRows}${moreRow}</tbody>
+            </table>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.reviewUrl}" style="display:inline-block;background:#d97706;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Review Requests Now</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.managerName},\n\nYou have ${options.pendingRequests.length} pending regularization request(s) requiring your review before the salary run.\n\nReview here: ${options.reviewUrl}${SIGNOFF_TEXT}`,
+    };
+
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendManagerRegularizationDigestEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

@@ -66,6 +66,13 @@ interface Adjustment {
   fields: Record<string, AdjustmentField>;
 }
 
+interface RunOverrideMeta {
+  reason: string;
+  actorId: string;
+  at: string;
+  count?: number;
+}
+
 interface SalaryRun {
   id: string;
   year: number;
@@ -79,7 +86,12 @@ interface SalaryRun {
   createdAt: string | null;
   adjustedCount: number;
   reportData?: EmployeeReportRow[];
-  adjustments?: Record<string, Adjustment>;
+  adjustments?: Record<string, Adjustment> & {
+    _overrides?: {
+      attendanceApprovalOverride?: RunOverrideMeta;
+      pendingRegularizationsOverride?: RunOverrideMeta;
+    };
+  };
 }
 
 const MONTHS = [
@@ -573,7 +585,8 @@ function ApprovalTable({
 
   const rows = fullRun?.reportData || run.reportData || [];
   const adjustments = fullRun?.adjustments || run.adjustments || {};
-  const adjustedCount = Object.keys(adjustments).length;
+  const adjustedCount = Object.keys(adjustments).filter(k => k !== "_overrides").length;
+  const runOverrides = adjustments._overrides;
 
   const fmt = (v: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
   const totalPayable = rows.reduce((s, r) => s + Number(r.netPayable), 0);
@@ -583,6 +596,29 @@ function ApprovalTable({
 
   return (
     <div className="space-y-4">
+      {/* Override warning banner */}
+      {runOverrides && (runOverrides.attendanceApprovalOverride || runOverrides.pendingRegularizationsOverride) && (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800" data-testid="banner-run-override-warning">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-200">Gate Override(s) Applied</p>
+            <ul className="mt-1 space-y-1">
+              {runOverrides.attendanceApprovalOverride && (
+                <li className="text-amber-700 dark:text-amber-300 text-xs">
+                  <span className="font-medium">Attendance approval gate bypassed</span> — {runOverrides.attendanceApprovalOverride.reason}
+                </li>
+              )}
+              {runOverrides.pendingRegularizationsOverride && (
+                <li className="text-amber-700 dark:text-amber-300 text-xs">
+                  <span className="font-medium">Pending regularizations gate bypassed</span>
+                  {runOverrides.pendingRegularizationsOverride.count != null && ` (${runOverrides.pendingRegularizationsOverride.count} unresolved)`}
+                  {" — "}{runOverrides.pendingRegularizationsOverride.reason}
+                </li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-muted/40 rounded-lg p-3">
@@ -761,6 +797,111 @@ function ApprovalTable({
   );
 }
 
+interface GateCheck {
+  name: string;
+  pass: boolean;
+  detail: string;
+}
+
+interface GateStatus {
+  checks: GateCheck[];
+  allPassed: boolean;
+}
+
+interface RawGateStatus {
+  year: number;
+  month: number;
+  attendanceRunApproved: boolean;
+  attendanceRunStatus: string;
+  pendingRegularizations: number;
+  canGenerate: boolean;
+  blockingReasons: string[];
+}
+
+function SalaryGateStatusPanel({ month, year }: { month: string; year: string }) {
+  const { data: raw, isLoading } = useQuery<RawGateStatus>({
+    queryKey: ["/api/hr/attendance-report/salary-gate-status", { month, year }],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/attendance-report/salary-gate-status?month=${month}&year=${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load gate status");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="pt-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking pre-flight requirements…
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!raw) return null;
+
+  const checks: Array<{ name: string; pass: boolean; detail: string }> = [
+    {
+      name: "Attendance Report Approved",
+      pass: raw.attendanceRunApproved,
+      detail: raw.attendanceRunApproved
+        ? "All managers have approved the attendance report for this month."
+        : `Current status: ${raw.attendanceRunStatus === "none" ? "No run created yet" : raw.attendanceRunStatus.replace(/_/g, " ")}. Go to the Attendance Approvals panel to resolve.`,
+    },
+    {
+      name: "Pending Regularizations Cleared",
+      pass: raw.pendingRegularizations === 0,
+      detail: raw.pendingRegularizations === 0
+        ? "No pending regularization requests for this month."
+        : `${raw.pendingRegularizations} request${raw.pendingRegularizations === 1 ? "" : "s"} still awaiting review. Go to Attendance Regularizations to approve or reject them.`,
+    },
+  ];
+  const allPassed = raw.canGenerate;
+
+  return (
+    <Card className={allPassed ? "border-green-200 dark:border-green-800" : "border-amber-200 dark:border-amber-800"} data-testid="card-salary-gate-status">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          {allPassed ? (
+            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          )}
+          Salary Run Pre-flight Check
+          {!allPassed && (
+            <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400">
+              — Resolve the items below before generating the salary run
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          {checks.map((check, i) => (
+            <div key={i} className="flex items-start gap-3 text-sm" data-testid={`gate-check-${i}`}>
+              {check.pass ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <p className={`font-medium ${check.pass ? "text-foreground" : "text-amber-800 dark:text-amber-300"}`}>
+                  {check.name}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">{check.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
   const statusBadge = (status: SalaryRun["status"]) => {
     if (status === "pending_approval") return <Badge variant="outline" className="border-amber-400 text-amber-600 dark:text-amber-400 text-xs"><Clock3 className="h-3 w-3 mr-1" />Pending Approval</Badge>;
@@ -823,6 +964,11 @@ export function SalaryReportsContent() {
   const [attOverrideManagerId, setAttOverrideManagerId] = useState<string | null>(null);
   const [attOverrideNote, setAttOverrideNote] = useState("");
   const [attOverrideDialogOpen, setAttOverrideDialogOpen] = useState(false);
+  const [pendingRegOverrideOpen, setPendingRegOverrideOpen] = useState(false);
+  const [pendingRegOverrideReason, setPendingRegOverrideReason] = useState("");
+  const [pendingRegCount, setPendingRegCount] = useState(0);
+  const [attApprovalOverrideOpen, setAttApprovalOverrideOpen] = useState(false);
+  const [attApprovalOverrideReason, setAttApprovalOverrideReason] = useState("");
 
   const canRegenerate = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
   const isAdminLevel = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
@@ -845,6 +991,15 @@ export function SalaryReportsContent() {
     queryFn: () => fetch(`/api/hr/attendance-report/status?month=${selectedMonth}&year=${selectedYear}`, { credentials: "include" }).then(r => r.json()),
     refetchInterval: 30000,
   });
+
+  // Salary gate status — drives Generate button pre-flight tooltip for non-overridable users
+  const { data: salaryGateRaw } = useQuery<any>({
+    queryKey: ["/api/hr/attendance-report/salary-gate-status", selectedMonth, selectedYear],
+    queryFn: () => fetch(`/api/hr/attendance-report/salary-gate-status?month=${selectedMonth}&year=${selectedYear}`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const salaryCanGenerate: boolean = salaryGateRaw?.canGenerate ?? true;
+  const salaryPendingReg: number = salaryGateRaw?.pendingRegularizations ?? 0;
 
   // Pending attendance edits (for HR review)
   const { data: pendingEdits = [], refetch: refetchEdits } = useQuery<any[]>({
@@ -908,25 +1063,49 @@ export function SalaryReportsContent() {
   };
 
   const generateRunMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/hr/reports/salary/runs/generate", {
-      year: parseInt(selectedYear),
-      month: parseInt(selectedMonth),
-    }),
-    onSuccess: async (res) => {
+    mutationFn: async (opts?: { overridePendingRegularizations?: boolean; overrideReason?: string; overrideAttendanceApproval?: boolean; overrideAttendanceReason?: string }) => {
+      // Use raw fetch so we can inspect 409 payloads before deciding to throw
+      const res = await fetch("/api/hr/reports/salary/runs/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ year: parseInt(selectedYear), month: parseInt(selectedMonth), ...(opts || {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json();
-        toast({ title: err.error || "Error", description: err.message || err.error, variant: "destructive" });
-        return;
+        // Attach structured error data to the thrown error for onError handling
+        const err = new Error(body.error || "Failed to generate run") as any;
+        err.status = res.status;
+        err.data = body;
+        throw err;
       }
-      const run: SalaryRun = await res.json();
+      return body as SalaryRun;
+    },
+    onSuccess: (run: SalaryRun) => {
       toast({ title: "Report generated", description: `${monthName(run.month)} ${run.year} is ready for review.` });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs/pending-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/salary-gate-status"] });
       setSelectedRunId(run.id);
       setShowApprovalTable(true);
+      setPendingRegOverrideOpen(false);
+      setPendingRegOverrideReason("");
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message || "Failed to generate run", variant: "destructive" });
+      const status = err.status;
+      const data = err.data || {};
+      // Gate 1: attendance approval incomplete — open override dialog for HR/Admin
+      if (status === 409 && data.attendanceStatus != null && data.canOverride) {
+        setAttApprovalOverrideOpen(true);
+        return;
+      }
+      // Gate 2: pending regularizations — open override dialog for HR/Admin
+      if (status === 409 && data.pendingRegularizations != null && data.canOverride) {
+        setPendingRegCount(data.pendingRegularizations);
+        setPendingRegOverrideOpen(true);
+        return;
+      }
+      toast({ title: data.error || "Error", description: data.message || err.message, variant: "destructive" });
     },
   });
 
@@ -1071,6 +1250,18 @@ export function SalaryReportsContent() {
                 Override All & Approve
               </Button>
             )}
+            {!attStatus.approved && canRegenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-400"
+                onClick={() => setAttApprovalOverrideOpen(true)}
+                data-testid="button-generate-override-att"
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                Generate Anyway (Override)
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -1210,6 +1401,92 @@ export function SalaryReportsContent() {
         </DialogContent>
       </Dialog>
 
+      {/* Attendance Approval Override Dialog (HR/Super Admin only) */}
+      <Dialog open={attApprovalOverrideOpen} onOpenChange={setAttApprovalOverrideOpen}>
+        <DialogContent data-testid="dialog-att-approval-override">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              Override Attendance Approval Gate
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-red-800 dark:text-red-300">
+                The attendance report for this month has <strong>not been fully approved</strong> by all managers. Generating a salary run now may include unverified attendance data. This action is audited.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Reason for Override <span className="text-destructive">*</span></Label>
+              <Textarea
+                className="h-24"
+                placeholder="Explain why the salary run is being generated without complete attendance approval…"
+                value={attApprovalOverrideReason}
+                onChange={e => setAttApprovalOverrideReason(e.target.value)}
+                data-testid="textarea-att-approval-override-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAttApprovalOverrideOpen(false); setAttApprovalOverrideReason(""); }}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={!attApprovalOverrideReason.trim() || generateRunMutation.isPending}
+              onClick={() => generateRunMutation.mutate({ overrideAttendanceApproval: true, overrideAttendanceReason: attApprovalOverrideReason.trim() })}
+              data-testid="button-confirm-att-approval-override"
+            >
+              {generateRunMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</> : "Confirm & Generate Run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending Regularization Override Dialog (HR/Super Admin only) */}
+      <Dialog open={pendingRegOverrideOpen} onOpenChange={setPendingRegOverrideOpen}>
+        <DialogContent data-testid="dialog-pending-reg-override">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Override Pending Regularizations
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-amber-800 dark:text-amber-300">
+                <strong>{pendingRegCount} regularization request{pendingRegCount === 1 ? "" : "s"}</strong> are still pending review for this month. As HR / Super Admin you can proceed, but a mandatory reason is required and this override will be permanently audited.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Reason for Override <span className="text-destructive">*</span></Label>
+              <Textarea
+                className="h-24"
+                placeholder="Explain why the salary run is being generated with unresolved regularization requests…"
+                value={pendingRegOverrideReason}
+                onChange={e => setPendingRegOverrideReason(e.target.value)}
+                data-testid="textarea-pending-reg-override-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPendingRegOverrideOpen(false); setPendingRegOverrideReason(""); }}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!pendingRegOverrideReason.trim() || generateRunMutation.isPending}
+              onClick={() => generateRunMutation.mutate({ overridePendingRegularizations: true, overrideReason: pendingRegOverrideReason.trim() })}
+              data-testid="button-confirm-reg-override"
+            >
+              {generateRunMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</> : "Confirm & Generate Run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Approval table (shown when a run is selected) */}
       {showApprovalTable && selectedRun && (
         <Card className="border-2 border-amber-300 dark:border-amber-700">
@@ -1269,12 +1546,20 @@ export function SalaryReportsContent() {
               <Button
                 variant="default"
                 onClick={() => generateRunMutation.mutate()}
-                disabled={generateRunMutation.isPending || !attStatus?.approved}
+                disabled={
+                  generateRunMutation.isPending ||
+                  // canOverride users can always click — 409 dialogs will guide them through gates
+                  (!canRegenerate && (!attStatus?.approved || !salaryCanGenerate))
+                }
                 title={
                   !attStatus?.exists
                     ? "No attendance run exists for this month — generate one first from the Attendance Approvals panel"
-                    : !attStatus?.approved
+                    : !attStatus?.approved && !canRegenerate
                     ? "Attendance approval is pending — salary run will unlock once all managers have approved"
+                    : salaryPendingReg > 0 && !canRegenerate
+                    ? `${salaryPendingReg} regularization request${salaryPendingReg === 1 ? "" : "s"} still pending — resolve them before generating the salary run`
+                    : salaryPendingReg > 0
+                    ? `${salaryPendingReg} pending regularization${salaryPendingReg === 1 ? "" : "s"} — click to review override options`
                     : "Generate salary run for this month"
                 }
                 data-testid="button-generate-run"
@@ -1292,6 +1577,8 @@ export function SalaryReportsContent() {
           </div>
         </CardContent>
       </Card>
+
+      {isAdminLevel && <SalaryGateStatusPanel month={selectedMonth} year={selectedYear} />}
 
       <ReportRecipientsCard />
 
