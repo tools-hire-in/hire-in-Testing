@@ -435,6 +435,11 @@ async function ensureOfferLetterAddendumsTable() {
       WHERE table_schema = 'public' AND table_name = 'offer_letter_addendums'
     `);
     if (result.rows.length > 0) {
+      // Make offer_letter_id nullable so standalone addendums (no parent offer letter) work.
+      // ALTER COLUMN ... DROP NOT NULL is idempotent — safe to run every restart.
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ALTER COLUMN offer_letter_id DROP NOT NULL
+      `);
       await db.execute(sql`
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS device_items JSONB
       `);
