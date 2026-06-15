@@ -75,7 +75,7 @@ async function sendApprovalCompleteNotification(runId: string, month: number, ye
       JOIN admin_users u ON u.id = e.user_id
       WHERE e.run_id = ${runId}
       ORDER BY u.first_name, u.last_name
-    `)) as any[];
+    `)).rows as any[];
 
     const entrySummary = entries.map((e: any) => ({
       name: `${e.first_name} ${e.last_name}`,
@@ -111,14 +111,14 @@ async function sendApprovalCompleteNotification(runId: string, month: number, ye
 }
 
 async function checkAndAdvanceRunStatus(runId: string) {
-  const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+  const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
   if (!run) return;
   // Never regress from terminal states
   if (run.status === "approved" || run.status === "overridden" || run.status === "deadline_expired") return;
 
   const approvals = (await db.execute(sql`
     SELECT status FROM attendance_report_manager_approvals WHERE run_id = ${runId}
-  `)) as any[];
+  `)).rows as any[];
 
   const prevStatus = run.status;
 
@@ -197,7 +197,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         SELECT id, status, deadline_at, created_at FROM attendance_report_runs
         WHERE month = ${month} AND year = ${year}
         LIMIT 1
-      `)) as any[];
+      `)).rows as any[];
 
       if (!run) return res.json({ exists: false, approved: false });
 
@@ -206,12 +206,12 @@ export function registerAttendanceReportRoutes(app: Express) {
         FROM attendance_report_manager_approvals ma
         LEFT JOIN admin_users u ON u.id = ma.manager_id
         WHERE ma.run_id = ${run.id}
-      `)) as any[];
+      `)).rows as any[];
 
       const pendingEdits = (await db.execute(sql`
         SELECT COUNT(*)::int as cnt FROM attendance_report_edits
         WHERE run_id = ${run.id} AND status = 'pending'
-      `)) as any[];
+      `)).rows as any[];
 
       res.json({
         exists: true,
@@ -237,7 +237,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         FROM attendance_report_runs r
         LEFT JOIN admin_users u ON u.id = r.override_by
         ORDER BY r.year DESC, r.month DESC
-      `)) as any[];
+      `)).rows as any[];
       res.json(runs);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch runs" });
@@ -254,7 +254,7 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const existing = (await db.execute(sql`
         SELECT id, status FROM attendance_report_runs WHERE month = ${month} AND year = ${year} LIMIT 1
-      `)) as any[];
+      `)).rows as any[];
 
       if (existing.length > 0) {
         return res.status(409).json({ error: "A report run already exists for this month. Use override to unlock." });
@@ -262,7 +262,7 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const { runId, managerIds } = await generateAttendanceReportRun(month, year, req.session.userId);
 
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
 
       if (managerIds.length > 0) {
         const managers = await db.select({
@@ -312,13 +312,13 @@ export function registerAttendanceReportRoutes(app: Express) {
       const managerId = req.session.userId!;
       const runId = req.params.id;
 
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
 
       const [myApproval] = (await db.execute(sql`
         SELECT * FROM attendance_report_manager_approvals
         WHERE run_id = ${runId} AND manager_id = ${managerId}
-      `)) as any[];
+      `)).rows as any[];
 
       const entries = (await db.execute(sql`
         SELECT e.*, u.first_name, u.last_name, u.email, u.designation, u.employee_id
@@ -326,7 +326,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         JOIN admin_users u ON u.id = e.user_id
         WHERE e.run_id = ${runId} AND e.manager_id = ${managerId}
         ORDER BY u.first_name, u.last_name
-      `)) as any[];
+      `)).rows as any[];
 
       let edits: any[] = [];
       if (entries.length > 0) {
@@ -335,7 +335,7 @@ export function registerAttendanceReportRoutes(app: Express) {
           FROM attendance_report_edits ed
           LEFT JOIN admin_users u ON u.id = ed.reviewed_by
           WHERE ed.run_id = ${runId} AND ed.manager_id = ${managerId}
-        `)) as any[];
+        `)).rows as any[];
       }
 
       res.json({ run, myApproval: myApproval || null, entries, edits });
@@ -359,7 +359,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         WHERE ma.manager_id = ${managerId}
         ORDER BY r.year DESC, r.month DESC
         LIMIT 1
-      `)) as any[];
+      `)).rows as any[];
 
       if (approvals.length === 0) return res.json({ run: null });
       res.json({ run: approvals[0] });
@@ -373,7 +373,7 @@ export function registerAttendanceReportRoutes(app: Express) {
       const managerId = req.session.userId!;
       const runId = req.params.id;
 
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
       if (run.status === "approved" || run.status === "overridden") {
         return res.status(409).json({ error: "Run already closed" });
@@ -384,7 +384,7 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [approval] = (await db.execute(sql`
         SELECT * FROM attendance_report_manager_approvals WHERE run_id = ${runId} AND manager_id = ${managerId}
-      `)) as any[];
+      `)).rows as any[];
       if (!approval) return res.status(403).json({ error: "You are not a reviewer for this run" });
 
       await db.execute(sql`
@@ -418,7 +418,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         return res.status(400).json({ error: "corrections array required" });
       }
 
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
       if (run.status === "approved" || run.status === "overridden") {
         return res.status(409).json({ error: "Run already closed" });
@@ -429,7 +429,7 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [approval] = (await db.execute(sql`
         SELECT * FROM attendance_report_manager_approvals WHERE run_id = ${runId} AND manager_id = ${managerId}
-      `)) as any[];
+      `)).rows as any[];
       if (!approval) return res.status(403).json({ error: "You are not a reviewer for this run" });
 
       const origMap: Record<string, string> = {
@@ -458,7 +458,7 @@ export function registerAttendanceReportRoutes(app: Express) {
 
         const [entry] = (await db.execute(sql`
           SELECT * FROM attendance_report_entries WHERE id = ${entryId} AND run_id = ${runId} AND manager_id = ${managerId}
-        `)) as any[];
+        `)).rows as any[];
         if (!entry) continue;
 
         const originalValue = entry[origMap[field]];
@@ -534,7 +534,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         LEFT JOIN admin_users rv ON rv.id = ed.reviewed_by
         WHERE ed.status = 'pending'
         ORDER BY ed.created_at DESC
-      `)) as any[];
+      `)).rows as any[];
 
       res.json(edits);
     } catch (error) {
@@ -556,7 +556,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         SELECT ed.*, e.run_id FROM attendance_report_edits ed
         JOIN attendance_report_entries e ON e.id = ed.entry_id
         WHERE ed.id = ${editId}
-      `)) as any[];
+      `)).rows as any[];
       if (!edit) return res.status(404).json({ error: "Edit not found" });
       if (edit.status !== "pending") return res.status(409).json({ error: "Edit already reviewed" });
 
@@ -595,13 +595,13 @@ export function registerAttendanceReportRoutes(app: Express) {
       const [managerApproval] = (await db.execute(sql`
         SELECT * FROM attendance_report_manager_approvals
         WHERE run_id = ${edit.run_id} AND manager_id = ${edit.manager_id}
-      `)) as any[];
+      `)).rows as any[];
 
       const pendingEditsForManager = (await db.execute(sql`
         SELECT COUNT(*)::int AS cnt FROM attendance_report_edits ed
         JOIN attendance_report_entries e ON e.id = ed.entry_id
         WHERE ed.run_id = ${edit.run_id} AND ed.manager_id = ${edit.manager_id} AND ed.status = 'pending'
-      `)) as any[];
+      `)).rows as any[];
 
       if ((pendingEditsForManager[0]?.cnt || 0) === 0 && managerApproval?.status === "edits_submitted") {
         await db.execute(sql`
@@ -630,7 +630,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         return res.status(400).json({ error: "Override note is required" });
       }
 
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
 
       if (managerId) {
@@ -666,7 +666,7 @@ export function registerAttendanceReportRoutes(app: Express) {
     try {
       const [row] = (await db.execute(sql`
         SELECT COUNT(*)::int AS cnt FROM attendance_report_edits WHERE status = 'pending'
-      `)) as any[];
+      `)).rows as any[];
       res.json({ count: row?.cnt || 0 });
     } catch (error) {
       res.status(500).json({ error: "Failed" });
@@ -676,7 +676,7 @@ export function registerAttendanceReportRoutes(app: Express) {
   app.post("/api/hr/attendance-report/runs/:id/check-deadline", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
     try {
       const runId = req.params.id;
-      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)) as any[];
+      const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Not found" });
 
       const deadline = run.deadline_at ? new Date(run.deadline_at) : null;

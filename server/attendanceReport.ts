@@ -135,11 +135,12 @@ export async function buildAttendanceSnapshot(year: number, month: number): Prom
 export async function generateAttendanceReportRun(month: number, year: number, createdBy?: string): Promise<{ runId: string; managerIds: string[] }> {
   const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const [run] = await db.execute(sql`
+  const insertResult = await db.execute(sql`
     INSERT INTO attendance_report_runs (month, year, status, deadline_at, created_by)
     VALUES (${month}, ${year}, 'pending', ${deadlineAt.toISOString()}, ${createdBy || null})
     RETURNING id
   `);
+  const run = (insertResult.rows as any[])[0];
   const runId = (run as any).id;
 
   const entries = await buildAttendanceSnapshot(year, month);
@@ -187,7 +188,7 @@ export async function checkAndAutoCreateRun(forceNotify = false): Promise<{ crea
     const existing = await db.execute(sql`
       SELECT id FROM attendance_report_runs WHERE month = ${prevMonth} AND year = ${prevYear} LIMIT 1
     `);
-    if ((existing as any[]).length > 0) return { created: false };
+    if ((existing.rows as any[]).length > 0) return { created: false };
 
     const { runId, managerIds } = await generateAttendanceReportRun(prevMonth, prevYear);
     console.log(`[attendance-report] Auto-created attendance report run for ${prevMonth}/${prevYear}: ${runId}`);
