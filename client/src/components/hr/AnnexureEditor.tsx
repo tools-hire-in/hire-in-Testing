@@ -499,6 +499,7 @@ function LoadFromTemplateDialog({
                 <SelectContent>
                   <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
                   <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
+                  <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
                   <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
                   <SelectItem value="associate_manager">Associate Manager</SelectItem>
                   <SelectItem value="account_manager">Account Manager</SelectItem>
