@@ -1459,7 +1459,10 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
-      // Pre-fetch templates — fail fast (before any writes) if none exist
+      // custom_goals: optional array of { title, description, category } from the manager-edited step-2 form
+      const custom_goals: { title: string; description?: string; category?: string }[] | undefined = req.body.custom_goals;
+
+      // Pre-fetch templates (needed even when custom_goals provided, to validate role/plan combo exists)
       const tmplResult = await db.execute(sql`
         SELECT * FROM plan_goal_templates
         WHERE plan_type = ${plan_type}::employee_plan_type
@@ -1468,7 +1471,10 @@ export function registerPerformanceRoutes(app: Express) {
         ORDER BY sort_order ASC
       `);
       const planTemplates = tmplResult.rows as PlanGoalTemplate[];
-      if (planTemplates.length === 0) {
+
+      // Determine which goals to seed: custom (if non-empty) or templates
+      const useCustomGoals = Array.isArray(custom_goals) && custom_goals.length > 0;
+      if (!useCustomGoals && planTemplates.length === 0) {
         return res.status(400).json({
           error: `No active templates found for plan_type="${plan_type}" and role_slug="${role_slug}". Cannot create a zero-goal plan.`,
         });
@@ -1493,10 +1499,26 @@ export function registerPerformanceRoutes(app: Express) {
         `);
       }
 
-      // Seed goals using shared helper (same pipeline as /api/performance/goals/batch)
-      const goalsCreated = await insertPlanGoalsFromTemplates(
-        plan.id, employee_id, manager_id || null, start_date, end_date, planTemplates,
-      );
+      // Seed goals: use custom goals if provided by manager, otherwise seed from templates
+      let goalsCreated: number;
+      if (useCustomGoals) {
+        const sourceRef = `plan:${plan.id}`;
+        for (const g of custom_goals!) {
+          if (!g.title?.trim()) continue;
+          await db.execute(sql`
+            INSERT INTO performance_goals
+              (employee_id, manager_id, title, description, category, plan_id, source_ref, start_date, target_date, weight)
+            VALUES
+              (${employee_id}, ${manager_id || null}, ${g.title.trim()}, ${g.description?.trim() ?? null},
+               ${g.category || "individual"}, ${plan.id}, ${sourceRef}, ${start_date}, ${end_date}, 3)
+          `);
+        }
+        goalsCreated = custom_goals!.filter(g => g.title?.trim()).length;
+      } else {
+        goalsCreated = await insertPlanGoalsFromTemplates(
+          plan.id, employee_id, manager_id || null, start_date, end_date, planTemplates,
+        );
+      }
 
       await createAuditLog(userId, "employee_plan_created", { planId: plan.id, plan_type, employee_id }, employee_id);
       res.status(201).json({ plan, checkInsScheduled: checkInSchedule.length, goalsCreated });
@@ -1627,6 +1649,61 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error updating employee plan:", error);
       res.status(500).json({ error: "Failed to update employee plan" });
+    }
+  });
+
+  // ─── Complete a plan check-in (manager action) ────────────────────────────
+  // Supports PIP weekly review (reviewScores JSONB) and standard (rating/notes)
+  app.patch("/api/hr/check-ins/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const ciResult = await db.execute(sql`SELECT * FROM check_ins WHERE id = ${req.params.id}`);
+      if (ciResult.rows.length === 0) return res.status(404).json({ error: "Check-in not found" });
+      const ci = ciResult.rows[0] as any;
+
+      // Auth: manager must own the check-in or be admin/hr
+      const patchRole = req.session.role!;
+      if (!ADMIN_ROLES.includes(patchRole)) {
+        if (ci.manager_id !== userId) {
+          const teamIds = await getTeamMemberIds(userId);
+          if (!teamIds.includes(ci.employee_id)) {
+            return res.status(403).json({ error: "Not authorized to update this check-in" });
+          }
+        }
+      }
+
+      const { status, managerNotes, rating, reviewScores, goalProgressNotes } = req.body;
+
+      // Serialize goalProgressNotes as JSON into action_items when provided
+      const actionItemsValue = goalProgressNotes && Object.keys(goalProgressNotes).length > 0
+        ? JSON.stringify({ goalProgressNotes })
+        : null;
+
+      await db.execute(sql`
+        UPDATE check_ins SET
+          status = COALESCE(${status ?? null}::check_in_status, status),
+          manager_notes = COALESCE(${managerNotes ?? null}, manager_notes),
+          rating = COALESCE(${rating ?? null}, rating),
+          review_scores = CASE
+            WHEN ${reviewScores != null} THEN ${reviewScores != null ? JSON.stringify(reviewScores) : null}::jsonb
+            ELSE review_scores
+          END,
+          action_items = CASE
+            WHEN ${actionItemsValue != null} THEN ${actionItemsValue}
+            ELSE action_items
+          END,
+          completed_at = CASE WHEN ${status === "completed"} THEN NOW() ELSE completed_at END,
+          updated_at = NOW()
+        WHERE id = ${req.params.id}
+        RETURNING *
+      `);
+
+      await createAuditLog(userId, "plan_check_in_completed", { checkInId: req.params.id, planId: ci.plan_id ?? undefined }, ci.employee_id);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error completing check-in:", error);
+      res.status(500).json({ error: "Failed to complete check-in" });
     }
   });
 

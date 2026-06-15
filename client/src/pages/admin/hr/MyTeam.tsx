@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { StatCard } from "@/components/ui/stat-card";
@@ -32,6 +32,12 @@ import {
   XCircle,
   Timer,
   ClipboardList,
+  Target,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Clipboard,
+  RefreshCw,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2162,10 +2168,1046 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
   );
 }
 
+// ==========================================
+// HEALTHCARE PLANS - TYPES & COMPONENTS
+// ==========================================
+
+interface TeamPlan {
+  id: string;
+  employee_id: string;
+  manager_id: string | null;
+  plan_type: "probation" | "growth" | "pip";
+  department_scope: string;
+  status: string;
+  outcome: string | null;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  acknowledged_at: string | null;
+  created_by: string;
+  created_at: string;
+  employee_name: string | null;
+  manager_name: string | null;
+}
+
+interface PlanGoal {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  progress: number;
+  status: string;
+  target_date: string | null;
+  plan_id: string | null;
+}
+
+interface PlanCheckIn {
+  id: string;
+  employee_id: string;
+  manager_id: string | null;
+  plan_id: string | null;
+  check_in_type: string;
+  scheduled_date: string;
+  status: string;
+  employee_notes: string | null;
+  manager_notes: string | null;
+  action_items: string | null;
+  rating: number | null;
+  review_scores: Record<string, number | string> | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+interface PlanDetail {
+  plan: TeamPlan;
+  checkIns: PlanCheckIn[];
+  goals: PlanGoal[];
+}
+
+interface PlanTemplate {
+  id: string;
+  plan_type: string;
+  role_slug: string;
+  goal_title: string;
+  goal_description: string | null;
+  target_metric: string | null;
+  sort_order: number;
+}
+
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  probation: "Probation",
+  growth: "Growth Plan",
+  pip: "PIP",
+};
+
+const PLAN_TYPE_COLORS: Record<string, string> = {
+  probation: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  growth: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  pip: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+const CHECK_IN_TYPE_LABELS: Record<string, string> = {
+  milestone: "Milestone Review",
+  weekly: "Weekly Check-In",
+  pip_review: "PIP Weekly Review",
+  weekly_update: "Weekly Self-Update",
+};
+
+function daysRemaining(endDate: string): number {
+  const end = new Date(endDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((end.getTime() - today.getTime()) / 86400000);
+}
+
+function todayStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function calcCompliance(checkIns: PlanCheckIn[]): { done: number; total: number } {
+  const today = todayStr();
+  const scheduled = checkIns.filter(ci => ci.check_in_type !== "weekly_update" && ci.scheduled_date <= today);
+  const done = scheduled.filter(ci => ci.status === "completed").length;
+  return { done, total: scheduled.length };
+}
+
+function overdueCount(checkIns: PlanCheckIn[]): number {
+  const today = todayStr();
+  return checkIns.filter(
+    ci => ci.check_in_type !== "weekly_update" && ci.scheduled_date < today && ci.status !== "completed"
+  ).length;
+}
+
+// ── Star rating picker ─────────────────────────────────────────────────
+function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          className={`text-2xl transition-colors ${n <= value ? "text-yellow-400" : "text-muted-foreground/30"}`}
+          data-testid={`star-${n}`}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Score slider/select ────────────────────────────────────────────────
+function ScoreSelect({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium">{label}</label>
+        <span className={`text-sm font-bold px-2 py-0.5 rounded ${value >= 4 ? "text-green-700 bg-green-100 dark:text-green-300 dark:bg-green-900/30" : value >= 3 ? "text-yellow-700 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900/30" : "text-red-700 bg-red-100 dark:text-red-300 dark:bg-red-900/30"}`}>
+          {value}/5
+        </span>
+      </div>
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            className={`flex-1 h-8 rounded text-xs font-medium transition-colors border ${n <= value ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+            data-testid={`score-${label.replace(/\s+/g, "-").toLowerCase()}-${n}`}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Complete Check-In Modal ────────────────────────────────────────────
+function CompleteCheckInModal({
+  checkIn,
+  goals,
+  planType,
+  onClose,
+  onSuccess,
+}: {
+  checkIn: PlanCheckIn;
+  goals: PlanGoal[];
+  planType: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const isPip = checkIn.check_in_type === "pip_review";
+
+  const [rating, setRating] = useState(0);
+  const [notes, setNotes] = useState("");
+  const [goalNotes, setGoalNotes] = useState<Record<string, string>>({});
+  const [activityScore, setActivityScore] = useState(0);
+  const [qualityScore, setQualityScore] = useState(0);
+  const [atsScore, setAtsScore] = useState(0);
+  const [communicationScore, setCommunicationScore] = useState(0);
+  const [ownershipScore, setOwnershipScore] = useState(0);
+  const [observations, setObservations] = useState("");
+  const [employeeResponse, setEmployeeResponse] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, any> = {
+        status: "completed",
+        managerNotes: isPip ? observations : notes,
+        rating: isPip ? null : (rating || null),
+      };
+      if (isPip) {
+        body.reviewScores = {
+          activity: activityScore,
+          quality: qualityScore,
+          ats_hygiene: atsScore,
+          communication: communicationScore,
+          ownership: ownershipScore,
+          employee_verbal_response: employeeResponse,
+        };
+      } else {
+        body.goalProgressNotes = goalNotes;
+      }
+      await apiRequest("PATCH", `/api/hr/check-ins/${checkIn.id}`, body);
+    },
+    onSuccess: () => {
+      // Optimistic cache update: mark this check-in as completed in the plan detail cache
+      if (checkIn.plan_id) {
+        queryClient.setQueryData<PlanDetail>(
+          ["/api/hr/plans", checkIn.plan_id],
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              checkIns: old.checkIns.map(ci =>
+                ci.id === checkIn.id ? { ...ci, status: "completed" } : ci
+              ),
+            };
+          }
+        );
+        // Also invalidate to sync fresh data in background
+        queryClient.invalidateQueries({ queryKey: ["/api/hr/plans", checkIn.plan_id] });
+      }
+      toast({ title: "Check-in completed" });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to complete check-in", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const pipValid = isPip && activityScore > 0 && qualityScore > 0 && atsScore > 0 && communicationScore > 0 && ownershipScore > 0 && observations.trim().length > 0;
+  const standardValid = !isPip && rating > 0 && notes.trim().length > 0;
+  const canSubmit = isPip ? pipValid : standardValid;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            {isPip ? "PIP Weekly Review" : `Complete Check-In — ${CHECK_IN_TYPE_LABELS[checkIn.check_in_type] || checkIn.check_in_type}`}
+          </DialogTitle>
+          <DialogDescription>
+            Scheduled: {formatDate(checkIn.scheduled_date)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {isPip ? (
+            <>
+              <div className="space-y-4">
+                <ScoreSelect label="Activity Score" value={activityScore} onChange={setActivityScore} />
+                <ScoreSelect label="Submission Quality" value={qualityScore} onChange={setQualityScore} />
+                <ScoreSelect label="ATS Hygiene" value={atsScore} onChange={setAtsScore} />
+                <ScoreSelect label="Communication" value={communicationScore} onChange={setCommunicationScore} />
+                <ScoreSelect label="Ownership" value={ownershipScore} onChange={setOwnershipScore} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Manager Observations <span className="text-destructive">*</span></label>
+                <Textarea
+                  data-testid="input-pip-observations"
+                  value={observations}
+                  onChange={e => setObservations(e.target.value)}
+                  placeholder="Observations on performance this week..."
+                  className="min-h-[100px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Employee's response (verbal)</label>
+                <Textarea
+                  data-testid="input-pip-employee-response"
+                  value={employeeResponse}
+                  onChange={e => setEmployeeResponse(e.target.value)}
+                  placeholder="What the employee said verbally during the review..."
+                  className="min-h-[80px]"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Overall Rating <span className="text-destructive">*</span></label>
+                <StarRating value={rating} onChange={setRating} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Manager Notes <span className="text-destructive">*</span></label>
+                <Textarea
+                  data-testid="input-check-in-notes"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Summary of the check-in discussion..."
+                  className="min-h-[100px]"
+                />
+              </div>
+              {goals.length > 0 && (
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-muted-foreground">Goal Progress Notes (optional)</label>
+                  {goals.map(g => (
+                    <div key={g.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <Target className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        {g.title}
+                        <span className="ml-auto text-xs text-muted-foreground">{g.progress}%</span>
+                      </div>
+                      <Textarea
+                        data-testid={`input-goal-note-${g.id}`}
+                        value={goalNotes[g.id] || ""}
+                        onChange={e => setGoalNotes(prev => ({ ...prev, [g.id]: e.target.value }))}
+                        placeholder="Progress update for this goal..."
+                        className="min-h-[60px] text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-checkin">Cancel</Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={!canSubmit || mutation.isPending}
+            data-testid="button-submit-checkin"
+          >
+            {mutation.isPending ? "Saving..." : "Mark Completed"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Plan Detail Drawer ─────────────────────────────────────────────────
+function PlanDetailPanel({
+  planId,
+  onClose,
+  onRefresh,
+}: {
+  planId: string;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const [completeCheckIn, setCompleteCheckIn] = useState<PlanCheckIn | null>(null);
+
+  const { data, isLoading, refetch } = useQuery<PlanDetail>({
+    queryKey: ["/api/hr/plans", planId],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/plans/${planId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load plan");
+      return res.json();
+    },
+  });
+
+  const today = todayStr();
+
+  if (isLoading) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="space-y-4 py-4">
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (!data) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-3xl">
+          <div className="text-center py-8 text-muted-foreground">Failed to load plan details.</div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const { plan, checkIns, goals } = data;
+  const remaining = daysRemaining(plan.end_date);
+  const compliance = calcCompliance(checkIns);
+  const overdue = overdueCount(checkIns);
+
+  const managerCheckIns = checkIns.filter(ci => ci.check_in_type !== "weekly_update");
+  const selfUpdates = checkIns.filter(ci => ci.check_in_type === "weekly_update");
+  const completedCIs = [...managerCheckIns].filter(ci => ci.status === "completed").sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
+  const pendingCIs = managerCheckIns.filter(ci => ci.status !== "completed").sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+
+  return (
+    <>
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              <Badge className={PLAN_TYPE_COLORS[plan.plan_type]}>
+                {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
+              </Badge>
+              <span>{plan.employee_name || "Employee"}</span>
+            </DialogTitle>
+            <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <span><strong>Start:</strong> {formatDate(plan.start_date)}</span>
+              <span><strong>End:</strong> {formatDate(plan.end_date)}</span>
+              <span className={remaining < 0 ? "text-red-600 font-medium" : remaining <= 7 ? "text-amber-600 font-medium" : ""}>
+                {remaining < 0 ? `${Math.abs(remaining)} days overdue` : `${remaining} days remaining`}
+              </span>
+              <span className="text-muted-foreground">
+                Compliance: <strong>{compliance.done}/{compliance.total}</strong>
+                {overdue > 0 && <span className="ml-2 text-red-600">({overdue} overdue)</span>}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Goals */}
+            {goals.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Target className="h-4 w-4" /> Goals ({goals.length})
+                </h3>
+                <div className="space-y-2">
+                  {goals.map(g => (
+                    <div key={g.id} className="border rounded-lg p-3 space-y-2" data-testid={`plan-goal-${g.id}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium">{g.title}</div>
+                          {g.description && <div className="text-xs text-muted-foreground mt-0.5">{g.description}</div>}
+                        </div>
+                        <span className="text-xs font-semibold shrink-0">{g.progress}%</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-1.5">
+                        <div
+                          className="bg-primary rounded-full h-1.5 transition-all"
+                          style={{ width: `${g.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming / Overdue Check-Ins */}
+            {pendingCIs.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" /> Upcoming Check-Ins
+                </h3>
+                <div className="space-y-2">
+                  {pendingCIs.map(ci => {
+                    const isOverdue = ci.scheduled_date < today;
+                    return (
+                      <div key={ci.id} className={`border rounded-lg p-3 flex items-center justify-between gap-3 ${isOverdue ? "border-red-200 bg-red-50/50 dark:border-red-800/30 dark:bg-red-900/10" : ""}`} data-testid={`pending-ci-${ci.id}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            {CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}
+                            {isOverdue && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs">Overdue</Badge>}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={isOverdue ? "destructive" : "outline"}
+                          onClick={() => setCompleteCheckIn(ci)}
+                          data-testid={`button-complete-ci-${ci.id}`}
+                        >
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                          Complete
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Check-In History */}
+            {completedCIs.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <History className="h-4 w-4" /> Check-In History
+                </h3>
+                <div className="space-y-2">
+                  {completedCIs.map(ci => {
+                    const scores = ci.review_scores as Record<string, any> | null;
+                    return (
+                      <div key={ci.id} className="border rounded-lg p-3 space-y-2" data-testid={`completed-ci-${ci.id}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-medium">{CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}</div>
+                            <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)} · Completed {ci.completed_at ? formatDate(ci.completed_at) : ""}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {ci.rating !== null && ci.rating !== undefined && (
+                              <span className="text-sm font-semibold text-yellow-600">{ci.rating}/5 ★</span>
+                            )}
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">Done</Badge>
+                          </div>
+                        </div>
+                        {ci.manager_notes && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 bg-muted/40 rounded px-2 py-1">{ci.manager_notes}</p>
+                        )}
+                        {scores && ci.check_in_type === "pip_review" && (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            {scores.activity !== undefined && <span>Activity: <strong>{scores.activity}/5</strong></span>}
+                            {scores.quality !== undefined && <span>Quality: <strong>{scores.quality}/5</strong></span>}
+                            {scores.ats_hygiene !== undefined && <span>ATS: <strong>{scores.ats_hygiene}/5</strong></span>}
+                            {scores.communication !== undefined && <span>Comm: <strong>{scores.communication}/5</strong></span>}
+                            {scores.ownership !== undefined && <span>Ownership: <strong>{scores.ownership}/5</strong></span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Employee Self-Updates */}
+            {selfUpdates.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Clipboard className="h-4 w-4" /> Employee Weekly Self-Updates
+                </h3>
+                <div className="space-y-2">
+                  {[...selfUpdates].sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date)).map(su => (
+                    <div key={su.id} className="border rounded-lg p-3 space-y-1" data-testid={`self-update-${su.id}`}>
+                      <div className="text-xs font-medium text-muted-foreground">{formatDate(su.scheduled_date)}</div>
+                      {su.employee_notes && <p className="text-sm">{su.employee_notes}</p>}
+                      {!su.employee_notes && <p className="text-sm text-muted-foreground italic">No notes submitted</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {goals.length === 0 && pendingCIs.length === 0 && completedCIs.length === 0 && selfUpdates.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No goals or check-ins scheduled yet.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {completeCheckIn && (
+        <CompleteCheckInModal
+          checkIn={completeCheckIn}
+          goals={goals}
+          planType={plan.plan_type}
+          onClose={() => setCompleteCheckIn(null)}
+          onSuccess={() => {
+            refetch();
+            onRefresh();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// ── New Plan Modal ─────────────────────────────────────────────────────
+const ROLE_SLUG_LABELS: Record<string, string> = {
+  healthcare_sourcer_intern: "Healthcare Sourcer (Intern)",
+  healthcare_recruiter_l1: "Healthcare Recruiter L1",
+  associate_manager: "Associate Manager",
+  delivery_manager: "Delivery Manager",
+};
+
+function NewPlanModal({
+  teamMembers,
+  managerId,
+  activePlans,
+  onClose,
+  onSuccess,
+}: {
+  teamMembers: TeamMember[];
+  managerId: string;
+  activePlans: TeamPlan[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [step, setStep] = useState<1 | 2>(1);
+  const [planType, setPlanType] = useState<"growth" | "pip">("growth");
+  const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [roleSlug, setRoleSlug] = useState("");
+  const [startDate, setStartDate] = useState(() => todayStr());
+  const [durationDays, setDurationDays] = useState(90);
+  // editedGoals: array of { title, description } — initialized from templates, editable before create
+  const [editedGoals, setEditedGoals] = useState<{ title: string; description: string; category: string }[]>([]);
+
+  const endDate = (() => {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + durationDays);
+    return d.toISOString().split("T")[0];
+  })();
+
+  const templatesQuery = useQuery<PlanTemplate[]>({
+    queryKey: ["/api/hr/plan-templates", planType, roleSlug],
+    queryFn: async () => {
+      if (!planType || !roleSlug) return [];
+      const res = await fetch(`/api/hr/plan-templates?plan_type=${planType}&role_slug=${roleSlug}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!roleSlug && step === 2,
+  });
+
+  // Seed editedGoals from templates once when they load in step 2
+  const seededKeyRef = useRef<string>("__none__");
+  const templatesKey = `${planType}:${roleSlug}`;
+  useEffect(() => {
+    if (
+      step === 2 &&
+      templatesQuery.data &&
+      templatesQuery.data.length > 0 &&
+      seededKeyRef.current !== templatesKey
+    ) {
+      seededKeyRef.current = templatesKey;
+      setEditedGoals(templatesQuery.data.map(t => ({
+        title: t.goal_title,
+        description: t.goal_description || "",
+        category: "individual",
+      })));
+    }
+  }, [step, templatesQuery.data, templatesKey]);
+
+  const updateGoal = (i: number, field: "title" | "description", value: string) => {
+    setEditedGoals(prev => prev.map((g, idx) => idx === i ? { ...g, [field]: value } : g));
+  };
+
+  const addCustomGoal = () => {
+    setEditedGoals(prev => [...prev, { title: "", description: "", category: "individual" }]);
+  };
+
+  const removeGoal = (i: number) => {
+    setEditedGoals(prev => prev.filter((_, idx) => idx !== i));
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/hr/plans", {
+        employee_id: selectedEmployee,
+        plan_type: planType,
+        start_date: startDate,
+        end_date: endDate,
+        duration_days: durationDays,
+        manager_id: managerId,
+        role_slug: roleSlug,
+        custom_goals: editedGoals.filter(g => g.title.trim()),
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Plan created successfully" });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create plan", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Filter: direct + active + no existing active plan of this type
+  const activeEmployeeIds = new Set(activePlans.filter(p => p.plan_type === planType).map(p => p.employee_id));
+  const eligibleMembers = teamMembers.filter(m => m.isDirect && m.isActive && !activeEmployeeIds.has(m.id));
+
+  const handleNextStep = () => {
+    if (!selectedEmployee || !roleSlug) {
+      toast({ title: "Please select an employee and role", variant: "destructive" });
+      return;
+    }
+    setEditedGoals([]);
+    seededKeyRef.current = "__none__";
+    setStep(2);
+  };
+
+  const selectedMember = eligibleMembers.find(m => m.id === selectedEmployee) ||
+    teamMembers.find(m => m.id === selectedEmployee);
+  const validGoals = editedGoals.filter(g => g.title.trim()).length;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            {step === 1 ? "New Healthcare Plan — Step 1: Setup" : "New Healthcare Plan — Step 2: Edit Goals"}
+          </DialogTitle>
+          <DialogDescription>
+            {step === 1 ? "Choose plan type and employee" : "Edit or add goals for this plan before creating"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === 1 ? (
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Plan Type <span className="text-destructive">*</span></label>
+              <Select value={planType} onValueChange={v => { setPlanType(v as "growth" | "pip"); setSelectedEmployee(""); }}>
+                <SelectTrigger data-testid="select-new-plan-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="growth">Growth Plan (90 days)</SelectItem>
+                  <SelectItem value="pip">PIP — Performance Improvement Plan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Employee <span className="text-destructive">*</span></label>
+              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                <SelectTrigger data-testid="select-new-plan-employee">
+                  <SelectValue placeholder="Select a direct report" />
+                </SelectTrigger>
+                <SelectContent>
+                  {eligibleMembers.length === 0 ? (
+                    <SelectItem value="__none__" disabled>All eligible employees have an active {PLAN_TYPE_LABELS[planType]}</SelectItem>
+                  ) : eligibleMembers.map(m => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.firstName} {m.lastName} {m.designation ? `— ${m.designation}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {eligibleMembers.length === 0 && (
+                <p className="text-xs text-amber-600">All active direct reports already have a {PLAN_TYPE_LABELS[planType]}.</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Role / Goal Template <span className="text-destructive">*</span></label>
+              <Select value={roleSlug} onValueChange={setRoleSlug}>
+                <SelectTrigger data-testid="select-new-plan-role">
+                  <SelectValue placeholder="Select role template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ROLE_SLUG_LABELS).map(([slug, label]) => (
+                    <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Start Date</label>
+              <Input
+                data-testid="input-new-plan-start-date"
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Duration (days)</label>
+              <Select value={String(durationDays)} onValueChange={v => setDurationDays(Number(v))}>
+                <SelectTrigger data-testid="select-new-plan-duration">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {planType === "pip" ? (
+                    <>
+                      <SelectItem value="30">30 days</SelectItem>
+                      <SelectItem value="45">45 days</SelectItem>
+                      <SelectItem value="60">60 days</SelectItem>
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="60">60 days</SelectItem>
+                      <SelectItem value="90">90 days</SelectItem>
+                      <SelectItem value="120">120 days</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">End date: {formatDate(endDate)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-2">
+            {templatesQuery.isLoading ? (
+              <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Goals from the <strong>{ROLE_SLUG_LABELS[roleSlug] || roleSlug}</strong> template — edit titles and descriptions, or add custom goals before creating.
+                </p>
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {editedGoals.map((g, i) => (
+                    <div key={i} className="border rounded-lg p-3 space-y-2" data-testid={`editable-goal-${i}`}>
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 space-y-1.5">
+                          <Input
+                            data-testid={`input-goal-title-${i}`}
+                            value={g.title}
+                            onChange={e => updateGoal(i, "title", e.target.value)}
+                            placeholder="Goal title"
+                            className="text-sm h-8"
+                          />
+                          <Input
+                            data-testid={`input-goal-desc-${i}`}
+                            value={g.description}
+                            onChange={e => updateGoal(i, "description", e.target.value)}
+                            placeholder="Description (optional)"
+                            className="text-sm h-8 text-muted-foreground"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                          onClick={() => removeGoal(i)}
+                          data-testid={`button-remove-goal-${i}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addCustomGoal}
+                  data-testid="button-add-custom-goal"
+                  className="w-full"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Custom Goal
+                </Button>
+                {validGoals === 0 && (
+                  <p className="text-xs text-destructive">At least one goal with a title is required.</p>
+                )}
+              </>
+            )}
+            <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Employee:</span><strong>{selectedMember?.firstName} {selectedMember?.lastName}</strong></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Plan type:</span><strong>{PLAN_TYPE_LABELS[planType]}</strong></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Duration:</span><strong>{durationDays} days ({formatDate(startDate)} → {formatDate(endDate)})</strong></div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {step === 2 && (
+            <Button variant="outline" onClick={() => setStep(1)} data-testid="button-new-plan-back">Back</Button>
+          )}
+          <Button variant="outline" onClick={onClose} data-testid="button-new-plan-cancel">Cancel</Button>
+          {step === 1 ? (
+            <Button
+              onClick={handleNextStep}
+              disabled={!selectedEmployee || !roleSlug || eligibleMembers.length === 0}
+              data-testid="button-new-plan-next"
+            >
+              Next: Edit Goals
+            </Button>
+          ) : (
+            <Button
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending || validGoals === 0 || templatesQuery.isLoading}
+              data-testid="button-new-plan-create"
+            >
+              {createMutation.isPending ? "Creating..." : `Create Plan with ${validGoals} goal${validGoals !== 1 ? "s" : ""}`}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Team Plans Tab ─────────────────────────────────────────────────────
+function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
+  const { user } = useAuth();
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [showNewPlan, setShowNewPlan] = useState(false);
+
+  const { data: plans, isLoading, refetch } = useQuery<TeamPlan[]>({
+    queryKey: ["/api/hr/plans", { status: "active" }],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/plans?status=active", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load team plans");
+      return res.json();
+    },
+  });
+
+  const today = todayStr();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+      </div>
+    );
+  }
+
+  if (!plans || plans.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center space-y-4">
+          <div className="text-muted-foreground">
+            <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">No active plans</p>
+            <p className="text-sm mt-1">Your team members don't have any active Healthcare plans.</p>
+          </div>
+          <Button onClick={() => setShowNewPlan(true)} data-testid="button-new-plan-empty">
+            <Plus className="h-4 w-4 mr-1" /> Start a New Plan
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-muted-foreground">{plans.length} active plan{plans.length !== 1 ? "s" : ""}</div>
+        <Button onClick={() => setShowNewPlan(true)} data-testid="button-new-plan" size="sm">
+          <Plus className="h-4 w-4 mr-1" /> New Plan
+        </Button>
+      </div>
+
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Employee</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Period</TableHead>
+              <TableHead>Days Left</TableHead>
+              <TableHead>Compliance</TableHead>
+              <TableHead>Overdue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {plans.map(plan => {
+              const remaining = daysRemaining(plan.end_date);
+              return (
+                <TableRow
+                  key={plan.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setSelectedPlanId(plan.id)}
+                  data-testid={`plan-row-${plan.id}`}
+                >
+                  <TableCell>
+                    <div className="font-medium">{plan.employee_name || plan.employee_id}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${PLAN_TYPE_COLORS[plan.plan_type]} text-xs`}>
+                      {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(plan.start_date)} – {formatDate(plan.end_date)}
+                  </TableCell>
+                  <TableCell>
+                    <span className={remaining < 0 ? "text-red-600 font-medium text-sm" : remaining <= 7 ? "text-amber-600 font-medium text-sm" : "text-sm"}>
+                      {remaining < 0 ? `${Math.abs(remaining)}d overdue` : `${remaining}d`}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <PlanComplianceCell planId={plan.id} />
+                  </TableCell>
+                  <TableCell>
+                    <PlanOverdueCell planId={plan.id} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {selectedPlanId && (
+        <PlanDetailPanel
+          planId={selectedPlanId}
+          onClose={() => setSelectedPlanId(null)}
+          onRefresh={refetch}
+        />
+      )}
+
+      {showNewPlan && user && (
+        <NewPlanModal
+          teamMembers={teamMembers}
+          managerId={user.id}
+          activePlans={plans ?? []}
+          onClose={() => setShowNewPlan(false)}
+          onSuccess={refetch}
+        />
+      )}
+    </>
+  );
+}
+
+// Lazy compliance cell — fetches plan detail once to calculate compliance
+function PlanComplianceCell({ planId }: { planId: string }) {
+  const { data } = useQuery<PlanDetail>({
+    queryKey: ["/api/hr/plans", planId],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/plans/${planId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+  if (!data) return <span className="text-muted-foreground text-sm">—</span>;
+  const c = calcCompliance(data.checkIns);
+  return <span className="text-sm">{c.done}/{c.total}</span>;
+}
+
+function PlanOverdueCell({ planId }: { planId: string }) {
+  const { data, isLoading } = useQuery<PlanDetail>({
+    queryKey: ["/api/hr/plans", planId],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/plans/${planId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+  if (isLoading) return <span className="text-muted-foreground text-sm">…</span>;
+  if (!data) return <span className="text-muted-foreground text-sm">—</span>;
+  const count = overdueCount(data.checkIns);
+  if (count === 0) return <Badge variant="outline" className="text-xs border-green-300 text-green-700">None</Badge>;
+  return (
+    <Badge className={`text-xs ${count >= 2 ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
+      {count} overdue
+    </Badge>
+  );
+}
+
 export default function MyTeam() {
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [pageTab, setPageTab] = useState<"team" | "plans">("team");
 
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
@@ -2202,6 +3244,16 @@ export default function MyTeam() {
 
   const membersQuery = useQuery<TeamMember[]>({
     queryKey: ["/api/admin/my-team/members"],
+  });
+
+  const activePlansQuery = useQuery<TeamPlan[]>({
+    queryKey: ["/api/hr/plans", { status: "active" }],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/plans?status=active", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30000,
   });
 
   const detailsQuery = useQuery<EmployeeDetails>({
@@ -2875,65 +3927,91 @@ export default function MyTeam() {
           </div>
         </div>
 
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            data-testid="input-search"
-            placeholder="Search by name, email, or employee ID..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <Tabs value={pageTab} onValueChange={v => setPageTab(v as "team" | "plans")}>
+          <TabsList data-testid="tabs-page-level">
+            <TabsTrigger value="team" data-testid="tab-team">
+              <Users className="h-4 w-4 mr-1.5" />
+              Team
+            </TabsTrigger>
+            {(activePlansQuery.isLoading || (activePlansQuery.data?.length ?? 0) > 0) && (
+              <TabsTrigger value="plans" data-testid="tab-plans">
+                <Activity className="h-4 w-4 mr-1.5" />
+                Plans
+                {(activePlansQuery.data?.length ?? 0) > 0 && (
+                  <span className="ml-1.5 rounded-full bg-primary/10 text-primary px-1.5 py-0.5 text-xs font-medium">
+                    {activePlansQuery.data!.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        <ManagerRegularizationQueue onViewEmployee={(id) => setSelectedUserId(id)} />
+          <TabsContent value="team" className="mt-4 space-y-6">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                data-testid="input-search"
+                placeholder="Search by name, email, or employee ID..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
 
-        {membersQuery.isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <Skeleton key={i} className="h-32" />
-            ))}
-          </div>
-        ) : filteredMembers.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              {searchTerm ? "No team members match your search" : "No team members found"}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredMembers.map(member => (
-              <Card
-                key={member.id}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                data-testid={`card-member-${member.id}`}
-                onClick={() => setSelectedUserId(member.id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
-                      {member.firstName[0]}{member.lastName[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
-                        {member.firstName} {member.lastName}
-                      </p>
-                      <p className="text-sm text-muted-foreground truncate">{member.email}</p>
-                    </div>
-                    <Badge variant={member.isActive ? "default" : "secondary"} className="shrink-0">
-                      {member.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {member.designation && <span>{member.designation}</span>}
-                    {member.departmentName && <span>| {member.departmentName}</span>}
-                    {member.employeeId && <span>| {member.employeeId}</span>}
-                  </div>
+            <ManagerRegularizationQueue onViewEmployee={(id) => setSelectedUserId(id)} />
+
+            {membersQuery.isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <Skeleton key={i} className="h-32" />
+                ))}
+              </div>
+            ) : filteredMembers.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  {searchTerm ? "No team members match your search" : "No team members found"}
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredMembers.map(member => (
+                  <Card
+                    key={member.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    data-testid={`card-member-${member.id}`}
+                    onClick={() => setSelectedUserId(member.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                          {member.firstName[0]}{member.lastName[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate" data-testid={`text-member-name-${member.id}`}>
+                            {member.firstName} {member.lastName}
+                          </p>
+                          <p className="text-sm text-muted-foreground truncate">{member.email}</p>
+                        </div>
+                        <Badge variant={member.isActive ? "default" : "secondary"} className="shrink-0">
+                          {member.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {member.designation && <span>{member.designation}</span>}
+                        {member.departmentName && <span>| {member.departmentName}</span>}
+                        {member.employeeId && <span>| {member.employeeId}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="plans" className="mt-4">
+            <TeamPlansTab teamMembers={membersQuery.data || []} />
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminLayout>
   );
