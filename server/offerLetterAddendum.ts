@@ -252,14 +252,18 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     bodyParagraphs.push(bodyText("• The company reserves the right to remotely wipe company data and disable access to company systems on these devices at any time."));
   }
 
+  // Dynamic section counter — section 1 is always "Amended Terms".
+  // device_allocation already pushes heading("2. Conditions of Use") above, so start at 3.
+  let nextSectionNum = data.addendumType === "device_allocation" ? 3 : 2;
+
   if (data.reason) {
-    const reasonSectionNum = data.addendumType === "device_allocation" ? "3" : "2";
-    bodyParagraphs.push(heading(`${reasonSectionNum}. Reason / Remarks`));
+    bodyParagraphs.push(heading(`${nextSectionNum}. Reason / Remarks`));
     bodyParagraphs.push(bodyText(data.reason));
+    nextSectionNum++;
   }
 
   if (data.growthPlanClauseText && data.growthPlanClauseText.trim()) {
-    bodyParagraphs.push(heading("90-Day Performance Review & Salary Revision Eligibility"));
+    bodyParagraphs.push(heading(`${nextSectionNum}. 90-Day Growth Plan Review & Salary Revision Eligibility`));
     for (const line of data.growthPlanClauseText.split(/\r?\n/)) {
       if (line.trim() === "") {
         bodyParagraphs.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
@@ -267,6 +271,7 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
         bodyParagraphs.push(bodyText(line));
       }
     }
+    nextSectionNum++;
   }
 
   // Annexure sections (appended after signature via extra section children)
@@ -379,7 +384,7 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
           ...bodyParagraphs,
 
           new Paragraph({ spacing: { after: 200 }, children: [] }),
-          heading("3. Continuity of Other Terms"),
+          heading(`${nextSectionNum}. Continuity of Other Terms`),
           bodyText(
             "All other terms and conditions of the original Offer Letter (and any prior addendums) remain in full force and effect. This Addendum constitutes a binding amendment to the original Offer Letter and supersedes any prior oral or written representations regarding the specific terms amended herein."
           ),

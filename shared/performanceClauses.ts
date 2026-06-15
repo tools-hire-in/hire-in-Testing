@@ -8,7 +8,7 @@ export const OFFER_CLAUSE_LABEL = "Probationary Compensation & Performance-Based
 
 export const ADDENDUM_CLAUSE_CATEGORY = "addendum_clause";
 export const ADDENDUM_CLAUSE_KEY = "growth_plan_review";
-export const ADDENDUM_CLAUSE_LABEL = "90-Day Performance Review & Salary Revision Eligibility";
+export const ADDENDUM_CLAUSE_LABEL = "90-Day Growth Plan Review & Salary Revision Eligibility";
 
 // Approved seed wording. Optional fragments are wrapped in {{ ... }}: if any
 // token inside a fragment is left blank, ONLY that fragment is removed while the
@@ -25,7 +25,7 @@ export const OFFER_CLAUSE_DEFAULT_TEXT = [
 ].join("\n");
 
 export const ADDENDUM_CLAUSE_DEFAULT_TEXT = [
-  "Your current salary is ₹[CurrentSalary] per month. As discussed, a 90-day performance plan with defined goals and targets has been agreed with you.",
+  "Your current salary is ₹[CurrentSalary] per month. As discussed, a 90-day growth plan with defined goals and targets has been agreed with you.",
   "",
   "At the end of the 90-day period, your performance will be reviewed against the agreed goals and targets, productivity expectations, quality of submissions, successful delivery outcomes, compliance discipline, communication standards, ownership, and overall contribution to the Healthcare Recruitment department.",
   "",

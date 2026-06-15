@@ -1760,6 +1760,22 @@ async function ensureHealthcarePlansTables() {
     console.error("App announcement seed error (non-fatal):", err);
   }
 
+  // One-time patch: rename "90-day performance plan" → "90-day growth plan" in the
+  // stored addendum clause sentence. Only updates the row if it still has the old wording.
+  try {
+    await db.execute(sql`
+      UPDATE letter_template_sentences
+      SET sentence = REPLACE(sentence, '90-day performance plan', '90-day growth plan'),
+          label = '90-Day Growth Plan Review & Salary Revision Eligibility'
+      WHERE key = 'growth_plan_review'
+        AND category = 'addendum_clause'
+        AND sentence LIKE '%90-day performance plan%'
+    `);
+    log("Addendum clause text patched: 'performance plan' → 'growth plan'");
+  } catch (err) {
+    console.error("Addendum clause text patch error (non-fatal):", err);
+  }
+
   // Policy signing tables
   try {
     await db.execute(sql`
