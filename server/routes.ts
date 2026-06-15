@@ -2431,6 +2431,32 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Cannot correct a day with status: ${guardRecord.status}` });
       }
 
+      // Normalize incoming punch values: the client sends ISO timestamp strings (or null),
+      // but the timestamp columns run in "date" mode whose driver calls .toISOString() on
+      // the value — which throws on a string. Convert to Date objects (null when cleared)
+      // and recompute total hours from the effective punch pair.
+      const toPunchDate = (v: unknown): Date | null => {
+        if (v === null || v === undefined || v === "") return null;
+        if (v instanceof Date) return v;
+        const d = new Date(v as string);
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const hasPunchIn = Object.prototype.hasOwnProperty.call(req.body, "punchIn");
+      const hasPunchOut = Object.prototype.hasOwnProperty.call(req.body, "punchOut");
+      const punchUpdate: Record<string, any> = {};
+      if (hasPunchIn) punchUpdate.punchIn = toPunchDate(req.body.punchIn);
+      if (hasPunchOut) punchUpdate.punchOut = toPunchDate(req.body.punchOut);
+      const effectiveIn = hasPunchIn ? punchUpdate.punchIn : guardRecord.punchIn;
+      const effectiveOut = hasPunchOut ? punchUpdate.punchOut : guardRecord.punchOut;
+      if (hasPunchIn || hasPunchOut) {
+        if (effectiveIn && effectiveOut) {
+          const diffMs = new Date(effectiveOut).getTime() - new Date(effectiveIn).getTime();
+          punchUpdate.totalHours = diffMs > 0 ? (diffMs / 3600000).toFixed(2) : "0.00";
+        } else {
+          punchUpdate.totalHours = null;
+        }
+      }
+
       // Manager: validate they can only correct their own direct reports
       if (actorRole === "manager") {
         const existing = guardRecord;
@@ -2444,6 +2470,7 @@ export async function registerRoutes(
         }
         const record = await storage.updateAttendance(req.params.id as string, {
           ...mgrUpdateFields,
+          ...punchUpdate,
           isCorrect: true,
           correctionSource: "manager",
           correctedById: actorId,
@@ -2476,6 +2503,7 @@ export async function registerRoutes(
         const { correctionComment: _omit, ...updateFields } = req.body;
         const record = await storage.updateAttendance(req.params.id as string, {
           ...updateFields,
+          ...punchUpdate,
           isCorrect: true,
           correctionSource: actorRole,
           correctedById: actorId,
@@ -2507,6 +2535,7 @@ export async function registerRoutes(
       const hrExisting = guardRecord;
       const record = await storage.updateAttendance(req.params.id as string, {
         ...hrUpdateFields,
+        ...punchUpdate,
         isCorrect: true,
         correctionSource: "hr",
         correctedById: actorId,
@@ -3739,12 +3768,12 @@ export async function registerRoutes(
       if (!request) return res.status(404).json({ error: "Request not found" });
       if (request.status !== "pending") return res.status(400).json({ error: "Request is no longer pending" });
 
-      // Managers may only review requests for their own direct reports
+      // Managers may review requests for anyone in their full reporting line
+      // (direct reports and people reporting to their sub-managers).
       if (actorRole === "manager") {
-        const team = await storage.getTeamMembers(actorId);
-        const teamIds = new Set(team.map(m => m.id));
-        if (!teamIds.has(request.employeeId)) {
-          return res.status(403).json({ error: "You can only review requests for your direct reports" });
+        const reporteeIds = await getAllReporteeIds(actorId);
+        if (!reporteeIds.includes(request.employeeId)) {
+          return res.status(403).json({ error: "You can only review requests for your reporting line" });
         }
       }
 
@@ -3998,11 +4027,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "reviewerComment is required for bulk approval" });
       }
 
-      // For managers, validate all requests belong to their team
+      // For managers, validate all requests belong to their full reporting line
       let teamIds: Set<string> | null = null;
       if (actorRole === "manager") {
-        const team = await storage.getTeamMembers(actorId);
-        teamIds = new Set(team.map(m => m.id));
+        const reporteeIds = await getAllReporteeIds(actorId);
+        teamIds = new Set(reporteeIds);
       }
 
       const results: { id: string; status: "approved" | "skipped"; reason?: string }[] = [];
