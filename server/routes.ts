@@ -7451,6 +7451,74 @@ export async function registerRoutes(
     }
   });
 
+  // Preview standalone addendum DOCX — generates the document from form data without
+  // saving to the database or sending any email. Used for "Preview before send" UX.
+  app.post("/api/hr/tools/addendums/standalone/preview", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const {
+        employeeName, employeeEmail, employeeDesignation, employeeJoiningDate,
+        addendumType, effectiveDate, reason, hrManagerName,
+        oldDesignation, newDesignation, oldDepartment, newDepartment,
+        oldSalary, newSalary, oldSalaryInWords, newSalaryInWords,
+        oldConfirmationDate, newConfirmationDate,
+        customClauseTitle, customClauseText,
+        deviceItems, annexureData,
+        includeGrowthPlanClause, growthPlanCurrentSalary, growthPlanMaxRevisionSalary,
+      } = req.body;
+
+      if (!employeeName || !effectiveDate) {
+        return res.status(400).json({ error: "employeeName and effectiveDate are required for preview" });
+      }
+
+      let renderedGrowthPlanText: string | null = null;
+      if (includeGrowthPlanClause && growthPlanCurrentSalary) {
+        const template = await getManagedClauseText(ADDENDUM_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_KEY, ADDENDUM_CLAUSE_DEFAULT_TEXT);
+        renderedGrowthPlanText = renderAddendumClause(template, {
+          currentSalary: growthPlanCurrentSalary,
+          maxRevisionSalary: growthPlanMaxRevisionSalary,
+        });
+      }
+
+      const validatedAnnexures =
+        Array.isArray(annexureData) && annexureData.length > 0
+          ? annexureData.filter((ax: any) => ax.title?.trim() && ax.body?.trim())
+          : undefined;
+
+      const buffer = await generateAddendumDocx({
+        candidateName: employeeName,
+        originalOfferDate: employeeJoiningDate || "",
+        originalDesignation: employeeDesignation || "",
+        effectiveDate,
+        hrManagerName: hrManagerName || "HR Manager",
+        addendumType: addendumType || "custom",
+        oldDesignation: oldDesignation || undefined,
+        newDesignation: newDesignation || undefined,
+        oldDepartment: oldDepartment || undefined,
+        newDepartment: newDepartment || undefined,
+        oldSalary: oldSalary || undefined,
+        newSalary: newSalary || undefined,
+        oldSalaryInWords: oldSalaryInWords || undefined,
+        newSalaryInWords: newSalaryInWords || undefined,
+        oldConfirmationDate: oldConfirmationDate || undefined,
+        newConfirmationDate: newConfirmationDate || undefined,
+        customClauseTitle: customClauseTitle || undefined,
+        customClauseText: customClauseText || undefined,
+        deviceItems: Array.isArray(deviceItems) && deviceItems.length > 0 ? deviceItems : undefined,
+        annexures: validatedAnnexures,
+        reason: reason || undefined,
+        growthPlanClauseText: renderedGrowthPlanText || undefined,
+      });
+
+      const safeName = (employeeName || "Employee").replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}_Addendum_PREVIEW.docx"`);
+      res.send(buffer);
+    } catch (error: any) {
+      console.error("Preview standalone addendum error:", error);
+      res.status(500).json({ error: "Failed to generate preview document" });
+    }
+  });
+
   // Download standalone addendum DOCX
   app.get("/api/hr/tools/addendums/:addendumId/download", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {

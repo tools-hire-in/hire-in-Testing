@@ -1667,6 +1667,7 @@ export function OfferLettersDashboard() {
     growthPlanMaxRevisionSalary: "",
   });
   const [submittingStandalone, setSubmittingStandalone] = useState(false);
+  const [previewingStandalone, setPreviewingStandalone] = useState(false);
   const [standaloneEmployeeSearch, setStandaloneEmployeeSearch] = useState("");
   const [selectedStandaloneEmployeeId, setSelectedStandaloneEmployeeId] = useState<string | null>(null);
   const [addendumForm, setAddendumForm] = useState({
@@ -1860,6 +1861,37 @@ export function OfferLettersDashboard() {
       employeeDepartment: "", employeeJoiningDate: "", employeeReportingManager: "",
       oldDesignation: "", oldDepartment: "", oldSalary: "",
     }));
+  };
+
+  const handlePreviewStandaloneAddendum = async () => {
+    if (!standaloneForm.employeeName || !standaloneForm.effectiveDate) {
+      toast({ title: "Fill in Full Name and Effective Date to preview the document", variant: "destructive" });
+      return;
+    }
+    setPreviewingStandalone(true);
+    try {
+      const res = await apiRequest("POST", "/api/hr/tools/addendums/standalone/preview", {
+        ...standaloneForm,
+        annexureData: standaloneAnnexures.length > 0 ? standaloneAnnexures : undefined,
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error || "Preview failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(standaloneForm.employeeName || "Employee").replace(/\s+/g, "_")}_Addendum_PREVIEW.docx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+      toast({ title: "Preview downloaded", description: "Open the DOCX file to review before sending." });
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to generate preview", variant: "destructive" });
+    } finally {
+      setPreviewingStandalone(false);
+    }
   };
 
   const handleCreateStandaloneAddendum = async () => {
@@ -3163,19 +3195,41 @@ export function OfferLettersDashboard() {
             />
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setStandaloneDialog(false); resetStandaloneForm(); }} data-testid="button-cancel-standalone-dialog">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateStandaloneAddendum}
-              disabled={submittingStandalone || !standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate}
-              className="bg-purple-700 hover:bg-purple-800"
-              data-testid="button-submit-standalone"
-            >
-              {submittingStandalone ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-              Create & Send Addendum
-            </Button>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            {(!standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate) && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 w-full text-center">
+                Required to send:{" "}
+                {[
+                  !standaloneForm.employeeName && "Full Name",
+                  !standaloneForm.employeeEmail && "Personal Email",
+                  !standaloneForm.effectiveDate && "Effective Date",
+                ].filter(Boolean).join(", ")}
+              </p>
+            )}
+            <div className="flex justify-end gap-2 w-full">
+              <Button variant="outline" onClick={() => { setStandaloneDialog(false); resetStandaloneForm(); }} data-testid="button-cancel-standalone-dialog">
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handlePreviewStandaloneAddendum}
+                disabled={previewingStandalone || !standaloneForm.employeeName || !standaloneForm.effectiveDate}
+                data-testid="button-preview-standalone"
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                {previewingStandalone ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
+                Preview Document
+              </Button>
+              <Button
+                onClick={handleCreateStandaloneAddendum}
+                disabled={submittingStandalone || !standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate}
+                className="bg-purple-700 hover:bg-purple-800"
+                data-testid="button-submit-standalone"
+              >
+                {submittingStandalone ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                Create & Send Addendum
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
