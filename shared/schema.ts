@@ -2135,3 +2135,32 @@ export const planAcknowledgements = pgTable("plan_acknowledgements", {
 export const insertPlanAcknowledgementSchema = createInsertSchema(planAcknowledgements).omit({ id: true, acknowledgedAt: true });
 export type PlanAcknowledgement = typeof planAcknowledgements.$inferSelect;
 export type InsertPlanAcknowledgement = z.infer<typeof insertPlanAcknowledgementSchema>;
+
+// ── Unified signature ledger ───────────────────────────────────────────────────
+// Polymorphic, append-only record of every formal acceptance/signature across the
+// platform (offer letters, addendums, HR letters, contracts, policies, ...). This is
+// ADDITIVE: existing per-entity columns (authCode/documentHash/etc.) remain the source
+// of truth for back-compat hashing; the ledger is a consolidated audit/lookup surface.
+// signerUserId is intentionally NOT a hard FK — candidates and clients are not admin users.
+export const signatureRecords = pgTable("signature_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentType: varchar("document_type").notNull(), // offer_letter | offer_letter_counter | addendum | addendum_counter | hr_letter | contract | policy
+  documentId: varchar("document_id").notNull(),     // id of the underlying entity (or signature row for policy)
+  referenceNumber: varchar("reference_number"),     // user-facing reference used by /verify (may equal documentId)
+  signerName: varchar("signer_name").notNull(),
+  signerRole: varchar("signer_role"),               // candidate | client | employee | hr | admin
+  signerUserId: varchar("signer_user_id"),          // admin_users.id when the signer is an internal user; null for candidates/clients
+  signedAt: timestamp("signed_at").notNull().defaultNow(),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  contentHash: varchar("content_hash"),             // documentHash captured at signing time
+  authCode: varchar("auth_code"),                   // formatted verification code captured at signing time
+  sectionInitials: jsonb("section_initials"),       // annexure / per-page initials when applicable
+  certificatePath: varchar("certificate_path"),     // object-storage path to a generated certificate/PDF when applicable
+  metadata: jsonb("metadata"),                      // any document-type-specific extras
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSignatureRecordSchema = createInsertSchema(signatureRecords).omit({ id: true, createdAt: true });
+export type SignatureRecord = typeof signatureRecords.$inferSelect;
+export type InsertSignatureRecord = z.infer<typeof insertSignatureRecordSchema>;

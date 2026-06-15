@@ -1,4 +1,4 @@
 - [Seed data Unicode pitfall](seed-unicode-pitfall.md) — Unicode chars (×, em dash) in seed titles cause silent ON CONFLICT mismatches vs plain ASCII.
 - [Plan goal templates seed](plan-goal-templates-seed.md) — ON CONFLICT DO NOTHING; to fix existing rows use UPDATE blocks before the seed loop in server/index.ts
 - [db:push interactive prompt](db-push-interactive-prompt.md) — pending unrelated diffs make db:push hang on a TUI prompt; use direct psql ALTER for simple adds.
-- [Offer-letter verify scope](offer-letter-verify-scope.md) — /verify only covers hr_letter & contract; offer-letter acceptance hash can evolve without breaking verify.
+- [E-sign foundation](esign-foundation.md) — central ledger + signing service + SignatureBlock; back-compat hr_letter/contract; ensure block needs server restart.

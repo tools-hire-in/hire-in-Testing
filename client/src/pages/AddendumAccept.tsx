@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle, XCircle, FileText, ArrowRight } from "lucide-react";
+import { SignatureBlock } from "@/components/esign/SignatureBlock";
 
 interface AddendumData {
   id: string;
@@ -185,7 +183,6 @@ export default function AddendumAccept() {
   const [addendum, setAddendum] = useState<AddendumData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [typedName, setTypedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
@@ -210,16 +207,13 @@ export default function AddendumAccept() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const isNameMatch = typedName.trim().toLowerCase() === addendum?.candidateName.trim().toLowerCase();
-
-  const handleAccept = async () => {
-    if (!isNameMatch) return;
+  const handleAccept = async (acceptedName: string) => {
     setSubmitting(true);
     try {
       const res = await fetch(`/api/addendum/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acceptedName: typedName.trim() }),
+        body: JSON.stringify({ acceptedName }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -386,54 +380,20 @@ export default function AddendumAccept() {
           <Card className="border-blue-200 bg-blue-50/50">
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Sign This Addendum</h3>
-              <div className="space-y-4">
-                {error && (
-                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>
-                )}
-
-                <div>
-                  <Label htmlFor="typed-name">Type your full name to confirm acceptance</Label>
-                  <Input
-                    id="typed-name"
-                    data-testid="input-addendum-name"
-                    placeholder={addendum.candidateName}
-                    value={typedName}
-                    onChange={(e) => setTypedName(e.target.value)}
-                    className={`mt-1 ${typedName && !isNameMatch ? "border-red-500 bg-red-50" : ""}`}
-                  />
-                  {typedName && !isNameMatch && (
-                    <p className="text-xs text-red-600 mt-1">Name must match exactly: "{addendum.candidateName}"</p>
-                  )}
-                </div>
-
-                {typedName.length > 1 && (
-                  <div className="p-6 bg-white border border-dashed border-blue-200 rounded-lg text-center space-y-2">
-                    <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Signature Preview</p>
-                    <p className="text-4xl text-blue-900" style={{ fontFamily: "'Dancing Script', cursive" }}>
-                      {typedName}
-                    </p>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleAccept}
-                  disabled={!isNameMatch || submitting}
-                  className="w-full bg-blue-700 hover:bg-blue-800"
-                  size="lg"
-                  data-testid="button-accept-addendum"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  ) : (
-                    <CheckCircle className="h-5 w-5 mr-2" />
-                  )}
-                  Confirm Digital Signature & Accept Addendum
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center">
-                  Your acceptance will be recorded with your IP address for audit purposes.
-                </p>
-              </div>
+              <SignatureBlock
+                nameConfirmation={{
+                  expectedName: addendum.candidateName,
+                  testId: "input-addendum-name",
+                }}
+                showPreview
+                submitLabel="Confirm Digital Signature & Accept Addendum"
+                submitClassName="bg-blue-700 hover:bg-blue-800"
+                submitTestId="button-accept-addendum"
+                error={error}
+                submitting={submitting}
+                onSubmit={({ acceptedName }) => handleAccept(acceptedName)}
+                notice="Your acceptance will be recorded with your IP address for audit purposes."
+              />
             </CardContent>
           </Card>
         )}

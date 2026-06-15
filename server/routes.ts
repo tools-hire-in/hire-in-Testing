@@ -19,7 +19,7 @@ import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentRe
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
-import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance } from "./documentSigningService";
+import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance, recordSignature } from "./documentSigningService";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
@@ -6914,6 +6914,20 @@ export async function registerRoutes(
         documentHash
       });
 
+      await recordSignature({
+        documentType: "offer_letter",
+        documentId: letter.id,
+        referenceNumber: letter.id,
+        signerName: acceptedName.trim(),
+        signerRole: "candidate",
+        signedAt: serverTimestamp,
+        ipAddress: clientIp,
+        userAgent,
+        contentHash: documentHash,
+        authCode,
+        sectionInitials: annexureInitials ?? null,
+      });
+
       await storage.createAuditLog({
         action: "offer_letter_accepted",
         actorId: letter.createdBy,
@@ -6980,6 +6994,18 @@ export async function registerRoutes(
         counterSignedDate: counterSignedDate || now.toISOString().split("T")[0],
         counterAuthCode,
         counterDocumentHash
+      });
+
+      await recordSignature({
+        documentType: "offer_letter_counter",
+        documentId: letter.id,
+        referenceNumber: letter.id,
+        signerName: counterSignedName.trim(),
+        signerRole: "hr",
+        signerUserId: req.session.userId,
+        signedAt: now,
+        contentHash: counterDocumentHash,
+        authCode: counterAuthCode,
       });
 
       await storage.createAuditLog({
@@ -7326,6 +7352,18 @@ export async function registerRoutes(
         acceptedIp: clientIp,
         authCode,
         documentHash,
+      });
+
+      await recordSignature({
+        documentType: "addendum",
+        documentId: addendum.id,
+        referenceNumber: addendum.id,
+        signerName: acceptedName.trim(),
+        signerRole: "candidate",
+        signedAt: serverTimestamp,
+        ipAddress: clientIp,
+        contentHash: documentHash,
+        authCode,
       });
 
       // Audit trail — acceptance is audited via (a) row fields (acceptedAt/Name/Ip/authCode/documentHash)
@@ -7743,6 +7781,18 @@ export async function registerRoutes(
         counterSignedAt: now,
         counterAuthCode,
         counterDocumentHash,
+      });
+
+      await recordSignature({
+        documentType: "addendum_counter",
+        documentId: addendum.id,
+        referenceNumber: addendum.id,
+        signerName: addendum.candidateName,
+        signerRole: "hr",
+        signerUserId: req.session.userId,
+        signedAt: now,
+        contentHash: counterDocumentHash,
+        authCode: counterAuthCode,
       });
 
       await storage.createAuditLog({
@@ -9223,6 +9273,18 @@ export async function registerRoutes(
           pdfPath: `hr-letters/${docFilename}`,
         });
 
+        await recordSignature({
+          documentType: "hr_letter",
+          documentId: letter.id,
+          referenceNumber,
+          signerName: letter.employeeName,
+          signerRole: "hr",
+          signerUserId: req.session.userId,
+          contentHash: documentHash,
+          authCode,
+          metadata: { templateType: letter.templateType },
+        });
+
         await storage.createAuditLog({
           actorId: req.session.userId!,
           targetId: resolvedEmployeeId || req.session.userId!,
@@ -9390,6 +9452,17 @@ export async function registerRoutes(
         issueDate,
         pdfPath: `hr-letters/${pdfFilename}`,
       });
+      await recordSignature({
+        documentType: "hr_letter",
+        documentId: letter.id,
+        referenceNumber,
+        signerName: letter.employeeName,
+        signerRole: "hr",
+        signerUserId: req.session.userId,
+        contentHash: documentHash,
+        authCode,
+        metadata: { templateType: letter.templateType },
+      });
       await storage.createAuditLog({
         actorId: req.session.userId!,
         targetId: req.body.employeeId,
@@ -9540,6 +9613,17 @@ export async function registerRoutes(
         issuedAt: new Date(),
         issueDate,
         pdfPath: `hr-letters/${pdfFilename}`,
+      });
+      await recordSignature({
+        documentType: "hr_letter",
+        documentId: letter.id,
+        referenceNumber,
+        signerName: letter.employeeName,
+        signerRole: "hr",
+        signerUserId: req.session.userId,
+        contentHash: documentHash,
+        authCode,
+        metadata: { templateType: letter.templateType },
       });
       await storage.createAuditLog({
         actorId: req.session.userId!,
@@ -9936,6 +10020,66 @@ export async function registerRoutes(
           verified: result.valid,
           tamperDetected: result.tamperDetected,
           ...(result.tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
+        });
+      }
+
+      // ── Offer letter / addendum / policy verification (unified recompute) ──
+      if (documentType === "offer_letter" || documentType === "addendum" || documentType === "policy") {
+        const { verifyDocument } = await import("./documentSigningService");
+        const result = await verifyDocument(documentType as any, ref as string, auth as string);
+        if (result.error === "not_found") {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        if (result.error) {
+          return res.status(500).json({ error: "Verification service error" });
+        }
+        const r = result.record as any;
+        const tamper = result.tamperDetected ? { warning: "Document content may have been modified after issuance" } : {};
+
+        if (documentType === "offer_letter") {
+          return res.json({
+            documentType: "offer_letter",
+            employeeName: r.candidateName,
+            designation: r.designation,
+            location: r.location,
+            startDate: r.proposedStartDate,
+            offerDate: r.offerDate,
+            acceptedName: r.acceptedName,
+            acceptedAt: r.acceptedAt,
+            referenceNumber: r.id,
+            status: r.status,
+            verified: result.valid,
+            tamperDetected: result.tamperDetected,
+            ...tamper,
+          });
+        }
+        if (documentType === "addendum") {
+          return res.json({
+            documentType: "addendum",
+            employeeName: r.candidateName,
+            addendumType: r.addendumType,
+            effectiveDate: r.effectiveDate,
+            acceptedName: r.acceptedName,
+            acceptedAt: r.acceptedAt,
+            referenceNumber: r.id,
+            status: r.status,
+            verified: result.valid,
+            tamperDetected: result.tamperDetected,
+            ...tamper,
+          });
+        }
+        // policy
+        return res.json({
+          documentType: "policy",
+          employeeName: r.signerName,
+          policyTitle: r.policyTitle,
+          policyVersion: r.policyVersion,
+          signedAt: r.signedAt,
+          referenceNumber: r.referenceNumber,
+          status: "signed",
+          verified: result.valid,
+          tamperDetected: result.tamperDetected,
+          ...tamper,
         });
       }
 

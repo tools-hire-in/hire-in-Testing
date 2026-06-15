@@ -1821,6 +1821,35 @@ async function ensureHealthcarePlansTables() {
     console.error("Policy signing table migration error:", err);
   }
 
+  // ── Unified signature ledger ──────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS signature_records (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_type varchar NOT NULL,
+        document_id varchar NOT NULL,
+        reference_number varchar,
+        signer_name varchar NOT NULL,
+        signer_role varchar,
+        signer_user_id varchar,
+        signed_at timestamp NOT NULL DEFAULT now(),
+        ip_address varchar,
+        user_agent text,
+        content_hash varchar,
+        auth_code varchar,
+        section_initials jsonb,
+        certificate_path varchar,
+        metadata jsonb,
+        created_at timestamp DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_signature_records_doc ON signature_records(document_type, document_id);
+      CREATE INDEX IF NOT EXISTS idx_signature_records_ref ON signature_records(reference_number);
+    `);
+    log("Signature ledger table ensured");
+  } catch (err) {
+    console.error("Signature ledger table migration error:", err);
+  }
+
   // ── Attendance Report Approval tables ─────────────────────────────────────────
   try {
     await db.execute(sql`

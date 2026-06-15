@@ -371,6 +371,18 @@ export function registerContractRoutes(app: Express) {
           clientSignedAt: signedAt,
           clientSignedIp: req.ip || "",
         });
+        const { recordSignature } = await import("./documentSigningService");
+        await recordSignature({
+          documentType: "contract",
+          documentId: contract.id,
+          referenceNumber: contract.referenceNumber,
+          signerName: contract.clientName,
+          signerRole: "client",
+          signedAt,
+          ipAddress: req.ip || "",
+          contentHash: contract.documentHash,
+          authCode: contract.authCode,
+        });
         return res.json({ success: true, authCode: contract.authCode, referenceNumber: contract.referenceNumber });
       }
 
@@ -395,6 +407,19 @@ export function registerContractRoutes(app: Express) {
         authCode: sigResult.authCode,
         documentHash: sigResult.documentHash,
         referenceNumber: sigResult.refNumber,
+      });
+
+      const { recordSignature } = await import("./documentSigningService");
+      await recordSignature({
+        documentType: "contract",
+        documentId: contract.id,
+        referenceNumber: sigResult.refNumber,
+        signerName: contract.clientName,
+        signerRole: "client",
+        signedAt,
+        ipAddress: req.ip || "",
+        contentHash: sigResult.documentHash,
+        authCode: sigResult.authCode,
       });
 
       res.json({ success: true, authCode: sigResult.authCode, referenceNumber: sigResult.refNumber });

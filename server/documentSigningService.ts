@@ -11,10 +11,17 @@
 
 import crypto from "crypto";
 import { db } from "./db";
-import { hrLetters, offerLetters, contracts } from "@shared/schema";
+import {
+  hrLetters, offerLetters, offerLetterAddendums, contracts,
+  policyDocuments, policySigningRequests, policySignatures,
+  signatureRecords, type InsertSignatureRecord,
+} from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-export type DocumentType = "offer_letter" | "addendum" | "hr_letter" | "contract";
+export type DocumentType =
+  | "offer_letter" | "offer_letter_counter"
+  | "addendum" | "addendum_counter"
+  | "hr_letter" | "contract" | "policy";
 
 export interface SignResult {
   refNumber: string;
@@ -175,7 +182,7 @@ export function signOfferCountersign(
 // ─── Addendum acceptance signing ─────────────────────────────────────────────
 // Matches inline crypto block in routes.ts addendum acceptance endpoint
 export function signAddendumAcceptance(
-  addendum: { id: string; offerLetterId: string; candidateName: string; addendumType: string; effectiveDate?: string | null },
+  addendum: { id: string; offerLetterId: string | null; candidateName: string; addendumType: string; effectiveDate?: string | null },
   acceptedName: string,
   timestamp: Date,
 ): { authCode: string; documentHash: string } {
@@ -214,6 +221,82 @@ export function signAddendumCountersign(
   const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
   const counterAuthCode = fullAuthCode.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || fullAuthCode.substring(0, 24).toUpperCase();
   return { counterAuthCode, counterDocumentHash };
+}
+
+// ─── Policy acknowledgement signing ──────────────────────────────────────────
+// Folds the previously crypto-less policy-signing path onto the central service.
+// Binds the policy identity + version + page initials + final signature into a
+// content hash, then derives a formatted auth code via HMAC. Used additively — the
+// existing policy_signatures row + generated PDF certificate remain unchanged.
+export function signPolicyAcknowledgement(fields: {
+  policyId: string; policyTitle: string; policyVersion: number;
+  employeeName: string;
+  pageInitials: Array<{ page: number; initial: string }>;
+  finalSignature: string;
+  signedAt: Date;
+}): SignResult {
+  const signingKey = getSigningKey();
+  const normalizedInitials = [...(fields.pageInitials || [])]
+    .map((p) => ({ page: p.page, initial: (p.initial || "").trim() }))
+    .sort((a, b) => a.page - b.page);
+  const docContents = JSON.stringify({
+    policyId: fields.policyId,
+    policyTitle: fields.policyTitle,
+    policyVersion: fields.policyVersion,
+    finalSignature: (fields.finalSignature || "").trim(),
+    pageInitials: normalizedInitials,
+  });
+  const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
+  const hmacPayload = `${fields.policyId}|${fields.employeeName.trim()}|${fields.signedAt.toISOString()}|${documentHash}`;
+  const fullAuthCode = crypto.createHmac("sha256", signingKey).update(hmacPayload).digest("hex");
+  const authCode = fullAuthCode.substring(0, 4).toUpperCase() + "-" + fullAuthCode.substring(4, 8).toUpperCase();
+  const refNumber = `POL/${fields.signedAt.getFullYear()}/${fields.policyId.substring(0, 8).toUpperCase()}`;
+  return { refNumber, authCode, documentHash };
+}
+
+// ─── Unified signature ledger writer ──────────────────────────────────────────
+// Append-only, NON-FATAL: a ledger failure must never break a signing flow, so all
+// errors are swallowed and logged. Every sign call-site should call this after it has
+// persisted the per-entity columns, passing the same authCode/documentHash it stored.
+export async function recordSignature(entry: {
+  documentType: DocumentType | string;
+  documentId: string;
+  referenceNumber?: string | null;
+  signerName: string;
+  signerRole?: string | null;
+  signerUserId?: string | null;
+  signedAt?: Date;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  contentHash?: string | null;
+  authCode?: string | null;
+  sectionInitials?: any;
+  certificatePath?: string | null;
+  metadata?: any;
+}): Promise<{ id: string } | null> {
+  try {
+    const values: InsertSignatureRecord = {
+      documentType: entry.documentType,
+      documentId: entry.documentId,
+      referenceNumber: entry.referenceNumber ?? null,
+      signerName: entry.signerName,
+      signerRole: entry.signerRole ?? null,
+      signerUserId: entry.signerUserId ?? null,
+      signedAt: entry.signedAt ?? new Date(),
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+      contentHash: entry.contentHash ?? null,
+      authCode: entry.authCode ?? null,
+      sectionInitials: entry.sectionInitials ?? null,
+      certificatePath: entry.certificatePath ?? null,
+      metadata: entry.metadata ?? null,
+    };
+    const [row] = await db.insert(signatureRecords).values(values).returning({ id: signatureRecords.id });
+    return row ?? null;
+  } catch (err) {
+    console.error(`[signatureLedger] Failed to record ${entry.documentType} signature for ${entry.documentId}:`, err);
+    return null;
+  }
 }
 
 // ─── Generic dispatcher ───────────────────────────────────────────────────────
@@ -304,6 +387,68 @@ export async function verifyDocument(
       });
       const tamperDetected = c.documentHash !== recomputed.documentHash;
       return { valid: !tamperDetected, tamperDetected, record: c as any };
+    }
+
+    if (documentType === "offer_letter") {
+      // Reference is the offer letter id (shown to the candidate in the offer body).
+      const [l] = await db.select().from(offerLetters).where(eq(offerLetters.id, refNumber)).limit(1);
+      if (!l || !l.authCode || !l.acceptedAt) return { valid: false, tamperDetected: false, error: "not_found" };
+      const { authCode: recomputed } = signOfferLetterAcceptance(
+        {
+          id: l.id, candidateName: l.candidateName, designation: l.designation,
+          salary: l.salary, proposedStartDate: l.proposedStartDate, offerDate: l.offerDate,
+          location: l.location,
+        },
+        l.acceptedName || "",
+        new Date(l.acceptedAt),
+        (l.annexureInitials as any) || null,
+      );
+      if (recomputed.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      const tamperDetected = l.authCode !== recomputed;
+      return { valid: !tamperDetected, tamperDetected, record: l as any };
+    }
+
+    if (documentType === "addendum") {
+      const [a] = await db.select().from(offerLetterAddendums).where(eq(offerLetterAddendums.id, refNumber)).limit(1);
+      if (!a || !a.authCode || !a.acceptedAt) return { valid: false, tamperDetected: false, error: "not_found" };
+      const { authCode: recomputed } = signAddendumAcceptance(
+        { id: a.id, offerLetterId: a.offerLetterId, candidateName: a.candidateName, addendumType: a.addendumType, effectiveDate: a.effectiveDate },
+        a.acceptedName || "",
+        new Date(a.acceptedAt),
+      );
+      if (recomputed.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      const tamperDetected = a.authCode !== recomputed;
+      return { valid: !tamperDetected, tamperDetected, record: a as any };
+    }
+
+    if (documentType === "policy") {
+      // Policy verification is ledger-backed (the per-entity policy_signatures row carries
+      // no auth code historically). The ledger row stores the reference + authCode + hash.
+      const [rec] = await db.select().from(signatureRecords)
+        .where(eq(signatureRecords.referenceNumber, refNumber)).limit(1);
+      if (!rec || rec.documentType !== "policy" || !rec.authCode) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (rec.authCode.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      // Recompute from the linked signature → request → policy document to detect tamper.
+      const [sig] = await db.select().from(policySignatures).where(eq(policySignatures.id, rec.documentId)).limit(1);
+      if (!sig || !sig.signedAt) {
+        return { valid: true, tamperDetected: false, record: rec as any };
+      }
+      const [reqRow] = await db.select().from(policySigningRequests).where(eq(policySigningRequests.id, sig.signingRequestId)).limit(1);
+      const [pol] = reqRow ? await db.select().from(policyDocuments).where(eq(policyDocuments.id, reqRow.policyDocumentId)).limit(1) : [];
+      if (!pol) return { valid: true, tamperDetected: false, record: { ...rec, signedAt: sig.signedAt } as any };
+      const recomputed = signPolicyAcknowledgement({
+        policyId: pol.id, policyTitle: pol.title, policyVersion: pol.version,
+        employeeName: rec.signerName,
+        pageInitials: (sig.pageInitials as any) || [],
+        finalSignature: sig.finalSignature,
+        signedAt: new Date(sig.signedAt),
+      });
+      const tamperDetected = rec.contentHash !== recomputed.documentHash;
+      return {
+        valid: !tamperDetected,
+        tamperDetected,
+        record: { ...rec, policyTitle: pol.title, policyVersion: pol.version, signedAt: sig.signedAt } as any,
+      };
     }
 
     return { valid: false, tamperDetected: false, error: "unsupported_type" };

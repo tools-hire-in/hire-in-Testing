@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { SignatureBlock } from "@/components/esign/SignatureBlock";
 import {
   FileText, CheckCircle, Calendar, DollarSign, Clock,
   Shield, AlertCircle, Loader2
@@ -29,7 +28,6 @@ export default function ContractSign() {
   const [, params] = useRoute("/contracts/sign/:token");
   const token = params?.token;
   const { toast } = useToast();
-  const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
 
@@ -204,37 +202,30 @@ export default function ContractSign() {
           </CardContent>
         </Card>
 
-        {/* Agreement Checkbox */}
-        <div className="flex items-start gap-3 bg-white border rounded-lg p-4">
-          <Checkbox
-            id="agree"
-            checked={agreed}
-            onCheckedChange={v => setAgreed(v === true)}
-            data-testid="checkbox-agree"
-          />
-          <label htmlFor="agree" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
-            I, <strong>{contract.clientName}</strong>, have read and understood the contract terms above and agree to enter into this staffing services agreement with Rayomind Solutions LLP. I confirm I have authority to sign on behalf of the company.
-          </label>
-        </div>
-
-        {/* Sign Button */}
-        <Button
-          className="w-full h-12 text-base font-semibold bg-[#1F3A6E] hover:bg-[#162d56]"
-          disabled={!agreed || signMutation.isPending}
-          onClick={() => signMutation.mutate()}
-          data-testid="button-sign-contract"
-        >
-          {signMutation.isPending ? (
-            <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Signing...</>
-          ) : (
-            <><CheckCircle className="h-5 w-5 mr-2" /> Sign Contract Electronically</>
-          )}
-        </Button>
-
-        <p className="text-center text-xs text-muted-foreground pb-4">
-          Your IP address and timestamp will be recorded as part of this electronic signature.
-          This signing session is secured by Rayomind Solutions LLP.
-        </p>
+        {/* Agreement + Sign */}
+        <SignatureBlock
+          consent={{
+            boxed: true,
+            label: (
+              <>
+                I, <strong>{contract.clientName}</strong>, have read and understood the contract terms above and agree to enter into this staffing services agreement with Rayomind Solutions LLP. I confirm I have authority to sign on behalf of the company.
+              </>
+            ),
+          }}
+          submitLabel="Sign Contract Electronically"
+          submittingLabel="Signing..."
+          submitSize="default"
+          submitClassName="h-12 text-base font-semibold bg-[#1F3A6E] hover:bg-[#162d56]"
+          submitTestId="button-sign-contract"
+          submitting={signMutation.isPending}
+          onSubmit={() => signMutation.mutate()}
+          notice={
+            <>
+              Your IP address and timestamp will be recorded as part of this electronic signature.
+              This signing session is secured by Rayomind Solutions LLP.
+            </>
+          }
+        />
       </div>
     </div>
   );

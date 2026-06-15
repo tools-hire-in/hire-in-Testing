@@ -1,12 +1,9 @@
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
+import { SignatureBlock } from "@/components/esign/SignatureBlock";
 
 interface OfferData {
   id: string;
@@ -49,8 +46,6 @@ export default function OnboardAccept() {
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
-  const [agreed, setAgreed] = useState(false);
-  const [typedName, setTypedName] = useState("");
   const [signingDate, setSigningDate] = useState(new Date().toISOString().split("T")[0]);
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -89,8 +84,7 @@ export default function OnboardAccept() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const handleAccept = async () => {
-    if (!agreed || typedName.trim().toLowerCase() !== offer?.candidateName.trim().toLowerCase()) return;
+  const handleAccept = async (acceptedName: string) => {
     if (!allAnnexuresInitialed) return;
     setSubmitting(true);
     try {
@@ -103,7 +97,7 @@ export default function OnboardAccept() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          acceptedName: typedName.trim(),
+          acceptedName,
           acceptanceDate: signingDate,
           annexureInitials: annexureInitialsPayload,
         }),
@@ -121,8 +115,6 @@ export default function OnboardAccept() {
       setSubmitting(false);
     }
   };
-
-  const isNameMatch = typedName.trim().toLowerCase() === offer?.candidateName.trim().toLowerCase();
 
   if (loading) {
     return (
@@ -246,84 +238,30 @@ export default function OnboardAccept() {
             <div className="p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Accept This Offer</h3>
               <div className="space-y-6">
-                {error && (
-                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>
-                )}
-
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="agree"
-                    checked={agreed}
-                    onCheckedChange={(v) => setAgreed(!!v)}
-                    data-testid="checkbox-agree"
-                  />
-                  <label htmlFor="agree" className="text-sm leading-relaxed cursor-pointer">
-                    I have read and understood the terms and conditions of this offer letter, including all sections, the BYOD Annexure, and all attached policy annexures (if any). I agree to abide by the policies set out therein and accept this offer of employment.
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="typed-name">Type your full name to confirm acceptance</Label>
-                    <Input
-                      id="typed-name"
-                      data-testid="input-accept-name"
-                      placeholder={offer.candidateName}
-                      value={typedName}
-                      onChange={(e) => setTypedName(e.target.value)}
-                      className={`mt-1 ${typedName && !isNameMatch ? "border-red-500 bg-red-50" : ""}`}
-                    />
-                    {typedName && !isNameMatch && (
-                      <p className="text-xs text-red-600">Name must match exactly: "{offer.candidateName}"</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signing-date">Your signing date</Label>
-                    <Input
-                      id="signing-date"
-                      type="date"
-                      data-testid="input-accept-date"
-                      value={signingDate}
-                      onChange={(e) => setSigningDate(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-
-                {typedName.length > 1 && (
-                  <div className="p-6 bg-white border border-dashed border-blue-200 rounded-lg text-center space-y-2">
-                    <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Signature Preview</p>
-                    <p className="text-4xl text-blue-900" style={{ fontFamily: "'Dancing Script', cursive" }}>
-                      {typedName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{signingDate}</p>
-                  </div>
-                )}
-
-                {!allAnnexuresInitialed && (
-                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-md" data-testid="text-annexure-initials-required">
-                    Please review and initial each attached policy annexure above before accepting.
-                  </p>
-                )}
-
-                <Button
-                  onClick={handleAccept}
-                  disabled={!agreed || !isNameMatch || !allAnnexuresInitialed || submitting}
-                  className="w-full bg-blue-700 hover:bg-blue-800"
-                  size="lg"
-                  data-testid="button-accept-offer"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  ) : (
-                    <CheckCircle className="h-5 w-5 mr-2" />
-                  )}
-                  Confirm Digital Signature & Accept
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center">
-                  This offer expires on {new Date(offer.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Your acceptance will be recorded with your IP address and browser details for audit purposes.
-                </p>
+                <SignatureBlock
+                  consent={{
+                    label:
+                      "I have read and understood the terms and conditions of this offer letter, including all sections, the BYOD Annexure, and all attached policy annexures (if any). I agree to abide by the policies set out therein and accept this offer of employment.",
+                  }}
+                  nameConfirmation={{ expectedName: offer.candidateName }}
+                  signingDate={{ value: signingDate, onChange: setSigningDate }}
+                  showPreview
+                  previewShowDate
+                  extraGateMet={allAnnexuresInitialed}
+                  extraGateMessage="Please review and initial each attached policy annexure above before accepting."
+                  extraGateTestId="text-annexure-initials-required"
+                  submitLabel="Confirm Digital Signature & Accept"
+                  submitClassName="bg-blue-700 hover:bg-blue-800"
+                  submitTestId="button-accept-offer"
+                  error={error}
+                  submitting={submitting}
+                  onSubmit={({ acceptedName }) => handleAccept(acceptedName)}
+                  notice={
+                    <>
+                      This offer expires on {new Date(offer.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Your acceptance will be recorded with your IP address and browser details for audit purposes.
+                    </>
+                  }
+                />
               </div>
             </div>
           </Card>

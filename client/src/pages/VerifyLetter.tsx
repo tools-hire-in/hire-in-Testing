@@ -44,7 +44,55 @@ interface ContractVerifyResult {
   warning?: string;
 }
 
-type VerifyResult = HrLetterVerifyResult | ContractVerifyResult;
+interface OfferLetterVerifyResult {
+  documentType: "offer_letter";
+  employeeName: string;
+  designation: string | null;
+  location: string | null;
+  startDate: string | null;
+  offerDate: string | null;
+  acceptedName: string | null;
+  acceptedAt: string | null;
+  referenceNumber: string;
+  status: string;
+  verified: boolean;
+  tamperDetected?: boolean;
+  warning?: string;
+}
+
+interface AddendumVerifyResult {
+  documentType: "addendum";
+  employeeName: string;
+  addendumType: string | null;
+  effectiveDate: string | null;
+  acceptedName: string | null;
+  acceptedAt: string | null;
+  referenceNumber: string;
+  status: string;
+  verified: boolean;
+  tamperDetected?: boolean;
+  warning?: string;
+}
+
+interface PolicyVerifyResult {
+  documentType: "policy";
+  employeeName: string;
+  policyTitle: string | null;
+  policyVersion: number | null;
+  signedAt: string | null;
+  referenceNumber: string;
+  status: string;
+  verified: boolean;
+  tamperDetected?: boolean;
+  warning?: string;
+}
+
+type VerifyResult =
+  | HrLetterVerifyResult
+  | ContractVerifyResult
+  | OfferLetterVerifyResult
+  | AddendumVerifyResult
+  | PolicyVerifyResult;
 
 function formatDate(dateStr?: string | null) {
   if (!dateStr) return "—";
@@ -52,8 +100,26 @@ function formatDate(dateStr?: string | null) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+function formatDateTime(dateStr?: string | null) {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function isContract(r: VerifyResult): r is ContractVerifyResult {
   return (r as any).documentType === "contract";
+}
+
+function isOfferLetter(r: VerifyResult): r is OfferLetterVerifyResult {
+  return (r as any).documentType === "offer_letter";
+}
+
+function isAddendum(r: VerifyResult): r is AddendumVerifyResult {
+  return (r as any).documentType === "addendum";
+}
+
+function isPolicy(r: VerifyResult): r is PolicyVerifyResult {
+  return (r as any).documentType === "policy";
 }
 
 export default function VerifyLetter() {
@@ -66,7 +132,7 @@ export default function VerifyLetter() {
   const verifyMutation = useMutation({
     mutationFn: async () => {
       const params = new URLSearchParams({ ref: refNumber, auth: authCode });
-      if (docType === "contract") params.set("documentType", "contract");
+      if (docType !== "hr_letter") params.set("documentType", docType);
       const res = await fetch(`/api/verify-letter?${params.toString()}`);
       if (res.status === 404) {
         setNotFound(true);
@@ -121,13 +187,21 @@ export default function VerifyLetter() {
                   <SelectContent>
                     <SelectItem value="hr_letter">HR Letter (Experience, Internship, Relieving)</SelectItem>
                     <SelectItem value="contract">Staffing Services Agreement (Contract)</SelectItem>
+                    <SelectItem value="offer_letter">Offer Letter</SelectItem>
+                    <SelectItem value="addendum">Amendment / Addendum Letter</SelectItem>
+                    <SelectItem value="policy">Policy Acknowledgement</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label>Reference Number</Label>
                 <Input
-                  placeholder={docType === "contract" ? "e.g. CTR/2026/ABCD1234" : "e.g. RL/EXP/2026/0001"}
+                  placeholder={
+                    docType === "contract" ? "e.g. CTR/2026/ABCD1234"
+                    : docType === "policy" ? "e.g. POL/2026/ABCD1234"
+                    : docType === "offer_letter" || docType === "addendum" ? "Document ID"
+                    : "e.g. RL/EXP/2026/0001"
+                  }
                   value={refNumber}
                   onChange={e => setRefNumber(e.target.value)}
                   data-testid="input-verify-ref"
@@ -171,7 +245,139 @@ export default function VerifyLetter() {
               )}
               <Separator className="mb-4" />
 
-              {isContract(result) ? (
+              {isOfferLetter(result) ? (
+                /* ── Offer letter result ─────────────────────────────────────── */
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Document Type</p>
+                    <p className="font-medium">Offer Letter</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge data-testid="badge-verify-status">{result.status?.replace(/_/g, " ")}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Candidate Name</p>
+                    <p className="font-medium" data-testid="text-verify-name">{result.employeeName}</p>
+                  </div>
+                  {result.designation && (
+                    <div>
+                      <p className="text-muted-foreground">Designation</p>
+                      <p className="font-medium">{result.designation}</p>
+                    </div>
+                  )}
+                  {result.location && (
+                    <div>
+                      <p className="text-muted-foreground">Location</p>
+                      <p className="font-medium">{result.location}</p>
+                    </div>
+                  )}
+                  {result.startDate && (
+                    <div>
+                      <p className="text-muted-foreground">Proposed Start Date</p>
+                      <p className="font-medium">{formatDate(result.startDate)}</p>
+                    </div>
+                  )}
+                  {result.acceptedName && (
+                    <div>
+                      <p className="text-muted-foreground">Accepted By</p>
+                      <p className="font-medium">{result.acceptedName}</p>
+                    </div>
+                  )}
+                  {result.acceptedAt && (
+                    <div>
+                      <p className="text-muted-foreground">Accepted On</p>
+                      <p className="font-medium">{formatDateTime(result.acceptedAt)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-muted-foreground">Reference</p>
+                    <p className="font-mono text-xs">{result.referenceNumber}</p>
+                  </div>
+                </div>
+              ) : isAddendum(result) ? (
+                /* ── Addendum result ─────────────────────────────────────────── */
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Document Type</p>
+                    <p className="font-medium">Amendment / Addendum Letter</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge data-testid="badge-verify-status">{result.status?.replace(/_/g, " ")}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Employee Name</p>
+                    <p className="font-medium" data-testid="text-verify-name">{result.employeeName}</p>
+                  </div>
+                  {result.addendumType && (
+                    <div>
+                      <p className="text-muted-foreground">Amendment Type</p>
+                      <p className="font-medium capitalize">{result.addendumType.replace(/_/g, " ")}</p>
+                    </div>
+                  )}
+                  {result.effectiveDate && (
+                    <div>
+                      <p className="text-muted-foreground">Effective Date</p>
+                      <p className="font-medium">{formatDate(result.effectiveDate)}</p>
+                    </div>
+                  )}
+                  {result.acceptedName && (
+                    <div>
+                      <p className="text-muted-foreground">Accepted By</p>
+                      <p className="font-medium">{result.acceptedName}</p>
+                    </div>
+                  )}
+                  {result.acceptedAt && (
+                    <div>
+                      <p className="text-muted-foreground">Accepted On</p>
+                      <p className="font-medium">{formatDateTime(result.acceptedAt)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-muted-foreground">Reference</p>
+                    <p className="font-mono text-xs">{result.referenceNumber}</p>
+                  </div>
+                </div>
+              ) : isPolicy(result) ? (
+                /* ── Policy acknowledgement result ───────────────────────────── */
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Document Type</p>
+                    <p className="font-medium">Policy Acknowledgement</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge data-testid="badge-verify-status">Signed</Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Employee Name</p>
+                    <p className="font-medium" data-testid="text-verify-name">{result.employeeName}</p>
+                  </div>
+                  {result.policyTitle && (
+                    <div>
+                      <p className="text-muted-foreground">Policy</p>
+                      <p className="font-medium">{result.policyTitle}</p>
+                    </div>
+                  )}
+                  {result.policyVersion != null && (
+                    <div>
+                      <p className="text-muted-foreground">Version</p>
+                      <p className="font-medium">v{result.policyVersion}</p>
+                    </div>
+                  )}
+                  {result.signedAt && (
+                    <div>
+                      <p className="text-muted-foreground">Signed On</p>
+                      <p className="font-medium">{formatDateTime(result.signedAt)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-muted-foreground">Reference</p>
+                    <p className="font-mono text-xs">{result.referenceNumber}</p>
+                  </div>
+                </div>
+              ) : isContract(result) ? (
                 /* ── Contract result ─────────────────────────────────────────── */
                 <div className="space-y-3 text-sm">
                   <div className="flex items-center gap-2 mb-2">

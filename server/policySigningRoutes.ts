@@ -501,7 +501,35 @@ export function registerPolicySigningRoutes(app: Express) {
         .set({ status: "signed", updatedAt: new Date() })
         .where(eq(policySigningRequests.id, requestId));
 
-      res.json({ success: true, signatureId: sig.id, pdfPath });
+      // Fold the policy acknowledgement onto the central signing service + ledger so it
+      // is verifiable via /verify like every other formally-signed document.
+      const { signPolicyAcknowledgement, recordSignature } = await import("./documentSigningService");
+      const sig_result = signPolicyAcknowledgement({
+        policyId: request.policyId,
+        policyTitle: request.policyTitle,
+        policyVersion: request.policyVersion,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        pageInitials: providedInitials,
+        finalSignature,
+        signedAt,
+      });
+      await recordSignature({
+        documentType: "policy",
+        documentId: sig.id,
+        referenceNumber: sig_result.refNumber,
+        signerName: `${employee.firstName} ${employee.lastName}`,
+        signerRole: "employee",
+        signerUserId: userId,
+        signedAt,
+        ipAddress,
+        contentHash: sig_result.documentHash,
+        authCode: sig_result.authCode,
+        sectionInitials: providedInitials,
+        certificatePath: pdfPath,
+        metadata: { policyId: request.policyId, policyVersion: request.policyVersion },
+      });
+
+      res.json({ success: true, signatureId: sig.id, pdfPath, referenceNumber: sig_result.refNumber, authCode: sig_result.authCode });
     } catch (e) {
       console.error("Policy signing error:", e);
       res.status(500).json({ error: "Failed to complete signing" });
