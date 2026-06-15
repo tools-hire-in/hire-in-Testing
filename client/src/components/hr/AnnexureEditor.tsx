@@ -406,6 +406,7 @@ interface PlanGoalTemplate {
 const ROLE_SLUG_LABELS: Record<string, string> = {
   associate_recruiter: "Associate Recruiter",
   senior_recruiter: "Senior Recruiter",
+  foundation_to_senior: "Foundation → Senior Recruiter",
   lead_recruiter: "Lead Recruiter",
   associate_manager: "Associate Manager",
   account_manager: "Account Manager",
