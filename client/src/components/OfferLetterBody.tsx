@@ -223,8 +223,11 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
           <div>
             <h3 className="font-semibold text-foreground mb-1">2. Working Hours</h3>
             <p>
-              Standard working hours shall be 8 hours per day, 5 days a week (Monday to Friday).
-              Shift timing: 8:00 PM to 4:00 AM IST. Overtime as per company policy.
+              Standard working hours shall be 8 hours per day, 5 days per week. Your working days,
+              shift timing, and schedule are not fixed and will be aligned to the client/project you
+              are assigned to and the prevailing business requirements. Specific shift details will be
+              communicated to you and may be adjusted from time to time with reasonable notice.
+              Overtime as per company policy.
             </p>
           </div>
           <div>

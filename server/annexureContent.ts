@@ -70,9 +70,9 @@ Annexure B – Attendance & Regularization Policy
 This Annexure sets out the Attendance and Regularization Policy applicable to all employees of Hire'in Solutions.
 
 1. STANDARD WORKING HOURS
-Standard working hours are 8 hours per day, 5 days per week (Monday to Friday).
-Core shift: 7:00 PM IST to 4:00 AM IST, in alignment with U.S. time zones.
-Employees are expected to be available and productive for the full duration of their shift unless a different schedule is approved in writing by HR.
+Standard working hours are 8 hours per day, 5 days per week.
+Working days, shift timing, and schedule are not fixed and will be aligned to the client/project the employee is serving and the prevailing business requirements. Specific shift details will be communicated by the Company and may be adjusted from time to time based on client and business needs.
+Employees are expected to be available and productive for the full duration of their assigned shift unless a different schedule is approved in writing by HR.
 
 2. ATTENDANCE RECORDING
 Employees must record attendance by punching in and out each working day via the designated HR portal or application.
