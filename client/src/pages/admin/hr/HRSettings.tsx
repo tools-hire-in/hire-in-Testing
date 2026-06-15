@@ -1645,6 +1645,414 @@ function DataMaintenanceSection() {
   );
 }
 
+interface PlanGoalTemplate {
+  id: string;
+  plan_type: string;
+  role_slug: string;
+  goal_title: string;
+  goal_category: string;
+  goal_description: string | null;
+  target_metric: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  probation: "Probation",
+  growth: "Growth Plan",
+  pip: "PIP",
+};
+
+const ROLE_SLUG_LABELS: Record<string, string> = {
+  associate_recruiter: "Associate Recruiter",
+  senior_recruiter: "Senior Recruiter",
+  lead_recruiter: "Lead Recruiter",
+  associate_manager: "Associate Manager",
+  account_manager: "Account Manager",
+};
+
+function GoalTemplatesSection() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const [filterPlanType, setFilterPlanType] = useState("probation");
+  const [filterRole, setFilterRole] = useState("all");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<PlanGoalTemplate>>({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({
+    plan_type: "probation", role_slug: "associate_recruiter",
+    goal_title: "", goal_category: "individual",
+    goal_description: "", target_metric: "", sort_order: "0",
+  });
+
+  const { data: templates = [], isLoading, refetch } = useQuery<PlanGoalTemplate[]>({
+    queryKey: ["/api/hr/plan-templates-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/plan-templates?active_only=false", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isHrOrAbove,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: string; body: Partial<PlanGoalTemplate> }) =>
+      apiRequest("PATCH", `/api/hr/plan-templates/${data.id}`, data.body),
+    onSuccess: () => { refetch(); setEditingId(null); toast({ title: "Template updated" }); },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: typeof addForm) => apiRequest("POST", "/api/hr/plan-templates", {
+      ...data, sort_order: parseInt(data.sort_order, 10),
+    }),
+    onSuccess: () => {
+      refetch();
+      setShowAdd(false);
+      setAddForm({ plan_type: "probation", role_slug: "associate_recruiter", goal_title: "", goal_category: "individual", goal_description: "", target_metric: "", sort_order: "0" });
+      toast({ title: "Template created" });
+    },
+    onError: () => toast({ title: "Create failed", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/hr/plan-templates/${id}`),
+    onSuccess: () => { refetch(); toast({ title: "Template deleted" }); },
+    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  const filtered = templates.filter(t =>
+    (filterPlanType === "all" || t.plan_type === filterPlanType) &&
+    (filterRole === "all" || t.role_slug === filterRole)
+  );
+
+  function startEdit(t: PlanGoalTemplate) {
+    setEditingId(t.id);
+    setEditForm({
+      goal_title: t.goal_title,
+      goal_category: t.goal_category,
+      goal_description: t.goal_description || "",
+      target_metric: t.target_metric || "",
+      sort_order: t.sort_order,
+      is_active: t.is_active,
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Healthcare Goal Templates
+          </CardTitle>
+          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-goal-template">
+            <Plus className="h-4 w-4 mr-1" /> Add Template
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Predefined goal templates loaded into annexures when creating Probation, Growth, or PIP plans for Healthcare team members.
+        </p>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Plan Type</Label>
+            <Select value={filterPlanType} onValueChange={setFilterPlanType}>
+              <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-filter-plan-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="probation">Probation</SelectItem>
+                <SelectItem value="growth">Growth Plan</SelectItem>
+                <SelectItem value="pip">PIP</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Role</Label>
+            <Select value={filterRole} onValueChange={setFilterRole}>
+              <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-filter-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
+                <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
+                <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
+                <SelectItem value="associate_manager">Associate Manager</SelectItem>
+                <SelectItem value="account_manager">Account Manager</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <span className="text-xs text-muted-foreground">{filtered.length} template{filtered.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}</div>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No templates found for this selection.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="text-left py-2 px-2 font-medium">Goal Title</th>
+                  <th className="text-left py-2 px-2 font-medium">Type / Role</th>
+                  <th className="text-left py-2 px-2 font-medium">Target Metric</th>
+                  <th className="text-left py-2 px-2 font-medium">Category</th>
+                  <th className="text-left py-2 px-2 font-medium">Order</th>
+                  <th className="text-left py-2 px-2 font-medium">Active</th>
+                  <th className="text-left py-2 px-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(t => (
+                  <tr key={t.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-template-${t.id}`}>
+                    {editingId === t.id ? (
+                      <>
+                        <td className="py-2 px-2" colSpan={5}>
+                          <div className="space-y-2">
+                            <Input
+                              value={String(editForm.goal_title ?? "")}
+                              onChange={e => setEditForm(prev => ({ ...prev, goal_title: e.target.value }))}
+                              placeholder="Goal title"
+                              className="h-7 text-xs"
+                              data-testid={`input-edit-title-${t.id}`}
+                            />
+                            <Input
+                              value={String(editForm.target_metric ?? "")}
+                              onChange={e => setEditForm(prev => ({ ...prev, target_metric: e.target.value }))}
+                              placeholder="Target metric"
+                              className="h-7 text-xs"
+                              data-testid={`input-edit-metric-${t.id}`}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                value={String(editForm.sort_order ?? 0)}
+                                onChange={e => setEditForm(prev => ({ ...prev, sort_order: parseInt(e.target.value, 10) }))}
+                                placeholder="Order"
+                                className="h-7 text-xs w-16"
+                                data-testid={`input-edit-order-${t.id}`}
+                              />
+                              <Select
+                                value={String(editForm.goal_category ?? "individual")}
+                                onValueChange={v => setEditForm(prev => ({ ...prev, goal_category: v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-28">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="individual">Individual</SelectItem>
+                                  <SelectItem value="team">Team</SelectItem>
+                                  <SelectItem value="development">Development</SelectItem>
+                                  <SelectItem value="company">Company</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <div className="flex items-center gap-1.5">
+                                <Switch
+                                  checked={!!editForm.is_active}
+                                  onCheckedChange={v => setEditForm(prev => ({ ...prev, is_active: v }))}
+                                  data-testid={`switch-edit-active-${t.id}`}
+                                />
+                                <span className="text-xs">Active</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2 px-2" colSpan={2}>
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => updateMutation.mutate({ id: t.id, body: editForm })}
+                              disabled={updateMutation.isPending}
+                              data-testid={`button-save-template-${t.id}`}
+                            >
+                              Save
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingId(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 px-2 max-w-xs">
+                          <span className="font-medium text-xs leading-tight" data-testid={`text-template-title-${t.id}`}>{t.goal_title}</span>
+                          {t.goal_description && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{t.goal_description}</p>
+                          )}
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex flex-col gap-0.5">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 w-fit">{PLAN_TYPE_LABELS[t.plan_type] || t.plan_type}</Badge>
+                            <span className="text-[11px] text-muted-foreground">{ROLE_SLUG_LABELS[t.role_slug] || t.role_slug}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 max-w-[200px]">
+                          <span className="text-xs text-muted-foreground">{t.target_metric || "—"}</span>
+                        </td>
+                        <td className="py-2 px-2">
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1">{t.goal_category}</Badge>
+                        </td>
+                        <td className="py-2 px-2">
+                          <span className="text-xs font-mono">{t.sort_order}</span>
+                        </td>
+                        <td className="py-2 px-2">
+                          <Switch
+                            checked={t.is_active}
+                            onCheckedChange={v => updateMutation.mutate({ id: t.id, body: { is_active: v } })}
+                            data-testid={`switch-template-active-${t.id}`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => startEdit(t)}
+                              data-testid={`button-edit-template-${t.id}`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                              onClick={() => deleteMutation.mutate(t.id)}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-template-${t.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {showAdd && (
+          <div className="border rounded-md p-4 space-y-3 bg-muted/30">
+            <p className="text-sm font-medium">New Template</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Plan Type</Label>
+                <Select value={addForm.plan_type} onValueChange={v => setAddForm(prev => ({ ...prev, plan_type: v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-plan-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="probation">Probation</SelectItem>
+                    <SelectItem value="growth">Growth Plan</SelectItem>
+                    <SelectItem value="pip">PIP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Role</Label>
+                <Select value={addForm.role_slug} onValueChange={v => setAddForm(prev => ({ ...prev, role_slug: v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
+                    <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
+                    <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
+                    <SelectItem value="associate_manager">Associate Manager</SelectItem>
+                    <SelectItem value="account_manager">Account Manager</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Goal Title *</Label>
+              <Input
+                value={addForm.goal_title}
+                onChange={e => setAddForm(prev => ({ ...prev, goal_title: e.target.value }))}
+                placeholder="e.g. Achieve qualified submissions target"
+                className="h-8 text-xs"
+                data-testid="input-add-goal-title"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Target Metric</Label>
+              <Input
+                value={addForm.target_metric}
+                onChange={e => setAddForm(prev => ({ ...prev, target_metric: e.target.value }))}
+                placeholder="e.g. 5 qualified submissions per week"
+                className="h-8 text-xs"
+                data-testid="input-add-target-metric"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                value={addForm.goal_description}
+                onChange={e => setAddForm(prev => ({ ...prev, goal_description: e.target.value }))}
+                placeholder="Optional description..."
+                rows={2}
+                className="text-xs"
+                data-testid="input-add-description"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select value={addForm.goal_category} onValueChange={v => setAddForm(prev => ({ ...prev, goal_category: v }))}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="development">Development</SelectItem>
+                    <SelectItem value="company">Company</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Sort Order</Label>
+                <Input
+                  type="number"
+                  value={addForm.sort_order}
+                  onChange={e => setAddForm(prev => ({ ...prev, sort_order: e.target.value }))}
+                  className="h-8 text-xs"
+                  data-testid="input-add-sort-order"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={() => createMutation.mutate(addForm)}
+                disabled={!addForm.goal_title || createMutation.isPending}
+                data-testid="button-save-new-template"
+              >
+                {createMutation.isPending ? "Saving..." : "Save Template"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ShiftsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -2662,6 +3070,7 @@ export default function HRSettings() {
         <RayoAcademySettingsSection />
         <CommunicationsSection />
         <LetterTemplatesSection />
+        <GoalTemplatesSection />
         <DataMaintenanceSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>

@@ -9,6 +9,110 @@ import { eq, and, or, inArray, sql, desc, asc } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
 import { sendCheckInReminderEmail } from "./email";
 
+// ─── Healthcare Plan types ────────────────────────────────────────────────────
+interface PlanGoalTemplate {
+  id: string;
+  plan_type: string;
+  role_slug: string;
+  department_scope: string;
+  goal_title: string;
+  goal_category: string;
+  goal_description: string | null;
+  target_metric: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+interface EmployeePlan {
+  id: string;
+  employee_id: string;
+  manager_id: string | null;
+  plan_type: string;
+  department_scope: string;
+  status: string;
+  outcome: string | null;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  created_by: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+// ─── Shared helper: insert plan-linked goals from template rows ───────────────
+// Called by both POST /api/hr/plans (auto-seed) and POST /api/performance/goals/batch
+// (manual plan-link). Keeps goal-creation logic in ONE canonical place.
+async function insertPlanGoalsFromTemplates(
+  planId: string,
+  employeeId: string,
+  managerId: string | null,
+  startDate: string,
+  endDate: string,
+  templates: PlanGoalTemplate[],
+): Promise<number> {
+  const sourceRef = `plan:${planId}`;
+  for (const tmpl of templates) {
+    await db.execute(sql`
+      INSERT INTO performance_goals
+        (employee_id, manager_id, title, description, category, plan_id, source_ref, start_date, target_date, weight)
+      VALUES
+        (${employeeId}, ${managerId}, ${tmpl.goal_title}, ${tmpl.goal_description ?? null},
+         ${tmpl.goal_category}, ${planId}, ${sourceRef}, ${startDate}, ${endDate}, 3)
+    `);
+  }
+  return templates.length;
+}
+
+function generatePlanCheckIns(
+  planId: string,
+  employeeId: string,
+  managerId: string | null,
+  planType: string,
+  startDate: string,
+  endDate: string,
+): { employeeId: string; managerId: string | null; planId: string; checkInType: string; scheduledDate: string; status: string }[] {
+  const schedule: { employeeId: string; managerId: string | null; planId: string; checkInType: string; scheduledDate: string; status: string }[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const msPerDay = 86400000;
+
+  const addDays = (from: Date, days: number) => new Date(from.getTime() + days * msPerDay);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const push = (d: Date, type: string) => {
+    if (d <= end) schedule.push({ employeeId, managerId, planId, checkInType: type, scheduledDate: fmt(d), status: "scheduled" });
+  };
+
+  if (planType === "probation") {
+    // Milestone reviews at days 15, 30, 60, 90
+    [15, 30, 60, 90].forEach(day => push(addDays(start, day), "milestone"));
+  } else if (planType === "pip") {
+    // Weekly PIP review every 7 days for the full duration
+    let cur = addDays(start, 7);
+    while (cur <= end) {
+      schedule.push({ employeeId, managerId, planId, checkInType: "pip_review", scheduledDate: fmt(cur), status: "scheduled" });
+      cur = addDays(cur, 7);
+    }
+  } else if (planType === "growth") {
+    // Milestone check-ins at days 30, 60, 90
+    const milestoneDays = new Set([30, 60, 90]);
+    milestoneDays.forEach(day => push(addDays(start, day), "milestone"));
+    // Weekly updates every 7 days (skip days that coincide with milestone days)
+    let cur = addDays(start, 7);
+    while (cur <= end) {
+      const dayOffset = Math.round((cur.getTime() - start.getTime()) / msPerDay);
+      if (!milestoneDays.has(dayOffset)) {
+        push(cur, "weekly_update");
+      }
+      cur = addDays(cur, 7);
+    }
+  }
+  return schedule;
+}
+
 const ADMIN_ROLES = ["super_admin", "admin", "hr"];
 const MANAGER_ROLES = ["super_admin", "admin", "hr", "manager"];
 const ALL_ROLES = ["super_admin", "admin", "hr", "operations", "manager", "employee"];
@@ -71,8 +175,14 @@ interface AuditLogChanges {
   done?: boolean;
   sourceRef?: string;
   type?: string;
-  sourceRef?: string;
   bulk?: boolean;
+  planId?: string;
+  plan_type?: string;
+  employee_id?: string;
+  role_slug?: string;
+  goal_title?: string;
+  id?: string;
+  count?: number;
   changes?: Record<string, unknown>;
 }
 
@@ -307,6 +417,31 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
+      const planId = (req.body.plan_id || req.body.planId) as string | undefined;
+
+      // ── Plan validation BEFORE any writes ──────────────────────────────────
+      let linkedPlan: EmployeePlan | null = null;
+      if (planId) {
+        const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+        if (planResult.rows.length === 0) {
+          return res.status(404).json({ error: "Referenced plan not found" });
+        }
+        linkedPlan = planResult.rows[0] as EmployeePlan;
+        if (linkedPlan.employee_id !== targetEmployee) {
+          return res.status(403).json({ error: "Plan does not belong to the target employee" });
+        }
+        const batchRole = req.session.role!;
+        if (!ADMIN_ROLES.includes(batchRole) && linkedPlan.employee_id !== userId) {
+          const planTeamIds = await getTeamMemberIds(userId);
+          if (!planTeamIds.includes(linkedPlan.employee_id)) {
+            return res.status(403).json({ error: "Not authorized to link goals to this plan" });
+          }
+        }
+      }
+
+      // Auto-derive source_ref for plan-linked goals to ensure traceability
+      const effectiveSourceRef = planId ? `plan:${planId}` : (sourceRef || null);
+
       const inserted = await db.insert(performanceGoals).values(
         cleanedItems.map(g => ({
           employeeId: targetEmployee,
@@ -317,8 +452,9 @@ export function registerPerformanceRoutes(app: Express) {
           startDate: g.startDate || batchStartDate || null,
           targetDate: g.targetDate || batchTargetDate || null,
           weight: 3,
-          sourceRef: sourceRef || null,
+          sourceRef: effectiveSourceRef,
           autoProgressFromMilestones: g.autoProgressFromMilestones === true,
+          planId: planId || null,
         }))
       ).returning();
 
@@ -336,16 +472,35 @@ export function registerPerformanceRoutes(app: Express) {
             }))
           ).returning();
           milestonesCreated += insertedMilestones.length;
-          await createAuditLog(userId, "goal_milestones_created_from_addendum", { goalId: g.id, sourceRef: sourceRef || undefined, changes: { count: insertedMilestones.length } }, targetEmployee !== userId ? targetEmployee : undefined);
+          await createAuditLog(userId, "goal_milestones_created_from_addendum", { goalId: g.id, sourceRef: effectiveSourceRef || undefined, changes: { count: insertedMilestones.length } }, targetEmployee !== userId ? targetEmployee : undefined);
         }
-        if (sourceRef) {
-          await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef }, targetEmployee !== userId ? targetEmployee : undefined);
+        if (effectiveSourceRef) {
+          await createAuditLog(userId, "performance_goal_created_from_addendum", { goalId: g.id, title: g.title, sourceRef: effectiveSourceRef }, targetEmployee !== userId ? targetEmployee : undefined);
         } else {
           await createAuditLog(userId, "performance_goal_created", { goalId: g.id, title: g.title, bulk: true }, targetEmployee !== userId ? targetEmployee : undefined);
         }
       }
 
-      res.status(201).json({ created: inserted.length, milestonesCreated, goals: inserted });
+      // Generate plan check-ins if none exist yet (validation already done above)
+      let planCheckInsScheduled = 0;
+      if (linkedPlan) {
+        const existingCi = await db.execute(sql`SELECT id FROM check_ins WHERE plan_id = ${planId} LIMIT 1`);
+        if (existingCi.rows.length === 0) {
+          const ciSchedule = generatePlanCheckIns(
+            linkedPlan.id, linkedPlan.employee_id, linkedPlan.manager_id,
+            linkedPlan.plan_type, linkedPlan.start_date, linkedPlan.end_date
+          );
+          for (const ci of ciSchedule) {
+            await db.execute(sql`
+              INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+              VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId}, ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
+            `);
+          }
+          planCheckInsScheduled = ciSchedule.length;
+        }
+      }
+
+      res.status(201).json({ created: inserted.length, milestonesCreated, goals: inserted, planCheckInsScheduled });
     } catch (error) {
       console.error("Error batch creating goals:", error);
       res.status(500).json({ error: "Failed to create goals" });
@@ -1166,6 +1321,334 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error fetching performance alerts:", error);
       res.json({ pendingSelfReviews: 0, upcomingCheckIns: 0, total: 0 });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HEALTHCARE PLAN GOAL TEMPLATES API
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/hr/plan-templates", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { plan_type, role_slug, department_scope, active_only } = req.query as {
+        plan_type?: string; role_slug?: string; department_scope?: string; active_only?: string;
+      };
+      // Default to active-only; pass active_only=false to include inactive (HR admin use)
+      const onlyActive = active_only !== "false";
+
+      // Build WHERE clauses dynamically using safe parameterized fragments
+      const conditions: ReturnType<typeof sql>[] = [];
+      if (onlyActive) conditions.push(sql`is_active = true`);
+      if (plan_type) conditions.push(sql`plan_type = ${plan_type}::employee_plan_type`);
+      if (role_slug) conditions.push(sql`role_slug = ${role_slug}`);
+      if (department_scope) conditions.push(sql`department_scope = ${department_scope}::employee_plan_dept_scope`);
+
+      const whereClause = conditions.length > 0
+        ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+        : sql``;
+
+      const r = await db.execute(sql`SELECT * FROM plan_goal_templates ${whereClause} ORDER BY plan_type, role_slug, sort_order ASC`);
+      res.json(r.rows);
+    } catch (error) {
+      console.error("Error fetching plan templates:", error);
+      res.status(500).json({ error: "Failed to fetch plan templates" });
+    }
+  });
+
+  app.post("/api/hr/plan-templates", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ADMIN_ROLES);
+    if (!userId) return;
+    try {
+      const { plan_type, role_slug, goal_title, goal_category, goal_description, target_metric, sort_order } = req.body;
+      if (!plan_type || !role_slug || !goal_title) return res.status(400).json({ error: "plan_type, role_slug, and goal_title are required" });
+      const result = await db.execute(sql`
+        INSERT INTO plan_goal_templates (plan_type, role_slug, department_scope, goal_title, goal_category, goal_description, target_metric, sort_order, is_active)
+        VALUES (${plan_type}::employee_plan_type, ${role_slug}, 'healthcare'::employee_plan_dept_scope, ${goal_title}, ${goal_category || "individual"}, ${goal_description || null}, ${target_metric || null}, ${sort_order ?? 0}, true)
+        RETURNING *
+      `);
+      await createAuditLog(userId, "plan_template_created", { goal_title, plan_type, role_slug });
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error("Error creating plan template:", error);
+      res.status(500).json({ error: "Failed to create plan template" });
+    }
+  });
+
+  app.patch("/api/hr/plan-templates/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ADMIN_ROLES);
+    if (!userId) return;
+    try {
+      const { goal_title, goal_description, target_metric, sort_order, is_active, goal_category } = req.body;
+      const result = await db.execute(sql`
+        UPDATE plan_goal_templates SET
+          goal_title = COALESCE(${goal_title ?? null}, goal_title),
+          goal_description = COALESCE(${goal_description ?? null}, goal_description),
+          target_metric = COALESCE(${target_metric ?? null}, target_metric),
+          goal_category = COALESCE(${goal_category ?? null}, goal_category),
+          sort_order = COALESCE(${sort_order ?? null}, sort_order),
+          is_active = COALESCE(${is_active ?? null}, is_active),
+          updated_at = NOW()
+        WHERE id = ${req.params.id}
+        RETURNING *
+      `);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Template not found" });
+      await createAuditLog(userId, "plan_template_updated", { id: req.params.id, changes: req.body });
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Error updating plan template:", error);
+      res.status(500).json({ error: "Failed to update plan template" });
+    }
+  });
+
+  app.delete("/api/hr/plan-templates/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ADMIN_ROLES);
+    if (!userId) return;
+    try {
+      await db.execute(sql`DELETE FROM plan_goal_templates WHERE id = ${req.params.id}`);
+      await createAuditLog(userId, "plan_template_deleted", { id: req.params.id });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting plan template:", error);
+      res.status(500).json({ error: "Failed to delete plan template" });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EMPLOYEE PLANS (Probation / Growth / PIP) CRUD API
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/hr/plans", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { employee_id, plan_type, start_date, end_date, duration_days, manager_id, role_slug } = req.body;
+
+      // ── Validate ALL inputs before any DB writes ──────────────────────────
+      if (!employee_id || !plan_type || !start_date || !end_date || !duration_days) {
+        return res.status(400).json({ error: "employee_id, plan_type, start_date, end_date, duration_days are required" });
+      }
+      if (!role_slug) {
+        return res.status(400).json({ error: "role_slug is required to auto-seed goals from plan templates" });
+      }
+
+      // Verify employee exists
+      const empResult = await db.execute(sql`
+        SELECT au.id, d.name as department_name FROM admin_users au
+        LEFT JOIN departments d ON au.department_id = d.id
+        WHERE au.id = ${employee_id}
+      `);
+      const empRow = empResult.rows[0] as { id: string; department_name: string | null } | undefined;
+      if (!empRow) return res.status(404).json({ error: "Employee not found" });
+
+      // Managers can only create plans for their direct reports; admins/hr are unrestricted
+      const planCreatorRole = req.session.role!;
+      if (!ADMIN_ROLES.includes(planCreatorRole)) {
+        const creatorTeamIds = await getTeamMemberIds(userId);
+        if (!creatorTeamIds.includes(employee_id)) {
+          return res.status(403).json({ error: "Not authorized to create plans for this employee" });
+        }
+      }
+
+      // Only Growth and PIP plans are Healthcare-restricted; Probation is open to all departments
+      if (plan_type !== "probation") {
+        const deptName = (empRow.department_name || "").toLowerCase();
+        if (!deptName.includes("healthcare") && !deptName.includes("health care")) {
+          return res.status(400).json({ error: "Growth and PIP plans are restricted to Healthcare department employees" });
+        }
+      }
+
+      // Pre-fetch templates — fail fast (before any writes) if none exist
+      const tmplResult = await db.execute(sql`
+        SELECT * FROM plan_goal_templates
+        WHERE plan_type = ${plan_type}::employee_plan_type
+          AND role_slug = ${role_slug}
+          AND is_active = true
+        ORDER BY sort_order ASC
+      `);
+      const planTemplates = tmplResult.rows as PlanGoalTemplate[];
+      if (planTemplates.length === 0) {
+        return res.status(400).json({
+          error: `No active templates found for plan_type="${plan_type}" and role_slug="${role_slug}". Cannot create a zero-goal plan.`,
+        });
+      }
+
+      // ── All validation passed — now execute writes ────────────────────────
+      const result = await db.execute(sql`
+        INSERT INTO employee_plans (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
+        VALUES (${employee_id}, ${manager_id || null}, ${plan_type}::employee_plan_type, 'healthcare'::employee_plan_dept_scope, 'pending'::employee_plan_status, ${start_date}, ${end_date}, ${duration_days}, ${userId})
+        RETURNING *
+      `);
+      const plan = result.rows[0] as EmployeePlan;
+
+      // Generate check-in schedule
+      const checkInSchedule = generatePlanCheckIns(
+        plan.id, employee_id, manager_id || null, plan_type, start_date, end_date
+      );
+      for (const ci of checkInSchedule) {
+        await db.execute(sql`
+          INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+          VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId}, ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
+        `);
+      }
+
+      // Seed goals using shared helper (same pipeline as /api/performance/goals/batch)
+      const goalsCreated = await insertPlanGoalsFromTemplates(
+        plan.id, employee_id, manager_id || null, start_date, end_date, planTemplates,
+      );
+
+      await createAuditLog(userId, "employee_plan_created", { planId: plan.id, plan_type, employee_id }, employee_id);
+      res.status(201).json({ plan, checkInsScheduled: checkInSchedule.length, goalsCreated });
+    } catch (error) {
+      console.error("Error creating employee plan:", error);
+      res.status(500).json({ error: "Failed to create employee plan" });
+    }
+  });
+
+  app.get("/api/hr/plans", async (req: Request, res: Response) => {
+    // Employees can list their own plans; managers/admin see their scope
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      const { employee_id, plan_type, status, department_scope } = req.query as {
+        employee_id?: string; plan_type?: string; status?: string; department_scope?: string;
+      };
+      const role = req.session.role!;
+
+      // Build base WHERE conditions
+      const buildConditions = (empIdClause: ReturnType<typeof sql>) => {
+        const conds: ReturnType<typeof sql>[] = [empIdClause];
+        if (plan_type) conds.push(sql`ep.plan_type = ${plan_type}::employee_plan_type`);
+        if (status) conds.push(sql`ep.status = ${status}::employee_plan_status`);
+        if (department_scope) conds.push(sql`ep.department_scope = ${department_scope}::employee_plan_dept_scope`);
+        return sql.join(conds, sql` AND `);
+      };
+
+      let rows: EmployeePlan[];
+
+      if (ADMIN_ROLES.includes(role)) {
+        // Admin/HR: see all plans, optionally filtered by employee_id
+        const where = employee_id
+          ? buildConditions(sql`ep.employee_id = ${employee_id}`)
+          : (plan_type || status || department_scope
+            ? buildConditions(sql`TRUE`)
+            : sql`TRUE`);
+        const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC LIMIT 200`);
+        rows = r.rows as EmployeePlan[];
+      } else if (role === "employee") {
+        // Employees can only see their own plans
+        const where = buildConditions(sql`ep.employee_id = ${userId}`);
+        const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+        rows = r.rows as EmployeePlan[];
+      } else {
+        // Manager: see plans for their direct reports; if employee_id specified, verify team membership
+        const teamIds = await getTeamMemberIds(userId);
+        if (teamIds.length === 0) { rows = []; }
+        else if (employee_id) {
+          if (!teamIds.includes(employee_id)) {
+            return res.status(403).json({ error: "Not authorized to view plans for this employee" });
+          }
+          const where = buildConditions(sql`ep.employee_id = ${employee_id}`);
+          const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+          rows = r.rows as EmployeePlan[];
+        } else {
+          const idList = sql.join(teamIds.map(id => sql`${id}`), sql`, `);
+          const where = buildConditions(sql`ep.employee_id IN (${idList})`);
+          const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+          rows = r.rows as EmployeePlan[];
+        }
+      }
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching employee plans:", error);
+      res.status(500).json({ error: "Failed to fetch employee plans" });
+    }
+  });
+
+  app.get("/api/hr/plans/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      const result = await db.execute(sql`
+        SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name
+        FROM employee_plans ep
+        LEFT JOIN admin_users au ON ep.employee_id = au.id
+        LEFT JOIN admin_users m ON ep.manager_id = m.id
+        WHERE ep.id = ${req.params.id}
+      `);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = result.rows[0] as EmployeePlan;
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getTeamMemberIds(userId);
+        if (!teamIds.includes(plan.employee_id) && plan.employee_id !== userId) {
+          return res.status(403).json({ error: "Not authorized to view this plan" });
+        }
+      }
+      // Also return associated check-ins and goals
+      const checkInsResult = await db.execute(sql`SELECT * FROM check_ins WHERE plan_id = ${req.params.id} ORDER BY scheduled_date ASC`);
+      const goalsResult = await db.execute(sql`SELECT * FROM performance_goals WHERE plan_id = ${req.params.id} ORDER BY created_at ASC`);
+      res.json({ plan, checkIns: checkInsResult.rows, goals: goalsResult.rows });
+    } catch (error) {
+      console.error("Error fetching employee plan:", error);
+      res.status(500).json({ error: "Failed to fetch employee plan" });
+    }
+  });
+
+  app.patch("/api/hr/plans/:id", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      // Fetch plan first to enforce object-level authorization
+      const existingResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${req.params.id}`);
+      if (existingResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const existingPlan = existingResult.rows[0] as EmployeePlan;
+      const patchRole = req.session.role!;
+      if (!ADMIN_ROLES.includes(patchRole)) {
+        const patchTeamIds = await getTeamMemberIds(userId);
+        if (!patchTeamIds.includes(existingPlan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized to update this plan" });
+        }
+      }
+
+      const { status, outcome, end_date } = req.body;
+      const result = await db.execute(sql`
+        UPDATE employee_plans SET
+          status = COALESCE(${status ?? null}::employee_plan_status, status),
+          outcome = COALESCE(${outcome ?? null}::employee_plan_outcome, outcome),
+          end_date = COALESCE(${end_date ?? null}, end_date),
+          updated_at = NOW()
+        WHERE id = ${req.params.id}
+        RETURNING *
+      `);
+      await createAuditLog(userId, "employee_plan_updated", { planId: req.params.id, changes: req.body });
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Error updating employee plan:", error);
+      res.status(500).json({ error: "Failed to update employee plan" });
+    }
+  });
+
+  app.post("/api/hr/plans/:id/acknowledge", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      const result = await db.execute(sql`
+        UPDATE employee_plans SET
+          acknowledged_at = NOW(),
+          acknowledged_by = ${userId},
+          status = CASE WHEN status = 'pending' THEN 'active'::employee_plan_status ELSE status END,
+          updated_at = NOW()
+        WHERE id = ${req.params.id} AND employee_id = ${userId}
+        RETURNING *
+      `);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found or not your plan" });
+      await createAuditLog(userId, "employee_plan_acknowledged", { planId: req.params.id });
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Error acknowledging employee plan:", error);
+      res.status(500).json({ error: "Failed to acknowledge plan" });
     }
   });
 }

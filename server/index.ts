@@ -986,6 +986,228 @@ async function backfillHolidayAttendance() {
   }
 }
 
+async function ensureHealthcarePlansTables() {
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE employee_plan_type AS ENUM('probation','growth','pip');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE employee_plan_dept_scope AS ENUM('healthcare');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE employee_plan_status AS ENUM('pending','active','completed','extended','closed');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE employee_plan_outcome AS ENUM('confirmed','extended','released','passed','terminated','rolled_over');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE check_in_type AS ENUM('milestone','weekly','pip_review','weekly_update');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS employee_plans (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        manager_id VARCHAR REFERENCES admin_users(id),
+        plan_type employee_plan_type NOT NULL,
+        department_scope employee_plan_dept_scope NOT NULL DEFAULT 'healthcare',
+        status employee_plan_status NOT NULL DEFAULT 'pending',
+        outcome employee_plan_outcome,
+        start_date VARCHAR NOT NULL,
+        end_date VARCHAR NOT NULL,
+        duration_days INTEGER NOT NULL,
+        acknowledged_at TIMESTAMP,
+        acknowledged_by VARCHAR REFERENCES admin_users(id),
+        created_by VARCHAR NOT NULL REFERENCES admin_users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plan_goal_templates (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_type employee_plan_type NOT NULL,
+        role_slug VARCHAR NOT NULL,
+        department_scope employee_plan_dept_scope NOT NULL DEFAULT 'healthcare',
+        goal_title VARCHAR NOT NULL,
+        goal_category VARCHAR NOT NULL DEFAULT 'individual',
+        goal_description TEXT,
+        target_metric VARCHAR,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_plan_goal_templates_type_role ON plan_goal_templates(plan_type, role_slug)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_employee_plans_employee ON employee_plans(employee_id)`);
+
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS plan_id VARCHAR`);
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS plan_id VARCHAR`);
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS check_in_type check_in_type DEFAULT 'milestone'`);
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS review_scores JSONB`);
+
+    // Add FK constraints for plan_id columns (idempotent via pg_constraint check)
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'performance_goals_plan_id_fkey') THEN
+          ALTER TABLE performance_goals
+            ADD CONSTRAINT performance_goals_plan_id_fkey
+            FOREIGN KEY (plan_id) REFERENCES employee_plans(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_ins_plan_id_fkey') THEN
+          ALTER TABLE check_ins
+            ADD CONSTRAINT check_ins_plan_id_fkey
+            FOREIGN KEY (plan_id) REFERENCES employee_plans(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    // Unique index ensures idempotent upsert seeding — admin edits are never overwritten
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_goal_templates_unique
+      ON plan_goal_templates (plan_type, role_slug, goal_title)
+    `);
+
+    log("Healthcare plan tables and columns ensured");
+  } catch (err) {
+    console.error("Healthcare plan tables migration error:", err);
+  }
+
+  // Seed plan_goal_templates for Healthcare roles — idempotent, never destructive.
+  // Uses ON CONFLICT DO NOTHING so admin edits, custom templates, and deletions
+  // are always preserved across restarts. Only truly missing rows are inserted.
+  try {
+    log("Ensuring plan_goal_templates seed (inserts missing rows only)...");
+
+    const templates: {
+      plan_type: string; role_slug: string; goal_category: string;
+      goal_title: string; goal_description?: string; target_metric?: string; sort_order: number;
+    }[] = [
+      // ─── PROBATION: Associate Recruiter (individual-only) ────────────────────
+      { plan_type: "probation", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Achieve qualified submissions target", goal_description: "Submit qualified candidates meeting job-order criteria", target_metric: "5 qualified submissions per week by week 6", sort_order: 1 },
+      { plan_type: "probation", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Meet interview-to-submission ratio", goal_description: "Maintain an acceptable interview scheduling rate from submissions", target_metric: "≥25% submission-to-interview rate", sort_order: 2 },
+      { plan_type: "probation", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Master ATS and sourcing tools", goal_description: "Demonstrate proficiency with Ceipal ATS, job boards, and LinkedIn Recruiter", target_metric: "100% same-day ATS logging compliance within 30 days", sort_order: 3 },
+      { plan_type: "probation", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Complete onboarding training tracks", goal_description: "Finish all assigned onboarding SOPs and knowledge checks", target_metric: "100% quiz pass rate on all assigned SOPs", sort_order: 4 },
+      { plan_type: "probation", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Pipeline 15+ active candidates in first 30 days", goal_description: "Build initial candidate pipeline for assigned verticals", target_metric: "15 active candidates pipelined in Ceipal by day 30", sort_order: 5 },
+
+      // ─── PROBATION: Senior Recruiter (individual-only) ───────────────────────
+      { plan_type: "probation", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Own full-cycle recruitment for 3+ open requisitions", goal_description: "Manage requisitions end-to-end with minimal oversight", target_metric: "3 active requisitions fully managed independently", sort_order: 1 },
+      { plan_type: "probation", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Achieve first placement by day 75", goal_description: "Close at least one candidate placement within probation window", target_metric: "1 confirmed placement by day 75", sort_order: 2 },
+      { plan_type: "probation", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Maintain pipeline quality score", goal_description: "Ensure candidates submitted meet hiring manager quality bar", target_metric: "≥80% manager-acceptance rate on submissions", sort_order: 3 },
+      { plan_type: "probation", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Demonstrate client communication standards", goal_description: "Lead or shadow at least 3 client intake calls with documented notes", target_metric: "3 client call notes logged in Ceipal by day 60", sort_order: 4 },
+
+      // ─── PROBATION: Lead Recruiter (individual + team) ───────────────────────
+      { plan_type: "probation", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Own strategic requisitions for key accounts", goal_description: "Independently manage high-value or complex requisitions", target_metric: "2 key-account reqs closed in probation window", sort_order: 1 },
+      { plan_type: "probation", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Contribute to team sourcing methodology", goal_description: "Document and share 2 sourcing playbooks for the team", target_metric: "2 sourcing playbooks documented by day 60", sort_order: 2 },
+      { plan_type: "probation", role_slug: "lead_recruiter", goal_category: "team", goal_title: "Support team members on pipeline reviews", goal_description: "Conduct weekly pipeline review sessions with ≥2 junior recruiters", target_metric: "8 documented pipeline review sessions in 90 days", sort_order: 3 },
+      { plan_type: "probation", role_slug: "lead_recruiter", goal_category: "team", goal_title: "Reduce team-wide submission rejection rate", goal_description: "Help reduce team submission rejection rate through coaching", target_metric: "Team rejection rate ≤15% by end of probation", sort_order: 4 },
+
+      // ─── PROBATION: Associate Manager (individual + team) ────────────────────
+      { plan_type: "probation", role_slug: "associate_manager", goal_category: "individual", goal_title: "Establish structured one-on-ones with all direct reports", goal_description: "Hold weekly 1:1s with each direct report from day 15", target_metric: "100% 1:1 completion for all direct reports in weeks 2-12", sort_order: 1 },
+      { plan_type: "probation", role_slug: "associate_manager", goal_category: "individual", goal_title: "Apply internal performance management process", goal_description: "Understand goal-setting, check-ins, and review cycle cadence", target_metric: "Goals set with each direct report by day 30", sort_order: 2 },
+      { plan_type: "probation", role_slug: "associate_manager", goal_category: "team", goal_title: "Achieve team placement target for quarter", goal_description: "Ensure team meets or exceeds placement target during probation period", target_metric: "Team achieves ≥90% of quarterly placement target", sort_order: 3 },
+      { plan_type: "probation", role_slug: "associate_manager", goal_category: "team", goal_title: "Reduce team time-to-submit metric", goal_description: "Improve team average days from requisition open to first submission", target_metric: "Average time-to-submit ≤5 business days by day 90", sort_order: 4 },
+
+      // ─── PROBATION: Account Manager (individual + team) ──────────────────────
+      { plan_type: "probation", role_slug: "account_manager", goal_category: "individual", goal_title: "Map and meet key client stakeholders", goal_description: "Complete introductory calls and relationship mapping for all assigned accounts", target_metric: "100% of assigned accounts with documented contact mapping by day 30", sort_order: 1 },
+      { plan_type: "probation", role_slug: "account_manager", goal_category: "individual", goal_title: "Develop client account plans", goal_description: "Create 90-day account plans for top 3 accounts", target_metric: "3 account plans submitted and approved by day 45", sort_order: 2 },
+      { plan_type: "probation", role_slug: "account_manager", goal_category: "team", goal_title: "Drive collaborative requisition intake with recruiting team", goal_description: "Lead intake meetings and align recruiting team on client requirements", target_metric: "Intake meeting notes documented for 100% of new requisitions", sort_order: 3 },
+      { plan_type: "probation", role_slug: "account_manager", goal_category: "team", goal_title: "Achieve client satisfaction baseline", goal_description: "Obtain positive feedback from at least 3 clients by end of probation", target_metric: "≥3 written client satisfaction confirmations by day 90", sort_order: 4 },
+
+      // ─── PIP: Associate Recruiter — outreach/day, screens/day, submissions/week, ATS accuracy
+      { plan_type: "pip", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Achieve minimum daily outreach target", goal_description: "Reach required daily sourcing and outreach contact volume", target_metric: "50 outreach contacts per day, 5 days/week throughout PIP window", sort_order: 1 },
+      { plan_type: "pip", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Complete minimum daily phone screens", goal_description: "Conduct required number of qualified candidate phone screens each day", target_metric: "5 qualified phone screens per day (25/week minimum)", sort_order: 2 },
+      { plan_type: "pip", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Achieve qualified submissions per week", goal_description: "Submit qualified candidates meeting job-order criteria each week", target_metric: "8 qualified submissions per week with manager rejection rate ≤20%", sort_order: 3 },
+      { plan_type: "pip", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Maintain ATS logging accuracy", goal_description: "Log all candidate activity in Ceipal ATS same-day without gaps", target_metric: "ATS logging accuracy ≥98%; all activity logged same-day", sort_order: 4 },
+
+      // ─── PIP: Senior Recruiter — outreach/day, screens/day, submissions/week, ATS accuracy
+      { plan_type: "pip", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Achieve minimum daily outreach", goal_description: "Restore required daily outreach volume across assigned verticals", target_metric: "40 outreach contacts/day; ≥20 new prospecting contacts/day", sort_order: 1 },
+      { plan_type: "pip", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Complete minimum weekly phone screens", goal_description: "Conduct qualified phone screens to restore pipeline depth", target_metric: "6 qualified phone screens/day (30/week minimum)", sort_order: 2 },
+      { plan_type: "pip", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Restore weekly submission volume", goal_description: "Return qualified submission rate to required threshold", target_metric: "12 qualified submissions/week with manager rejection rate ≤20%", sort_order: 3 },
+      { plan_type: "pip", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Achieve placement rate recovery", goal_description: "Re-establish consistent placement cadence within PIP window", target_metric: "1 confirmed placement per month for 3 consecutive months", sort_order: 4 },
+      { plan_type: "pip", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Maintain ATS compliance and accuracy", goal_description: "Ensure all candidate and requisition data is logged accurately", target_metric: "ATS logging accuracy ≥98%; zero missing candidate stages", sort_order: 5 },
+
+      // ─── PIP: Lead Recruiter — personal metrics + team delivery
+      { plan_type: "pip", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Restore personal outreach and screening metrics", goal_description: "Re-achieve required daily sourcing and screening activity", target_metric: "30 outreach contacts/day; 4 qualified phone screens/day minimum", sort_order: 1 },
+      { plan_type: "pip", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Recover strategic placement cadence", goal_description: "Close high-value placements consistently during PIP window", target_metric: "1 strategic placement per month for 2 consecutive months", sort_order: 2 },
+      { plan_type: "pip", role_slug: "lead_recruiter", goal_category: "team", goal_title: "Improve team submission-to-interview conversion", goal_description: "Coach team to increase share of submissions that reach interview stage", target_metric: "Team submission-to-interview rate ≥30% within 60 days", sort_order: 3 },
+      { plan_type: "pip", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Maintain 100% ATS compliance and update team playbooks", goal_description: "Model ATS accuracy and refresh sourcing playbooks for team", target_metric: "ATS logging accuracy ≥98%; updated team playbook shared within 30 days", sort_order: 4 },
+
+      // ─── PIP: Associate Manager — individual oversight + team delivery metrics
+      { plan_type: "pip", role_slug: "associate_manager", goal_category: "individual", goal_title: "Restore structured direct-report performance oversight", goal_description: "Reinstate consistent 1:1 cadence and documented performance tracking", target_metric: "100% of direct reports with active goals and bi-weekly documented check-ins", sort_order: 1 },
+      { plan_type: "pip", role_slug: "associate_manager", goal_category: "team", goal_title: "Return team to placement quota", goal_description: "Ensure team recovers placement throughput during PIP window", target_metric: "Team achieves ≥95% of quota for 2 consecutive months", sort_order: 2 },
+      { plan_type: "pip", role_slug: "associate_manager", goal_category: "team", goal_title: "Improve team outreach and submission volume", goal_description: "Drive team to meet required daily and weekly activity minimums", target_metric: "Team average: ≥40 outreach contacts/day, ≥8 submissions/week per recruiter", sort_order: 3 },
+      { plan_type: "pip", role_slug: "associate_manager", goal_category: "individual", goal_title: "Implement structured escalation and ATS audit process", goal_description: "Log and resolve all escalations; conduct weekly ATS accuracy audits", target_metric: "100% of escalations logged with resolution; ATS audits completed weekly", sort_order: 4 },
+
+      // ─── PIP: Account Manager — client recovery + fill rate + communication SLA
+      { plan_type: "pip", role_slug: "account_manager", goal_category: "individual", goal_title: "Recover at-risk client fill rate", goal_description: "Close more open requisitions on managed accounts within PIP window", target_metric: "Fill rate improves by ≥15% within 60 days on all managed accounts", sort_order: 1 },
+      { plan_type: "pip", role_slug: "account_manager", goal_category: "individual", goal_title: "Improve client communication SLA", goal_description: "Address documented gaps in timely client communication", target_metric: "100% of client messages responded to within 24 business hours", sort_order: 2 },
+      { plan_type: "pip", role_slug: "account_manager", goal_category: "individual", goal_title: "Rebuild client pipeline and requisition volume", goal_description: "Re-activate or open new requisitions from managed accounts", target_metric: "≥5 new or re-activated requisitions from managed accounts within 45 days", sort_order: 3 },
+      { plan_type: "pip", role_slug: "account_manager", goal_category: "individual", goal_title: "Ensure ATS accuracy for all managed requisitions", goal_description: "Maintain full ATS compliance on client requisition tracking", target_metric: "ATS logging accuracy ≥98% for all managed requisitions; zero missing stages", sort_order: 4 },
+
+      // ─── GROWTH: Associate Recruiter (individual + production) ───────────────
+      { plan_type: "growth", role_slug: "associate_recruiter", goal_category: "individual", goal_title: "Develop specialization in a healthcare sub-vertical", goal_description: "Build expertise in travel nursing, allied health, or locum tenens", target_metric: "1 specialization training completed; 10+ candidates sourced in chosen vertical", sort_order: 1 },
+      { plan_type: "growth", role_slug: "associate_recruiter", goal_category: "production", goal_title: "Increase weekly submission volume by 20%", goal_description: "Expand pipeline activity to exceed current submission baseline", target_metric: "Weekly submission count increases 20% vs. baseline; sustained for 6 consecutive weeks", sort_order: 2 },
+
+      // ─── GROWTH: Senior Recruiter (individual + production) ──────────────────
+      { plan_type: "growth", role_slug: "senior_recruiter", goal_category: "individual", goal_title: "Mentor an associate-level recruiter", goal_description: "Take on a formal or informal mentoring role with a junior team member", target_metric: "6 documented mentoring sessions over the growth plan window", sort_order: 1 },
+      { plan_type: "growth", role_slug: "senior_recruiter", goal_category: "production", goal_title: "Expand to a new healthcare client vertical", goal_description: "Build active pipeline for a new client or vertical not previously worked", target_metric: "1 new client or vertical with active pipeline and ≥3 submissions by end of plan", sort_order: 2 },
+
+      // ─── GROWTH: Lead Recruiter (individual + team delivery) ─────────────────
+      { plan_type: "growth", role_slug: "lead_recruiter", goal_category: "individual", goal_title: "Develop and deliver a team training session", goal_description: "Identify a skill gap in the team and lead a structured training session", target_metric: "1 completed team training session with documented attendee feedback", sort_order: 1 },
+      { plan_type: "growth", role_slug: "lead_recruiter", goal_category: "team", goal_title: "Improve team submission-to-placement conversion rate", goal_description: "Coach team to close more placements from the existing submission pipeline", target_metric: "Team placement rate improves ≥10% from baseline by end of plan", sort_order: 2 },
+
+      // ─── GROWTH: Associate Manager (individual + team delivery) ──────────────
+      { plan_type: "growth", role_slug: "associate_manager", goal_category: "individual", goal_title: "Develop a direct report into a senior-level performer", goal_description: "Create and execute a growth plan for a high-potential team member", target_metric: "Direct report achieves promotion readiness assessment by end of plan", sort_order: 1 },
+      { plan_type: "growth", role_slug: "associate_manager", goal_category: "team", goal_title: "Reduce team average time-to-submit metric", goal_description: "Drive process improvements to shorten requisition open to first-submission window", target_metric: "Team average time-to-submit ≤5 business days sustained for 8 weeks", sort_order: 2 },
+
+      // ─── GROWTH: Account Manager (individual + team delivery) ────────────────
+      { plan_type: "growth", role_slug: "account_manager", goal_category: "individual", goal_title: "Grow revenue in existing accounts", goal_description: "Expand scope of engagement with current clients through upsell or new reqs", target_metric: "≥10% revenue increase from existing accounts within plan window", sort_order: 1 },
+      { plan_type: "growth", role_slug: "account_manager", goal_category: "team", goal_title: "Improve cross-functional pipeline collaboration", goal_description: "Facilitate joint BD/recruiting planning sessions to align on client strategy", target_metric: "2 collaborative BD/recruiting sessions facilitated and documented", sort_order: 2 },
+    ];
+
+    let inserted = 0;
+    for (const tpl of templates) {
+      const r = await db.execute(sql`
+        INSERT INTO plan_goal_templates (plan_type, role_slug, department_scope, goal_title, goal_category, goal_description, target_metric, sort_order, is_active)
+        VALUES (
+          ${tpl.plan_type}::employee_plan_type,
+          ${tpl.role_slug},
+          'healthcare'::employee_plan_dept_scope,
+          ${tpl.goal_title},
+          ${tpl.goal_category},
+          ${tpl.goal_description ?? null},
+          ${tpl.target_metric ?? null},
+          ${tpl.sort_order},
+          true
+        )
+        ON CONFLICT (plan_type, role_slug, goal_title) DO NOTHING
+      `);
+      if ((r.rowCount ?? 0) > 0) inserted++;
+    }
+    log(`Plan goal templates seed: ${inserted} new rows inserted (${templates.length - inserted} already present)`);
+  } catch (err) {
+    console.error("Plan goal templates seed error (non-fatal):", err);
+  }
+}
+
 (async () => {
   try {
     await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
@@ -1462,6 +1684,8 @@ async function backfillHolidayAttendance() {
   checkAndAutoCreateRun().catch(err =>
     console.error("[index] Attendance auto-create on startup failed:", err)
   );
+
+  await ensureHealthcarePlansTables();
 
   await registerRoutes(httpServer, app);
 

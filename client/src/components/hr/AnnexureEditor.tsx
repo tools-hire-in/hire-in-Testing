@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Trash2, Table2, ChevronDown, ChevronUp, Target } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Plus, Trash2, Table2, ChevronDown, ChevronUp, Target, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 export interface AnnexureTable {
   col1Header: string;
@@ -387,12 +391,206 @@ function TableEditor({
   );
 }
 
+interface PlanGoalTemplate {
+  id: string;
+  plan_type: string;
+  role_slug: string;
+  goal_title: string;
+  goal_category: string;
+  goal_description: string | null;
+  target_metric: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+const ROLE_SLUG_LABELS: Record<string, string> = {
+  associate_recruiter: "Associate Recruiter",
+  senior_recruiter: "Senior Recruiter",
+  lead_recruiter: "Lead Recruiter",
+  associate_manager: "Associate Manager",
+  account_manager: "Account Manager",
+};
+
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  probation: "Probation",
+  growth: "Growth Plan",
+  pip: "PIP",
+};
+
+function LoadFromTemplateDialog({
+  open,
+  onOpenChange,
+  onLoad,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onLoad: (templates: PlanGoalTemplate[]) => void;
+}) {
+  const [deptScope, setDeptScope] = useState("healthcare");
+  const [planType, setPlanType] = useState("");
+  const [roleSlug, setRoleSlug] = useState("");
+
+  const { data: templates = [], isLoading } = useQuery<PlanGoalTemplate[]>({
+    queryKey: ["/api/hr/plan-templates", deptScope, planType, roleSlug],
+    queryFn: async () => {
+      if (!planType && !roleSlug) return [];
+      const params = new URLSearchParams();
+      params.set("department_scope", deptScope);
+      if (planType) params.set("plan_type", planType);
+      if (roleSlug) params.set("role_slug", roleSlug);
+      const res = await fetch(`/api/hr/plan-templates?${params}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!(planType || roleSlug),
+  });
+
+  function handleLoad() {
+    onLoad(templates);
+    onOpenChange(false);
+    setPlanType("");
+    setRoleSlug("");
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" /> Load from Template
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Select a department, plan type and role to load predefined goal templates as table rows.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Department</Label>
+            <Select value={deptScope} onValueChange={setDeptScope}>
+              <SelectTrigger data-testid="select-template-dept-scope">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="healthcare">Healthcare</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Plan Type</Label>
+              <Select value={planType} onValueChange={setPlanType}>
+                <SelectTrigger data-testid="select-template-plan-type">
+                  <SelectValue placeholder="Select plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="probation">Probation</SelectItem>
+                  <SelectItem value="growth">Growth Plan</SelectItem>
+                  <SelectItem value="pip">PIP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Role</Label>
+              <Select value={roleSlug} onValueChange={setRoleSlug}>
+                <SelectTrigger data-testid="select-template-role">
+                  <SelectValue placeholder="Select role..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
+                  <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
+                  <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
+                  <SelectItem value="associate_manager">Associate Manager</SelectItem>
+                  <SelectItem value="account_manager">Account Manager</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {isLoading && <p className="text-xs text-muted-foreground">Loading templates…</p>}
+
+          {!isLoading && (planType || roleSlug) && templates.length === 0 && (
+            <p className="text-xs text-amber-600">No active templates found for this selection.</p>
+          )}
+
+          {templates.length > 0 && (
+            <div className="border rounded-md overflow-hidden">
+              <div className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                {templates.length} template{templates.length !== 1 ? "s" : ""} will be loaded
+              </div>
+              <div className="max-h-48 overflow-y-auto divide-y">
+                {templates.map((t) => (
+                  <div key={t.id} className="px-3 py-2 space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium">{t.goal_title}</span>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1">
+                        {t.goal_category}
+                      </Badge>
+                    </div>
+                    {t.target_metric && (
+                      <p className="text-[11px] text-muted-foreground">Target: {t.target_metric}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={handleLoad}
+            disabled={templates.length === 0}
+            data-testid="button-load-templates"
+          >
+            Load {templates.length > 0 ? `${templates.length} Template${templates.length !== 1 ? "s" : ""}` : "Templates"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AnnexureEditor({ annexures, onChange, effectiveDate, goalPushDisabled, goalPushDisabledReason }: AnnexureEditorProps) {
   const [expandedTables, setExpandedTables] = useState<Set<number>>(new Set());
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
 
   function addAnnexure() {
     if (annexures.length >= MAX_ANNEXURES) return;
     onChange([...annexures, { title: "", body: "" }]);
+  }
+
+  function loadFromTemplates(templates: PlanGoalTemplate[]) {
+    if (templates.length === 0) return;
+    const planType = templates[0]?.plan_type || "probation";
+    const roleSlug = templates[0]?.role_slug || "";
+    const roleLabel = ROLE_SLUG_LABELS[roleSlug] || roleSlug;
+    const planLabel = PLAN_TYPE_LABELS[planType] || planType;
+
+    const rows: [string, string][] = templates.map(t => [
+      t.goal_title,
+      t.target_metric || t.goal_description || "",
+    ]);
+
+    const newAnnexure = {
+      title: `${planLabel} — ${roleLabel} Goals`,
+      body: "",
+      table: {
+        col1Header: "Goal",
+        col2Header: "Target / Metric",
+        rows,
+      },
+    };
+
+    if (annexures.length < MAX_ANNEXURES) {
+      const updated = [...annexures, newAnnexure];
+      onChange(updated);
+      setExpandedTables(prev => new Set(prev).add(updated.length - 1));
+    } else {
+      // Replace the last annexure
+      const updated = annexures.map((ann, i) => i === annexures.length - 1 ? newAnnexure : ann);
+      onChange(updated);
+      setExpandedTables(prev => new Set(prev).add(annexures.length - 1));
+    }
   }
 
   function removeAnnexure(idx: number) {
@@ -457,18 +655,36 @@ export function AnnexureEditor({ annexures, onChange, effectiveDate, goalPushDis
             Attach up to {MAX_ANNEXURES} extra sections — each appended as a new page in the document.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={addAnnexure}
-          disabled={annexures.length >= MAX_ANNEXURES}
-          data-testid="btn-add-annexure"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Add Annexure
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowTemplateDialog(true)}
+            className="text-xs text-blue-600 hover:text-blue-800"
+            data-testid="btn-load-from-template"
+          >
+            <BookOpen className="h-3 w-3 mr-1" /> Load from Template
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={addAnnexure}
+            disabled={annexures.length >= MAX_ANNEXURES}
+            data-testid="btn-add-annexure"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Add Annexure
+          </Button>
+        </div>
       </div>
+
+      <LoadFromTemplateDialog
+        open={showTemplateDialog}
+        onOpenChange={setShowTemplateDialog}
+        onLoad={loadFromTemplates}
+      />
 
       {annexures.length > 0 && (
         <div className="space-y-3">

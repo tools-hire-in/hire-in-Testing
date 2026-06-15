@@ -843,6 +843,7 @@ export const performanceGoals = pgTable("performance_goals", {
   autoProgressFromMilestones: boolean("auto_progress_from_milestones").notNull().default(false),
   rayoAcademyTrackId: varchar("rayo_academy_track_id"),
   sourceRef: varchar("source_ref"),
+  planId: varchar("plan_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -859,17 +860,22 @@ export const goalMilestones = pgTable("goal_milestones", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const checkInTypeEnum = pgEnum("check_in_type", ["milestone", "weekly", "pip_review", "weekly_update"]);
+
 export const checkIns = pgTable("check_ins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
   managerId: varchar("manager_id").references(() => adminUsers.id),
   goalId: varchar("goal_id").references(() => performanceGoals.id, { onDelete: "set null" }),
+  planId: varchar("plan_id"),
+  checkInType: checkInTypeEnum("check_in_type").default("milestone"),
   scheduledDate: varchar("scheduled_date").notNull(),
   status: checkInStatusEnum("status").notNull().default("scheduled"),
   employeeNotes: text("employee_notes"),
   managerNotes: text("manager_notes"),
   actionItems: text("action_items"),
   rating: integer("rating"),
+  reviewScores: jsonb("review_scores"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -913,6 +919,74 @@ export const performanceFeedback = pgTable("performance_feedback", {
   goalId: varchar("goal_id").references(() => performanceGoals.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ==========================================
+// HEALTHCARE PLANS (Probation / Growth / PIP)
+// ==========================================
+
+export const employeePlanTypeEnum = pgEnum("employee_plan_type", ["probation", "growth", "pip"]);
+export const employeePlanDeptScopeEnum = pgEnum("employee_plan_dept_scope", ["healthcare"]);
+export const employeePlanStatusEnum = pgEnum("employee_plan_status", ["pending", "active", "completed", "extended", "closed"]);
+export const employeePlanOutcomeEnum = pgEnum("employee_plan_outcome", ["confirmed", "extended", "released", "passed", "terminated", "rolled_over"]);
+
+export const employeePlans = pgTable("employee_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  planType: employeePlanTypeEnum("plan_type").notNull(),
+  departmentScope: employeePlanDeptScopeEnum("department_scope").notNull().default("healthcare"),
+  status: employeePlanStatusEnum("status").notNull().default("pending"),
+  outcome: employeePlanOutcomeEnum("outcome"),
+  startDate: varchar("start_date").notNull(),
+  endDate: varchar("end_date").notNull(),
+  durationDays: integer("duration_days").notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: varchar("acknowledged_by").references(() => adminUsers.id),
+  createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const planGoalTemplates = pgTable("plan_goal_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planType: employeePlanTypeEnum("plan_type").notNull(),
+  roleSlug: varchar("role_slug").notNull(),
+  departmentScope: employeePlanDeptScopeEnum("department_scope").notNull().default("healthcare"),
+  goalTitle: varchar("goal_title").notNull(),
+  goalCategory: varchar("goal_category").notNull().default("individual"),
+  goalDescription: text("goal_description"),
+  targetMetric: varchar("target_metric"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEmployeePlanSchema = createInsertSchema(employeePlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  acknowledgedAt: true,
+  acknowledgedBy: true,
+});
+
+export const insertPlanGoalTemplateSchema = createInsertSchema(planGoalTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type EmployeePlan = typeof employeePlans.$inferSelect;
+export type InsertEmployeePlan = z.infer<typeof insertEmployeePlanSchema>;
+export type PlanGoalTemplate = typeof planGoalTemplates.$inferSelect;
+export type InsertPlanGoalTemplate = z.infer<typeof insertPlanGoalTemplateSchema>;
+
+export const employeePlansRelations = relations(employeePlans, ({ one }) => ({
+  employee: one(adminUsers, { fields: [employeePlans.employeeId], references: [adminUsers.id], relationName: "planEmployee" }),
+  manager: one(adminUsers, { fields: [employeePlans.managerId], references: [adminUsers.id], relationName: "planManager" }),
+  acknowledger: one(adminUsers, { fields: [employeePlans.acknowledgedBy], references: [adminUsers.id], relationName: "planAcknowledger" }),
+  creator: one(adminUsers, { fields: [employeePlans.createdBy], references: [adminUsers.id], relationName: "planCreator" }),
+}));
 
 export const performanceGoalsRelations = relations(performanceGoals, ({ one, many }) => ({
   employee: one(adminUsers, { fields: [performanceGoals.employeeId], references: [adminUsers.id], relationName: "goalEmployee" }),
