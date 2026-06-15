@@ -418,6 +418,12 @@ const PLAN_TYPE_LABELS: Record<string, string> = {
   pip: "PIP",
 };
 
+interface TemplateMeta {
+  plan_type: string;
+  role_slug: string;
+  department_scope: string;
+}
+
 function LoadFromTemplateDialog({
   open,
   onOpenChange,
@@ -431,19 +437,42 @@ function LoadFromTemplateDialog({
   const [planType, setPlanType] = useState("");
   const [roleSlug, setRoleSlug] = useState("");
 
-  const { data: templates = [], isLoading } = useQuery<PlanGoalTemplate[]>({
-    queryKey: ["/api/hr/plan-templates", deptScope, planType, roleSlug],
+  // Fetch distinct role slugs available for the selected dept from the DB
+  const { data: metaRows = [] } = useQuery<TemplateMeta[]>({
+    queryKey: ["/api/hr/plan-templates/meta", deptScope],
     queryFn: async () => {
-      if (!planType && !roleSlug) return [];
+      const params = new URLSearchParams({ department_scope: deptScope });
+      const res = await fetch(`/api/hr/plan-templates/meta?${params}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Derive unique role slugs available for the currently selected plan type
+  const availableRoles = Array.from(
+    new Set(
+      metaRows
+        .filter((m) => !planType || m.plan_type === planType)
+        .map((m) => m.role_slug)
+    )
+  );
+
+  // Clear role if it's no longer valid after planType change
+  const effectiveRole = availableRoles.includes(roleSlug) ? roleSlug : "";
+
+  const { data: templates = [], isLoading } = useQuery<PlanGoalTemplate[]>({
+    queryKey: ["/api/hr/plan-templates", deptScope, planType, effectiveRole],
+    queryFn: async () => {
+      if (!planType && !effectiveRole) return [];
       const params = new URLSearchParams();
       params.set("department_scope", deptScope);
       if (planType) params.set("plan_type", planType);
-      if (roleSlug) params.set("role_slug", roleSlug);
+      if (effectiveRole) params.set("role_slug", effectiveRole);
       const res = await fetch(`/api/hr/plan-templates?${params}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!(planType || roleSlug),
+    enabled: !!(planType || effectiveRole),
   });
 
   function handleLoad() {
@@ -492,17 +521,20 @@ function LoadFromTemplateDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Role</Label>
-              <Select value={roleSlug} onValueChange={setRoleSlug}>
+              <Select
+                value={effectiveRole}
+                onValueChange={setRoleSlug}
+                disabled={availableRoles.length === 0}
+              >
                 <SelectTrigger data-testid="select-template-role">
-                  <SelectValue placeholder="Select role..." />
+                  <SelectValue placeholder={availableRoles.length === 0 ? "No roles available" : "Select role..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
-                  <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
-                  <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
-                  <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
-                  <SelectItem value="associate_manager">Associate Manager</SelectItem>
-                  <SelectItem value="account_manager">Account Manager</SelectItem>
+                  {availableRoles.map((slug) => (
+                    <SelectItem key={slug} value={slug}>
+                      {ROLE_SLUG_LABELS[slug] ?? slug}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -1,1 +1,2 @@
 - [Seed data Unicode pitfall](seed-unicode-pitfall.md) — Unicode chars (×, em dash) in seed titles cause silent ON CONFLICT mismatches vs plain ASCII.
+- [Plan goal templates seed](plan-goal-templates-seed.md) — ON CONFLICT DO NOTHING; to fix existing rows use UPDATE blocks before the seed loop in server/index.ts

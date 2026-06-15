@@ -1366,6 +1366,29 @@ export function registerPerformanceRoutes(app: Express) {
   // HEALTHCARE PLAN GOAL TEMPLATES API
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Returns distinct (plan_type, role_slug) combinations for active templates in a given dept.
+  // Used by the frontend Load-from-Template dialog to build a DB-driven role dropdown.
+  app.get("/api/hr/plan-templates/meta", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { department_scope } = req.query as { department_scope?: string };
+      const deptFilter = department_scope
+        ? sql`WHERE is_active = true AND department_scope = ${department_scope}::employee_plan_dept_scope`
+        : sql`WHERE is_active = true`;
+      const r = await db.execute(sql`
+        SELECT DISTINCT plan_type::text, role_slug, department_scope::text
+        FROM plan_goal_templates
+        ${deptFilter}
+        ORDER BY plan_type, role_slug
+      `);
+      res.json(r.rows);
+    } catch (error) {
+      console.error("Error fetching plan-templates meta:", error);
+      res.status(500).json({ error: "Failed to fetch template metadata" });
+    }
+  });
+
   app.get("/api/hr/plan-templates", async (req: Request, res: Response) => {
     const userId = requireRole(req, res, MANAGER_ROLES);
     if (!userId) return;
