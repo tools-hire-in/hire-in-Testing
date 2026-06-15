@@ -517,6 +517,32 @@ VALUES (
 )
 ON CONFLICT (plan_type, role_slug, goal_title) DO NOTHING;
 
+-- ============================================================================
+-- PART 3 — Correct foundation_to_senior Growth PO/start targets
+--           3 clean starts per month = minimum 9 across 90 days
+-- ============================================================================
+
+UPDATE plan_goal_templates
+SET
+  target_metric    = 'Minimum 3 clean POs or starts in the first 30 days; each placement counts only when the candidate starts, stays, and bills consistently',
+  goal_description = 'Close minimum 3 clean POs or confirmed starts from the live pipeline in the first 30 days, assuming client demand remains active. A PO only counts when the candidate starts, stays, and bills consistently.'
+WHERE plan_type = 'growth' AND role_slug = 'foundation_to_senior'
+  AND goal_title = 'D1-30: Clean POs or starts';
+
+UPDATE plan_goal_templates
+SET
+  target_metric    = 'Minimum 3 additional clean POs or starts in Days 31-60; running total of 6 clean starts by Day 60; retained billing status documented for each',
+  goal_description = 'Close minimum 3 additional clean POs or confirmed starts. Running total of 6 clean starts by Day 60. Focus on retained placements where the candidate starts, stays, and bills consistently — not just initial PO receipt.'
+WHERE plan_type = 'growth' AND role_slug = 'foundation_to_senior'
+  AND goal_title = 'D31-60: Clean POs or starts';
+
+UPDATE plan_goal_templates
+SET
+  target_metric    = 'Minimum 9 total clean POs/starts across the full 90-day plan (3 per month); strong performance = 10+; PO/start and retained billing status documented for every placement',
+  goal_description = 'Reach the 90-day placement target with clean, retained starts — minimum 9 total (3 per month). Strong performance is 10+. Each placement is assessed on whether the candidate started, stayed, billed, and the client relationship remained stable.'
+WHERE plan_type = 'growth' AND role_slug = 'foundation_to_senior'
+  AND goal_title = 'D61-90: Total clean POs or starts — 90-day target';
+
 COMMIT;
 
 -- ── Verification query (run separately after the script to confirm) ────────────
