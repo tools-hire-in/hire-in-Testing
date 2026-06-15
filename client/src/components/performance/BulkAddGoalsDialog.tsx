@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2, ClipboardPaste } from "lucide-react";
+import { Loader2, Plus, Trash2, ClipboardPaste, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  LoadFromTemplateDialog,
+  ROLE_SLUG_LABELS,
+  PLAN_TYPE_LABELS,
+  type PlanGoalTemplate,
+} from "@/components/performance/LoadFromTemplateDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,6 +41,8 @@ interface BulkGoalRow {
 
 const emptyRow = (): BulkGoalRow => ({ title: "", description: "" });
 
+const MAX_ROWS = 30;
+
 export function BulkAddGoalsDialog({
   open,
   onOpenChange,
@@ -56,6 +64,7 @@ export function BulkAddGoalsDialog({
   const [targetDate, setTargetDate] = useState("");
   const [rows, setRows] = useState<BulkGoalRow[]>([emptyRow(), emptyRow(), emptyRow()]);
   const [error, setError] = useState<string | null>(null);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -64,8 +73,45 @@ export function BulkAddGoalsDialog({
       setTargetDate("");
       setRows([emptyRow(), emptyRow(), emptyRow()]);
       setError(null);
+      setShowTemplateDialog(false);
     }
   }, [open]);
+
+  function loadFromTemplates(templates: PlanGoalTemplate[]) {
+    if (templates.length === 0) return;
+    const planType = templates[0]?.plan_type || "";
+    const roleSlug = templates[0]?.role_slug || "";
+    const planLabel = PLAN_TYPE_LABELS[planType] || planType;
+    const roleLabel = ROLE_SLUG_LABELS[roleSlug] || roleSlug;
+
+    const templateRows: BulkGoalRow[] = templates.map((t) => ({
+      title: t.goal_title,
+      description: t.target_metric || t.goal_description || "",
+    }));
+
+    setRows((prev) => {
+      // Keep rows the user has already typed/loaded; drop blank placeholder rows.
+      const existing = prev.filter((r) => r.title.trim() || r.description.trim());
+      const combined = [...existing, ...templateRows];
+      const capped = combined.slice(0, MAX_ROWS);
+      const loaded = Math.max(0, capped.length - existing.length);
+
+      if (combined.length > MAX_ROWS) {
+        toast({
+          title: `Loaded ${loaded} of ${templateRows.length} goals`,
+          description: `Row limit of ${MAX_ROWS} reached — some template goals were not added.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `Loaded ${loaded} goal${loaded === 1 ? "" : "s"} from template`,
+          description: planLabel && roleLabel ? `${planLabel} — ${roleLabel}` : undefined,
+        });
+      }
+
+      return capped.length > 0 ? capped : [emptyRow()];
+    });
+  }
 
   function updateRow(index: number, field: keyof BulkGoalRow, value: string) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
@@ -155,12 +201,32 @@ export function BulkAddGoalsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle data-testid="text-bulk-goals-title">Add Multiple Goals</DialogTitle>
-          <DialogDescription>
-            Type rows or paste two columns from a spreadsheet — column 1 becomes the goal
-            title and column 2 the description.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-1.5">
+              <DialogTitle data-testid="text-bulk-goals-title">Add Multiple Goals</DialogTitle>
+              <DialogDescription>
+                Type rows or paste two columns from a spreadsheet — column 1 becomes the goal
+                title and column 2 the description.
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowTemplateDialog(true)}
+              className="shrink-0 text-xs text-blue-600 hover:text-blue-800"
+              data-testid="button-load-from-template"
+            >
+              <BookOpen className="h-3.5 w-3.5 mr-1" /> Load from Template
+            </Button>
+          </div>
         </DialogHeader>
+
+        <LoadFromTemplateDialog
+          open={showTemplateDialog}
+          onOpenChange={setShowTemplateDialog}
+          onLoad={loadFromTemplates}
+        />
 
         <div className="space-y-4">
           {isTeamMode && (
