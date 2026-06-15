@@ -1669,6 +1669,7 @@ const ROLE_SLUG_LABELS: Record<string, string> = {
   lead_recruiter: "Lead Recruiter",
   associate_manager: "Associate Manager",
   account_manager: "Account Manager",
+  foundation_to_senior: "Foundation → Senior Recruiter",
 };
 
 function GoalTemplatesSection() {
@@ -1787,6 +1788,7 @@ function GoalTemplatesSection() {
                 <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
                 <SelectItem value="associate_manager">Associate Manager</SelectItem>
                 <SelectItem value="account_manager">Account Manager</SelectItem>
+                <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1974,6 +1976,7 @@ function GoalTemplatesSection() {
                     <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
                     <SelectItem value="associate_manager">Associate Manager</SelectItem>
                     <SelectItem value="account_manager">Account Manager</SelectItem>
+                    <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

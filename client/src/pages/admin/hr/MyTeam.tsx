@@ -2737,6 +2737,7 @@ const ROLE_SLUG_LABELS: Record<string, string> = {
   healthcare_recruiter_l1: "Healthcare Recruiter L1",
   associate_manager: "Associate Manager",
   delivery_manager: "Delivery Manager",
+  foundation_to_senior: "Foundation → Senior Recruiter",
 };
 
 function NewPlanModal({
