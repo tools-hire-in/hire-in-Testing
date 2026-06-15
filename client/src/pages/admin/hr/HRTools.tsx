@@ -6,7 +6,7 @@ import {
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
   ChevronDown, ChevronUp, RefreshCw, ArrowRight,
-  Plus, Trash2, Laptop, Shield,
+  Plus, Trash2, Laptop, Shield, BookOpen,
 } from "lucide-react";
 import { PolicySignoffsContent } from "./PolicySignoffs";
 import { Textarea } from "@/components/ui/textarea";
@@ -1640,6 +1640,42 @@ export function OfferLettersDashboard() {
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
   const [countersignModal, setCountersignModal] = useState<any>(null);
   const [viewLetterModal, setViewLetterModal] = useState<any>(null);
+  const viewModalAnnexureInitials = useMemo<Record<string, string>>(() => {
+    const raw = viewLetterModal?.annexureInitials;
+    if (!Array.isArray(raw)) return {};
+    const map: Record<string, string> = {};
+    for (const entry of raw) {
+      if (entry && typeof entry.key === "string" && typeof entry.initials === "string") {
+        map[entry.key] = entry.initials;
+      }
+    }
+    return map;
+  }, [viewLetterModal]);
+  const countersignAnnexureInitials = useMemo<Record<string, string>>(() => {
+    const raw = countersignModal?.annexureInitials;
+    if (!Array.isArray(raw)) return {};
+    const map: Record<string, string> = {};
+    for (const entry of raw) {
+      if (entry && typeof entry.key === "string" && typeof entry.initials === "string") {
+        map[entry.key] = entry.initials;
+      }
+    }
+    return map;
+  }, [countersignModal]);
+  const [annexureViewerKey, setAnnexureViewerKey] = useState<string | null>(null);
+  const [annexureContentMap, setAnnexureContentMap] = useState<Record<string, { key: string; label: string; title: string; body: string }>>({});
+  useEffect(() => {
+    if (!countersignModal || Object.keys(annexureContentMap).length > 0) return;
+    fetch("/api/annexure-content")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: { key: string; label: string; title: string; body: string }[]) => {
+        const m: Record<string, { key: string; label: string; title: string; body: string }> = {};
+        for (const it of data) m[it.key] = it;
+        setAnnexureContentMap(m);
+      })
+      .catch(() => {});
+  }, [countersignModal]);
+  const annexureViewerContent = annexureViewerKey ? annexureContentMap[annexureViewerKey] : null;
   const [hireInEmail, setHireInEmail] = useState("");
   const [counterSignedName, setCounterSignedName] = useState("Alina Carter");
   const [counterSignedDate, setCounterSignedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -2542,18 +2578,35 @@ export function OfferLettersDashboard() {
               </div>
               {Array.isArray(countersignModal?.policyAnnexures) && countersignModal.policyAnnexures.length > 0 && (
                 <div className="flex flex-col gap-1.5 mt-1 border-t pt-1">
-                  <span className="text-muted-foreground">Attached Policy Annexures:</span>
-                  <div className="flex flex-wrap gap-1" data-testid="countersign-policy-annexures">
-                    {countersignModal.policyAnnexures.map((key: string) => (
-                      <span key={key} className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-800">
-                        {{
-                          leave_policy: "Annexure A — Leave Policy",
-                          attendance_policy: "Annexure B — Attendance",
-                          code_of_conduct: "Annexure C — Code of Conduct",
-                          nda: "Annexure D — NDA",
-                        }[key] ?? key}
-                      </span>
-                    ))}
+                  <span className="text-muted-foreground">Attached Policy Annexures (click to read):</span>
+                  <div className="flex flex-col gap-1" data-testid="countersign-policy-annexures">
+                    {countersignModal.policyAnnexures.map((key: string) => {
+                      const label = {
+                        leave_policy: "Annexure A — Leave Policy",
+                        attendance_policy: "Annexure B — Attendance",
+                        code_of_conduct: "Annexure C — Code of Conduct",
+                        nda: "Annexure D — NDA",
+                      }[key] ?? key;
+                      const initials = countersignAnnexureInitials[key];
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAnnexureViewerKey(key)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-800 hover:text-blue-900 hover:underline"
+                            data-testid={`button-countersign-view-annexure-${key}`}
+                          >
+                            <BookOpen className="h-3 w-3 shrink-0" />
+                            {label}
+                          </button>
+                          {initials && (
+                            <span className="text-[10px] text-muted-foreground shrink-0" data-testid={`text-countersign-annexure-initials-${key}`}>
+                              Initialed: <span className="font-semibold text-foreground">{initials}</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2603,6 +2656,24 @@ export function OfferLettersDashboard() {
               Complete Counter-Signature
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Policy Annexure full-text viewer (countersign view) */}
+      <Dialog open={annexureViewerKey !== null} onOpenChange={(open) => { if (!open) setAnnexureViewerKey(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-countersign-annexure-content">
+          <DialogHeader>
+            <DialogTitle data-testid="text-countersign-annexure-dialog-title">
+              {annexureViewerContent?.title ?? "Policy Annexure"}
+            </DialogTitle>
+          </DialogHeader>
+          {annexureViewerContent ? (
+            <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed" data-testid="text-countersign-annexure-dialog-body">
+              {annexureViewerContent.body}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -3364,6 +3435,7 @@ export function OfferLettersDashboard() {
                   maxRevisionSalaryInWords: viewLetterModal.maxRevisionSalaryInWords,
                   performanceClauseText: viewLetterModal.performanceClauseText,
                   policyAnnexures: viewLetterModal.policyAnnexures,
+                  annexureInitials: viewModalAnnexureInitials,
                 }}
               />
 

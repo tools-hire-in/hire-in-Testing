@@ -87,12 +87,25 @@ export function signHrLetter(fields: {
 // OFFER_SIGNING_KEY. Field set and payload format must stay identical to the
 // inline logic in routes.ts POST /api/onboard/:token/accept to preserve backward
 // compatibility with offer letters already signed and stored in the database.
+export interface AnnexureInitialRecord {
+  key: string;
+  initials: string;
+  initialedAt: string;
+}
+
 export function signOfferLetterAcceptance(
   letterFields: { id: string; candidateName: string; designation?: string | null; salary?: string | null; proposedStartDate?: string | null; offerDate?: string | null; location?: string | null },
   acceptedName: string,
   timestamp: Date,
+  annexureInitials?: AnnexureInitialRecord[] | null,
 ): { authCode: string; documentHash: string } {
   const signingKey = getSigningKey();
+  // Sort annexure initials by key for deterministic hashing
+  const normalizedInitials = Array.isArray(annexureInitials) && annexureInitials.length > 0
+    ? [...annexureInitials]
+        .map((a) => ({ key: a.key, initials: (a.initials || "").trim(), initialedAt: a.initialedAt }))
+        .sort((a, b) => a.key.localeCompare(b.key))
+    : null;
   const docContents = JSON.stringify({
     id: letterFields.id,
     candidateName: letterFields.candidateName,
@@ -101,6 +114,7 @@ export function signOfferLetterAcceptance(
     proposedStartDate: letterFields.proposedStartDate,
     offerDate: letterFields.offerDate,
     location: letterFields.location,
+    annexureInitials: normalizedInitials,
   });
   const documentHash = crypto.createHash("sha256").update(docContents).digest("hex");
   const hmacPayload = `${letterFields.id}|${acceptedName.trim()}|${timestamp.toISOString()}|${documentHash}`;

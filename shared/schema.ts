@@ -660,6 +660,7 @@ export const offerLetters = pgTable("offer_letters", {
   resultingUserId: varchar("resulting_user_id"),
   onboardedBy: varchar("onboarded_by"),
   acceptanceDate: varchar("acceptance_date"),
+  annexureInitials: jsonb("annexure_initials"),
   authCode: varchar("auth_code"),
   documentHash: varchar("document_hash"),
   counterSignedBy: varchar("counter_signed_by").references(() => adminUsers.id),

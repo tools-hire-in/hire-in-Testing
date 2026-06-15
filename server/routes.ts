@@ -23,6 +23,7 @@ import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferL
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
+import { POLICY_ANNEXURES } from "./annexureContent";
 import { generateAddendumDocx, generateClauseDocx, type AddendumData } from "./offerLetterAddendum";
 import {
   OFFER_CLAUSE_CATEGORY, OFFER_CLAUSE_KEY, OFFER_CLAUSE_DEFAULT_TEXT,
@@ -6323,6 +6324,10 @@ export async function registerRoutes(
         data.policyAnnexures = req.body.policyAnnexures;
       }
 
+      if (req.body.annexureInitials && typeof req.body.annexureInitials === "object" && !Array.isArray(req.body.annexureInitials)) {
+        data.annexureInitials = req.body.annexureInitials as Record<string, string>;
+      }
+
       if (!data.candidateName || !data.designation) {
         return res.status(400).json({ error: "Candidate name and designation are required" });
       }
@@ -6736,6 +6741,23 @@ export async function registerRoutes(
   });
 
   // Public: View offer letter by token
+  // Public: read-only standard policy annexure content (title + body) for the offer-letter viewer.
+  // Single source of truth shared with the Word-document generator (server/annexureContent.ts).
+  app.get("/api/annexure-content", async (_req: Request, res: Response) => {
+    try {
+      const content = Object.values(POLICY_ANNEXURES).map(a => ({
+        key: a.key,
+        label: a.label,
+        title: a.title,
+        body: a.body,
+      }));
+      res.json(content);
+    } catch (error) {
+      console.error("Annexure content error:", error);
+      res.status(500).json({ error: "Failed to load annexure content" });
+    }
+  });
+
   app.get("/api/onboard/:token", async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetterByToken(req.params.token);
@@ -6850,11 +6872,34 @@ export async function registerRoutes(
       const userAgent = req.headers["user-agent"] || "unknown";
       const serverTimestamp = new Date();
 
+      // ── Per-annexure initials — required when policy annexures are attached ────
+      const requiredAnnexureKeys: string[] = Array.isArray(letter.policyAnnexures) ? letter.policyAnnexures : [];
+      let annexureInitials: { key: string; initials: string; initialedAt: string }[] | null = null;
+      if (requiredAnnexureKeys.length > 0) {
+        const rawInitials = Array.isArray(req.body.annexureInitials) ? req.body.annexureInitials : [];
+        const initialsByKey = new Map<string, { initials: string; initialedAt?: string }>();
+        for (const entry of rawInitials) {
+          if (entry && typeof entry.key === "string" && typeof entry.initials === "string") {
+            initialsByKey.set(entry.key, { initials: entry.initials.trim(), initialedAt: entry.initialedAt });
+          }
+        }
+        const missing = requiredAnnexureKeys.filter(k => !initialsByKey.get(k)?.initials);
+        if (missing.length > 0) {
+          return res.status(400).json({ error: "Please initial each attached policy annexure before accepting." });
+        }
+        annexureInitials = requiredAnnexureKeys.map(k => {
+          const v = initialsByKey.get(k)!;
+          const ts = v.initialedAt && !isNaN(Date.parse(v.initialedAt)) ? new Date(v.initialedAt).toISOString() : serverTimestamp.toISOString();
+          return { key: k, initials: v.initials, initialedAt: ts };
+        });
+      }
+
       // Delegates to DocumentSigningService (preserves exact same algorithm/hash)
       const { authCode, documentHash } = _signOfferLetterAcceptance(
         { id: letter.id, candidateName: letter.candidateName, designation: letter.designation, salary: letter.salary, proposedStartDate: letter.proposedStartDate, offerDate: letter.offerDate, location: letter.location },
         acceptedName,
         serverTimestamp,
+        annexureInitials,
       );
 
       await storage.updateOfferLetter(letter.id, {
@@ -6864,6 +6909,7 @@ export async function registerRoutes(
         acceptanceDate: acceptanceDate || serverTimestamp.toISOString().split("T")[0],
         acceptedIp: clientIp,
         acceptedUserAgent: userAgent,
+        annexureInitials: annexureInitials as any,
         authCode,
         documentHash
       });

@@ -127,6 +127,13 @@
       "when": 1781700000000,
       "tag": "0018_healthcare_plan_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781760000000,
+      "tag": "0019_offer_letter_annexure_initials",
+      "breakpoints": true
     }
   ]
 }

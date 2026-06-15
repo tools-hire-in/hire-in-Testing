@@ -1,8 +1,17 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { FileText, Building, MapPin, Calendar, DollarSign, User, Briefcase } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FileText, Building, MapPin, Calendar, DollarSign, User, Briefcase, BookOpen, CheckCircle2 } from "lucide-react";
 import { numberToWords } from "@/lib/numberToWords";
+
+interface AnnexureContent {
+  key: string;
+  label: string;
+  title: string;
+  body: string;
+}
 
 export interface OfferLetterViewProps {
   candidateTitle: string;
@@ -31,6 +40,8 @@ export interface OfferLetterViewProps {
   maxRevisionSalaryInWords?: string | null;
   performanceClauseText?: string | null;
   policyAnnexures?: string[] | null;
+  annexureInitials?: Record<string, string> | null;
+  onAnnexureInitialChange?: (key: string, value: string) => void;
 }
 
 const POLICY_ANNEXURE_LABELS: Record<string, string> = {
@@ -46,6 +57,30 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
   const probMonths = offer.probationPeriodMonths ?? 3;
   const probMonthLabel = probMonths === 1 ? "1 month" : `${probMonths} months`;
   const hasPolicyAnnexures = Array.isArray(offer.policyAnnexures) && offer.policyAnnexures.length > 0;
+
+  const editInitials = typeof offer.onAnnexureInitialChange === "function";
+  const [contentMap, setContentMap] = useState<Record<string, AnnexureContent>>({});
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [viewedKeys, setViewedKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!hasPolicyAnnexures || Object.keys(contentMap).length > 0) return;
+    fetch("/api/annexure-content")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: AnnexureContent[]) => {
+        const map: Record<string, AnnexureContent> = {};
+        for (const item of data) map[item.key] = item;
+        setContentMap(map);
+      })
+      .catch(() => {});
+  }, [hasPolicyAnnexures]);
+
+  const openAnnexure = (key: string) => {
+    setOpenKey(key);
+    setViewedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  };
+
+  const openContent = openKey ? contentMap[openKey] : null;
 
   return (
     <Card>
@@ -248,8 +283,9 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
           <div>
             <h3 className="font-semibold text-foreground mb-1">5. Termination</h3>
             <p>
-              After the probation period, either party may terminate employment with thirty (30)
-              days' written notice or payment in lieu thereof.
+              After the probation period, the Company may terminate your employment at any time, with
+              immediate effect, without notice or payment in lieu of notice. Should you wish to resign,
+              you must provide the Company with two (2) months' (60 days') prior written notice.
             </p>
           </div>
           <div>
@@ -279,24 +315,76 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
             <Separator />
             <div>
               <p className="font-semibold text-foreground mb-3 text-sm">Attached Policy Annexures</p>
-              <div className="flex flex-wrap gap-2" data-testid="policy-annexures-list">
-                {offer.policyAnnexures!.map((key) => (
-                  <Badge
-                    key={key}
-                    variant="outline"
-                    className="text-xs font-normal border-blue-200 text-blue-800 bg-blue-50"
-                    data-testid={`badge-policy-annexure-${key}`}
-                  >
-                    {POLICY_ANNEXURE_LABELS[key] ?? key}
-                  </Badge>
-                ))}
+              <div className="flex flex-col gap-2" data-testid="policy-annexures-list">
+                {offer.policyAnnexures!.map((key) => {
+                  const viewed = viewedKeys.includes(key);
+                  const value = offer.annexureInitials?.[key] ?? "";
+                  return (
+                    <div
+                      key={key}
+                      className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-md border border-blue-100 bg-blue-50/50 px-3 py-2"
+                      data-testid={`row-policy-annexure-${key}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openAnnexure(key)}
+                        className="flex items-center gap-2 text-left text-sm font-medium text-blue-800 hover:text-blue-900 hover:underline flex-1"
+                        data-testid={`button-view-annexure-${key}`}
+                      >
+                        <BookOpen className="h-4 w-4 shrink-0" />
+                        <span>{POLICY_ANNEXURE_LABELS[key] ?? key}</span>
+                        {(viewed || value) && (
+                          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" data-testid={`icon-viewed-annexure-${key}`} />
+                        )}
+                      </button>
+                      {editInitials ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={value}
+                            onChange={(e) => offer.onAnnexureInitialChange!(key, e.target.value)}
+                            disabled={!viewed && !value}
+                            maxLength={8}
+                            placeholder={viewed || value ? "Initials" : "View first"}
+                            className="h-8 w-28 text-sm"
+                            data-testid={`input-annexure-initials-${key}`}
+                          />
+                        </div>
+                      ) : (
+                        value && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-annexure-initials-${key}`}>
+                            Initialed: <span className="font-semibold text-foreground">{value}</span>
+                          </span>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                These policy documents are attached to this offer letter and form part of your terms of employment.
+                {editInitials
+                  ? "Click each annexure to read it in full, then enter your initials to confirm you have reviewed it. All annexures must be initialed before you can accept the offer."
+                  : "These policy documents are attached to this offer letter and form part of your terms of employment."}
               </p>
             </div>
           </>
         )}
+
+        <Dialog open={openKey !== null} onOpenChange={(o) => { if (!o) setOpenKey(null); }}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-annexure-content">
+            <DialogHeader>
+              <DialogTitle data-testid="text-annexure-dialog-title">
+                {openContent?.title ?? (openKey ? POLICY_ANNEXURE_LABELS[openKey] ?? "Policy Annexure" : "")}
+              </DialogTitle>
+            </DialogHeader>
+            {openContent ? (
+              <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed" data-testid="text-annexure-dialog-body">
+                {openContent.body}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {offer.hrManagerName && (
           <div className="pt-4 flex flex-col gap-1">

@@ -55,6 +55,18 @@ export default function OnboardAccept() {
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
+  const [annexureInitials, setAnnexureInitials] = useState<Record<string, string>>({});
+  const [annexureInitialedAt, setAnnexureInitialedAt] = useState<Record<string, string>>({});
+
+  const handleAnnexureInitialChange = (key: string, value: string) => {
+    setAnnexureInitials((prev) => ({ ...prev, [key]: value }));
+    setAnnexureInitialedAt((prev) => ({ ...prev, [key]: new Date().toISOString() }));
+  };
+
+  const policyAnnexureKeys = offer?.policyAnnexures ?? [];
+  const allAnnexuresInitialed = policyAnnexureKeys.every(
+    (k) => (annexureInitials[k] ?? "").trim().length > 0
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -79,14 +91,21 @@ export default function OnboardAccept() {
 
   const handleAccept = async () => {
     if (!agreed || typedName.trim().toLowerCase() !== offer?.candidateName.trim().toLowerCase()) return;
+    if (!allAnnexuresInitialed) return;
     setSubmitting(true);
     try {
+      const annexureInitialsPayload = policyAnnexureKeys.map((k) => ({
+        key: k,
+        initials: (annexureInitials[k] ?? "").trim(),
+        initialedAt: annexureInitialedAt[k] ?? new Date().toISOString(),
+      }));
       const res = await fetch(`/api/onboard/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           acceptedName: typedName.trim(),
-          acceptanceDate: signingDate
+          acceptanceDate: signingDate,
+          annexureInitials: annexureInitialsPayload,
         }),
       });
       if (!res.ok) {
@@ -214,6 +233,11 @@ export default function OnboardAccept() {
             performanceProbationReview: offer.performanceProbationReview,
             performanceClauseText: offer.performanceClauseText,
             policyAnnexures: offer.policyAnnexures,
+            annexureInitials: annexureInitials,
+            onAnnexureInitialChange:
+              offer.status !== "accepted" && offer.status !== "onboarded" && offer.status !== "countersigned" && offer.status !== "cancelled"
+                ? handleAnnexureInitialChange
+                : undefined,
           }}
         />
 
@@ -276,9 +300,15 @@ export default function OnboardAccept() {
                   </div>
                 )}
 
+                {!allAnnexuresInitialed && (
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-md" data-testid="text-annexure-initials-required">
+                    Please review and initial each attached policy annexure above before accepting.
+                  </p>
+                )}
+
                 <Button
                   onClick={handleAccept}
-                  disabled={!agreed || !isNameMatch || submitting}
+                  disabled={!agreed || !isNameMatch || !allAnnexuresInitialed || submitting}
                   className="w-full bg-blue-700 hover:bg-blue-800"
                   size="lg"
                   data-testid="button-accept-offer"

@@ -35,6 +35,7 @@ export interface OfferLetterData {
   offerDate: string;
   annexures?: AnnexureItem[];
   policyAnnexures?: string[];
+  annexureInitials?: Record<string, string>;
   probationSalary?: number;
   probationSalaryInWords?: string;
   postProbationSalary?: number;
@@ -89,7 +90,7 @@ function buildAnnexureChildren(annexures?: AnnexureItem[]): Paragraph[] {
   return result;
 }
 
-function buildPolicyAnnexureChildren(policyAnnexures?: string[]): Paragraph[] {
+function buildPolicyAnnexureChildren(policyAnnexures?: string[], annexureInitials?: Record<string, string>): Paragraph[] {
   if (!policyAnnexures || policyAnnexures.length === 0) return [];
   const result: Paragraph[] = [];
   for (const key of policyAnnexures) {
@@ -100,6 +101,13 @@ function buildPolicyAnnexureChildren(policyAnnexures?: string[]): Paragraph[] {
       spacing: { after: 200 },
       children: [new TextRun({ text: policy.title, bold: true, size: 26, underline: {} })],
     }));
+    const initials = annexureInitials?.[key]?.trim();
+    if (initials) {
+      result.push(new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ text: `Reviewed & acknowledged — Candidate Initials: ${initials}`, italics: true, size: 18 })],
+      }));
+    }
     const lines = policy.body.split(/\r?\n/);
     for (const line of lines) {
       if (line.trim() === "") {
@@ -442,7 +450,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
 
           heading("10. Termination, Garden Leave & Exit"),
           bodyText(
-            "Post‑confirmation, either party may terminate with 60 days' written notice or salary in lieu. The Company may terminate for cause with immediate effect. During notice, the Company may place you on garden leave with full pay and restricted access. On exit, you must return/delete Company data and submit a Data Deletion Certificate; final dues shall be settled per law."
+            "Post‑confirmation, the Company may terminate your employment at any time, with immediate effect, without notice or payment in lieu of notice. Should you wish to resign, you must provide the Company with two (2) months' (60 days') prior written notice. The Company may, at its discretion, place you on garden leave during any notice period with full pay and restricted access. On exit, you must return/delete Company data and submit a Data Deletion Certificate; final dues shall be settled per law."
           ),
 
           heading("11. General"),
@@ -487,7 +495,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           ...buildAnnexureChildren(data.annexures),
 
           // Policy annexures (Leave Policy, Attendance, Code of Conduct, NDA)
-          ...buildPolicyAnnexureChildren(data.policyAnnexures),
+          ...buildPolicyAnnexureChildren(data.policyAnnexures, data.annexureInitials),
         ],
       },
     ],
