@@ -9,9 +9,9 @@ export const modules: ModuleMap = {
   "./components/mockups/hr-letters/RelievingLetter.tsx": () => import("../components/mockups/hr-letters/RelievingLetter.tsx"),
   "./components/mockups/hr-letters/VerifyPage.tsx": () => import("../components/mockups/hr-letters/VerifyPage.tsx"),
   "./components/mockups/payslip/Enterprise.tsx": () => import("../components/mockups/payslip/Enterprise.tsx"),
-  "./components/mockups/linkedin/Cover.tsx": () => import("../components/mockups/linkedin/Cover.tsx"),
   "./components/mockups/social-media/DownloadAll.tsx": () => import("../components/mockups/social-media/DownloadAll.tsx"),
   "./components/mockups/social-media/FacebookCover.tsx": () => import("../components/mockups/social-media/FacebookCover.tsx"),
   "./components/mockups/social-media/InstagramStory.tsx": () => import("../components/mockups/social-media/InstagramStory.tsx"),
-  "./components/mockups/social-media/ProfilePicture.tsx": () => import("../components/mockups/social-media/ProfilePicture.tsx")
+  "./components/mockups/social-media/ProfilePicture.tsx": () => import("../components/mockups/social-media/ProfilePicture.tsx"),
+  "./components/mockups/linkedin/Cover.tsx": () => import("../components/mockups/linkedin/Cover.tsx")
 };
