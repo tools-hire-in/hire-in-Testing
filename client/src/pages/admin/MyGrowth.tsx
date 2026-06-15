@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,14 +10,18 @@ import PerformanceCheckIns from "./performance/CheckIns";
 import PerformanceFeedback from "./performance/Feedback";
 import Reviews from "./performance/Reviews";
 import PraiseBoard from "./performance/PraiseBoard";
+import MyPlanView from "./hr/MyPlanView";
 
-const TABS = ["praise", "training", "goals", "check-ins", "feedback", "reviews"] as const;
-type Tab = typeof TABS[number];
+const BASE_TABS = ["praise", "training", "goals", "check-ins", "feedback", "reviews"] as const;
+type BaseTab = typeof BASE_TABS[number];
+type Tab = BaseTab | "my-plan";
+const ALL_TABS = [...BASE_TABS, "my-plan"] as const;
 
-function getTabFromSearch(): Tab {
+function getTabFromSearch(hasPlan: boolean): Tab {
   try {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab && TABS.includes(tab as Tab)) return tab as Tab;
+    if (tab === "my-plan" && !hasPlan) return "praise";
+    if (tab && ALL_TABS.includes(tab as Tab)) return tab as Tab;
   } catch {}
   return "praise";
 }
@@ -24,11 +29,28 @@ function getTabFromSearch(): Tab {
 export default function MyGrowth() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>(getTabFromSearch);
+
+  const { data: myPlanData, isLoading: planLoading } = useQuery<any | null>({
+    queryKey: ["/api/hr/my-plan"],
+    enabled: isAuthenticated && !authLoading,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const hasPlan = !planLoading && myPlanData !== null && myPlanData !== undefined
+    && myPlanData?.plan?.department_scope === "healthcare";
+
+  const [activeTab, setActiveTab] = useState<Tab>(() => getTabFromSearch(false));
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
+
+  // Once we know plan status, correct the active tab if needed
+  useEffect(() => {
+    if (!planLoading && activeTab === "my-plan" && !hasPlan) {
+      setActiveTab("praise");
+    }
+  }, [planLoading, hasPlan, activeTab]);
 
   if (authLoading || !isAuthenticated) return null;
 
@@ -58,6 +80,9 @@ export default function MyGrowth() {
             <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-Ins</TabsTrigger>
             <TabsTrigger value="feedback" data-testid="tab-feedback">Feedback</TabsTrigger>
             <TabsTrigger value="reviews" data-testid="tab-reviews">Reviews</TabsTrigger>
+            {hasPlan && (
+              <TabsTrigger value="my-plan" data-testid="tab-my-plan">My Plan</TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="praise" className="mt-4">
             <PraiseBoard />
@@ -77,6 +102,11 @@ export default function MyGrowth() {
           <TabsContent value="reviews" className="mt-4">
             <Reviews />
           </TabsContent>
+          {hasPlan && (
+            <TabsContent value="my-plan" className="mt-4">
+              <MyPlanView />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </AdminLayout>

@@ -683,6 +683,7 @@ export const offerLetters = pgTable("offer_letters", {
   maxRevisionSalaryInWords: varchar("max_revision_salary_in_words"),
   performanceClauseText: text("performance_clause_text"),
   policyAnnexures: text("policy_annexures").array(),
+  seedProbationPlan: boolean("seed_probation_plan").notNull().default(false),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
@@ -844,6 +845,7 @@ export const performanceGoals = pgTable("performance_goals", {
   rayoAcademyTrackId: varchar("rayo_academy_track_id"),
   sourceRef: varchar("source_ref"),
   planId: varchar("plan_id"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

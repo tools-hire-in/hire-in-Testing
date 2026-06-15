@@ -1728,4 +1728,203 @@ export function registerPerformanceRoutes(app: Express) {
       res.status(500).json({ error: "Failed to acknowledge plan" });
     }
   });
+
+  // ─── Employee "My Plan" — fetch own active or pending plan ────────────────
+
+  app.get("/api/hr/my-plan", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      // Fetch the most recent active or pending plan for this employee
+      const planResult = await db.execute(sql`
+        SELECT ep.*,
+               au.first_name || ' ' || au.last_name AS employee_name,
+               m.first_name || ' ' || m.last_name AS manager_name
+        FROM employee_plans ep
+        LEFT JOIN admin_users au ON ep.employee_id = au.id
+        LEFT JOIN admin_users m ON ep.manager_id = m.id
+        WHERE ep.employee_id = ${userId}
+          AND ep.status IN ('active', 'pending')
+        ORDER BY ep.created_at DESC
+        LIMIT 1
+      `);
+
+      if (planResult.rows.length === 0) {
+        return res.json(null);
+      }
+
+      const plan = planResult.rows[0] as any;
+
+      // Fetch check-ins for this plan
+      const checkInsResult = await db.execute(sql`
+        SELECT * FROM check_ins
+        WHERE plan_id = ${plan.id}
+        ORDER BY scheduled_date ASC
+      `);
+
+      // Fetch goals for this plan
+      const goalsResult = await db.execute(sql`
+        SELECT * FROM performance_goals
+        WHERE plan_id = ${plan.id}
+        ORDER BY created_at ASC
+      `);
+
+      // Fetch last 4 weekly updates posted by the employee for this plan
+      const weeklyUpdatesResult = await db.execute(sql`
+        SELECT * FROM check_ins
+        WHERE plan_id = ${plan.id}
+          AND employee_id = ${userId}
+          AND check_in_type = 'weekly_update'
+        ORDER BY scheduled_date DESC
+        LIMIT 4
+      `);
+
+      res.json({
+        plan,
+        checkIns: checkInsResult.rows,
+        goals: goalsResult.rows,
+        weeklyUpdates: weeklyUpdatesResult.rows,
+      });
+    } catch (error) {
+      console.error("Error fetching my plan:", error);
+      res.status(500).json({ error: "Failed to fetch plan" });
+    }
+  });
+
+  // ─── Update goal progress/notes (employee self-update) ────────────────────
+
+  app.patch("/api/hr/plans/:planId/goals/:goalId", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      const { planId, goalId } = req.params;
+      const { progress, notes } = req.body;
+
+      // Verify the goal belongs to this plan and include plan_type for PIP read-only guard
+      const goalResult = await db.execute(sql`
+        SELECT pg.*, ep.employee_id AS plan_employee_id, ep.plan_type AS plan_plan_type
+        FROM performance_goals pg
+        JOIN employee_plans ep ON pg.plan_id = ep.id
+        WHERE pg.id = ${goalId} AND pg.plan_id = ${planId}
+      `);
+
+      if (goalResult.rows.length === 0) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
+
+      const goal = goalResult.rows[0] as any;
+      const role = req.session.role!;
+
+      // PIP goals are read-only for employees — managers and HR/admins can still edit
+      if (goal.plan_plan_type === "pip" && !ADMIN_ROLES.includes(role) && role !== "manager") {
+        return res.status(403).json({ error: "PIP plan goals are read-only for employees" });
+      }
+
+      // Employees can only update their own plan goals; admins/managers can update any
+      if (!ADMIN_ROLES.includes(role) && role !== "manager") {
+        if (goal.plan_employee_id !== userId) {
+          return res.status(403).json({ error: "Not authorized to update this goal" });
+        }
+      } else if (role === "manager" && !ADMIN_ROLES.includes(role)) {
+        const teamIds = await getTeamMemberIds(userId);
+        if (goal.plan_employee_id !== userId && !teamIds.includes(goal.plan_employee_id)) {
+          return res.status(403).json({ error: "Not authorized to update this goal" });
+        }
+      }
+
+      const updates: Record<string, any> = { updated_at: new Date() };
+      if (progress !== undefined) {
+        const p = Math.min(100, Math.max(0, parseInt(progress)));
+        updates.progress = isNaN(p) ? 0 : p;
+      }
+      if (notes !== undefined) {
+        updates.notes = notes ?? null;
+      }
+
+      await db.execute(sql`
+        UPDATE performance_goals SET
+          progress = COALESCE(${updates.progress ?? null}, progress),
+          notes = COALESCE(${updates.notes !== undefined ? updates.notes : null}, notes),
+          updated_at = NOW()
+        WHERE id = ${goalId}
+      `);
+
+      const [updated] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
+      await createAuditLog(userId, "plan_goal_self_updated", { goalId, planId, changes: updates as Record<string, unknown> }, goal.plan_employee_id);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating plan goal:", error);
+      res.status(500).json({ error: "Failed to update goal" });
+    }
+  });
+
+  // ─── Employee weekly self-update for a plan ───────────────────────────────
+
+  app.post("/api/hr/plans/:planId/weekly-update", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, ALL_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const { note } = req.body;
+
+      if (!note || String(note).trim().length < 50) {
+        return res.status(400).json({ error: "Weekly update must be at least 50 characters" });
+      }
+
+      // Verify the plan exists and belongs to this employee
+      const planResult = await db.execute(sql`
+        SELECT * FROM employee_plans
+        WHERE id = ${planId} AND employee_id = ${userId}
+      `);
+
+      if (planResult.rows.length === 0) {
+        return res.status(404).json({ error: "Plan not found or not your plan" });
+      }
+
+      const plan = planResult.rows[0] as any;
+
+      // Only probation and growth plans support employee weekly self-updates
+      if (plan.plan_type !== "probation" && plan.plan_type !== "growth") {
+        return res.status(400).json({ error: "Weekly self-updates are only available for Probation and Growth plans" });
+      }
+
+      // Check if employee has already posted an update this calendar week
+      const weekStart = new Date();
+      weekStart.setHours(0, 0, 0, 0);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Sunday of current week
+      const weekStartStr = weekStart.toISOString().split("T")[0];
+
+      const existingThisWeek = await db.execute(sql`
+        SELECT id FROM check_ins
+        WHERE plan_id = ${planId}
+          AND employee_id = ${userId}
+          AND check_in_type = 'weekly_update'
+          AND scheduled_date >= ${weekStartStr}
+        LIMIT 1
+      `);
+
+      if (existingThisWeek.rows.length > 0) {
+        return res.status(409).json({ error: "You have already posted a weekly update this week" });
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+
+      await db.execute(sql`
+        INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status, employee_notes)
+        VALUES (${userId}, ${plan.manager_id ?? null}, ${planId}, 'weekly_update'::check_in_type, ${today}, 'completed'::check_in_status, ${note.trim()})
+      `);
+
+      const inserted = await db.execute(sql`
+        SELECT * FROM check_ins
+        WHERE plan_id = ${planId} AND employee_id = ${userId} AND check_in_type = 'weekly_update'
+        ORDER BY created_at DESC LIMIT 1
+      `);
+
+      await createAuditLog(userId, "plan_weekly_update_posted", { planId, id: inserted.rows[0]?.id as string | undefined });
+      res.status(201).json(inserted.rows[0]);
+    } catch (error) {
+      console.error("Error posting weekly update:", error);
+      res.status(500).json({ error: "Failed to post weekly update" });
+    }
+  });
 }

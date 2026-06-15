@@ -6324,7 +6324,7 @@ export async function registerRoutes(
         probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
         probationPeriodMonths, extendedProbationMonths,
         performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords,
-        policyAnnexures } = req.body;
+        policyAnnexures, seedProbationPlan } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
@@ -6451,6 +6451,7 @@ export async function registerRoutes(
         maxRevisionSalaryInWords: (performanceProbationReview && maxRevisionSalaryInWords) ? maxRevisionSalaryInWords : null,
         performanceClauseText: renderedPerformanceClauseText,
         policyAnnexures: Array.isArray(policyAnnexures) && policyAnnexures.length > 0 ? policyAnnexures : null,
+        seedProbationPlan: !!seedProbationPlan,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -6843,6 +6844,29 @@ export async function registerRoutes(
         actorId: letter.createdBy,
         changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, authCode },
       });
+
+      // ── Seed a pending probation plan at offer acceptance ─────────────────
+      if ((letter as any).seedProbationPlan) {
+        try {
+          const probationMonths: number = (letter as any).probationPeriodMonths || 3;
+          const proposedStart: string = letter.proposedStartDate || new Date().toISOString().slice(0, 10);
+          const endDate = new Date(proposedStart);
+          endDate.setMonth(endDate.getMonth() + probationMonths);
+          const endDateStr = endDate.toISOString().slice(0, 10);
+          const durationDays = Math.round((endDate.getTime() - new Date(proposedStart).getTime()) / (1000 * 60 * 60 * 24));
+
+          // Seed plan with NULL employee_id — filled in at onboarding
+          await db.execute(sql`
+            INSERT INTO employee_plans
+              (offer_letter_id, employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
+            VALUES
+              (${letter.id}, NULL, NULL, 'probation', 'healthcare', 'pending',
+               ${proposedStart}, ${endDateStr}, ${durationDays}, ${letter.createdBy})
+          `);
+        } catch (planErr) {
+          console.error("[AcceptOffer] Pending plan seed failed (non-fatal):", planErr);
+        }
+      }
 
       res.json({ success: true, message: "Offer accepted successfully", authCode, documentHash });
     } catch (error) {
@@ -7717,6 +7741,87 @@ export async function registerRoutes(
         }
       } catch (err) {
         console.error("Rayo Academy provisioning failed (non-fatal):", err);
+      }
+
+      // ── Activate the pending probation plan seeded at offer acceptance ────
+      if ((letter as any).seedProbationPlan) {
+        try {
+          // Find the pending plan created at offer acceptance (linked by offer_letter_id)
+          const pendingPlanResult = await db.execute(sql`
+            SELECT * FROM employee_plans
+            WHERE offer_letter_id = ${letter.id} AND status = 'pending'
+            LIMIT 1
+          `);
+
+          if (pendingPlanResult.rows.length > 0) {
+            const pendingPlan = pendingPlanResult.rows[0] as any;
+            const joiningDate: string = newUser.joiningDate || new Date().toISOString().slice(0, 10);
+            const probationMonths: number = (letter as any).probationPeriodMonths || 3;
+            const endDate = new Date(joiningDate);
+            endDate.setMonth(endDate.getMonth() + probationMonths);
+            const endDateStr = endDate.toISOString().slice(0, 10);
+            const durationDays = Math.round((endDate.getTime() - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
+
+            // Activate plan: fill in employee_id, manager_id, recalculate dates from actual joining date
+            await db.execute(sql`
+              UPDATE employee_plans SET
+                employee_id = ${newUser.id},
+                manager_id = ${newUser.managerId ?? null},
+                status = 'active',
+                start_date = ${joiningDate},
+                end_date = ${endDateStr},
+                duration_days = ${durationDays},
+                updated_at = NOW()
+              WHERE id = ${pendingPlan.id}
+            `);
+
+            // Seed template goals for this role/designation
+            const roleSlug = (letter.designation || "")
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_|_$/g, "");
+
+            const templates = await db.execute(sql`
+              SELECT * FROM plan_goal_templates
+              WHERE plan_type = 'probation'
+                AND department_scope = 'healthcare'
+                AND is_active = true
+                AND (role_slug = ${roleSlug} OR role_slug = 'all')
+              ORDER BY sort_order ASC
+            `);
+
+            for (const tpl of templates.rows as any[]) {
+              await db.execute(sql`
+                INSERT INTO performance_goals
+                  (employee_id, plan_id, title, description, category, status, progress, auto_progress_from_milestones, source_ref)
+                VALUES
+                  (${newUser.id}, ${pendingPlan.id}, ${tpl.goal_title}, ${(tpl as any).goal_description ?? null},
+                   ${(tpl as any).goal_category ?? "general"}, 'not_started', 0, true, 'seed')
+              `);
+            }
+
+            // Generate Day 15/30/60/90 milestone check-ins from actual joining date
+            const milestones = [15, 30, 60, 90].filter(d => d <= durationDays);
+            for (const day of milestones) {
+              const milestoneDate = new Date(joiningDate);
+              milestoneDate.setDate(milestoneDate.getDate() + day);
+              const milestoneDateStr = milestoneDate.toISOString().slice(0, 10);
+              await db.execute(sql`
+                INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+                VALUES (${newUser.id}, ${newUser.managerId ?? null}, ${pendingPlan.id}, 'milestone'::check_in_type, ${milestoneDateStr}, 'scheduled'::check_in_status)
+              `);
+            }
+
+            await storage.createAuditLog({
+              action: "probation_plan_activated",
+              actorId,
+              targetId: newUser.id,
+              changes: { planId: pendingPlan.id, joiningDate, endDate: endDateStr, durationDays, roleSlug, goalsSeeded: templates.rows.length },
+            });
+          }
+        } catch (planErr) {
+          console.error("[Onboarding] Probation plan activation failed (non-fatal):", planErr);
+        }
       }
 
       res.json({ success: true, userId: newUser.id, employeeId, rayoProvisioning });

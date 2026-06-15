@@ -92,6 +92,14 @@ async function ensurePerformanceTables() {
     console.error("performance_goals source_ref column migration error:", err);
   }
 
+  // Ensure notes column exists on performance_goals (employee self-update via My Plan view)
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS notes TEXT`);
+    log("Ensured notes column exists on performance_goals");
+  } catch (err) {
+    console.error("performance_goals notes column migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
@@ -410,6 +418,13 @@ async function ensureOfferLetterApprovalColumns() {
     log("Ensured policy_annexures column exists on offer_letters");
   } catch (err) {
     console.error("offer_letters policy_annexures column migration error:", err);
+  }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS seed_probation_plan BOOLEAN NOT NULL DEFAULT false`);
+    log("Ensured seed_probation_plan column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters seed_probation_plan column migration error:", err);
   }
 }
 
@@ -1084,6 +1099,11 @@ async function ensureHealthcarePlansTables() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_goal_templates_unique
       ON plan_goal_templates (plan_type, role_slug, goal_title)
     `);
+
+    // Allow employee_id to be null so a pending plan can be created at offer acceptance (before onboarding)
+    await db.execute(sql`ALTER TABLE employee_plans ALTER COLUMN employee_id DROP NOT NULL`);
+    // Track which offer letter this plan originated from (for lifecycle linking)
+    await db.execute(sql`ALTER TABLE employee_plans ADD COLUMN IF NOT EXISTS offer_letter_id VARCHAR`);
 
     log("Healthcare plan tables and columns ensured");
   } catch (err) {

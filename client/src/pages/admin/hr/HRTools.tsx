@@ -659,6 +659,7 @@ interface OfferFormData {
   attendanceExempt: boolean;
   trainingExempt: boolean;
   maternityLeaveEligible: boolean;
+  seedProbationPlan: boolean;
   proposedStartDate: string;
   salary: number;
   salaryInWords: string;
@@ -695,6 +696,7 @@ function getDefaultOfferData(): OfferFormData {
     attendanceExempt: false,
     trainingExempt: false,
     maternityLeaveEligible: false,
+    seedProbationPlan: false,
     proposedStartDate: "",
     salary: 0,
     salaryInWords: "",
@@ -763,6 +765,16 @@ export function OfferLetterGenerator() {
       updateField("maxRevisionSalaryInWords", numberToWords(formData.maxRevisionSalary));
     }
   }, [formData.maxRevisionSalary]);
+
+  useEffect(() => {
+    const hasProbationMonths = formData.probationPeriodMonths > 0;
+    if (hasProbationMonths && !formData.seedProbationPlan) {
+      updateField("seedProbationPlan", true);
+    }
+    if (!hasProbationMonths && formData.seedProbationPlan) {
+      updateField("seedProbationPlan", false);
+    }
+  }, [formData.probationPeriodMonths]);
 
   const { data: departments } = useQuery<any[]>({
     queryKey: ["/api/departments"],
@@ -937,6 +949,7 @@ export function OfferLetterGenerator() {
         maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
         maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
         policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : undefined,
+        seedProbationPlan: formData.seedProbationPlan,
       });
 
       if (!res.ok) {
@@ -1317,6 +1330,16 @@ export function OfferLetterGenerator() {
                   />
                   <span className="text-sm">Maternity Leave Eligible</span>
                   <span className="text-xs text-muted-foreground">(auto-set when gender = Female)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer" data-testid="check-seed-probation-plan">
+                  <input
+                    type="checkbox"
+                    checked={formData.seedProbationPlan}
+                    onChange={e => updateField("seedProbationPlan", e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Seed Probation Plan on Onboarding</span>
+                  <span className="text-xs text-muted-foreground">(auto-creates a healthcare probation plan when employee is onboarded)</span>
                 </label>
               </div>
             </div>
