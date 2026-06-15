@@ -2116,3 +2116,21 @@ export const attendanceReportManagerApprovals = pgTable("attendance_report_manag
 export const insertAttendanceReportManagerApprovalSchema = createInsertSchema(attendanceReportManagerApprovals).omit({ id: true, createdAt: true });
 export type AttendanceReportManagerApproval = typeof attendanceReportManagerApprovals.$inferSelect;
 export type InsertAttendanceReportManagerApproval = z.infer<typeof insertAttendanceReportManagerApprovalSchema>;
+
+// ─── Plan Acknowledgements ─────────────────────────────────────────────────
+// Durable evidence records for PIP (and optionally other plan types) where the
+// employee types their full name to digitally confirm they have read the plan.
+// Mirrors the pattern used by section_acknowledgements for training tracks.
+export const planAcknowledgements = pgTable("plan_acknowledgements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planId: varchar("plan_id").notNull(),          // references employee_plans.id (raw varchar to avoid circular FK)
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  planType: varchar("plan_type").notNull(),       // pip | probation | growth — snapshot at time of ack
+  typedName: varchar("typed_name").notNull(),     // full name as typed by the employee
+  acknowledgedAt: timestamp("acknowledged_at").defaultNow(),
+  ipAddress: varchar("ip_address"),              // optional — request IP for audit trail
+});
+
+export const insertPlanAcknowledgementSchema = createInsertSchema(planAcknowledgements).omit({ id: true, acknowledgedAt: true });
+export type PlanAcknowledgement = typeof planAcknowledgements.$inferSelect;
+export type InsertPlanAcknowledgement = z.infer<typeof insertPlanAcknowledgementSchema>;

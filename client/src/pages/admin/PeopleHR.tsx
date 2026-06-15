@@ -8,8 +8,9 @@ import ReportsCompliance from "./hr/ReportsCompliance";
 import TrainingManagement from "./hr/TrainingManagement";
 import HRSettings from "./hr/HRSettings";
 import RegularizationsPanel from "./hr/RegularizationsPanel";
+import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
 
-const TABS = ["users", "reports", "training", "regularizations", "settings"] as const;
+const TABS = ["users", "reports", "training", "regularizations", "plans", "settings"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -61,6 +62,9 @@ export default function PeopleHR() {
             <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             <TabsTrigger value="training" data-testid="tab-training-mgmt">Training Mgmt</TabsTrigger>
             <TabsTrigger value="regularizations" data-testid="tab-regularizations">Regularizations</TabsTrigger>
+            {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+              <TabsTrigger value="plans" data-testid="tab-plans">Plans Overview</TabsTrigger>
+            )}
             <TabsTrigger value="settings" data-testid="tab-hr-settings">Settings</TabsTrigger>
           </TabsList>
           <TabsContent value="users" className="mt-4">
@@ -75,6 +79,11 @@ export default function PeopleHR() {
           <TabsContent value="regularizations" className="mt-4">
             <RegularizationsPanel />
           </TabsContent>
+          {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+            <TabsContent value="plans" className="mt-4">
+              <HRPlansOverview />
+            </TabsContent>
+          )}
           <TabsContent value="settings" className="mt-4">
             <HRSettings />
           </TabsContent>

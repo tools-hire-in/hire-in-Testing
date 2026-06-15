@@ -3,13 +3,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
   ClipboardList, CalendarCheck, Target, AlertCircle, Clock, Send, CheckCircle2,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 interface PlanGoal {
   id: string;
@@ -330,6 +335,139 @@ function WeeklyUpdateSection({ planId, weeklyUpdates, onPosted }: {
   );
 }
 
+// ─── PIP Acknowledgement Blocking Modal ─────────────────────────────────────
+// Shown automatically when a PIP plan is in "pending" state.
+// The modal cannot be dismissed — the employee must type their full name and
+// accept before the plan becomes active.
+function PIPAcknowledgementModal({ plan, goals, onAcknowledged }: {
+  plan: PlanData["plan"];
+  goals: PlanGoal[];
+  onAcknowledged: () => void;
+}) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [nameInput, setNameInput] = useState("");
+
+  const expectedName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
+  const nameMatches = nameInput.trim() === expectedName;
+
+  const ack = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/hr/plans/${plan.id}/acknowledge`, { typed_name: nameInput.trim() }),
+    onSuccess: () => {
+      toast({ title: "Plan acknowledged — it is now active" });
+      onAcknowledged();
+    },
+    onError: (err: any) => toast({
+      title: "Failed to acknowledge plan",
+      description: err?.message || undefined,
+      variant: "destructive",
+    }),
+  });
+
+  return (
+    <Dialog
+      open={true}
+      onOpenChange={() => {}}
+    >
+      <DialogContent
+        className="sm:max-w-lg max-h-[90vh] flex flex-col"
+        onPointerDownOutside={e => e.preventDefault()}
+        onEscapeKeyDown={e => e.preventDefault()}
+        data-testid="modal-pip-acknowledge"
+      >
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            Performance Improvement Plan — Acknowledgement Required
+          </DialogTitle>
+          <DialogDescription>
+            You must review and acknowledge this PIP before it becomes active. This modal cannot be dismissed.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="overflow-y-auto flex-1 space-y-4 py-1">
+          {/* Duration summary */}
+          <div className="border rounded-lg p-3 bg-muted/30 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Start Date</p>
+              <p className="font-medium">{formatDate(plan.start_date)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">End Date</p>
+              <p className="font-medium">{formatDate(plan.end_date)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Duration</p>
+              <p className="font-medium">{plan.duration_days} days</p>
+            </div>
+            {plan.manager_name && (
+              <div>
+                <p className="text-xs text-muted-foreground">Reporting Manager</p>
+                <p className="font-medium">{plan.manager_name}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Goals & targets */}
+          {goals.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Goals &amp; Targets ({goals.length})
+              </p>
+              {goals.map(g => (
+                <div key={g.id} className="border rounded p-2.5 text-xs space-y-0.5" data-testid={`row-pip-goal-${g.id}`}>
+                  <p className="font-medium text-sm">{g.title}</p>
+                  {g.description && <p className="text-muted-foreground">{g.description}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Consequences clause */}
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 space-y-1">
+            <p className="font-semibold text-sm text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Consequences of Non-Compliance
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+              Failure to meet the targets specified in this Performance Improvement Plan may result in an extension
+              of the plan period, a change in role or responsibilities, or termination of employment in accordance
+              with company policy.
+            </p>
+          </div>
+        </div>
+
+        {/* Name confirmation */}
+        <div className="shrink-0 space-y-2 pt-3 border-t">
+          <p className="text-sm font-medium">
+            Type your full name exactly as shown to confirm you have read and understood this plan:
+          </p>
+          <p className="text-xs text-muted-foreground bg-muted rounded px-2 py-1">
+            Expected: <strong>{expectedName}</strong>
+          </p>
+          <Input
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            placeholder="Enter your full name"
+            data-testid="input-ack-name"
+          />
+        </div>
+
+        <DialogFooter className="shrink-0">
+          <Button
+            onClick={() => ack.mutate()}
+            disabled={!nameMatches || ack.isPending}
+            className="w-full"
+            data-testid="button-confirm-acknowledge"
+          >
+            {ack.isPending ? "Acknowledging…" : "I acknowledge and accept this Performance Improvement Plan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MyPlanView() {
   const { data, isLoading, refetch } = useQuery<PlanData | null>({
     queryKey: ["/api/hr/my-plan"],
@@ -384,6 +522,15 @@ export default function MyPlanView() {
 
   return (
     <div className="space-y-4" data-testid="my-plan-view">
+      {/* PIP blocking acknowledgement modal — shown on load when pip + pending */}
+      {isPIP && isPending && (
+        <PIPAcknowledgementModal
+          plan={plan}
+          goals={goals}
+          onAcknowledged={refetch}
+        />
+      )}
+
       {/* Header card */}
       <Card>
         <CardHeader className="pb-2">
@@ -457,8 +604,8 @@ export default function MyPlanView() {
           {/* Horizontal timeline */}
           <PlanTimeline plan={plan} checkIns={checkIns} />
 
-          {/* Pending acknowledgement banner */}
-          {isPending && (
+          {/* Pending acknowledgement — PIP uses blocking modal; other plan types use inline banner */}
+          {isPending && !isPIP && (
             <div className="flex items-center gap-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2">
               <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
               <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">

@@ -1105,6 +1105,27 @@ async function ensureHealthcarePlansTables() {
     // Track which offer letter this plan originated from (for lifecycle linking)
     await db.execute(sql`ALTER TABLE employee_plans ADD COLUMN IF NOT EXISTS offer_letter_id VARCHAR`);
 
+    // notified_at: tracks when day-before employee reminder was sent (prevents duplicates)
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS notified_at TIMESTAMP`);
+    // manager_notified_at: tracks when same-day manager reminder was sent (separate dedupe marker)
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS manager_notified_at TIMESTAMP`);
+    // acknowledged_name: stores the typed full name when employee digitally acknowledges a PIP plan
+    await db.execute(sql`ALTER TABLE employee_plans ADD COLUMN IF NOT EXISTS acknowledged_name VARCHAR`);
+    // plan_acknowledgements: durable evidence table for PIP name-typed acknowledgements (mirrors section_acknowledgements pattern)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plan_acknowledgements (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_id VARCHAR NOT NULL,
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        plan_type VARCHAR NOT NULL,
+        typed_name VARCHAR NOT NULL,
+        acknowledged_at TIMESTAMP DEFAULT NOW(),
+        ip_address VARCHAR
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_plan_acks_plan_id ON plan_acknowledgements(plan_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_plan_acks_user_id ON plan_acknowledgements(user_id)`);
+
     log("Healthcare plan tables and columns ensured");
   } catch (err) {
     console.error("Healthcare plan tables migration error:", err);

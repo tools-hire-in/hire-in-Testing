@@ -5,7 +5,7 @@ import {
   systemSettings, adminUsers, auditLogs,
   type PerformanceGoal, type GoalMilestone, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
 } from "@shared/schema";
-import { eq, and, or, inArray, sql, desc, asc } from "drizzle-orm";
+import { eq, and, or, inArray, sql, desc, asc, isNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
 import { sendCheckInReminderEmail } from "./email";
 
@@ -154,6 +154,44 @@ async function requireFeatureAccess(req: Request, res: Response): Promise<boolea
 }
 
 const storage = new DatabaseStorage();
+
+// ─── Plan notification helpers ────────────────────────────────────────────────
+
+async function isPlanNotificationsEnabled(): Promise<boolean> {
+  try {
+    const setting = await storage.getSystemSetting("feature_flags");
+    const flags = (setting?.value as Record<string, boolean>) || {};
+    return flags.notifications_enabled === true;
+  } catch { return false; }
+}
+
+async function notifyPlan(
+  recipientId: string | null | undefined,
+  type: string,
+  title: string,
+  message: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  if (!recipientId) return;
+  try {
+    if (!(await isPlanNotificationsEnabled())) return;
+    await storage.createNotification({ userId: recipientId, type, title, message, isRead: false, metadata: metadata ?? null });
+  } catch (err) {
+    console.error(`[performanceRoutes] Notification error (${type}) for ${recipientId}:`, err);
+  }
+}
+
+async function getHrAdminIds(): Promise<string[]> {
+  try {
+    const result = await db.execute(sql`
+      SELECT id FROM admin_users
+      WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
+    `);
+    return (result.rows as any[]).map((r: any) => r.id as string);
+  } catch { return []; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getTeamMemberIds(managerId: string): Promise<string[]> {
   const members = await storage.getTeamMembers(managerId);
@@ -1556,7 +1594,21 @@ export function registerPerformanceRoutes(app: Express) {
           : (plan_type || status || department_scope
             ? buildConditions(sql`TRUE`)
             : sql`TRUE`);
-        const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC LIMIT 200`);
+        const r = await db.execute(sql`
+          SELECT ep.*,
+            (au.first_name || ' ' || au.last_name) AS employee_name,
+            (m.first_name || ' ' || m.last_name) AS manager_name,
+            d.name AS department_name,
+            (SELECT COUNT(*) FROM check_ins ci WHERE ci.plan_id = ep.id AND ci.status = 'completed')::int AS completed_checkins,
+            (SELECT COUNT(*) FROM check_ins ci WHERE ci.plan_id = ep.id)::int AS total_checkins
+          FROM employee_plans ep
+          LEFT JOIN admin_users au ON ep.employee_id = au.id
+          LEFT JOIN admin_users m ON ep.manager_id = m.id
+          LEFT JOIN departments d ON au.department_id = d.id
+          WHERE ${where}
+          ORDER BY ep.created_at DESC
+          LIMIT 200
+        `);
         rows = r.rows as EmployeePlan[];
       } else if (role === "employee") {
         // Employees can only see their own plans
@@ -1645,7 +1697,42 @@ export function registerPerformanceRoutes(app: Express) {
         RETURNING *
       `);
       await createAuditLog(userId, "employee_plan_updated", { planId: req.params.id, changes: req.body });
-      res.json(result.rows[0]);
+
+      const updatedPlan = result.rows[0] as EmployeePlan;
+
+      // Notification: plan status changed to active
+      if (status === "active" && existingPlan.status !== "active") {
+        const planLabel = updatedPlan.plan_type === "pip" ? "Performance Improvement Plan" : updatedPlan.plan_type === "probation" ? "Probation Plan" : "Growth Plan";
+        await notifyPlan(updatedPlan.employee_id, "plan_activated",
+          `Your ${planLabel} is now active`,
+          `Your ${planLabel} has been activated and is now in progress.`,
+          { planId: updatedPlan.id, planType: updatedPlan.plan_type },
+        );
+      }
+
+      // Notification: plan closed with outcome
+      if (status === "closed" && outcome) {
+        const planLabel = updatedPlan.plan_type === "pip" ? "Performance Improvement Plan" : updatedPlan.plan_type === "probation" ? "Probation Plan" : "Growth Plan";
+        await notifyPlan(updatedPlan.employee_id, "plan_closed",
+          `Your ${planLabel} has been closed`,
+          `Your plan has been closed with outcome: ${outcome}.`,
+          { planId: updatedPlan.id, planType: updatedPlan.plan_type, outcome },
+        );
+        // Notify all HR/admin users (excluding the person who performed the action)
+        const hrIds = await getHrAdminIds();
+        const empResult = await db.execute(sql`SELECT first_name || ' ' || last_name AS name FROM admin_users WHERE id = ${updatedPlan.employee_id}`);
+        const empName = (empResult.rows[0] as any)?.name || "An employee";
+        for (const hrId of hrIds) {
+          if (hrId === userId) continue;
+          await notifyPlan(hrId, "plan_closed",
+            `Plan closed: ${empName}`,
+            `${empName}'s ${updatedPlan.plan_type} plan has been closed with outcome: ${outcome}.`,
+            { planId: updatedPlan.id, planType: updatedPlan.plan_type, outcome, employeeId: updatedPlan.employee_id },
+          );
+        }
+      }
+
+      res.json(updatedPlan);
     } catch (error) {
       console.error("Error updating employee plan:", error);
       res.status(500).json({ error: "Failed to update employee plan" });
@@ -1711,18 +1798,88 @@ export function registerPerformanceRoutes(app: Express) {
     const userId = requireRole(req, res, ALL_ROLES);
     if (!userId) return;
     try {
+      const { typed_name } = req.body as { typed_name?: string };
+
+      // Fetch plan and verify ownership before any mutation
+      const planCheck = await db.execute(sql`
+        SELECT ep.*, au.first_name || ' ' || au.last_name AS employee_full_name
+        FROM employee_plans ep
+        JOIN admin_users au ON ep.employee_id = au.id
+        WHERE ep.id = ${req.params.id} AND ep.employee_id = ${userId}
+      `);
+      if (planCheck.rows.length === 0) return res.status(404).json({ error: "Plan not found or not your plan" });
+      const prePlan = planCheck.rows[0] as any;
+
+      // PIP plans require a valid typed full name for digital acknowledgement evidence
+      if (prePlan.plan_type === "pip") {
+        const expectedName = (prePlan.employee_full_name as string || "").trim();
+        if (!typed_name || typed_name.trim() !== expectedName) {
+          return res.status(422).json({
+            error: "Name verification failed. Please enter your full name exactly as it appears in your profile.",
+          });
+        }
+      }
+
       const result = await db.execute(sql`
         UPDATE employee_plans SET
           acknowledged_at = NOW(),
           acknowledged_by = ${userId},
+          acknowledged_name = ${typed_name?.trim() ?? null},
           status = CASE WHEN status = 'pending' THEN 'active'::employee_plan_status ELSE status END,
           updated_at = NOW()
         WHERE id = ${req.params.id} AND employee_id = ${userId}
         RETURNING *
       `);
       if (result.rows.length === 0) return res.status(404).json({ error: "Plan not found or not your plan" });
-      await createAuditLog(userId, "employee_plan_acknowledged", { planId: req.params.id });
-      res.json(result.rows[0]);
+      const acknowledgedPlan = result.rows[0] as EmployeePlan;
+
+      // Insert durable acknowledgement evidence record (mirrors section_acknowledgements pattern)
+      // This gives HR/audit a tamper-evident row with typed name, timestamp, and IP
+      await db.execute(sql`
+        INSERT INTO plan_acknowledgements (plan_id, user_id, plan_type, typed_name, ip_address)
+        VALUES (
+          ${req.params.id},
+          ${userId},
+          ${prePlan.plan_type},
+          ${typed_name?.trim() ?? ""},
+          ${req.ip ?? null}
+        )
+      `);
+
+      await createAuditLog(userId, "employee_plan_acknowledged", { planId: req.params.id, typedName: typed_name?.trim() });
+
+      // Fire notifications for plan acknowledgement
+      const planLabel = acknowledgedPlan.plan_type === "pip" ? "Performance Improvement Plan" : acknowledgedPlan.plan_type === "probation" ? "Probation Plan" : "Growth Plan";
+      // Employee: plan is now active
+      await notifyPlan(userId, "plan_activated",
+        `Your ${planLabel} is now active`,
+        `You have acknowledged the plan. It is now active and in progress.`,
+        { planId: acknowledgedPlan.id, planType: acknowledgedPlan.plan_type },
+      );
+      // Fetch employee name for notifications to others
+      const empNameResult = await db.execute(sql`SELECT first_name || ' ' || last_name AS name FROM admin_users WHERE id = ${userId}`);
+      const empName = (empNameResult.rows[0] as any)?.name || "An employee";
+      // Manager: acknowledgement complete
+      if (acknowledgedPlan.manager_id) {
+        await notifyPlan(acknowledgedPlan.manager_id, "pip_acknowledged",
+          `Plan acknowledged: ${empName}`,
+          `${empName} has acknowledged and accepted the ${acknowledgedPlan.plan_type} plan.`,
+          { planId: acknowledgedPlan.id, planType: acknowledgedPlan.plan_type, employeeId: userId },
+        );
+      }
+      // HR/admin users: acknowledgement complete
+      const hrIds = await getHrAdminIds();
+      const notifiedSet = new Set([userId, acknowledgedPlan.manager_id]);
+      for (const hrId of hrIds) {
+        if (notifiedSet.has(hrId)) continue;
+        await notifyPlan(hrId, "pip_acknowledged",
+          `Plan acknowledged: ${empName}`,
+          `${empName} has acknowledged and accepted the ${acknowledgedPlan.plan_type} plan.`,
+          { planId: acknowledgedPlan.id, planType: acknowledgedPlan.plan_type, employeeId: userId },
+        );
+      }
+
+      res.json(acknowledgedPlan);
     } catch (error) {
       console.error("Error acknowledging employee plan:", error);
       res.status(500).json({ error: "Failed to acknowledge plan" });

@@ -702,6 +702,146 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ─── Daily 8 AM: Plan check-in notification reminders ──────────────────────
+  // Employee gets a day-before reminder; manager gets a same-day reminder.
+  // Both respect the notifications_enabled feature flag.
+  // Uses notified_at on check_ins to prevent duplicate sends.
+  cron.schedule("0 8 * * *", async () => {
+    try {
+      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+      if (!flags?.notifications_enabled) return;
+
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split("T")[0];
+      const todayStr = now.toISOString().split("T")[0];
+
+      // Day-before employee reminders (check-ins scheduled for tomorrow, not yet notified)
+      const dayBeforeRows = (await db.execute(sql`
+        SELECT ci.id, ci.employee_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
+               ep.plan_type
+        FROM check_ins ci
+        JOIN employee_plans ep ON ci.plan_id = ep.id
+        WHERE ci.scheduled_date = ${tomorrowStr}
+          AND ci.status = 'scheduled'
+          AND ci.plan_id IS NOT NULL
+          AND ep.status = 'active'
+          AND ci.notified_at IS NULL
+      `)).rows as any[];
+
+      for (const ci of dayBeforeRows) {
+        const ciTypeLabel = (ci.check_in_type as string).replace(/_/g, " ");
+        await storage.createNotification({
+          userId: ci.employee_id,
+          type: "checkin_reminder_employee",
+          title: "Check-in tomorrow",
+          message: `Reminder: you have a ${ciTypeLabel} check-in scheduled for tomorrow.`,
+          isRead: false,
+          metadata: { planId: ci.plan_id, checkInId: ci.id, scheduledDate: ci.scheduled_date, planType: ci.plan_type },
+        });
+        await db.execute(sql`UPDATE check_ins SET notified_at = NOW() WHERE id = ${ci.id}`);
+      }
+
+      // Same-day manager reminders (check-ins scheduled for today, manager assigned, not yet notified)
+      // Uses manager_notified_at as a separate dedupe marker independent of the day-before employee flag
+      const sameDayRows = (await db.execute(sql`
+        SELECT ci.id, ci.employee_id, ci.manager_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
+               ep.plan_type,
+               au.first_name || ' ' || au.last_name AS employee_name
+        FROM check_ins ci
+        JOIN employee_plans ep ON ci.plan_id = ep.id
+        JOIN admin_users au ON ci.employee_id = au.id
+        WHERE ci.scheduled_date = ${todayStr}
+          AND ci.status = 'scheduled'
+          AND ci.plan_id IS NOT NULL
+          AND ep.status = 'active'
+          AND ci.manager_id IS NOT NULL
+          AND ci.manager_notified_at IS NULL
+      `)).rows as any[];
+
+      for (const ci of sameDayRows) {
+        const ciTypeLabel = (ci.check_in_type as string).replace(/_/g, " ");
+        await storage.createNotification({
+          userId: ci.manager_id,
+          type: "checkin_reminder_manager",
+          title: `Check-in today: ${ci.employee_name}`,
+          message: `${ci.employee_name} has a ${ciTypeLabel} check-in scheduled for today.`,
+          isRead: false,
+          metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, planType: ci.plan_type },
+        });
+        // Mark manager as notified so reruns / retries don't duplicate
+        await db.execute(sql`UPDATE check_ins SET manager_notified_at = NOW() WHERE id = ${ci.id}`);
+      }
+
+      console.log(`[scheduler] Plan check-in reminders: ${dayBeforeRows.length} day-before, ${sameDayRows.length} same-day`);
+    } catch (err) {
+      console.error("[scheduler] Plan check-in reminder job failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
+  // ─── Monday 9 AM: HR overdue check-in digest ────────────────────────────────
+  // Sends each HR/admin user a single in-app notification listing all check-ins
+  // that are 3+ days overdue across all active plans. Respects notifications_enabled.
+  cron.schedule("0 9 * * 1", async () => {
+    try {
+      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+      if (!flags?.notifications_enabled) return;
+
+      const thresholdDate = new Date();
+      thresholdDate.setDate(thresholdDate.getDate() - 3);
+      const thresholdStr = thresholdDate.toISOString().split("T")[0];
+
+      const overdueRows = (await db.execute(sql`
+        SELECT ci.id, ci.employee_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
+               ep.plan_type,
+               au.first_name || ' ' || au.last_name AS employee_name
+        FROM check_ins ci
+        JOIN employee_plans ep ON ci.plan_id = ep.id
+        JOIN admin_users au ON ci.employee_id = au.id
+        WHERE ci.scheduled_date < ${thresholdStr}
+          AND ci.status != 'completed'
+          AND ci.plan_id IS NOT NULL
+          AND ep.status = 'active'
+        ORDER BY ci.scheduled_date ASC
+      `)).rows as any[];
+
+      if (overdueRows.length === 0) {
+        console.log("[scheduler] Monday digest: no overdue plan check-ins");
+        return;
+      }
+
+      const hrAdmins = (await db.execute(sql`
+        SELECT id FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+
+      const digestMsg = `${overdueRows.length} check-in${overdueRows.length !== 1 ? "s" : ""} across active plans are 3+ days overdue.`;
+      for (const hr of hrAdmins) {
+        await storage.createNotification({
+          userId: hr.id,
+          type: "checkin_overdue_digest",
+          title: `Overdue check-ins: ${overdueRows.length} pending`,
+          message: digestMsg,
+          isRead: false,
+          metadata: {
+            overdueCount: overdueRows.length,
+            items: overdueRows.slice(0, 20).map((r: any) => ({
+              employeeName: r.employee_name,
+              scheduledDate: r.scheduled_date,
+              planType: r.plan_type,
+              checkInType: r.check_in_type,
+            })),
+          },
+        });
+      }
+
+      console.log(`[scheduler] Monday digest: ${overdueRows.length} overdue check-ins notified to ${hrAdmins.length} HR/admin users`);
+    } catch (err) {
+      console.error("[scheduler] Monday overdue check-in digest failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
