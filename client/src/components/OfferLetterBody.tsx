@@ -41,6 +41,7 @@ export interface OfferLetterViewProps {
   performanceClauseText?: string | null;
   policyAnnexures?: string[] | null;
   annexureInitials?: Record<string, string> | null;
+  annexureInitialedAt?: Record<string, string> | null;
   onAnnexureInitialChange?: (key: string, value: string) => void;
 }
 
@@ -351,8 +352,22 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
                         </div>
                       ) : (
                         value && (
-                          <span className="text-xs text-muted-foreground" data-testid={`text-annexure-initials-${key}`}>
+                          <span className="text-xs text-muted-foreground sm:text-right" data-testid={`text-annexure-initials-${key}`}>
                             Initialed: <span className="font-semibold text-foreground">{value}</span>
+                            {(() => {
+                              const at = offer.annexureInitialedAt?.[key];
+                              if (!at) return null;
+                              const d = new Date(at);
+                              if (isNaN(d.getTime())) return null;
+                              return (
+                                <>
+                                  {" "}on{" "}
+                                  <span className="font-medium text-foreground" data-testid={`text-annexure-initialed-at-${key}`}>
+                                    {d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </span>
                         )
                       )}

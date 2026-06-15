@@ -1651,6 +1651,17 @@ export function OfferLettersDashboard() {
     }
     return map;
   }, [viewLetterModal]);
+  const viewModalAnnexureInitialedAt = useMemo<Record<string, string>>(() => {
+    const raw = viewLetterModal?.annexureInitials;
+    if (!Array.isArray(raw)) return {};
+    const map: Record<string, string> = {};
+    for (const entry of raw) {
+      if (entry && typeof entry.key === "string" && typeof entry.initialedAt === "string") {
+        map[entry.key] = entry.initialedAt;
+      }
+    }
+    return map;
+  }, [viewLetterModal]);
   const countersignAnnexureInitials = useMemo<Record<string, string>>(() => {
     const raw = countersignModal?.annexureInitials;
     if (!Array.isArray(raw)) return {};
@@ -3436,6 +3447,7 @@ export function OfferLettersDashboard() {
                   performanceClauseText: viewLetterModal.performanceClauseText,
                   policyAnnexures: viewLetterModal.policyAnnexures,
                   annexureInitials: viewModalAnnexureInitials,
+                  annexureInitialedAt: viewModalAnnexureInitialedAt,
                 }}
               />
 

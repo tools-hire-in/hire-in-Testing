@@ -293,12 +293,7 @@ The Company may consider the severity of the issue, intent, impact, prior conduc
 
 18. Acknowledgment
 
-I acknowledge that I have read, understood, and agree to comply with the Hire'in Solutions Code of Conduct. I understand that compliance with this Code is a condition of my employment/engagement and that violations may result in disciplinary action, up to and including termination and legal action where applicable.
-
-Employee/Contractor Name: ___________________________
-Signature: ___________________________
-Date: ___________________________
-Company Representative: ___________________________`,
+I acknowledge that I have read, understood, and agree to comply with the Hire'in Solutions Code of Conduct. I understand that compliance with this Code is a condition of my employment/engagement and that violations may result in disciplinary action, up to and including termination and legal action where applicable.`,
   },
 
   nda: {
