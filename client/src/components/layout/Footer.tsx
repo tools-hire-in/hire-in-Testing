@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Linkedin, Shield, Lock, Award, CheckCircle, MapPin } from "lucide-react";
+import { Linkedin, Instagram, Shield, Lock, Award, CheckCircle, MapPin } from "lucide-react";
 import { COMPANY, CONTACT, COMPLIANCE_BADGES } from "@/lib/constants";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
@@ -46,6 +46,16 @@ export function Footer() {
                 data-testid="link-linkedin"
               >
                 <Linkedin className="h-5 w-5" aria-hidden="true" />
+              </a>
+              <a
+                href={CONTACT.social.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Follow Hire'in Solutions on Instagram"
+                className="text-muted-foreground hover:text-primary transition-colors"
+                data-testid="link-instagram"
+              >
+                <Instagram className="h-5 w-5" aria-hidden="true" />
               </a>
             </div>
           </div>

@@ -42,6 +42,7 @@ export const CONTACT = {
   },
   social: {
     linkedin: "https://www.linkedin.com/company/hirein-solutions",
+    instagram: "https://www.instagram.com/hireinsolutions/",
   },
 } as const;
 
