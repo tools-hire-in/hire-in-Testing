@@ -6483,11 +6483,11 @@ export async function registerRoutes(
           return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
         }
         for (const ann of rawOfferAnnexures) {
-          if (!ann.title || !ann.body) {
-            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          if (!ann.title?.trim()) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title." });
           }
         }
-        offerAnnexures = rawOfferAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
+        offerAnnexures = rawOfferAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body ?? "") }));
       }
 
       const offerLetter = await storage.createOfferLetter({
@@ -6860,6 +6860,8 @@ export async function registerRoutes(
         maxRevisionSalaryInWords: letter.maxRevisionSalaryInWords,
         performanceClauseText: letter.performanceClauseText,
         policyAnnexures: letter.policyAnnexures ?? null,
+        annexureInitials: letter.annexureInitials ?? null,
+        authCode: (letter.status === "accepted" || letter.status === "onboarded" || letter.status === "countersigned") ? letter.authCode ?? null : null,
       });
     } catch (error) {
       console.error("View offer letter error:", error);
@@ -7507,8 +7509,8 @@ export async function registerRoutes(
           return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
         }
         for (const ax of annexureData) {
-          if (!ax.title?.trim() || !ax.body?.trim()) {
-            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          if (!ax.title?.trim()) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title." });
           }
         }
         validatedAnnexures = annexureData;
@@ -9323,8 +9325,8 @@ export async function registerRoutes(
             return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
           }
           for (const ann of rawAnnexures) {
-            if (!ann.title || !ann.body) {
-              return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+            if (!ann.title?.trim()) {
+              return res.status(400).json({ error: "Each annexure must have a non-empty title." });
             }
           }
           validatedAnnexures = rawAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
@@ -9440,8 +9442,8 @@ export async function registerRoutes(
           return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
         }
         for (const ann of rawStdAnnexures) {
-          if (!ann.title || !ann.body) {
-            return res.status(400).json({ error: "Each annexure must have a non-empty title and body." });
+          if (!ann.title?.trim()) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title." });
           }
         }
       }

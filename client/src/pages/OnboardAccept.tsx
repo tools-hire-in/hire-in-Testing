@@ -25,7 +25,6 @@ interface OfferData {
   offerDate: string;
   expiresAt: string;
   acceptedName?: string;
-  authCode?: string;
   probationSalary?: string | null;
   probationSalaryInWords?: string | null;
   postProbationSalary?: string | null;
@@ -35,6 +34,8 @@ interface OfferData {
   performanceProbationReview?: boolean | null;
   performanceClauseText?: string | null;
   policyAnnexures?: string[] | null;
+  annexureInitials?: Array<{ key: string; initials: string; initialedAt?: string }> | null;
+  authCode?: string | null;
 }
 
 export default function OnboardAccept() {
@@ -76,7 +77,21 @@ export default function OnboardAccept() {
         const data = await res.json();
         if (data.status === "accepted" || data.status === "onboarded" || data.status === "countersigned") {
           setAccepted(true);
-          if (data.authCode) setAuthCode(data.authCode);
+          const code = data.authCode ?? null;
+          if (code) setAuthCode(code);
+        }
+        // Pre-populate initials state from DB data so returning visitors see their initials
+        if (Array.isArray(data.annexureInitials) && data.annexureInitials.length > 0) {
+          const initRec: Record<string, string> = {};
+          const atRec: Record<string, string> = {};
+          for (const item of data.annexureInitials) {
+            if (item?.key) {
+              initRec[item.key] = item.initials ?? "";
+              if (item.initialedAt) atRec[item.key] = item.initialedAt;
+            }
+          }
+          setAnnexureInitials(initRec);
+          setAnnexureInitialedAt(atRec);
         }
         setOffer(data);
       })

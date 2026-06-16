@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
@@ -60,6 +60,34 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
   const hasPolicyAnnexures = Array.isArray(offer.policyAnnexures) && offer.policyAnnexures.length > 0;
 
   const editInitials = typeof offer.onAnnexureInitialChange === "function";
+
+  // Normalize annexureInitials: DB returns [{key, initials, initialedAt}] array;
+  // live candidate state is Record<string,string>. Handle both.
+  const normInitials = useMemo<Record<string, string>>(() => {
+    const raw = offer.annexureInitials as any;
+    if (!raw) return {};
+    if (Array.isArray(raw)) {
+      const r: Record<string, string> = {};
+      for (const item of raw) { if (item?.key) r[item.key] = item.initials ?? ""; }
+      return r;
+    }
+    return raw as Record<string, string>;
+  }, [offer.annexureInitials]);
+
+  const normInitialedAt = useMemo<Record<string, string>>(() => {
+    // annexureInitialedAt (live state) takes priority when it's a Record
+    const rawAt = offer.annexureInitialedAt as any;
+    if (rawAt && !Array.isArray(rawAt)) return rawAt as Record<string, string>;
+    // Fall back to initialedAt nested inside the annexureInitials array (DB format)
+    const raw = offer.annexureInitials as any;
+    if (Array.isArray(raw)) {
+      const r: Record<string, string> = {};
+      for (const item of raw) { if (item?.key && item.initialedAt) r[item.key] = item.initialedAt; }
+      return r;
+    }
+    return {};
+  }, [offer.annexureInitials, offer.annexureInitialedAt]);
+
   const [contentMap, setContentMap] = useState<Record<string, AnnexureContent>>({});
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [viewedKeys, setViewedKeys] = useState<string[]>([]);
@@ -319,7 +347,7 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
               <div className="flex flex-col gap-2" data-testid="policy-annexures-list">
                 {offer.policyAnnexures!.map((key) => {
                   const viewed = viewedKeys.includes(key);
-                  const value = offer.annexureInitials?.[key] ?? "";
+                  const value = normInitials[key] ?? "";
                   return (
                     <div
                       key={key}
@@ -355,7 +383,7 @@ export function OfferLetterBody({ offer }: { offer: OfferLetterViewProps }) {
                           <span className="text-xs text-muted-foreground sm:text-right" data-testid={`text-annexure-initials-${key}`}>
                             Initialed: <span className="font-semibold text-foreground">{value}</span>
                             {(() => {
-                              const at = offer.annexureInitialedAt?.[key];
+                              const at = normInitialedAt[key];
                               if (!at) return null;
                               const d = new Date(at);
                               if (isNaN(d.getTime())) return null;
