@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useSEO } from "@/hooks/use-seo";
 import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -30,13 +30,19 @@ export default function Jobs() {
       "Explore hundreds of open positions across Healthcare, IT, Engineering, and Professional Services. Apply today and take the next step in your career with Hire'in Solutions.",
   });
 
+  const searchString = useSearch();
+  const [, navigate] = useLocation();
+
+  const urlParams = new URLSearchParams(searchString);
+  const urlPage = parseInt(urlParams.get("page") || "1", 10);
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [industry, setIndustry] = useState<Industry>("All");
   const [specialty, setSpecialty] = useState<string>("");
   const [state, setState] = useState<string>("");
   const [jobType, setJobType] = useState<string>("");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(isNaN(urlPage) || urlPage < 1 ? 1 : urlPage);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [applicationOpen, setApplicationOpen] = useState(false);
 
@@ -48,6 +54,24 @@ export default function Jobs() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, industry, specialty, state, jobType]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const p = parseInt(params.get("page") || "1", 10);
+    if (!isNaN(p) && p >= 1 && p !== page) setPage(p);
+  }, [searchString]);
+
+  const goToPage = (newPage: number) => {
+    const params = new URLSearchParams(searchString);
+    if (newPage === 1) {
+      params.delete("page");
+    } else {
+      params.set("page", String(newPage));
+    }
+    const qs = params.toString();
+    navigate(qs ? `/jobs?${qs}` : "/jobs");
+    setPage(newPage);
+  };
 
   const queryParams = new URLSearchParams();
   if (debouncedSearch) queryParams.set("search", debouncedSearch);
@@ -311,31 +335,39 @@ export default function Jobs() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-3 mt-10" data-testid="pagination-controls">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
+                <nav aria-label="Job listings pagination" className="flex items-center justify-center gap-3 mt-10" data-testid="pagination-controls">
+                  <a
+                    href={page > 2 ? `/jobs?page=${page - 1}` : "/jobs"}
+                    onClick={(e) => { e.preventDefault(); if (page > 1) goToPage(page - 1); }}
+                    aria-disabled={page === 1}
                     data-testid="button-prev-page"
+                    className={`inline-flex items-center px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                      page === 1
+                        ? "pointer-events-none opacity-50 border-border text-muted-foreground"
+                        : "border-border text-foreground hover:bg-muted"
+                    }`}
                   >
                     <ChevronLeft className="h-4 w-4 mr-1" />
                     Previous
-                  </Button>
+                  </a>
                   <span className="text-sm text-muted-foreground" data-testid="text-page-info">
                     Page {page} of {totalPages}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
+                  <a
+                    href={`/jobs?page=${page + 1}`}
+                    onClick={(e) => { e.preventDefault(); if (page < totalPages) goToPage(page + 1); }}
+                    aria-disabled={page === totalPages}
                     data-testid="button-next-page"
+                    className={`inline-flex items-center px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                      page === totalPages
+                        ? "pointer-events-none opacity-50 border-border text-muted-foreground"
+                        : "border-border text-foreground hover:bg-muted"
+                    }`}
                   >
                     Next
                     <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
+                  </a>
+                </nav>
               )}
             </>
           ) : (

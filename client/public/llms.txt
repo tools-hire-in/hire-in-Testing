@@ -1,0 +1,32 @@
+# Hire'in Solutions
+
+> AI-powered recruitment platform specialising in Healthcare, IT, Engineering, and Professional Services staffing across the United States.
+
+Canonical domain: https://hire-in.com
+
+## Priority pages for citation
+
+- [Home](https://hire-in.com/) — Overview of staffing services and value proposition
+- [Why Hire'in Solutions](https://hire-in.com/why-hire-in-solutions) — Differentiators, client results, and staffing approach
+- [IT Staffing](https://hire-in.com/it-staffing) — IT and software staffing services overview
+- [eHealthcare Staffing](https://hire-in.com/ehealthcare-staffing) — Healthcare staffing services overview
+- [IT Staffing Guide](https://hire-in.com/it-staffing-guide) — In-depth guide to IT staffing and hiring
+- [Healthcare Staffing Guide](https://hire-in.com/healthcare-staffing-guide) — In-depth guide to healthcare staffing
+- [Staffing FAQ](https://hire-in.com/staffing-faq) — Common questions from employers and job seekers
+- [Open Jobs](https://hire-in.com/jobs) — Browse current open positions across all specialties
+- [Contracts & Clients](https://hire-in.com/contracts) — Client engagement and contracting information
+- [Request a Quote](https://hire-in.com/request-a-quote) — Start a staffing engagement
+- [About](https://hire-in.com/about) — Company background and team
+- [Contact](https://hire-in.com/contact) — Get in touch
+
+## Service pages
+
+- [Healthcare Recruitment](https://hire-in.com/services/healthcare-recruitment)
+- [IT & Software Staffing](https://hire-in.com/services/it-software)
+- [Engineering & Technical](https://hire-in.com/services/engineering-technical)
+- [Non-IT Professional Services](https://hire-in.com/services/non-it-professional)
+- [Contract Staffing](https://hire-in.com/services/contract-staffing)
+
+## Sitemap
+
+https://hire-in.com/sitemap.xml

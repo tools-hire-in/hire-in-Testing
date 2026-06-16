@@ -284,6 +284,60 @@ export async function registerRoutes(
     return { ...rest, ...extraFields };
   }
 
+  // Dynamic sitemap — includes all static marketing pages + active job detail pages
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const BASE = "https://hire-in.com";
+      const today = new Date().toISOString().slice(0, 10);
+
+      const staticPages = [
+        { loc: "/", changefreq: "weekly", priority: "1.0", lastmod: "2026-06-11" },
+        { loc: "/about", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
+        { loc: "/contracts", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-16" },
+        { loc: "/jobs", changefreq: "daily", priority: "0.9", lastmod: today },
+        { loc: "/contact", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
+        { loc: "/services/healthcare-recruitment", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/services/it-software", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/services/engineering-technical", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
+        { loc: "/services/non-it-professional", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
+        { loc: "/services/contract-staffing", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
+        { loc: "/it-staffing", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/ehealthcare-staffing", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/capability-deck", changefreq: "monthly", priority: "0.7", lastmod: "2026-06-11" },
+        { loc: "/why-hire-in-solutions", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/it-staffing-guide", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/healthcare-staffing-guide", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/staffing-faq", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/request-a-quote", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
+        { loc: "/terms", changefreq: "yearly", priority: "0.4", lastmod: "2026-06-11" },
+        { loc: "/privacy", changefreq: "yearly", priority: "0.4", lastmod: "2026-06-11" },
+        { loc: "/verify", changefreq: "yearly", priority: "0.3", lastmod: "2026-06-11" },
+      ];
+
+      const jobResult = await storage.getActiveJobs({ pageSize: 1000 });
+      const jobEntries = jobResult.jobs.map((job) => {
+        const lastmod = job.updatedAt
+          ? new Date(job.updatedAt).toISOString().slice(0, 10)
+          : today;
+        return { loc: `/jobs/${job.id}`, changefreq: "weekly", priority: "0.7", lastmod };
+      });
+
+      const allEntries = [...staticPages, ...jobEntries];
+      const urlNodes = allEntries
+        .map(
+          (e) =>
+            `  <url>\n    <loc>${BASE}${e.loc}</loc>\n    <lastmod>${e.lastmod}</lastmod>\n    <changefreq>${e.changefreq}</changefreq>\n    <priority>${e.priority}</priority>\n  </url>`
+        )
+        .join("\n");
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlNodes}\n</urlset>`;
+      res.set("Content-Type", "application/xml").end(xml);
+    } catch (error) {
+      console.error("Failed to generate sitemap:", error);
+      res.status(500).end("Internal Server Error");
+    }
+  });
+
   // Get active jobs (public)
   app.get("/api/jobs", async (req, res) => {
     try {
