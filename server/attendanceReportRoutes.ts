@@ -5,6 +5,7 @@ import { adminUsers } from "@shared/schema";
 import { storage } from "./storage";
 import { generateAttendanceReportRun, throttledAutoCreateCheck } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
+import { isRoleAllowed } from "@shared/accessControl";
 
 function requireAuth(req: Request, res: Response, next: any) {
   if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -13,8 +14,9 @@ function requireAuth(req: Request, res: Response, next: any) {
 
 function requireHrOrAdmin(req: Request, res: Response, next: any) {
   if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-  const role = req.session.role;
-  if (role === "super_admin" || role === "admin" || role === "hr") return next();
+  // Centralized: resolves allowed roles via the central access registry (when
+  // the flag is on) or this exact fallback (legacy). No auto-grant.
+  if (isRoleAllowed(req.session.role, "hr.attendanceReport.access", ["super_admin", "admin", "hr"])) return next();
   return res.status(403).json({ error: "HR or Admin access required" });
 }
 

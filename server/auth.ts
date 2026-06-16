@@ -5,6 +5,7 @@ import connectPg from "connect-pg-simple";
 import { db } from "./db";
 import { adminUsers } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { resolveRoles } from "@shared/accessControl";
 
 const SALT_ROUNDS = 12;
 
@@ -112,13 +113,29 @@ export async function require2FA(req: Request, res: Response, next: NextFunction
   next();
 }
 
-// Role-based auth middleware
+// Role-based auth middleware (legacy: exact list, no auto-grant)
 export function requireRole(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     if (!allowedRoles.includes(req.session.role!)) {
+      return res.status(403).json({ message: "Forbidden - insufficient permissions" });
+    }
+    next();
+  };
+}
+
+// Centralized permission middleware — resolves allowed roles via the central
+// access registry (when the flag is on) or the provided fallback (legacy).
+// Preserves the no-auto-grant semantics of requireRole and its error shapes.
+export function requirePermission(featureKey: string, ...allowedRoles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const allowed = resolveRoles(featureKey, allowedRoles);
+    if (!allowed.includes(req.session.role!)) {
       return res.status(403).json({ message: "Forbidden - insufficient permissions" });
     }
     next();

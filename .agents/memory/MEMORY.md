@@ -5,3 +5,4 @@
 - [Offer-letter verify scope](offer-letter-verify-scope.md) — /verify only covers hr_letter & contract; offer-letter acceptance hash can evolve without breaking verify.
 - [tsc is not a build gate](tsc-not-a-build-gate.md) — repo has hundreds of pre-existing tsc errors; build uses tsx/esbuild, verify via tests not clean tsc.
 - [Attendance policy engine](attendance-policy-engine.md) — grace read per-shift (now 0), shiftless skipped by sweep, part-time short_day/half_day tiers from shift scheduled_hours.
+- [Centralized Access Control](centralized-access-control.md) — feature→roles registry + CENTRALIZED_ACCESS_CONTROL flag; parity invariant (registry==legacy fallback) keeps flag ON==OFF; auto-grant asymmetry per file.

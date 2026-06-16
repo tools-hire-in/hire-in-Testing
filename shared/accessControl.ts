@@ -1,0 +1,251 @@
+// ============================================================================
+// Centralized Access Configuration (Phase 1)
+// ----------------------------------------------------------------------------
+// Single source of truth mapping each feature key -> the exact set of roles
+// allowed to use it. Every server-side permission guard resolves its allowed
+// roles through this registry via `resolveRoles` / `isRoleAllowed`.
+//
+// SAFETY FLAG: `CENTRALIZED_ACCESS_CONTROL` (env var, default OFF).
+//   - OFF (default): every guard uses the role list hard-coded at its call site
+//     (the "fallback"). Behavior is byte-for-byte identical to the legacy code.
+//   - ON: guards read their allowed roles from `ACCESS_REGISTRY` instead.
+//
+// The registry is seeded so that, for every key, the registry role set is
+// IDENTICAL to the effective fallback role set at the call site. Therefore
+// toggling the flag does NOT change who-can-do-what; it only changes the
+// SOURCE of the decision. This is the foundation for Phase 2 (DB-driven RBAC
+// + Super Admin editor), where the registry will be hydrated from the database.
+// ============================================================================
+
+export const CENTRALIZED_ACCESS_CONTROL: boolean =
+  typeof process !== "undefined" &&
+  !!process.env &&
+  process.env.CENTRALIZED_ACCESS_CONTROL === "true";
+
+export type AccessRegistry = Record<string, string[]>;
+
+// AUTO-GENERATED registry — see scripts/genAccessControl.mjs.
+// Values are the EXACT effective role sets (auto-grants already baked in).
+export const ACCESS_REGISTRY: AccessRegistry = {
+  "admin.announcements": ["super_admin", "admin", "hr"],
+  "admin.announcements.recipientCount": ["super_admin", "admin", "hr"],
+  "admin.announcements.sendEmail": ["super_admin", "admin", "hr"],
+  "admin.applications": ["super_admin", "admin", "hr", "operations", "recruiter", "manager"],
+  "admin.applications.retryCeipal": ["super_admin", "admin", "hr", "operations", "recruiter", "manager"],
+  "admin.auditLogs": ["super_admin", "admin"],
+  "admin.contacts": ["super_admin", "admin", "hr", "operations", "recruiter", "manager"],
+  "admin.employees.dossier": ["super_admin", "admin", "hr"],
+  "admin.jobs": ["super_admin", "admin", "operations", "recruiter", "manager"],
+  "admin.jobs.bulkDelete": ["super_admin", "admin", "operations", "recruiter", "manager"],
+  "admin.jobs.bulkUpdate": ["super_admin", "admin", "operations", "recruiter", "manager"],
+  "admin.jobs.syncCeipal": ["super_admin", "admin", "operations", "recruiter", "manager"],
+  "admin.jobs.upload": ["super_admin", "admin", "operations", "recruiter", "manager"],
+  "admin.myTeam": ["super_admin", "admin", "hr", "operations", "manager"],
+  "admin.myTeam.applyLeave": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.attendance": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.auditLog": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.details": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.emergencyContacts": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.leaves": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.members": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.profile": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.regionalHolidays": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.myTeam.tickets": ["super_admin", "admin", "hr", "manager", "operations"],
+  "admin.offerLetters.countersign": ["super_admin", "admin", "hr"],
+  "admin.users.bulkUpload": ["super_admin", "admin", "manager"],
+  "admin.users.delete": ["super_admin", "admin"],
+  "admin.users.employmentStatus": ["super_admin", "admin", "manager"],
+  "admin.users.hierarchy": ["super_admin", "admin", "hr", "manager"],
+  "admin.users.patch": ["super_admin", "admin", "manager", "hr"],
+  "admin.users.post": ["super_admin", "admin", "manager", "hr"],
+  "admin.users.resendInvite": ["super_admin", "admin", "manager"],
+  "admin.users.restore": ["super_admin", "admin"],
+  "auth.register": ["super_admin"],
+  "auth.totp.adminReset": ["super_admin", "admin"],
+  "auth.totp.disable": ["super_admin"],
+  "companyProfile": ["super_admin", "admin"],
+  "contracts.clients": ["super_admin", "admin", "hr", "operations"],
+  "contracts.clients.status": ["super_admin", "admin", "hr", "operations"],
+  "contracts.countersign": ["super_admin", "admin", "hr"],
+  "contracts.dispatch": ["super_admin", "admin", "hr", "operations", "manager", "architect"],
+  "contracts.dispatch.approve": ["super_admin", "admin", "architect"],
+  "contracts.dispatch.reject": ["super_admin", "admin", "architect"],
+  "contracts.import": ["super_admin", "admin", "hr", "operations", "manager"],
+  "contracts.invoices": ["super_admin", "admin", "hr", "operations"],
+  "contracts.patch": ["super_admin", "admin", "hr", "operations"],
+  "contracts.post": ["super_admin", "admin", "hr", "operations", "manager"],
+  "contracts.send": ["super_admin", "admin", "hr", "operations"],
+  "contracts.templates": ["super_admin", "admin", "hr", "operations"],
+  "departments.delete": ["super_admin", "admin"],
+  "departments.patch": ["super_admin", "admin", "hr"],
+  "departments.post": ["super_admin", "admin", "hr"],
+  "hr.admin.salarySlip": ["super_admin", "admin", "hr", "finance"],
+  "hr.admin.salarySlips": ["super_admin", "admin", "hr", "finance"],
+  "hr.admin.shifts.gracePeriod": ["super_admin", "admin", "hr"],
+  "hr.attendance": ["super_admin", "admin", "hr", "manager"],
+  "hr.attendance.absentEmployees": ["super_admin", "admin", "hr"],
+  "hr.attendance.adminCorrection": ["super_admin", "admin", "hr", "manager"],
+  "hr.attendance.breaks.teamStatus": ["super_admin", "admin", "hr", "manager", "operations"],
+  "hr.attendance.correctionsSummary": ["super_admin", "admin", "hr", "operations", "manager"],
+  "hr.attendance.download": ["super_admin", "admin", "hr", "manager", "operations"],
+  "hr.attendance.graceUsage": ["super_admin", "admin", "hr", "manager"],
+  "hr.attendance.member.range": ["super_admin", "admin", "hr", "manager", "operations"],
+  "hr.attendance.myTeam": ["super_admin", "admin", "hr", "manager", "operations"],
+  "hr.attendance.myTeam.range": ["super_admin", "admin", "hr", "manager", "operations"],
+  "hr.attendance.regularization.bulkApprove": ["super_admin", "admin", "hr", "manager"],
+  "hr.attendance.regularization.bulkOverride": ["super_admin", "admin", "hr"],
+  "hr.attendance.regularization.override": ["super_admin", "admin", "hr"],
+  "hr.attendance.regularization.review": ["super_admin", "admin", "hr", "manager"],
+  "hr.attendance.team": ["super_admin", "admin", "hr"],
+  "hr.attendanceReport.access": ["super_admin", "admin", "hr"],
+  "hr.attendanceReport.salaryGateStatus": ["super_admin", "admin", "hr"],
+  "hr.checkIns": ["super_admin", "admin", "hr", "manager"],
+  "hr.documentCompliance": ["super_admin", "admin", "hr"],
+  "hr.employeeBankDetails": ["super_admin", "admin", "hr"],
+  "hr.employeeDocuments": ["super_admin", "admin", "hr"],
+  "hr.employeeDocuments.initialize": ["super_admin", "admin", "hr"],
+  "hr.employeeDocuments.sendReminder": ["super_admin", "admin", "hr"],
+  "hr.employeeDocuments.toggleRequired": ["super_admin", "admin", "hr"],
+  "hr.employeeDocuments.verify": ["super_admin", "admin", "hr"],
+  "hr.employeeEmergencyContacts": ["super_admin", "admin", "hr"],
+  "hr.holidays": ["super_admin", "admin", "hr"],
+  "hr.holidays.upload": ["super_admin", "admin", "hr"],
+  "hr.leaveAccruals.run": ["super_admin", "admin", "hr"],
+  "hr.leaveAccruals.runLog": ["super_admin", "admin", "hr"],
+  "hr.leaveAccruals.yearEnd": ["super_admin", "admin", "hr"],
+  "hr.leaveAdjustments": ["super_admin", "admin", "hr"],
+  "hr.leaveBalances": ["super_admin", "admin", "hr"],
+  "hr.leaveBalances.adjust": ["super_admin", "admin", "hr"],
+  "hr.leaveBalances.bulkAdjust": ["super_admin", "admin", "hr"],
+  "hr.leaveRequests": ["super_admin", "admin", "hr"],
+  "hr.leaveRequests.myTeam": ["super_admin", "admin", "hr", "manager"],
+  "hr.leaveRequests.review": ["super_admin", "admin", "hr", "manager"],
+  "hr.leaveTypes": ["super_admin", "admin", "hr"],
+  "hr.letterTemplates.roles": ["super_admin", "admin", "hr"],
+  "hr.letterTemplates.sentences": ["super_admin", "admin", "hr"],
+  "hr.letters": ["super_admin", "admin", "hr"],
+  "hr.letters.approve": ["super_admin", "admin", "hr"],
+  "hr.letters.download": ["super_admin", "admin", "hr"],
+  "hr.letters.email": ["super_admin", "admin", "hr"],
+  "hr.letters.issue": ["super_admin", "admin", "hr"],
+  "hr.letters.reissue": ["super_admin", "admin", "hr"],
+  "hr.letters.revoke": ["super_admin", "admin", "hr"],
+  "hr.letters.wordingMatrix": ["super_admin", "admin", "hr"],
+  "hr.myPlan": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "hr.newHire.onboardingStatus": ["super_admin", "admin", "hr", "operations", "manager"],
+  "hr.planTemplates.delete": ["super_admin", "admin", "hr"],
+  "hr.planTemplates.get": ["super_admin", "admin", "hr", "manager"],
+  "hr.planTemplates.meta": ["super_admin", "admin", "hr", "manager"],
+  "hr.planTemplates.patch": ["super_admin", "admin", "hr"],
+  "hr.planTemplates.post": ["super_admin", "admin", "hr"],
+  "hr.plans.acknowledge": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "hr.plans.get": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "hr.plans.goals": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "hr.plans.patch": ["super_admin", "admin", "hr", "manager"],
+  "hr.plans.post": ["super_admin", "admin", "hr", "manager"],
+  "hr.plans.weeklyUpdate": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "hr.policyAcknowledgements": ["super_admin", "admin", "hr", "manager"],
+  "hr.reports.attendance": ["super_admin", "admin", "hr"],
+  "hr.reports.salary.download": ["super_admin", "admin", "hr", "finance"],
+  "hr.reports.salary.preview": ["super_admin", "admin", "hr", "finance"],
+  "hr.reports.salary.recipients.get": ["super_admin", "admin", "hr", "finance"],
+  "hr.reports.salary.recipients.put": ["super_admin", "admin", "hr"],
+  "hr.reports.salary.runs": ["super_admin", "admin", "hr", "finance"],
+  "hr.salarySlips.generate": ["super_admin", "admin", "hr"],
+  "hr.salarySlips.regenerate": ["super_admin", "admin", "hr"],
+  "hr.shifts.currentTiming": ["super_admin", "admin", "hr", "manager"],
+  "hr.tickets": ["super_admin", "admin", "hr"],
+  "hr.tickets.review": ["super_admin", "admin", "hr"],
+  "hr.tools.addendums.cancel": ["super_admin", "admin", "hr"],
+  "hr.tools.addendums.countersign": ["super_admin", "admin", "hr"],
+  "hr.tools.addendums.download": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.addendums.send": ["super_admin", "admin", "hr"],
+  "hr.tools.addendums.standalone.get": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.addendums.standalone.post": ["super_admin", "admin", "hr"],
+  "hr.tools.addendums.standalone.preview": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.generateOfferLetter": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.offerLetters": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.offerLetters.addendums.cancel": ["super_admin", "admin", "hr"],
+  "hr.tools.offerLetters.addendums.download": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.offerLetters.addendums.get": ["super_admin", "admin", "hr", "manager"],
+  "hr.tools.offerLetters.addendums.post": ["super_admin", "admin", "hr"],
+  "hr.tools.offerLetters.addendums.send": ["super_admin", "admin", "hr"],
+  "hr.tools.offerLetters.approve": ["super_admin", "admin"],
+  "hr.tools.offerLetters.cancel": ["super_admin", "admin", "hr"],
+  "hr.tools.offerLetters.reject": ["super_admin", "admin"],
+  "hr.tools.offerLetters.startOnboarding": ["super_admin", "admin", "hr", "manager"],
+  "hr.users": ["super_admin", "admin", "hr"],
+  "hr.users.shift": ["super_admin", "admin", "hr"],
+  "hr.users.shiftHistory": ["super_admin", "admin", "hr", "manager"],
+  "onboarding.assignments": ["super_admin", "admin", "hr"],
+  "onboarding.assignments.dueDate": ["super_admin", "admin", "hr"],
+  "onboarding.assignments.exempt": ["super_admin", "admin", "hr"],
+  "onboarding.assignments.grantException": ["super_admin", "admin", "hr"],
+  "onboarding.extensionRequests": ["super_admin"],
+  "onboarding.extensionRequests.pending": ["super_admin"],
+  "onboarding.nightShiftConsents": ["super_admin", "admin", "hr"],
+  "onboarding.policyCompliance": ["super_admin", "admin", "hr"],
+  "onboarding.retroactiveAssignPolicies": ["super_admin", "admin", "hr"],
+  "onboarding.sections": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.sections.quiz": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.seed": ["super_admin"],
+  "onboarding.teamProgress": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.teamProgress.export.csv": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.tracks.assign": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.tracks.assignments": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.tracks.delete": ["super_admin", "admin", "hr"],
+  "onboarding.tracks.patch": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.tracks.post": ["super_admin", "admin", "hr", "manager", "operations"],
+  "onboarding.tracks.sections": ["super_admin", "admin", "hr", "manager", "operations"],
+  "performance.checkIns.get": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.checkIns.patch": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.checkIns.post": ["super_admin", "admin", "hr", "manager"],
+  "performance.employees": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.feedback": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.feedback.received": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.feedback.sent": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals.batch": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals.checkIns": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals.milestones": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals.milestones.reorder": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.goals.team": ["super_admin", "admin", "hr", "manager"],
+  "performance.milestones": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.reviewCycles.get": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.reviewCycles.patch": ["super_admin", "admin", "hr"],
+  "performance.reviewCycles.post": ["super_admin", "admin", "hr"],
+  "performance.reviews": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.reviews.manager": ["super_admin", "admin", "hr", "manager"],
+  "performance.reviews.my": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.reviews.self": ["super_admin", "admin", "hr", "operations", "manager", "employee"],
+  "performance.reviews.team": ["super_admin", "admin", "hr", "manager"],
+  "performance.teamGoals": ["super_admin", "admin", "hr", "manager"],
+  "rayoAcademy.assign": ["super_admin", "admin", "hr", "manager", "operations"],
+  "rayoAcademy.provision": ["super_admin", "admin", "hr"],
+  "rayoAcademy.teamProgress": ["super_admin", "admin", "hr", "manager", "operations"],
+  "system.featureFlags": ["super_admin", "admin"],
+  "systemSettings": ["super_admin", "admin", "hr"],
+};
+
+/**
+ * Resolve the allowed roles for a feature.
+ * Flag ON + key present  -> registry roles (central config / future DB).
+ * Otherwise              -> the call site's fallback roles (legacy behavior).
+ */
+export function resolveRoles(featureKey: string, fallbackRoles: string[]): string[] {
+  if (CENTRALIZED_ACCESS_CONTROL) {
+    const entry = ACCESS_REGISTRY[featureKey];
+    if (entry) return entry;
+  }
+  return fallbackRoles;
+}
+
+/** True if `role` is permitted for `featureKey` (given the legacy fallback). */
+export function isRoleAllowed(
+  role: string | undefined | null,
+  featureKey: string,
+  fallbackRoles: string[],
+): boolean {
+  if (!role) return false;
+  return resolveRoles(featureKey, fallbackRoles).includes(role);
+}

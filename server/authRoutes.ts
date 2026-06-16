@@ -2,7 +2,7 @@ import { Express } from "express";
 import { db } from "./db";
 import { adminUsers, loginSchema, registerAdminSchema } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
-import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requireRole } from "./auth";
+import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requirePermission } from "./auth";
 import { z } from "zod";
 import crypto from "crypto";
 import * as OTPAuth from "otpauth";
@@ -117,7 +117,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // Register new admin user (Super Admin only)
-  app.post("/api/auth/register", requireRole("super_admin"), async (req, res) => {
+  app.post("/api/auth/register", requirePermission("auth.register", "super_admin"), async (req, res) => {
     try {
       const parsed = registerAdminSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -343,7 +343,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // Disable TOTP 2FA
-  app.post("/api/auth/totp/disable", requireRole("super_admin"), async (req, res) => {
+  app.post("/api/auth/totp/disable", requirePermission("auth.totp.disable", "super_admin"), async (req, res) => {
     try {
       const { code } = req.body;
       if (!code || typeof code !== "string") {
@@ -386,7 +386,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/totp/admin-reset/:userId", requireRole("super_admin", "admin"), async (req, res) => {
+  app.post("/api/auth/totp/admin-reset/:userId", requirePermission("auth.totp.adminReset", "super_admin", "admin"), async (req, res) => {
     try {
       const { userId } = req.params;
 

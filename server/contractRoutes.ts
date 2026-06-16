@@ -8,6 +8,7 @@ import { ObjectStorageService } from "./replit_integrations/object_storage/objec
 import { extractPlaceholders, renderTemplate } from "./contractTemplateEngine";
 import { sendContractSigningEmail, sendContractCountersignEmail } from "./email";
 import { searchCeipalCandidates } from "./ceipalService";
+import { resolveRoles } from "@shared/accessControl";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
@@ -22,6 +23,18 @@ function requireRole(...roles: string[]) {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
     const role = req.session.role;
     if (role === "super_admin" || role === "admin" || roles.includes(role!)) return next();
+    return res.status(403).json({ error: "Insufficient permissions" });
+  };
+}
+
+// Centralized permission middleware — resolves allowed roles via the central
+// access registry (when the flag is on) or the call site fallback (legacy).
+// super_admin and admin are auto-granted, matching requireRole above.
+function requirePermission(featureKey: string, ...roles: string[]) {
+  return (req: Request, res: Response, next: any) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...roles])));
+    if (allowed.includes(req.session.role!)) return next();
     return res.status(403).json({ error: "Insufficient permissions" });
   };
 }
@@ -73,7 +86,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/contracts/templates", requireRole("hr", "operations"), upload.single("file"), async (req, res) => {
+  app.post("/api/contracts/templates", requirePermission("contracts.templates", "hr", "operations"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       if (!req.body.name) return res.status(400).json({ error: "Template name required" });
@@ -97,7 +110,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.delete("/api/contracts/templates/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.delete("/api/contracts/templates/:id", requirePermission("contracts.templates", "hr", "operations"), async (req, res) => {
     try {
       await dbStorage.deleteContractTemplate(req.params.id);
       res.status(204).send();
@@ -112,7 +125,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/contracts/clients", requireRole("hr", "operations"), async (req, res) => {
+  app.post("/api/contracts/clients", requirePermission("contracts.clients", "hr", "operations"), async (req, res) => {
     try {
       if (!req.body.name) return res.status(400).json({ error: "Client name required" });
       const client = await dbStorage.createContractClient(req.body);
@@ -120,7 +133,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/contracts/clients/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/contracts/clients/:id", requirePermission("contracts.clients", "hr", "operations"), async (req, res) => {
     try {
       const client = await dbStorage.updateContractClient(req.params.id, req.body);
       if (!client) return res.status(404).json({ error: "Client not found" });
@@ -128,7 +141,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/contracts/clients/:id/status", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/contracts/clients/:id/status", requirePermission("contracts.clients.status", "hr", "operations"), async (req, res) => {
     try {
       const { isActive } = req.body;
       if (typeof isActive !== "boolean") return res.status(400).json({ error: "isActive must be a boolean" });
@@ -138,7 +151,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.delete("/api/contracts/clients/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.delete("/api/contracts/clients/:id", requirePermission("contracts.clients", "hr", "operations"), async (req, res) => {
     res.status(405).json({ error: "Hard deletion of clients is disabled. Use PATCH /status to deactivate." });
   });
 
@@ -160,7 +173,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Generate a contract from a template
-  app.post("/api/contracts", requireRole("hr", "operations", "manager"), async (req, res) => {
+  app.post("/api/contracts", requirePermission("contracts.post", "hr", "operations", "manager"), async (req, res) => {
     try {
       const {
         templateId, clientId, clientName, candidateName, candidateRole,
@@ -223,7 +236,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Upload an existing/imported contract
-  app.post("/api/contracts/import", requireRole("hr", "operations", "manager"), upload.single("file"), async (req, res) => {
+  app.post("/api/contracts/import", requirePermission("contracts.import", "hr", "operations", "manager"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const { clientName, clientId, candidateName, candidateRole,
@@ -285,7 +298,7 @@ export function registerContractRoutes(app: Express) {
 
   // Send (or resend) contract for client signing — routes through DocumentDispatchService.
   // super_admin: direct dispatch (esign_link); all other roles: request approval.
-  app.post("/api/contracts/:id/send", requireRole("super_admin", "hr", "operations"), async (req, res) => {
+  app.post("/api/contracts/:id/send", requirePermission("contracts.send", "super_admin", "hr", "operations"), async (req, res) => {
     try {
       const contract = await dbStorage.getContract(req.params.id);
       if (!contract) return res.status(404).json({ error: "Not found" });
@@ -427,7 +440,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // HR counter-signs (only allowed after client has signed)
-  app.post("/api/contracts/:id/countersign", requireRole("hr"), async (req, res) => {
+  app.post("/api/contracts/:id/countersign", requirePermission("contracts.countersign", "hr"), async (req, res) => {
     try {
       const contract = await dbStorage.getContract(req.params.id);
       if (!contract) return res.status(404).json({ error: "Not found" });
@@ -462,7 +475,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Update contract metadata
-  app.patch("/api/contracts/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/contracts/:id", requirePermission("contracts.patch", "hr", "operations"), async (req, res) => {
     try {
       const contract = await dbStorage.updateContract(req.params.id, req.body);
       if (!contract) return res.status(404).json({ error: "Not found" });
@@ -484,7 +497,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/contracts/:id/invoices", requireRole("hr", "operations"), async (req, res) => {
+  app.post("/api/contracts/:id/invoices", requirePermission("contracts.invoices", "hr", "operations"), async (req, res) => {
     try {
       const invoice = await dbStorage.createContractInvoice({
         contractId: req.params.id,
@@ -495,7 +508,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/contracts/invoices/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.patch("/api/contracts/invoices/:id", requirePermission("contracts.invoices", "hr", "operations"), async (req, res) => {
     try {
       const invoice = await dbStorage.updateContractInvoice(req.params.id, req.body);
       if (!invoice) return res.status(404).json({ error: "Not found" });
@@ -503,7 +516,7 @@ export function registerContractRoutes(app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.delete("/api/contracts/invoices/:id", requireRole("hr", "operations"), async (req, res) => {
+  app.delete("/api/contracts/invoices/:id", requirePermission("contracts.invoices", "hr", "operations"), async (req, res) => {
     try {
       await dbStorage.deleteContractInvoice(req.params.id);
       res.status(204).send();
@@ -515,7 +528,7 @@ export function registerContractRoutes(app: Express) {
   // POST /api/contracts/:id/dispatch
   // super_admin / architect: direct dispatch with delivery method choice
   // all other roles: request approval (sets pending_dispatch_approval)
-  app.post("/api/contracts/:id/dispatch", requireRole("super_admin", "admin", "hr", "operations", "manager", "architect"), async (req, res) => {
+  app.post("/api/contracts/:id/dispatch", requirePermission("contracts.dispatch", "super_admin", "admin", "hr", "operations", "manager", "architect"), async (req, res) => {
     try {
       const contract = await dbStorage.getContract(req.params.id);
       if (!contract) return res.status(404).json({ error: "Contract not found" });
@@ -579,7 +592,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // POST /api/contracts/:id/dispatch/approve — super_admin/architect only
-  app.post("/api/contracts/:id/dispatch/approve", requireRole("super_admin", "architect"), async (req, res) => {
+  app.post("/api/contracts/:id/dispatch/approve", requirePermission("contracts.dispatch.approve", "super_admin", "architect"), async (req, res) => {
     try {
       const role = req.session!.role;
       if (role !== "super_admin" && role !== "architect") {
@@ -624,7 +637,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // POST /api/contracts/:id/dispatch/reject — super_admin/architect only
-  app.post("/api/contracts/:id/dispatch/reject", requireRole("super_admin", "architect"), async (req, res) => {
+  app.post("/api/contracts/:id/dispatch/reject", requirePermission("contracts.dispatch.reject", "super_admin", "architect"), async (req, res) => {
     try {
       const role = req.session!.role;
       if (role !== "super_admin" && role !== "architect") {

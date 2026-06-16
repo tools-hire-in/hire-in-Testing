@@ -6,6 +6,7 @@ import {
   systemSettings, trainingExtensionRequests, adminUsers, attendance, nightShiftConsents,
 } from "@shared/schema";
 import { eq, and, inArray, sql, isNull, lt, ne, desc, isNotNull } from "drizzle-orm";
+import { isRoleAllowed } from "@shared/accessControl";
 import { storage } from "./storage";
 import { sendTrainingRequestEmail } from "./email";
 import crypto from "crypto";
@@ -18,6 +19,13 @@ import {
 
 const ADMIN_ROLES = ["super_admin", "admin", "hr", "manager", "operations"];
 const HR_ROLES = ["super_admin", "admin", "hr"];
+
+// Centralized permission check — resolves allowed roles via the central access
+// registry (when the flag is on) or the provided fallback (legacy). No
+// auto-grant: the fallback lists are already the exact effective role sets.
+function hasAccess(req: Request, featureKey: string, fallbackRoles: string[]): boolean {
+  return isRoleAllowed(req.session.role, featureKey, fallbackRoles);
+}
 
 function requireOnboardingAccess(req: Request, res: Response): boolean {
   const role = req.session.role;
@@ -79,7 +87,7 @@ export function registerOnboardingRoutes(app: Express) {
   app.post("/api/onboarding/tracks", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
     const role = req.session.role!;
-    if (!ADMIN_ROLES.includes(role)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.post", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { title, description, targetRole, targetDepartmentId, version, isPolicyTrack, isUniversal } = req.body;
@@ -102,7 +110,7 @@ export function registerOnboardingRoutes(app: Express) {
   app.patch("/api/onboarding/tracks/:id", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
     const role = req.session.role!;
-    if (!ADMIN_ROLES.includes(role)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.patch", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -194,7 +202,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.delete("/api/onboarding/tracks/:id", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.delete", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -243,7 +251,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.post("/api/onboarding/tracks/:id/sections", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.sections", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -261,7 +269,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.patch("/api/onboarding/sections/:id", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.sections", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -277,7 +285,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.delete("/api/onboarding/sections/:id", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.sections", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -291,7 +299,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Upsert quiz question for a section
   app.put("/api/onboarding/sections/:sectionId/quiz", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.sections.quiz", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { sectionId } = req.params as { sectionId: string };
@@ -343,7 +351,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.post("/api/onboarding/tracks/:id/assign", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.assign", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -783,7 +791,7 @@ export function registerOnboardingRoutes(app: Express) {
   app.get("/api/onboarding/team-progress", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
     const role = req.session.role!;
-    if (!ADMIN_ROLES.includes(role)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.teamProgress", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const userId = req.session.userId!;
@@ -842,7 +850,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.get("/api/onboarding/team-progress/:userId", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.teamProgress", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { userId } = req.params as { userId: string };
@@ -882,7 +890,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Get existing assignments for a track
   app.get("/api/onboarding/tracks/:id/assignments", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.tracks.assignments", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { id } = req.params as { id: string };
@@ -904,7 +912,7 @@ export function registerOnboardingRoutes(app: Express) {
   // CSV Export: team progress
   app.get("/api/onboarding/team-progress/export/csv", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.teamProgress.export.csv", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { adminUsers: adminUsersTable } = await import("@shared/schema");
@@ -956,7 +964,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.put("/api/system-settings/:key", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "systemSettings", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { key } = req.params as { key: string };
@@ -1545,7 +1553,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Get all endorsed extension requests for super_admin final approval
   app.get("/api/onboarding/extension-requests/pending", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
+    if (!hasAccess(req, "onboarding.extensionRequests.pending", ["super_admin"])) return res.status(403).json({ error: "super_admin only" });
 
     try {
       const requests = await db.select().from(trainingExtensionRequests)
@@ -1595,7 +1603,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Approve or reject extension/exception request (super_admin — requires endorsement first)
   app.patch("/api/onboarding/extension-requests/:id", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
+    if (!hasAccess(req, "onboarding.extensionRequests", ["super_admin"])) return res.status(403).json({ error: "super_admin only" });
 
     try {
       const { id } = req.params;
@@ -1738,7 +1746,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.post("/api/rayo-academy/assign", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "rayoAcademy.assign", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { userIds, trackId, dueDate } = req.body;
@@ -1789,7 +1797,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.get("/api/rayo-academy/team-progress", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!ADMIN_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "rayoAcademy.teamProgress", ADMIN_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const userId = req.session.userId!;
@@ -1915,7 +1923,7 @@ export function registerOnboardingRoutes(app: Express) {
 
   app.post("/api/rayo-academy/provision", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "rayoAcademy.provision", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const { userId } = req.body;
@@ -2183,7 +2191,7 @@ export function registerOnboardingRoutes(app: Express) {
   // HR Policy Compliance Dashboard
   app.get("/api/onboarding/policy-compliance", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.policyCompliance", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const role = req.session.role!;
@@ -2280,7 +2288,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Retroactive assign all policy tracks to all active employees
   app.post("/api/onboarding/retroactive-assign-policies", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.retroactiveAssignPolicies", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const policyTracks = await db.select().from(learningTracks)
@@ -2465,7 +2473,7 @@ export function registerOnboardingRoutes(app: Express) {
   // HR view of all night shift consents
   app.get("/api/onboarding/night-shift-consents", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "Not authorized" });
+    if (!hasAccess(req, "onboarding.nightShiftConsents", HR_ROLES)) return res.status(403).json({ error: "Not authorized" });
 
     try {
       const consents = await db.select({
@@ -2528,7 +2536,7 @@ export function registerOnboardingRoutes(app: Express) {
   app.patch("/api/onboarding/assignments/:id/grant-exception", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
     const myRole = req.session.role!;
-    if (!HR_ROLES.includes(myRole)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+    if (!hasAccess(req, "onboarding.assignments.grantException", HR_ROLES)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
 
     try {
       const { id } = req.params;
@@ -2587,7 +2595,7 @@ export function registerOnboardingRoutes(app: Express) {
   // DELETE /api/onboarding/assignments/:id — Unassign (HR_ROLES only)
   app.delete("/api/onboarding/assignments/:id", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+    if (!hasAccess(req, "onboarding.assignments", HR_ROLES)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
 
     try {
       const { id } = req.params;
@@ -2636,7 +2644,7 @@ export function registerOnboardingRoutes(app: Express) {
   // PATCH /api/onboarding/assignments/:id/exempt — Admin-initiated exemption (HR_ROLES only)
   app.patch("/api/onboarding/assignments/:id/exempt", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!HR_ROLES.includes(req.session.role!)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+    if (!hasAccess(req, "onboarding.assignments.exempt", HR_ROLES)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
 
     try {
       const { id } = req.params;
@@ -2695,7 +2703,7 @@ export function registerOnboardingRoutes(app: Express) {
   app.patch("/api/onboarding/assignments/:id/due-date", async (req: Request, res: Response) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
     const myRole = req.session.role!;
-    if (!HR_ROLES.includes(myRole)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
+    if (!hasAccess(req, "onboarding.assignments.dueDate", HR_ROLES)) return res.status(403).json({ error: "hr, admin, or super_admin only" });
 
     try {
       const { id } = req.params;
@@ -2769,7 +2777,7 @@ export function registerOnboardingRoutes(app: Express) {
   // Seed endpoint (super_admin only)
   app.post("/api/onboarding/seed", async (req: Request, res: Response) => {
     if (!requireOnboardingAccess(req, res)) return;
-    if (req.session.role !== "super_admin") return res.status(403).json({ error: "super_admin only" });
+    if (!hasAccess(req, "onboarding.seed", ["super_admin"])) return res.status(403).json({ error: "super_admin only" });
 
     try {
       const tracksResult = await seedOnboardingContent(req.session.userId!);

@@ -12,6 +12,7 @@ import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
+import { resolveRoles } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
@@ -179,6 +180,22 @@ function requireRole(...allowedRoles: string[]) {
     }
     // Check if user's role is in the allowed roles
     if (allowedRoles.includes(userRole!)) {
+      return next();
+    }
+    return res.status(403).json({ error: "Insufficient permissions" });
+  };
+}
+
+// Centralized permission middleware — resolves allowed roles via the central
+// access registry (when the flag is on) or the call site fallback (legacy).
+// super_admin and admin are auto-granted, matching requireRole above.
+function requirePermission(featureKey: string, ...allowedRoles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...allowedRoles])));
+    if (allowed.includes(req.session.role!)) {
       return next();
     }
     return res.status(403).json({ error: "Insufficient permissions" });
@@ -408,7 +425,7 @@ export async function registerRoutes(
   });
 
   // Admin Jobs CRUD (Operations role can access)
-  app.get("/api/admin/jobs", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.get("/api/admin/jobs", requirePermission("admin.jobs", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const jobs = await storage.getJobs();
       res.json(jobs);
@@ -417,7 +434,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/jobs", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.post("/api/admin/jobs", requirePermission("admin.jobs", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const result = insertJobSchema.safeParse(req.body);
       if (!result.success) {
@@ -430,7 +447,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/jobs/:id", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.patch("/api/admin/jobs/:id", requirePermission("admin.jobs", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const result = insertJobSchema.partial().safeParse(req.body);
       if (!result.success) {
@@ -447,7 +464,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/jobs/:id", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.delete("/api/admin/jobs/:id", requirePermission("admin.jobs", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const jobId = req.params.id as string;
       await storage.deleteJob(jobId);
@@ -458,7 +475,7 @@ export async function registerRoutes(
   });
 
   // Bulk delete jobs
-  app.post("/api/admin/jobs/bulk-delete", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.post("/api/admin/jobs/bulk-delete", requirePermission("admin.jobs.bulkDelete", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -472,7 +489,7 @@ export async function registerRoutes(
   });
 
   // Bulk update jobs (activate/deactivate only)
-  app.post("/api/admin/jobs/bulk-update", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.post("/api/admin/jobs/bulk-update", requirePermission("admin.jobs.bulkUpdate", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const { ids, updates } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -497,7 +514,7 @@ export async function registerRoutes(
   });
 
   // Sync jobs from Ceipal ATS
-  app.post("/api/admin/jobs/sync-ceipal", requireRole("operations", "recruiter", "manager"), async (req, res) => {
+  app.post("/api/admin/jobs/sync-ceipal", requirePermission("admin.jobs.syncCeipal", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const result = await syncCeipalJobs();
       res.json({
@@ -511,7 +528,7 @@ export async function registerRoutes(
   });
 
   // CSV/XLSX Upload for Jobs
-  app.post("/api/admin/jobs/upload", requireRole("operations", "recruiter", "manager"), upload.single("file"), async (req, res) => {
+  app.post("/api/admin/jobs/upload", requirePermission("admin.jobs.upload", "operations", "recruiter", "manager"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -594,7 +611,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/applications/:id", requireRole("hr", "operations", "recruiter", "manager"), async (req, res) => {
+  app.patch("/api/admin/applications/:id", requirePermission("admin.applications", "hr", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const applicationId = req.params.id as string;
       const application = await storage.updateApplication(applicationId, req.body);
@@ -607,7 +624,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/applications/:id/retry-ceipal", requireRole("hr", "operations", "recruiter", "manager"), async (req, res) => {
+  app.post("/api/admin/applications/:id/retry-ceipal", requirePermission("admin.applications.retryCeipal", "hr", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const applicationId = req.params.id as string;
       const application = await storage.getApplication(applicationId);
@@ -639,7 +656,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/contacts/:id", requireRole("hr", "operations", "recruiter", "manager"), async (req, res) => {
+  app.patch("/api/admin/contacts/:id", requirePermission("admin.contacts", "hr", "operations", "recruiter", "manager"), async (req, res) => {
     try {
       const contactId = req.params.id as string;
       const contact = await storage.updateContact(contactId, req.body);
@@ -707,7 +724,7 @@ export async function registerRoutes(
   };
 
   // User management routes — accessible to super_admin, admin, and manager
-  app.post("/api/admin/users", requireRole("admin", "manager", "hr"), async (req, res) => {
+  app.post("/api/admin/users", requirePermission("admin.users.post", "admin", "manager", "hr"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
@@ -886,7 +903,7 @@ export async function registerRoutes(
   });
 
   // Bulk upload users via CSV/XLSX
-  app.post("/api/admin/users/bulk-upload", requireRole("admin", "manager"), upload.single("file"), async (req, res) => {
+  app.post("/api/admin/users/bulk-upload", requirePermission("admin.users.bulkUpload", "admin", "manager"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -1051,7 +1068,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id", requireRole("admin", "manager", "hr"), async (req, res) => {
+  app.patch("/api/admin/users/:id", requirePermission("admin.users.patch", "admin", "manager", "hr"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
@@ -1131,7 +1148,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/users/:id/resend-invite", requireRole("admin", "manager"), async (req, res) => {
+  app.post("/api/admin/users/:id/resend-invite", requirePermission("admin.users.resendInvite", "admin", "manager"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
@@ -1226,7 +1243,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/users/:id", requireRole("super_admin"), async (req, res) => {
+  app.delete("/api/admin/users/:id", requirePermission("admin.users.delete", "super_admin"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
@@ -1252,7 +1269,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id/employment-status", requireRole("super_admin", "admin", "manager"), async (req, res) => {
+  app.patch("/api/admin/users/:id/employment-status", requirePermission("admin.users.employmentStatus", "super_admin", "admin", "manager"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
@@ -1295,7 +1312,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/users/:id/restore", requireRole("super_admin", "admin"), async (req, res) => {
+  app.post("/api/admin/users/:id/restore", requirePermission("admin.users.restore", "super_admin", "admin"), async (req, res) => {
     try {
       const userId = req.params.id as string;
       const targetUser = await storage.getAdminUser(userId);
@@ -1329,7 +1346,7 @@ export async function registerRoutes(
   // EMPLOYEE DOSSIER API ROUTE
   // ==========================================
 
-  app.get("/api/admin/employees/:userId/dossier", requireRole("hr"), async (req, res) => {
+  app.get("/api/admin/employees/:userId/dossier", requirePermission("admin.employees.dossier", "hr"), async (req, res) => {
     try {
       const { userId } = req.params;
 
@@ -1523,7 +1540,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/departments", requireRole("hr"), async (req, res) => {
+  app.post("/api/departments", requirePermission("departments.post", "hr"), async (req, res) => {
     try {
       const dept = await storage.createDepartment(req.body);
       res.status(201).json(dept);
@@ -1532,7 +1549,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/departments/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/departments/:id", requirePermission("departments.patch", "hr"), async (req, res) => {
     try {
       const dept = await storage.updateDepartment(req.params.id as string, req.body);
       if (!dept) return res.status(404).json({ error: "Department not found" });
@@ -1542,7 +1559,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/departments/:id", requireRole("super_admin"), async (req, res) => {
+  app.delete("/api/departments/:id", requirePermission("departments.delete", "super_admin"), async (req, res) => {
     try {
       await storage.deleteDepartment(req.params.id as string);
       res.json({ success: true });
@@ -1591,7 +1608,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id/hierarchy", requireRole("hr", "admin", "manager"), async (req, res) => {
+  app.patch("/api/admin/users/:id/hierarchy", requirePermission("admin.users.hierarchy", "hr", "admin", "manager"), async (req, res) => {
     try {
       const targetId = req.params.id as string;
       const targetUser = await storage.getAdminUser(targetId);
@@ -1622,7 +1639,7 @@ export async function registerRoutes(
   // AUDIT LOGS API ROUTES
   // ==========================================
 
-  app.get("/api/admin/audit-logs", requireRole("admin"), async (req, res) => {
+  app.get("/api/admin/audit-logs", requirePermission("admin.auditLogs", "admin"), async (req, res) => {
     try {
       const { actorId, targetId, action, limit, offset } = req.query;
       const filters = {
@@ -1660,7 +1677,7 @@ export async function registerRoutes(
   // ==========================================
 
   // --- User Directory (for HR) ---
-  app.get("/api/hr/users", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/users", requirePermission("hr.users", "hr"), async (req, res) => {
     try {
       const users = await storage.getAdminUsers();
       const safeUsers = users.map(u => ({
@@ -1782,7 +1799,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/holidays", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/holidays", requirePermission("hr.holidays", "hr"), async (req, res) => {
     try {
       const result = insertHolidaySchema.safeParse(req.body);
       if (!result.success) {
@@ -1801,7 +1818,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/holidays/upload", requireRole("hr"), upload.single("file"), async (req, res) => {
+  app.post("/api/hr/holidays/upload", requirePermission("hr.holidays.upload", "hr"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -1883,7 +1900,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/holidays/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/holidays/:id", requirePermission("hr.holidays", "hr"), async (req, res) => {
     try {
       const holiday = await storage.updateHoliday(req.params.id as string, req.body);
       if (!holiday) return res.status(404).json({ error: "Holiday not found" });
@@ -1893,7 +1910,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/holidays/:id", requireRole("hr"), async (req, res) => {
+  app.delete("/api/hr/holidays/:id", requirePermission("hr.holidays", "hr"), async (req, res) => {
     try {
       const holiday = await storage.getHoliday(req.params.id as string);
       if (holiday && (holiday.type === "public" || holiday.type === "mandatory")) {
@@ -2371,7 +2388,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/breaks/team-status", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/breaks/team-status", requirePermission("hr.attendance.breaks.teamStatus", "hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -2423,7 +2440,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/team", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/attendance/team", requirePermission("hr.attendance.team", "hr"), async (req, res) => {
     try {
       const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
       const records = await storage.getAttendanceByDate(date);
@@ -2433,7 +2450,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/attendance/:id", requireRole("hr", "admin", "super_admin", "manager"), async (req, res) => {
+  app.patch("/api/hr/attendance/:id", requirePermission("hr.attendance", "hr", "admin", "super_admin", "manager"), async (req, res) => {
     try {
       const isAdminOrSuperAdmin = ["admin", "super_admin"].includes(req.session.role!);
       const actorRole = req.session.role!;
@@ -2586,7 +2603,7 @@ export async function registerRoutes(
   });
 
   // --- Admin Correction Upsert (absent days + existing records) ---
-  app.post("/api/hr/attendance/admin-correction", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+  app.post("/api/hr/attendance/admin-correction", requirePermission("hr.attendance.adminCorrection", "hr", "manager", "admin", "super_admin"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorId = req.session.userId!;
@@ -2699,7 +2716,7 @@ export async function registerRoutes(
   });
 
   // --- Corrections Summary ---
-  app.get("/api/hr/attendance/corrections-summary", requireRole("admin", "super_admin", "hr", "operations", "manager"), async (req, res) => {
+  app.get("/api/hr/attendance/corrections-summary", requirePermission("hr.attendance.correctionsSummary", "admin", "super_admin", "hr", "operations", "manager"), async (req, res) => {
     try {
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
@@ -2798,7 +2815,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/leave-types", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/leave-types", requirePermission("hr.leaveTypes", "hr"), async (req, res) => {
     try {
       const result = insertLeaveTypeSchema.safeParse(req.body);
       if (!result.success) {
@@ -2811,7 +2828,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/leave-types/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/leave-types/:id", requirePermission("hr.leaveTypes", "hr"), async (req, res) => {
     try {
       const lt = await storage.updateLeaveType(req.params.id as string, req.body);
       if (!lt) return res.status(404).json({ error: "Leave type not found" });
@@ -2821,7 +2838,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/leave-types/:id", requireRole("hr"), async (req, res) => {
+  app.delete("/api/hr/leave-types/:id", requirePermission("hr.leaveTypes", "hr"), async (req, res) => {
     try {
       await storage.deleteLeaveType(req.params.id as string);
       res.status(204).send();
@@ -2848,7 +2865,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/leave-balances/:userId", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/leave-balances/:userId", requirePermission("hr.leaveBalances", "hr"), async (req, res) => {
     try {
       const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
       let balances = await storage.getLeaveBalances(req.params.userId as string, year);
@@ -2861,7 +2878,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/leave-balances/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/leave-balances/:id", requirePermission("hr.leaveBalances", "hr"), async (req, res) => {
     try {
       const lb = await storage.updateLeaveBalance(req.params.id as string, req.body);
       if (!lb) return res.status(404).json({ error: "Leave balance not found" });
@@ -2871,7 +2888,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/leave-accruals/run", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/leave-accruals/run", requirePermission("hr.leaveAccruals.run", "hr"), async (req, res) => {
     try {
       const now = new Date();
       const rawYear = req.body.year ?? now.getFullYear();
@@ -2925,7 +2942,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/leave-accruals/year-end", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/leave-accruals/year-end", requirePermission("hr.leaveAccruals.yearEnd", "hr"), async (req, res) => {
     try {
       const year = Number(req.body.year ?? new Date().getFullYear());
       if (!Number.isInteger(year) || year < 2020 || year > 2100) {
@@ -3069,7 +3086,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/leave-accruals/run-log", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/leave-accruals/run-log", requirePermission("hr.leaveAccruals.runLog", "hr"), async (req, res) => {
     try {
       const latest = await storage.getSystemSetting("accrual_run_log_latest");
       const history = await storage.getSystemSetting("accrual_run_log_history");
@@ -3117,7 +3134,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/leave-requests", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/leave-requests", requirePermission("hr.leaveRequests", "hr"), async (req, res) => {
     try {
       const { status } = req.query;
       const requests = await storage.getLeaveRequests({ status: status as string });
@@ -3231,7 +3248,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/leave-requests/:id/review", requireRole("hr", "manager"), async (req, res) => {
+  app.patch("/api/hr/leave-requests/:id/review", requirePermission("hr.leaveRequests.review", "hr", "manager"), async (req, res) => {
     try {
       const { status, reviewComment } = req.body;
       if (!["approved", "rejected"].includes(status)) {
@@ -3377,7 +3394,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/tickets", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/tickets", requirePermission("hr.tickets", "hr"), async (req, res) => {
     try {
       const { status } = req.query;
       const result = await storage.getTickets({ status: status as string });
@@ -3436,7 +3453,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/tickets/:id/review", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/tickets/:id/review", requirePermission("hr.tickets.review", "hr"), async (req, res) => {
     try {
       const { status, reviewComment } = req.body;
       if (!["resolved", "rejected"].includes(status)) {
@@ -3470,7 +3487,7 @@ export async function registerRoutes(
   });
 
   // --- Grace Period Usage Report ---
-  app.get("/api/hr/attendance/grace-usage", requireRole("hr", "admin", "super_admin", "manager"), async (req, res) => {
+  app.get("/api/hr/attendance/grace-usage", requirePermission("hr.attendance.graceUsage", "hr", "admin", "super_admin", "manager"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role!;
@@ -3775,7 +3792,7 @@ export async function registerRoutes(
   });
 
   // Approve or reject a regularization request
-  app.patch("/api/hr/attendance/regularization/:id/review", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+  app.patch("/api/hr/attendance/regularization/:id/review", requirePermission("hr.attendance.regularization.review", "hr", "manager", "admin", "super_admin"), async (req, res) => {
     try {
       const actorId = req.session.userId!;
       const actorRole = req.session.role!;
@@ -3944,7 +3961,7 @@ export async function registerRoutes(
   });
 
   // HR/Admin direct override (bypasses request queue)
-  app.post("/api/hr/attendance/regularization/override", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.post("/api/hr/attendance/regularization/override", requirePermission("hr.attendance.regularization.override", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const actorId = req.session.userId!;
       const { employeeId, attendanceDate, requestedPunchIn, requestedPunchOut, requestType, reason, comment } = req.body;
@@ -4038,7 +4055,7 @@ export async function registerRoutes(
   });
 
   // Bulk-approve multiple pending regularization requests (manager-scoped)
-  app.post("/api/hr/attendance/regularization/bulk-approve", requireRole("hr", "manager", "admin", "super_admin"), async (req, res) => {
+  app.post("/api/hr/attendance/regularization/bulk-approve", requirePermission("hr.attendance.regularization.bulkApprove", "hr", "manager", "admin", "super_admin"), async (req, res) => {
     try {
       const actorId = req.session.userId!;
       const actorRole = req.session.role!;
@@ -4185,7 +4202,7 @@ export async function registerRoutes(
   // ==========================================
 
   // Get employees with absent/no-punch status on given dates
-  app.get("/api/hr/attendance/absent-employees", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/absent-employees", requirePermission("hr.attendance.absentEmployees", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const rawDates = req.query["dates[]"] || req.query["dates"];
       const dates: string[] = Array.isArray(rawDates)
@@ -4229,7 +4246,7 @@ export async function registerRoutes(
   });
 
   // Bulk attendance regularization override
-  app.post("/api/hr/attendance/regularization/bulk-override", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.post("/api/hr/attendance/regularization/bulk-override", requirePermission("hr.attendance.regularization.bulkOverride", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const actorId = req.session.userId!;
       const { entries, punchIn, punchOut, reason, comment } = req.body;
@@ -4308,7 +4325,7 @@ export async function registerRoutes(
   });
 
   // --- Attendance Report (CSV export) ---
-  app.get("/api/hr/reports/attendance", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/reports/attendance", requirePermission("hr.reports.attendance", "hr"), async (req, res) => {
     try {
       const { userId, startDate, endDate } = req.query;
       if (!userId || !startDate || !endDate) {
@@ -4332,7 +4349,7 @@ export async function registerRoutes(
   });
 
   // --- Manager: Team Attendance ---
-  app.get("/api/hr/attendance/my-team", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team", requirePermission("hr.attendance.myTeam", "hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -4453,7 +4470,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/my-team/range", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/my-team/range", requirePermission("hr.attendance.myTeam.range", "hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -4491,7 +4508,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/member/:memberId/range", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/member/:memberId/range", requirePermission("hr.attendance.member.range", "hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const memberId = req.params.memberId;
       const startDate = req.query.startDate as string;
@@ -4530,7 +4547,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/attendance/download", requireRole("hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance/download", requirePermission("hr.attendance.download", "hr", "manager", "operations", "admin", "super_admin"), async (req, res) => {
     try {
       const ExcelJSModule = await import("exceljs");
       const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule;
@@ -4849,7 +4866,7 @@ export async function registerRoutes(
   });
 
   // --- Manager: Team Leave Requests ---
-  app.get("/api/hr/leave-requests/my-team", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/leave-requests/my-team", requirePermission("hr.leaveRequests.myTeam", "hr", "manager"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role;
@@ -4919,7 +4936,7 @@ export async function registerRoutes(
 
   // Pre-flight check before generating a salary run for a given month/year.
   // Returns: attendanceRunApproved, pendingRegularizations count, canGenerate, blockingReasons[]
-  app.get("/api/hr/attendance-report/salary-gate-status", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/hr/attendance-report/salary-gate-status", requirePermission("hr.attendanceReport.salaryGateStatus", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const year  = parseInt(req.query.year  as string) || new Date().getFullYear();
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
@@ -4970,7 +4987,7 @@ export async function registerRoutes(
   // SALARY REPORTS
   // ==========================================
 
-  app.get("/api/hr/reports/salary/preview", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/preview", requireAuth, requirePermission("hr.reports.salary.preview", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
@@ -4982,7 +4999,7 @@ export async function registerRoutes(
   });
 
   // Salary report recipients - Get
-  app.get("/api/hr/reports/salary/recipients", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/recipients", requireAuth, requirePermission("hr.reports.salary.recipients.get", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const setting = await storage.getSystemSetting("salary_report_recipients");
       const defaults = { to: ["accounts@hire-in.com"], cc: ["simranjeet@hire-in.com"] };
@@ -4993,7 +5010,7 @@ export async function registerRoutes(
   });
 
   // Salary report recipients - Update
-  app.put("/api/hr/reports/salary/recipients", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.put("/api/hr/reports/salary/recipients", requireAuth, requirePermission("hr.reports.salary.recipients.put", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const { to, cc } = req.body;
       if (!Array.isArray(to) || to.length === 0) {
@@ -5129,7 +5146,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/reports/salary/download", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/download", requireAuth, requirePermission("hr.reports.salary.download", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
@@ -5160,7 +5177,7 @@ export async function registerRoutes(
   });
 
   // List all runs (meta only, no full report data)
-  app.get("/api/hr/reports/salary/runs", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/runs", requireAuth, requirePermission("hr.reports.salary.runs", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const runs = await db.select({
         id: salaryReportRuns.id,
@@ -5203,7 +5220,7 @@ export async function registerRoutes(
   });
 
   // Get single run (full data including adjustments)
-  app.get("/api/hr/reports/salary/runs/:id", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/runs/:id", requireAuth, requirePermission("hr.reports.salary.runs", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
       if (!run) return res.status(404).json({ error: "Run not found" });
@@ -5653,7 +5670,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/salary-slips/generate", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/salary-slips/generate", requireAuth, requirePermission("hr.salarySlips.generate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
@@ -5700,7 +5717,7 @@ export async function registerRoutes(
   });
 
   // Salary slip regeneration (replace existing slips for a month)
-  app.post("/api/hr/salary-slips/regenerate", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/salary-slips/regenerate", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const { month, year, userIds, dryRun } = req.body;
       const m = parseInt(month);
@@ -5801,7 +5818,7 @@ export async function registerRoutes(
   // LEAVE BALANCE ADJUSTMENTS
   // ==========================================
 
-  app.post("/api/hr/leave-balances/adjust", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/leave-balances/adjust", requireAuth, requirePermission("hr.leaveBalances.adjust", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const { userId, leaveTypeId, adjustmentDays, reason, year } = req.body;
       if (!userId || !leaveTypeId || !adjustmentDays || !reason || !year) {
@@ -5869,7 +5886,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/leave-balances/bulk-adjust", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/leave-balances/bulk-adjust", requireAuth, requirePermission("hr.leaveBalances.bulkAdjust", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const { userIds, leaveTypeId, adjustmentDays, reason, year } = req.body;
       if (!userIds?.length || !leaveTypeId || !adjustmentDays || !reason || !year) {
@@ -5941,7 +5958,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/leave-adjustments", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/hr/leave-adjustments", requireAuth, requirePermission("hr.leaveAdjustments", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const userId = req.query.userId as string | undefined;
       const year = req.query.year ? parseInt(req.query.year as string) : undefined;
@@ -6084,7 +6101,7 @@ export async function registerRoutes(
   });
 
   // HR Document Management routes
-  app.get("/api/hr/employee-documents/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/hr/employee-documents/:userId", requireAuth, requirePermission("hr.employeeDocuments", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const docs = await storage.getEmployeeDocuments(req.params.userId);
       res.json(docs);
@@ -6093,7 +6110,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/employee-documents/:id/verify", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/employee-documents/:id/verify", requireAuth, requirePermission("hr.employeeDocuments.verify", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const { status, remarks } = req.body;
       if (!["verified", "rejected"].includes(status)) {
@@ -6111,7 +6128,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/document-compliance", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/hr/document-compliance", requireAuth, requirePermission("hr.documentCompliance", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const allDocs = await storage.getAllEmployeeDocuments();
       const allUsers = await storage.getAdminUsers();
@@ -6168,7 +6185,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/employee-documents/initialize/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/employee-documents/initialize/:userId", requireAuth, requirePermission("hr.employeeDocuments.initialize", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const existing = await storage.getEmployeeDocuments(req.params.userId);
       if (existing.length > 0) {
@@ -6182,7 +6199,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/employee-documents/:id/toggle-required", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/employee-documents/:id/toggle-required", requireAuth, requirePermission("hr.employeeDocuments.toggleRequired", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const doc = await storage.getEmployeeDocument(req.params.id);
       if (!doc) {
@@ -6195,7 +6212,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/employee-documents/send-reminder/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/employee-documents/send-reminder/:userId", requireAuth, requirePermission("hr.employeeDocuments.sendReminder", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const user = await storage.getAdminUser(req.params.userId);
       if (!user) {
@@ -6247,7 +6264,7 @@ export async function registerRoutes(
   });
 
   // Employee bank details (HR view)
-  app.get("/api/hr/employee-bank-details/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/hr/employee-bank-details/:userId", requireAuth, requirePermission("hr.employeeBankDetails", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const details = await storage.getBankDetails(req.params.userId);
       res.json(details || null);
@@ -6257,7 +6274,7 @@ export async function registerRoutes(
   });
 
   // Employee emergency contacts (HR view)
-  app.get("/api/hr/employee-emergency-contacts/:userId", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/hr/employee-emergency-contacts/:userId", requireAuth, requirePermission("hr.employeeEmergencyContacts", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const contacts = await storage.getEmergencyContacts(req.params.userId);
       res.json(contacts);
@@ -6267,7 +6284,7 @@ export async function registerRoutes(
   });
 
   // HR Tools: Admin fetch salary slips for any user
-  app.get("/api/hr/admin/salary-slips/:userId", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/admin/salary-slips/:userId", requireAuth, requirePermission("hr.admin.salarySlips", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const slips = await storage.getSalarySlipsByUser(req.params.userId);
       res.json(slips);
@@ -6276,7 +6293,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/admin/salary-slip/:id", requireAuth, requireRole("super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+  app.get("/api/hr/admin/salary-slip/:id", requireAuth, requirePermission("hr.admin.salarySlip", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
     try {
       const slip = await storage.getSalarySlip(req.params.id);
       if (!slip) {
@@ -6293,7 +6310,7 @@ export async function registerRoutes(
   });
 
   // HR Tools: Generate offer letter DOCX
-  app.post("/api/hr/tools/generate-offer-letter", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/generate-offer-letter", requireAuth, requirePermission("hr.tools.generateOfferLetter", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       let departmentName = "";
       if (req.body.departmentId) {
@@ -6372,7 +6389,7 @@ export async function registerRoutes(
   // ==========================================
 
   // Send offer letter
-  app.post("/api/hr/tools/offer-letters", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const { candidateTitle, candidateName, candidatePersonalEmail, candidateAddress,
         designation, subjectDesignation, reportingToUserId, departmentId,
@@ -6599,7 +6616,7 @@ export async function registerRoutes(
   });
 
   // List all offer letters
-  app.get("/api/hr/tools/offer-letters", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/tools/offer-letters", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const letters = await storage.getOfferLetters();
       const allUsers = await storage.getAdminUsers();
@@ -6627,7 +6644,7 @@ export async function registerRoutes(
   });
 
   // Approve a pending offer letter
-  app.patch("/api/hr/tools/offer-letters/:id/approve", requireAuth, requireRole("super_admin"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/tools/offer-letters/:id/approve", requireAuth, requirePermission("hr.tools.offerLetters.approve", "super_admin"), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const actorId = req.session.userId!;
@@ -6702,7 +6719,7 @@ export async function registerRoutes(
   });
 
   // Reject a pending offer letter
-  app.patch("/api/hr/tools/offer-letters/:id/reject", requireAuth, requireRole("super_admin"), async (req: Request, res: Response) => {
+  app.patch("/api/hr/tools/offer-letters/:id/reject", requireAuth, requirePermission("hr.tools.offerLetters.reject", "super_admin"), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { reason } = req.body;
@@ -6988,7 +7005,7 @@ export async function registerRoutes(
   });
 
   // Counter-sign offer letter
-  app.post("/api/admin/offer-letters/:id/countersign", requireAuth, requireRole("hr", "super_admin", "admin"), async (req: Request, res: Response) => {
+  app.post("/api/admin/offer-letters/:id/countersign", requireAuth, requirePermission("admin.offerLetters.countersign", "hr", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetter(req.params.id);
       if (!letter) {
@@ -7049,7 +7066,7 @@ export async function registerRoutes(
   // ==========================================
 
   // List addendums for an offer letter
-  app.get("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requirePermission("hr.tools.offerLetters.addendums.get", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const addendums = await storage.getAddendumsForOffer(req.params.offerId);
       res.json(addendums);
@@ -7060,7 +7077,7 @@ export async function registerRoutes(
   });
 
   // Create addendum + send email
-  app.post("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums", requireAuth, requirePermission("hr.tools.offerLetters.addendums.post", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const offerLetter = await storage.getOfferLetter(req.params.offerId);
       if (!offerLetter) {
@@ -7166,7 +7183,7 @@ export async function registerRoutes(
   });
 
   // Download addendum DOCX
-  app.get("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/download", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/download", requireAuth, requirePermission("hr.tools.offerLetters.addendums.download", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum || addendum.offerLetterId !== req.params.offerId) {
@@ -7213,7 +7230,7 @@ export async function registerRoutes(
   });
 
   // Resend addendum email
-  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/send", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/send", requireAuth, requirePermission("hr.tools.offerLetters.addendums.send", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum || addendum.offerLetterId !== req.params.offerId) {
@@ -7256,7 +7273,7 @@ export async function registerRoutes(
   });
 
   // Cancel addendum
-  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:offerId/addendums/:addendumId/cancel", requireAuth, requirePermission("hr.tools.offerLetters.addendums.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum || addendum.offerLetterId !== req.params.offerId) {
@@ -7441,7 +7458,7 @@ export async function registerRoutes(
   });
 
   // List standalone addendums
-  app.get("/api/hr/tools/addendums/standalone", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/tools/addendums/standalone", requireAuth, requirePermission("hr.tools.addendums.standalone.get", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const addendums = await storage.getStandaloneAddendums();
       res.json(addendums);
@@ -7452,7 +7469,7 @@ export async function registerRoutes(
   });
 
   // Create standalone addendum
-  app.post("/api/hr/tools/addendums/standalone", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/addendums/standalone", requireAuth, requirePermission("hr.tools.addendums.standalone.post", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const {
         employeeName, employeeEmail, employeeDesignation, employeeDepartment,
@@ -7589,7 +7606,7 @@ export async function registerRoutes(
 
   // Preview standalone addendum DOCX — generates the document from form data without
   // saving to the database or sending any email. Used for "Preview before send" UX.
-  app.post("/api/hr/tools/addendums/standalone/preview", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/addendums/standalone/preview", requireAuth, requirePermission("hr.tools.addendums.standalone.preview", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const {
         employeeName, employeeEmail, employeeDesignation, employeeJoiningDate,
@@ -7656,7 +7673,7 @@ export async function registerRoutes(
   });
 
   // Download standalone addendum DOCX
-  app.get("/api/hr/tools/addendums/:addendumId/download", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/tools/addendums/:addendumId/download", requireAuth, requirePermission("hr.tools.addendums.download", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum) {
@@ -7712,7 +7729,7 @@ export async function registerRoutes(
   });
 
   // Cancel standalone addendum
-  app.post("/api/hr/tools/addendums/:addendumId/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/addendums/:addendumId/cancel", requireAuth, requirePermission("hr.tools.addendums.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum || !addendum.isStandalone) {
@@ -7735,7 +7752,7 @@ export async function registerRoutes(
   });
 
   // Resend standalone addendum email
-  app.post("/api/hr/tools/addendums/:addendumId/send", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/addendums/:addendumId/send", requireAuth, requirePermission("hr.tools.addendums.send", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum || !addendum.isStandalone) {
@@ -7783,7 +7800,7 @@ export async function registerRoutes(
   });
 
   // HR: Counter-sign addendum
-  app.post("/api/hr/tools/addendums/:addendumId/countersign", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/addendums/:addendumId/countersign", requireAuth, requirePermission("hr.tools.addendums.countersign", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const addendum = await storage.getAddendum(req.params.addendumId);
       if (!addendum) {
@@ -7832,7 +7849,7 @@ export async function registerRoutes(
   });
 
   // Start onboarding — creates employee profile
-  app.post("/api/hr/tools/offer-letters/:id/start-onboarding", requireAuth, requireRole("super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:id/start-onboarding", requireAuth, requirePermission("hr.tools.offerLetters.startOnboarding", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetter(req.params.id);
       if (!letter) {
@@ -8048,7 +8065,7 @@ export async function registerRoutes(
   });
 
   // New Hire onboarding status — recent employees with setup checklist
-  app.get("/api/hr/new-hire/onboarding-status", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+  app.get("/api/hr/new-hire/onboarding-status", requireAuth, requirePermission("hr.newHire.onboardingStatus", "super_admin", "admin", "hr", "operations", "manager"), async (req: Request, res: Response) => {
     try {
       const result = await db.execute(sql`
         SELECT
@@ -8101,7 +8118,7 @@ export async function registerRoutes(
   });
 
   // Cancel offer letter
-  app.post("/api/hr/tools/offer-letters/:id/cancel", requireAuth, requireRole("super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/tools/offer-letters/:id/cancel", requireAuth, requirePermission("hr.tools.offerLetters.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetter(req.params.id);
       if (!letter) {
@@ -8131,7 +8148,7 @@ export async function registerRoutes(
   // MY TEAM API ROUTES (with edit and audit trail)
   // ==========================================
 
-  app.get("/api/admin/my-team", requireAuth, requireRole("super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
+  app.get("/api/admin/my-team", requireAuth, requirePermission("admin.myTeam", "super_admin", "admin", "hr", "operations", "manager"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role!;
@@ -8221,7 +8238,7 @@ export async function registerRoutes(
     return false;
   }
 
-  app.patch("/api/admin/my-team/:userId/attendance/:attendanceId", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.patch("/api/admin/my-team/:userId/attendance/:attendanceId", requirePermission("admin.myTeam.attendance", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId, attendanceId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8288,7 +8305,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/my-team/:userId/profile", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.patch("/api/admin/my-team/:userId/profile", requirePermission("admin.myTeam.profile", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8370,7 +8387,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/my-team/:userId/regional-holidays", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.post("/api/admin/my-team/:userId/regional-holidays", requirePermission("admin.myTeam.regionalHolidays", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8417,7 +8434,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/my-team/:userId/regional-holidays/:selectionId", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.delete("/api/admin/my-team/:userId/regional-holidays/:selectionId", requirePermission("admin.myTeam.regionalHolidays", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId, selectionId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8453,7 +8470,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/my-team/:userId/emergency-contacts", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.post("/api/admin/my-team/:userId/emergency-contacts", requirePermission("admin.myTeam.emergencyContacts", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8491,7 +8508,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/my-team/:userId/emergency-contacts/:contactId", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.patch("/api/admin/my-team/:userId/emergency-contacts/:contactId", requirePermission("admin.myTeam.emergencyContacts", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId, contactId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8533,7 +8550,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/my-team/:userId/emergency-contacts/:contactId", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.delete("/api/admin/my-team/:userId/emergency-contacts/:contactId", requirePermission("admin.myTeam.emergencyContacts", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId, contactId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8563,7 +8580,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/my-team/:userId/tickets/:ticketId", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.patch("/api/admin/my-team/:userId/tickets/:ticketId", requirePermission("admin.myTeam.tickets", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId, ticketId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8619,7 +8636,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/my-team/:userId/audit-log", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/admin/my-team/:userId/audit-log", requirePermission("admin.myTeam.auditLog", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8650,7 +8667,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/my-team/:userId/details", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/admin/my-team/:userId/details", requirePermission("admin.myTeam.details", "hr", "manager", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
       const hasAccess = await validateMyTeamAccess(req, res, userId);
@@ -8752,7 +8769,7 @@ export async function registerRoutes(
   // MY TEAM — LEAVE TRACKING & APPLY ON BEHALF
   // ==========================================
 
-  app.get("/api/admin/my-team/:userId/leaves", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/admin/my-team/:userId/leaves", requirePermission("admin.myTeam.leaves", "hr", "manager", "operations"), async (req, res) => {
     try {
       const targetUserId = req.params.userId as string;
       const actorId = req.session.userId!;
@@ -8810,7 +8827,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/my-team/:userId/apply-leave", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.post("/api/admin/my-team/:userId/apply-leave", requirePermission("admin.myTeam.applyLeave", "hr", "manager", "operations"), async (req, res) => {
     try {
       const targetUserId = req.params.userId as string;
       const actorId = req.session.userId!;
@@ -8884,7 +8901,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/my-team/members", requireRole("hr", "manager", "operations"), async (req, res) => {
+  app.get("/api/admin/my-team/members", requirePermission("admin.myTeam.members", "hr", "manager", "operations"), async (req, res) => {
     try {
       const actorId = req.session.userId!;
       const actorRole = req.session.role!;
@@ -8936,7 +8953,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/system/feature-flags", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+  app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
       const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled"];
       const updates = req.body as Record<string, unknown>;
@@ -8972,7 +8989,7 @@ export async function registerRoutes(
   });
 
   // Company Profile — admin-only upsert
-  app.patch("/api/company-profile", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+  app.patch("/api/company-profile", requireAuth, requirePermission("companyProfile", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
       const result = companyProfileSchema.safeParse(req.body);
       if (!result.success) {
@@ -9067,7 +9084,7 @@ export async function registerRoutes(
     return _signHrLetter(letter);
   }
 
-  app.get("/api/hr/letters/wording-matrix", requireRole("hr"), async (_req, res) => {
+  app.get("/api/hr/letters/wording-matrix", requirePermission("hr.letters.wordingMatrix", "hr"), async (_req, res) => {
     res.json({
       performanceBand: PERFORMANCE_BAND_SENTENCES,
       conductBand: CONDUCT_BAND_SENTENCES,
@@ -9075,7 +9092,7 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/hr/letter-templates/sentences", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/letter-templates/sentences", requirePermission("hr.letterTemplates.sentences", "hr"), async (req, res) => {
     try {
       const { category } = req.query;
       const sentences = await storage.getLetterTemplateSentences(category as string | undefined);
@@ -9125,7 +9142,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/letter-templates/roles", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/letter-templates/roles", requirePermission("hr.letterTemplates.roles", "hr"), async (req, res) => {
     try {
       const { designation, vertical } = req.query;
       const roles = await storage.getRoleSummaryTemplates({
@@ -9138,7 +9155,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/letters", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/letters", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const { templateType, status, search } = req.query;
       const letters = await storage.getHrLetters({
@@ -9153,7 +9170,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/letters/:id", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/letters/:id", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9163,7 +9180,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const templateType = req.body.templateType;
       const STANDARD_TEMPLATES = ["experience", "internship_completion", "internship_certificate", "relieving"];
@@ -9499,7 +9516,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/letters/:id", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/letters/:id", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9559,7 +9576,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters/:id/approve", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters/:id/approve", requirePermission("hr.letters.approve", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9583,7 +9600,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters/:id/issue", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters/:id/issue", requirePermission("hr.letters.issue", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9661,7 +9678,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/letters/:id/download", requireRole("hr"), async (req, res) => {
+  app.get("/api/hr/letters/:id/download", requirePermission("hr.letters.download", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9738,7 +9755,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters/:id/email", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters/:id/email", requirePermission("hr.letters.email", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -9827,7 +9844,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters/:id/reissue", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters/:id/reissue", requirePermission("hr.letters.reissue", "hr"), async (req, res) => {
     try {
       const originalLetter = await storage.getHrLetter(req.params.id);
       if (!originalLetter) return res.status(404).json({ error: "Letter not found" });
@@ -9982,7 +9999,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/letters/:id/revoke", requireRole("hr"), async (req, res) => {
+  app.post("/api/hr/letters/:id/revoke", requirePermission("hr.letters.revoke", "hr"), async (req, res) => {
     try {
       const letter = await storage.getHrLetter(req.params.id);
       if (!letter) return res.status(404).json({ error: "Letter not found" });
@@ -10327,7 +10344,7 @@ export async function registerRoutes(
   });
 
   // Update grace period minutes for a shift
-  app.patch("/api/hr/admin/shifts/:id/grace-period", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.patch("/api/hr/admin/shifts/:id/grace-period", requirePermission("hr.admin.shifts.gracePeriod", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const { gracePeriodMinutes } = req.body;
       const val = parseInt(gracePeriodMinutes, 10);
@@ -10349,7 +10366,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/shifts/current-timing/:shiftId", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/shifts/current-timing/:shiftId", requirePermission("hr.shifts.currentTiming", "hr", "manager"), async (req, res) => {
     try {
       const timing = await getCurrentShiftTiming(req.params.shiftId);
       if (!timing) return res.status(404).json({ error: "Shift not found" });
@@ -10360,7 +10377,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/users/:id/shift", requireRole("hr"), async (req, res) => {
+  app.patch("/api/hr/users/:id/shift", requirePermission("hr.users.shift", "hr"), async (req, res) => {
     try {
       const { shiftId, reason } = req.body;
       if (!shiftId || typeof shiftId !== "string") {
@@ -10403,7 +10420,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/users/:id/shift-history", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/users/:id/shift-history", requirePermission("hr.users.shiftHistory", "hr", "manager"), async (req, res) => {
     try {
       const hasAccess = await validateMyTeamAccess(req, res, req.params.id);
       if (!hasAccess) return;
@@ -10480,7 +10497,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/policy-acknowledgements", requireRole("hr", "manager"), async (req, res) => {
+  app.get("/api/hr/policy-acknowledgements", requirePermission("hr.policyAcknowledgements", "hr", "manager"), async (req, res) => {
     try {
       const rows = await db.select({
         id: policyAcknowledgements.id,
@@ -10552,7 +10569,7 @@ export async function registerRoutes(
   // ANNOUNCEMENTS — admin management
   // ==========================================
 
-  app.get("/api/admin/announcements", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/admin/announcements", requirePermission("admin.announcements", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const [versionSetting, contentSetting, lastSentSetting] = await Promise.all([
         storage.getSystemSetting("app_announcement_version"),
@@ -10569,7 +10586,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/announcements", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.patch("/api/admin/announcements", requirePermission("admin.announcements", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const { version, content } = req.body;
       const adminId = req.session.userId!;
@@ -10586,7 +10603,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/announcements/recipient-count", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.get("/api/admin/announcements/recipient-count", requirePermission("admin.announcements.recipientCount", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const allActive = await storage.getAllActiveEmployees();
       const targetRoles = ["employee", "manager", "recruiter", "operations", "finance"];
@@ -10597,7 +10614,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/announcements/send-email", requireRole("hr", "admin", "super_admin"), async (req, res) => {
+  app.post("/api/admin/announcements/send-email", requirePermission("admin.announcements.sendEmail", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const adminId = req.session.userId!;
       const featureFlags = await (async () => {

@@ -5,6 +5,7 @@ import {
   systemSettings, adminUsers, auditLogs,
   type PerformanceGoal, type GoalMilestone, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
 } from "@shared/schema";
+import { resolveRoles } from "@shared/accessControl";
 import { eq, and, or, inArray, sql, desc, asc, isNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
 import { sendCheckInReminderEmail } from "./email";
@@ -125,16 +126,14 @@ function requireAuth(req: Request, res: Response): string | null {
   return req.session.userId;
 }
 
-function requireRole(req: Request, res: Response, allowedRoles: string[]): string | null {
+function requireRole(req: Request, res: Response, featureKey: string, allowedRoles: string[]): string | null {
   const userId = requireAuth(req, res);
   if (!userId) return null;
   const role = req.session.role;
-  if (role === "super_admin" || role === "admin") return userId;
-  if (!allowedRoles.includes(role!)) {
-    res.status(403).json({ error: "Insufficient permissions" });
-    return null;
-  }
-  return userId;
+  const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...allowedRoles])));
+  if (allowed.includes(role!)) return userId;
+  res.status(403).json({ error: "Insufficient permissions" });
+  return null;
 }
 
 async function isFeatureEnabledOrAdmin(role: string): Promise<boolean> {
@@ -265,7 +264,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ==========================================
 
   app.get("/api/performance/goals", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -281,7 +280,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/performance/goals/team", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "performance.goals.team", MANAGER_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -306,7 +305,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Grouped team goals endpoint — returns members shape expected by TeamGoals.tsx
   app.get("/api/performance/team-goals", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "performance.teamGoals", MANAGER_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -370,7 +369,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/goals", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
     const role = req.session.role!;
@@ -410,7 +409,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Batch create goals — from annexure rows (with sourceRef) or manual bulk paste (no sourceRef)
   app.post("/api/performance/goals/batch", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.batch", ALL_ROLES);
     if (!userId) return;
 
     try {
@@ -546,7 +545,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.patch("/api/performance/goals/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
     const role = req.session.role!;
@@ -590,7 +589,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.delete("/api/performance/goals/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
     const role = req.session.role!;
@@ -621,7 +620,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // List milestones for a goal
   app.get("/api/performance/goals/:goalId/milestones", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.milestones", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -641,7 +640,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Create a milestone on a goal
   app.post("/api/performance/goals/:goalId/milestones", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.milestones", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -674,7 +673,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Update a milestone (title, target date, done state)
   app.patch("/api/performance/milestones/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.milestones", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -706,7 +705,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Delete a milestone
   app.delete("/api/performance/milestones/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.milestones", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -729,7 +728,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Reorder milestones within a goal
   app.post("/api/performance/goals/:goalId/milestones/reorder", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.milestones.reorder", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -766,7 +765,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // List check-ins linked to a specific goal
   app.get("/api/performance/goals/:goalId/check-ins", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.checkIns", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -793,7 +792,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Create a check-in linked to a specific goal (owner or manager/admin of the owner)
   app.post("/api/performance/goals/:goalId/check-ins", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.goals.checkIns", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -827,7 +826,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ==========================================
 
   app.get("/api/performance/check-ins", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.checkIns.get", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -874,7 +873,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/check-ins", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "performance.checkIns.post", MANAGER_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -936,7 +935,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.patch("/api/performance/check-ins/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.checkIns.patch", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -982,7 +981,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ==========================================
 
   app.get("/api/performance/review-cycles", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.reviewCycles.get", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -996,7 +995,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/review-cycles", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ADMIN_ROLES);
+    const userId = requireRole(req, res, "performance.reviewCycles.post", ADMIN_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1021,7 +1020,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.patch("/api/performance/review-cycles/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ADMIN_ROLES);
+    const userId = requireRole(req, res, "performance.reviewCycles.patch", ADMIN_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1051,7 +1050,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ==========================================
 
   app.get("/api/performance/reviews/my", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.reviews.my", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1071,7 +1070,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/performance/reviews/team", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "performance.reviews.team", MANAGER_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1099,7 +1098,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/performance/reviews/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.reviews", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1122,7 +1121,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/reviews/self", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.reviews.self", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1160,7 +1159,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/reviews/manager", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "performance.reviews.manager", MANAGER_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1207,7 +1206,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ==========================================
 
   app.get("/api/performance/feedback/received", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.feedback.received", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1232,7 +1231,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/performance/feedback/sent", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.feedback.sent", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1257,7 +1256,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/performance/feedback", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.feedback", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1290,7 +1289,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   // Returns a minimal list of active employees accessible to all performance module users
   app.get("/api/performance/employees", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "performance.employees", ALL_ROLES);
     if (!userId) return;
     if (!(await requireFeatureAccess(req, res))) return;
 
@@ -1369,7 +1368,7 @@ export function registerPerformanceRoutes(app: Express) {
   // Returns distinct (plan_type, role_slug) combinations for active templates in a given dept.
   // Used by the frontend Load-from-Template dialog to build a DB-driven role dropdown.
   app.get("/api/hr/plan-templates/meta", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "hr.planTemplates.meta", MANAGER_ROLES);
     if (!userId) return;
     try {
       const { department_scope } = req.query as { department_scope?: string };
@@ -1390,7 +1389,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/hr/plan-templates", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "hr.planTemplates.get", MANAGER_ROLES);
     if (!userId) return;
     try {
       const { plan_type, role_slug, department_scope, active_only } = req.query as {
@@ -1419,7 +1418,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/hr/plan-templates", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ADMIN_ROLES);
+    const userId = requireRole(req, res, "hr.planTemplates.post", ADMIN_ROLES);
     if (!userId) return;
     try {
       const { plan_type, role_slug, goal_title, goal_category, goal_description, target_metric, sort_order } = req.body;
@@ -1438,7 +1437,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.patch("/api/hr/plan-templates/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ADMIN_ROLES);
+    const userId = requireRole(req, res, "hr.planTemplates.patch", ADMIN_ROLES);
     if (!userId) return;
     try {
       const { goal_title, goal_description, target_metric, sort_order, is_active, goal_category } = req.body;
@@ -1464,7 +1463,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.delete("/api/hr/plan-templates/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ADMIN_ROLES);
+    const userId = requireRole(req, res, "hr.planTemplates.delete", ADMIN_ROLES);
     if (!userId) return;
     try {
       await db.execute(sql`DELETE FROM plan_goal_templates WHERE id = ${req.params.id}`);
@@ -1481,7 +1480,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ═══════════════════════════════════════════════════════════════════════════
 
   app.post("/api/hr/plans", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "hr.plans.post", MANAGER_ROLES);
     if (!userId) return;
     try {
       const { employee_id, plan_type, start_date, end_date, duration_days, manager_id, role_slug } = req.body;
@@ -1591,7 +1590,7 @@ export function registerPerformanceRoutes(app: Express) {
 
   app.get("/api/hr/plans", async (req: Request, res: Response) => {
     // Employees can list their own plans; managers/admin see their scope
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.plans.get", ALL_ROLES);
     if (!userId) return;
     try {
       const { employee_id, plan_type, status, department_scope } = req.query as {
@@ -1664,7 +1663,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.get("/api/hr/plans/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.plans.get", ALL_ROLES);
     if (!userId) return;
     try {
       const result = await db.execute(sql`
@@ -1694,7 +1693,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.patch("/api/hr/plans/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "hr.plans.patch", MANAGER_ROLES);
     if (!userId) return;
     try {
       // Fetch plan first to enforce object-level authorization
@@ -1765,7 +1764,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ─── Complete a plan check-in (manager action) ────────────────────────────
   // Supports PIP weekly review (reviewScores JSONB) and standard (rating/notes)
   app.patch("/api/hr/check-ins/:id", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, MANAGER_ROLES);
+    const userId = requireRole(req, res, "hr.checkIns", MANAGER_ROLES);
     if (!userId) return;
     try {
       const ciResult = await db.execute(sql`SELECT * FROM check_ins WHERE id = ${req.params.id}`);
@@ -1818,7 +1817,7 @@ export function registerPerformanceRoutes(app: Express) {
   });
 
   app.post("/api/hr/plans/:id/acknowledge", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.plans.acknowledge", ALL_ROLES);
     if (!userId) return;
     try {
       const { typed_name } = req.body as { typed_name?: string };
@@ -1912,7 +1911,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ─── Employee "My Plan" — fetch own active or pending plan ────────────────
 
   app.get("/api/hr/my-plan", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.myPlan", ALL_ROLES);
     if (!userId) return;
     try {
       // Fetch the most recent active or pending plan for this employee
@@ -1974,7 +1973,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ─── Update goal progress/notes (employee self-update) ────────────────────
 
   app.patch("/api/hr/plans/:planId/goals/:goalId", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.plans.goals", ALL_ROLES);
     if (!userId) return;
     try {
       const { planId, goalId } = req.params;
@@ -2041,7 +2040,7 @@ export function registerPerformanceRoutes(app: Express) {
   // ─── Employee weekly self-update for a plan ───────────────────────────────
 
   app.post("/api/hr/plans/:planId/weekly-update", async (req: Request, res: Response) => {
-    const userId = requireRole(req, res, ALL_ROLES);
+    const userId = requireRole(req, res, "hr.plans.weeklyUpdate", ALL_ROLES);
     if (!userId) return;
     try {
       const { planId } = req.params;
