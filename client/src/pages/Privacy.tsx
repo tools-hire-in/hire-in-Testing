@@ -8,6 +8,7 @@ export default function Privacy() {
     title: "Privacy Policy | Hire'in Solutions",
     description:
       "Read the Hire'in Solutions Privacy Policy to understand how we collect, use, and protect your personal information.",
+    canonical: "https://hire-in.com/privacy",
   });
 
   return (

@@ -38,6 +38,7 @@ import {
   ArrowRight,
   Zap,
 } from "lucide-react";
+import { useSEO } from "@/hooks/use-seo";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -130,19 +131,12 @@ export default function CapabilityDeck() {
   const [pdfProgress, setPdfProgress] = useState<number | null>(null);
   const [pptProgress, setPptProgress] = useState<number | null>(null);
 
-  useEffect(() => {
-    document.title = "Capability Deck | Hire'in Solutions - AI-Powered Recruitment";
-    const setMeta = (name: string, content: string, property?: boolean) => {
-      const attr = property ? "property" : "name";
-      let el = document.querySelector(`meta[${attr}="${name}"]`);
-      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, name); document.head.appendChild(el); }
-      el.setAttribute("content", content);
-    };
-    setMeta("description", "Hire'in Solutions general capability deck — AI-powered staffing across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014). View our interactive deck and download PDF/PPT.");
-    setMeta("og:title", "Capability Deck | Hire'in Solutions", true);
-    setMeta("og:type", "website", true);
-    return () => { document.title = "Hire'in Solutions"; };
-  }, []);
+  useSEO({
+    title: "Capability Deck | Hire'in Solutions - AI-Powered Recruitment",
+    description:
+      "Hire'in Solutions general capability deck — AI-powered staffing across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014). View our interactive deck and download PDF/PPT.",
+    canonical: "https://hire-in.com/capability-deck",
+  });
 
   const goTo = useCallback((idx: number) => {
     setCurrentSlide(Math.max(0, Math.min(CAPABILITY_TOTAL_SLIDES - 1, idx)));

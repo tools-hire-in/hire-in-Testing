@@ -8,6 +8,7 @@ export default function Terms() {
     title: "Terms of Service | Hire'in Solutions",
     description:
       "Review the Terms of Service for Hire'in Solutions. Understand your rights and obligations when using our recruitment and staffing platform.",
+    canonical: "https://hire-in.com/terms",
   });
 
   return (

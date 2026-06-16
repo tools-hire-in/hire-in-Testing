@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 
+const BASE_URL = "https://hire-in.com";
 const DEFAULT_TITLE = "Hire'in Solutions | AI-Powered Recruitment & Staffing";
 const DEFAULT_DESCRIPTION =
   "Hire'in Solutions is an AI-powered staffing agency specialising in Healthcare, IT, Engineering, and Professional Services. Find your next career opportunity or hire top talent today.";
+const DEFAULT_IMAGE = `${BASE_URL}/og-image.svg`;
+const SITE_NAME = "Hire'in Solutions";
 
 function setMeta(name: string, content: string) {
   let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
@@ -43,16 +46,28 @@ interface SEOOptions {
   title: string;
   description: string;
   canonical?: string;
+  image?: string;
 }
 
-export function useSEO({ title, description, canonical }: SEOOptions) {
+export function useSEO({ title, description, canonical, image }: SEOOptions) {
   useEffect(() => {
     const prevTitle = document.title;
+    const ogImage = image || DEFAULT_IMAGE;
+
     document.title = title;
     setMeta("description", description);
+
     setOgMeta("og:title", title);
     setOgMeta("og:description", description);
     setOgMeta("og:type", "website");
+    setOgMeta("og:site_name", SITE_NAME);
+    setOgMeta("og:image", ogImage);
+    setOgMeta("og:image:alt", `${SITE_NAME} — AI-Powered Recruitment & Staffing`);
+
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:title", title);
+    setMeta("twitter:description", description);
+    setMeta("twitter:image", ogImage);
 
     if (canonical) {
       setCanonical(canonical);
@@ -62,7 +77,9 @@ export function useSEO({ title, description, canonical }: SEOOptions) {
     return () => {
       document.title = prevTitle || DEFAULT_TITLE;
       setMeta("description", DEFAULT_DESCRIPTION);
+      setOgMeta("og:image", DEFAULT_IMAGE);
+      setMeta("twitter:image", DEFAULT_IMAGE);
       if (canonical) removeCanonical();
     };
-  }, [title, description, canonical]);
+  }, [title, description, canonical, image]);
 }

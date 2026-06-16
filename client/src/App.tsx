@@ -1,9 +1,11 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Jobs from "@/pages/Jobs";
@@ -24,53 +26,61 @@ import ITStaffingGuide from "@/pages/ITStaffingGuide";
 import HealthcareStaffingGuide from "@/pages/HealthcareStaffingGuide";
 import StaffingFAQ from "@/pages/StaffingFAQ";
 import RequestAQuote from "@/pages/RequestAQuote";
-import AdminContacts from "@/pages/admin/Contacts";
-import AdminLogin from "@/pages/admin/Login";
-import ForgotPassword from "@/pages/admin/ForgotPassword";
-import ResetPassword from "@/pages/admin/ResetPassword";
-import Recruitment from "@/pages/admin/Recruitment";
-import JobApplications from "@/pages/admin/JobApplications";
 import OnboardAccept from "@/pages/OnboardAccept";
 import AddendumAccept from "@/pages/AddendumAccept";
-import PerformanceReviewCycles from "@/pages/admin/performance/ReviewCycles";
-import PerformanceAnalytics from "@/pages/admin/performance/Analytics";
 import VerifyLetter from "@/pages/VerifyLetter";
 import Contracts from "@/pages/Contracts";
-
-// Consolidated tab pages (new nav)
-import MyWork from "@/pages/admin/hr/MyWork";
-import MyProfile from "@/pages/admin/MyProfile";
-import MyGrowth from "@/pages/admin/MyGrowth";
-import PeopleHR from "@/pages/admin/PeopleHR";
-import MyTeamTabs from "@/pages/admin/hr/MyTeamTabs";
-
-// Legacy standalone pages (backward compat + used inside tabs)
-import HRDashboard from "@/pages/admin/hr/HRDashboard";
-import HRAttendance from "@/pages/admin/hr/Attendance";
-import HRLeaveManagement from "@/pages/admin/hr/LeaveManagement";
-import HRHolidayCalendar from "@/pages/admin/hr/HolidayCalendar";
-import HRProfile from "@/pages/admin/hr/Profile";
-import HRLeaveApprovals from "@/pages/admin/hr/LeaveApprovals";
-import HRSettings from "@/pages/admin/hr/HRSettings";
-import OrgChart from "@/pages/admin/hr/OrgChart";
-import SalarySlips from "@/pages/admin/hr/SalarySlips";
-import MyDocuments from "@/pages/admin/hr/MyDocuments";
-import HRTools from "@/pages/admin/hr/HRTools";
-import MyTraining from "@/pages/admin/hr/MyTraining";
-import TrainingManagement from "@/pages/admin/hr/TrainingManagement";
-import TeamAttendance from "@/pages/admin/hr/TeamAttendance";
-import TrainingProgress from "@/pages/admin/hr/TrainingProgress";
-import ReportsCompliance from "@/pages/admin/hr/ReportsCompliance";
-import AdminUsers from "@/pages/admin/Users";
-import Goals from "@/pages/admin/performance/Goals";
-import PerformanceCheckIns from "@/pages/admin/performance/CheckIns";
-import Reviews from "@/pages/admin/performance/Reviews";
-import PerformanceFeedback from "@/pages/admin/performance/Feedback";
-import PolicyGate from "@/pages/admin/PolicyGate";
-import NewHire from "@/pages/admin/NewHire";
-import ContractsHub from "@/pages/admin/finance/ContractsHub";
 import ContractSign from "@/pages/ContractSign";
-import PolicySigningPage from "@/pages/admin/hr/PolicySigningPage";
+
+const AdminLogin = lazy(() => import("@/pages/admin/Login"));
+const ForgotPassword = lazy(() => import("@/pages/admin/ForgotPassword"));
+const ResetPassword = lazy(() => import("@/pages/admin/ResetPassword"));
+const AdminContacts = lazy(() => import("@/pages/admin/Contacts"));
+const Recruitment = lazy(() => import("@/pages/admin/Recruitment"));
+const JobApplications = lazy(() => import("@/pages/admin/JobApplications"));
+const MyWork = lazy(() => import("@/pages/admin/hr/MyWork"));
+const MyProfile = lazy(() => import("@/pages/admin/MyProfile"));
+const MyGrowth = lazy(() => import("@/pages/admin/MyGrowth"));
+const PeopleHR = lazy(() => import("@/pages/admin/PeopleHR"));
+const MyTeamTabs = lazy(() => import("@/pages/admin/hr/MyTeamTabs"));
+const HRDashboard = lazy(() => import("@/pages/admin/hr/HRDashboard"));
+const HRAttendance = lazy(() => import("@/pages/admin/hr/Attendance"));
+const HRLeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
+const HRHolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
+const HRProfile = lazy(() => import("@/pages/admin/hr/Profile"));
+const HRLeaveApprovals = lazy(() => import("@/pages/admin/hr/LeaveApprovals"));
+const HRSettings = lazy(() => import("@/pages/admin/hr/HRSettings"));
+const OrgChart = lazy(() => import("@/pages/admin/hr/OrgChart"));
+const SalarySlips = lazy(() => import("@/pages/admin/hr/SalarySlips"));
+const MyDocuments = lazy(() => import("@/pages/admin/hr/MyDocuments"));
+const HRTools = lazy(() => import("@/pages/admin/hr/HRTools"));
+const MyTraining = lazy(() => import("@/pages/admin/hr/MyTraining"));
+const TrainingManagement = lazy(() => import("@/pages/admin/hr/TrainingManagement"));
+const TeamAttendance = lazy(() => import("@/pages/admin/hr/TeamAttendance"));
+const TrainingProgress = lazy(() => import("@/pages/admin/hr/TrainingProgress"));
+const ReportsCompliance = lazy(() => import("@/pages/admin/hr/ReportsCompliance"));
+const AdminUsers = lazy(() => import("@/pages/admin/Users"));
+const Goals = lazy(() => import("@/pages/admin/performance/Goals"));
+const PerformanceCheckIns = lazy(() => import("@/pages/admin/performance/CheckIns"));
+const Reviews = lazy(() => import("@/pages/admin/performance/Reviews"));
+const PerformanceFeedback = lazy(() => import("@/pages/admin/performance/Feedback"));
+const PerformanceReviewCycles = lazy(() => import("@/pages/admin/performance/ReviewCycles"));
+const PerformanceAnalytics = lazy(() => import("@/pages/admin/performance/Analytics"));
+const PolicyGate = lazy(() => import("@/pages/admin/PolicyGate"));
+const NewHire = lazy(() => import("@/pages/admin/NewHire"));
+const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
+const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
+
+function AdminFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm">Loading…</span>
+      </div>
+    </div>
+  );
+}
 
 function isEmployeeSubdomain(): boolean {
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -119,50 +129,50 @@ function PublicRouter() {
       <Route path="/verify" component={VerifyLetter} />
 
       {/* Admin auth */}
-      <Route path="/admin/login" component={AdminLogin} />
-      <Route path="/admin/forgot-password" component={ForgotPassword} />
-      <Route path="/admin/reset-password" component={ResetPassword} />
+      <Route path="/admin/login">{() => <Suspense fallback={<AdminFallback />}><AdminLogin /></Suspense>}</Route>
+      <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
+      <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
       {/* Admin root → My Work */}
       <Route path="/admin">{() => <Redirect to="/admin/hr" />}</Route>
 
       {/* Consolidated tab pages (primary nav) */}
-      <Route path="/admin/hr" component={MyWork} />
-      <Route path="/admin/profile" component={MyProfile} />
-      <Route path="/admin/growth" component={MyGrowth} />
-      <Route path="/admin/hr/my-team" component={MyTeamTabs} />
-      <Route path="/admin/hr/people" component={PeopleHR} />
+      <Route path="/admin/hr">{() => <Suspense fallback={<AdminFallback />}><MyWork /></Suspense>}</Route>
+      <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
+      <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
+      <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
+      <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 
       {/* Recruitment / Jobs */}
-      <Route path="/admin/recruitment" component={Recruitment} />
-      <Route path="/admin/applications/job/:jobId" component={JobApplications} />
-      <Route path="/admin/contacts" component={AdminContacts} />
+      <Route path="/admin/recruitment">{() => <Suspense fallback={<AdminFallback />}><Recruitment /></Suspense>}</Route>
+      <Route path="/admin/applications/job/:jobId">{(params) => <Suspense fallback={<AdminFallback />}><JobApplications /></Suspense>}</Route>
+      <Route path="/admin/contacts">{() => <Suspense fallback={<AdminFallback />}><AdminContacts /></Suspense>}</Route>
       <Route path="/admin/jobs">{() => <Redirect to="/admin/recruitment" />}</Route>
       <Route path="/admin/applications">{() => <Redirect to="/admin/recruitment?tab=applications" />}</Route>
 
       {/* New Hire */}
-      <Route path="/admin/new-hire" component={NewHire} />
+      <Route path="/admin/new-hire">{() => <Suspense fallback={<AdminFallback />}><NewHire /></Suspense>}</Route>
 
       {/* Legacy HR standalone pages */}
-      <Route path="/admin/hr/dashboard" component={HRDashboard} />
-      <Route path="/admin/hr/attendance" component={HRAttendance} />
-      <Route path="/admin/hr/leaves" component={HRLeaveManagement} />
-      <Route path="/admin/hr/holidays" component={HRHolidayCalendar} />
-      <Route path="/admin/hr/profile" component={HRProfile} />
-      <Route path="/admin/hr/team-attendance" component={TeamAttendance} />
-      <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
-      <Route path="/admin/hr/settings" component={HRSettings} />
-      <Route path="/admin/hr/org-chart" component={OrgChart} />
-      <Route path="/admin/hr/salary-slips" component={SalarySlips} />
-      <Route path="/admin/hr/my-documents" component={MyDocuments} />
-      <Route path="/admin/hr/tools" component={HRTools} />
-      <Route path="/admin/hr/my-training" component={MyTraining} />
-      <Route path="/admin/hr/training" component={TrainingManagement} />
-      <Route path="/admin/hr/training-progress" component={TrainingProgress} />
-      <Route path="/admin/hr/reports" component={ReportsCompliance} />
-      <Route path="/admin/users" component={AdminUsers} />
-      <Route path="/admin/policy-gate" component={PolicyGate} />
-      <Route path="/admin/hr/documents/policy/:signingId" component={PolicySigningPage} />
+      <Route path="/admin/hr/dashboard">{() => <Suspense fallback={<AdminFallback />}><HRDashboard /></Suspense>}</Route>
+      <Route path="/admin/hr/attendance">{() => <Suspense fallback={<AdminFallback />}><HRAttendance /></Suspense>}</Route>
+      <Route path="/admin/hr/leaves">{() => <Suspense fallback={<AdminFallback />}><HRLeaveManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/holidays">{() => <Suspense fallback={<AdminFallback />}><HRHolidayCalendar /></Suspense>}</Route>
+      <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
+      <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
+      <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
+      <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
+      <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
+      <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
+      <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
+      <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>
+      <Route path="/admin/hr/training">{() => <Suspense fallback={<AdminFallback />}><TrainingManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
+      <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
+      <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>
+      <Route path="/admin/policy-gate">{() => <Suspense fallback={<AdminFallback />}><PolicyGate /></Suspense>}</Route>
+      <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
@@ -171,18 +181,18 @@ function PublicRouter() {
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
 
       {/* Finance & Contracts */}
-      <Route path="/admin/finance" component={ContractsHub} />
+      <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
 
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />
 
       {/* Performance pages */}
-      <Route path="/admin/performance/goals" component={Goals} />
-      <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
-      <Route path="/admin/performance/reviews" component={Reviews} />
-      <Route path="/admin/performance/review-cycles" component={PerformanceReviewCycles} />
-      <Route path="/admin/performance/feedback" component={PerformanceFeedback} />
-      <Route path="/admin/performance/analytics" component={PerformanceAnalytics} />
+      <Route path="/admin/performance/goals">{() => <Suspense fallback={<AdminFallback />}><Goals /></Suspense>}</Route>
+      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns /></Suspense>}</Route>
+      <Route path="/admin/performance/reviews">{() => <Suspense fallback={<AdminFallback />}><Reviews /></Suspense>}</Route>
+      <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
+      <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
+      <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=reviews" />}</Route>
 
@@ -201,50 +211,50 @@ function EmployeeRouter() {
       <Route path="/verify" component={VerifyLetter} />
 
       {/* Admin auth */}
-      <Route path="/admin/login" component={AdminLogin} />
-      <Route path="/admin/forgot-password" component={ForgotPassword} />
-      <Route path="/admin/reset-password" component={ResetPassword} />
+      <Route path="/admin/login">{() => <Suspense fallback={<AdminFallback />}><AdminLogin /></Suspense>}</Route>
+      <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
+      <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
       {/* Admin root → My Work */}
       <Route path="/admin">{() => <Redirect to="/admin/hr" />}</Route>
 
       {/* Consolidated tab pages (primary nav) */}
-      <Route path="/admin/hr" component={MyWork} />
-      <Route path="/admin/profile" component={MyProfile} />
-      <Route path="/admin/growth" component={MyGrowth} />
-      <Route path="/admin/hr/my-team" component={MyTeamTabs} />
-      <Route path="/admin/hr/people" component={PeopleHR} />
+      <Route path="/admin/hr">{() => <Suspense fallback={<AdminFallback />}><MyWork /></Suspense>}</Route>
+      <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
+      <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
+      <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
+      <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 
       {/* Recruitment / Jobs */}
-      <Route path="/admin/recruitment" component={Recruitment} />
-      <Route path="/admin/applications/job/:jobId" component={JobApplications} />
-      <Route path="/admin/contacts" component={AdminContacts} />
+      <Route path="/admin/recruitment">{() => <Suspense fallback={<AdminFallback />}><Recruitment /></Suspense>}</Route>
+      <Route path="/admin/applications/job/:jobId">{() => <Suspense fallback={<AdminFallback />}><JobApplications /></Suspense>}</Route>
+      <Route path="/admin/contacts">{() => <Suspense fallback={<AdminFallback />}><AdminContacts /></Suspense>}</Route>
       <Route path="/admin/jobs">{() => <Redirect to="/admin/recruitment" />}</Route>
       <Route path="/admin/applications">{() => <Redirect to="/admin/recruitment?tab=applications" />}</Route>
 
       {/* New Hire */}
-      <Route path="/admin/new-hire" component={NewHire} />
+      <Route path="/admin/new-hire">{() => <Suspense fallback={<AdminFallback />}><NewHire /></Suspense>}</Route>
 
       {/* Legacy HR standalone pages */}
-      <Route path="/admin/hr/dashboard" component={HRDashboard} />
-      <Route path="/admin/hr/attendance" component={HRAttendance} />
-      <Route path="/admin/hr/leaves" component={HRLeaveManagement} />
-      <Route path="/admin/hr/holidays" component={HRHolidayCalendar} />
-      <Route path="/admin/hr/profile" component={HRProfile} />
-      <Route path="/admin/hr/team-attendance" component={TeamAttendance} />
-      <Route path="/admin/hr/leave-approvals" component={HRLeaveApprovals} />
-      <Route path="/admin/hr/settings" component={HRSettings} />
-      <Route path="/admin/hr/org-chart" component={OrgChart} />
-      <Route path="/admin/hr/salary-slips" component={SalarySlips} />
-      <Route path="/admin/hr/my-documents" component={MyDocuments} />
-      <Route path="/admin/hr/tools" component={HRTools} />
-      <Route path="/admin/hr/my-training" component={MyTraining} />
-      <Route path="/admin/hr/training" component={TrainingManagement} />
-      <Route path="/admin/hr/training-progress" component={TrainingProgress} />
-      <Route path="/admin/hr/reports" component={ReportsCompliance} />
-      <Route path="/admin/users" component={AdminUsers} />
-      <Route path="/admin/policy-gate" component={PolicyGate} />
-      <Route path="/admin/hr/documents/policy/:signingId" component={PolicySigningPage} />
+      <Route path="/admin/hr/dashboard">{() => <Suspense fallback={<AdminFallback />}><HRDashboard /></Suspense>}</Route>
+      <Route path="/admin/hr/attendance">{() => <Suspense fallback={<AdminFallback />}><HRAttendance /></Suspense>}</Route>
+      <Route path="/admin/hr/leaves">{() => <Suspense fallback={<AdminFallback />}><HRLeaveManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/holidays">{() => <Suspense fallback={<AdminFallback />}><HRHolidayCalendar /></Suspense>}</Route>
+      <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
+      <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
+      <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
+      <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
+      <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
+      <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
+      <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
+      <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>
+      <Route path="/admin/hr/training">{() => <Suspense fallback={<AdminFallback />}><TrainingManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
+      <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
+      <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>
+      <Route path="/admin/policy-gate">{() => <Suspense fallback={<AdminFallback />}><PolicyGate /></Suspense>}</Route>
+      <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
@@ -253,18 +263,18 @@ function EmployeeRouter() {
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
 
       {/* Finance & Contracts */}
-      <Route path="/admin/finance" component={ContractsHub} />
+      <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
 
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />
 
       {/* Performance pages */}
-      <Route path="/admin/performance/goals" component={Goals} />
-      <Route path="/admin/performance/check-ins" component={PerformanceCheckIns} />
-      <Route path="/admin/performance/reviews" component={Reviews} />
-      <Route path="/admin/performance/review-cycles" component={PerformanceReviewCycles} />
-      <Route path="/admin/performance/feedback" component={PerformanceFeedback} />
-      <Route path="/admin/performance/analytics" component={PerformanceAnalytics} />
+      <Route path="/admin/performance/goals">{() => <Suspense fallback={<AdminFallback />}><Goals /></Suspense>}</Route>
+      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns /></Suspense>}</Route>
+      <Route path="/admin/performance/reviews">{() => <Suspense fallback={<AdminFallback />}><Reviews /></Suspense>}</Route>
+      <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
+      <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
+      <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=reviews" />}</Route>
 

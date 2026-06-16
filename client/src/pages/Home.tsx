@@ -15,6 +15,7 @@ export default function Home() {
     title: "Hire'in Solutions | AI-Powered Recruitment & Staffing Agency",
     description:
       "Hire'in Solutions connects top employers with skilled candidates across Healthcare, IT, Engineering, and Professional Services. Start hiring or find your next role today.",
+    canonical: "https://hire-in.com/",
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);

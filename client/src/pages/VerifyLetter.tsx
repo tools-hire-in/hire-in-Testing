@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useSEO } from "@/hooks/use-seo";
 import { Shield, CheckCircle, XCircle, Loader2, AlertTriangle, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -123,6 +124,12 @@ function isPolicy(r: VerifyResult): r is PolicyVerifyResult {
 }
 
 export default function VerifyLetter() {
+  useSEO({
+    title: "Verify Document | Hire'in Solutions",
+    description:
+      "Verify the authenticity of an HR letter or document issued by Hire'in Solutions using its reference number and authentication code.",
+    canonical: "https://hire-in.com/verify",
+  });
   const [refNumber, setRefNumber] = useState("");
   const [authCode, setAuthCode] = useState("");
   const [docType, setDocType] = useState("hr_letter");

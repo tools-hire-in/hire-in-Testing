@@ -255,6 +255,7 @@ export default function JobDetail() {
     description: job
       ? `${job.title} at ${job.company || "Hire'in Solutions"}${jobLocation ? ` in ${jobLocation}` : ""}. Apply now through Hire'in Solutions.`
       : "View job details and apply through Hire'in Solutions.",
+    canonical: jobId ? `https://hire-in.com/jobs/${jobId}` : undefined,
   });
 
   const jobExtra = (job ?? {}) as Record<string, any>;

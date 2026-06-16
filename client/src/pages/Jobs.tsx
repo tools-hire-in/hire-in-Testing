@@ -28,6 +28,7 @@ export default function Jobs() {
     title: "Browse Open Jobs | Hire'in Solutions",
     description:
       "Explore hundreds of open positions across Healthcare, IT, Engineering, and Professional Services. Apply today and take the next step in your career with Hire'in Solutions.",
+    canonical: "https://hire-in.com/jobs",
   });
 
   const searchString = useSearch();

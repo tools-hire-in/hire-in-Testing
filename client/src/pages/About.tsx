@@ -22,6 +22,7 @@ export default function About() {
     title: "About Us | Hire'in Solutions",
     description:
       "Learn about Hire'in Solutions — our mission, values, and the team behind our AI-powered recruitment services for Healthcare, IT, Engineering, and Professional Services.",
+    canonical: "https://hire-in.com/about",
   });
 
   const [consultationOpen, setConsultationOpen] = useState(false);

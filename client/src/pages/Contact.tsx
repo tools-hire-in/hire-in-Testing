@@ -37,6 +37,7 @@ export default function Contact() {
     title: "Contact Us | Hire'in Solutions",
     description:
       "Get in touch with Hire'in Solutions. Whether you're looking to hire top talent or find your next opportunity, our team is ready to help.",
+    canonical: "https://hire-in.com/contact",
   });
   const { toast } = useToast();
 
