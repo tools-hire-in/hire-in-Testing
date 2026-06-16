@@ -1634,7 +1634,7 @@ export function OfferLettersDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const [activeFilter, setActiveFilter] = useState<"all" | "pending_approval">("all");
+  const [activeFilter, setActiveFilter] = useState<"active" | "pending_approval" | "closed">("active");
   const [rejectDialog, setRejectDialog] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
@@ -2097,9 +2097,12 @@ export function OfferLettersDashboard() {
   const isHrOrAdmin = user && ["hr", "admin", "super_admin"].includes(user.role ?? "");
   const canApproveOfferLetter = user?.role === "super_admin";
   const pendingLetters = letters?.filter((l: any) => l.status === "pending_approval") ?? [];
-  const filteredLetters = activeFilter === "pending_approval"
-    ? pendingLetters
-    : (letters ?? []);
+  const ACTIVE_STATUSES = ["sent", "viewed", "accepted", "countersigned", "onboarded"];
+  const CLOSED_STATUSES = ["rejected", "cancelled", "expired"];
+  const filteredLetters =
+    activeFilter === "pending_approval" ? pendingLetters
+    : activeFilter === "closed" ? (letters ?? []).filter((l: any) => CLOSED_STATUSES.includes(l.status))
+    : (letters ?? []).filter((l: any) => ACTIVE_STATUSES.includes(l.status));
 
   return (
     <div className="space-y-5">
@@ -2128,15 +2131,15 @@ export function OfferLettersDashboard() {
         <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1" role="tablist">
           <button
             type="button"
-            onClick={() => setActiveFilter("all")}
-            data-testid="filter-tab-all"
+            onClick={() => setActiveFilter("active")}
+            data-testid="filter-tab-active"
             className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeFilter === "all"
+              activeFilter === "active"
                 ? "bg-white text-[#1F3A6E] shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            All Letters
+            Active
           </button>
           <button
             type="button"
@@ -2148,12 +2151,24 @@ export function OfferLettersDashboard() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            Pending Approval
+            Needs Approval
             {pendingLetters.length > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#F47C20] text-white">
+              <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full ${activeFilter === "pending_approval" ? "bg-[#F47C20] text-white" : "bg-orange-100 text-[#F47C20]"}`}>
                 {pendingLetters.length}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveFilter("closed")}
+            data-testid="filter-tab-closed"
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              activeFilter === "closed"
+                ? "bg-white text-muted-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Closed
           </button>
         </div>
       )}
@@ -2163,11 +2178,15 @@ export function OfferLettersDashboard() {
           <CardContent className="py-16 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-1" data-testid="text-no-offers">
-              {activeFilter === "pending_approval" ? "No Pending Approvals" : "No Offer Letters Yet"}
+              {activeFilter === "pending_approval" ? "No Pending Approvals"
+                : activeFilter === "closed" ? "No Closed Letters"
+                : "No Active Letters"}
             </h3>
             <p className="text-muted-foreground text-sm">
               {activeFilter === "pending_approval"
                 ? "All offer letters have been reviewed."
+                : activeFilter === "closed"
+                ? "Rejected, cancelled, and expired letters will appear here."
                 : "Send your first offer letter from the \"New Offer Letter\" tab."}
             </p>
           </CardContent>
