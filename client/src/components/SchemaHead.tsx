@@ -1,32 +1,24 @@
-import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface SchemaHeadProps {
   schema: object | object[];
 }
 
 export function SchemaHead({ schema }: SchemaHeadProps) {
-  useEffect(() => {
-    const schemas = Array.isArray(schema) ? schema : [schema];
-    const scripts: HTMLScriptElement[] = [];
+  const schemas = Array.isArray(schema) ? schema : [schema];
 
-    schemas.forEach((s) => {
-      const script = document.createElement("script");
-      script.type = "application/ld+json";
-      script.text = JSON.stringify(s);
-      document.head.appendChild(script);
-      scripts.push(script);
-    });
-
-    return () => {
-      scripts.forEach((script) => {
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-      });
-    };
-  }, []);
-
-  return null;
+  return createPortal(
+    <>
+      {schemas.map((s, i) => (
+        <script
+          key={i}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(s) }}
+        />
+      ))}
+    </>,
+    document.head
+  );
 }
 
 export const ORGANIZATION_SCHEMA = {

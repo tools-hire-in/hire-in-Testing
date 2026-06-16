@@ -5,6 +5,7 @@ import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
+import { getStaticSchemas, getJobPostingSchema, injectSchemas } from "./seo-schemas";
 
 const viteLogger = createLogger();
 
@@ -48,7 +49,21 @@ export async function setupVite(server: Server, app: Express) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
-      const page = await vite.transformIndexHtml(url, template);
+      let page = await vite.transformIndexHtml(url, template);
+
+      // Inject route-specific JSON-LD schemas into the initial HTML response
+      const pathname = url.split("?")[0];
+      const staticSchemas = getStaticSchemas(pathname);
+      if (staticSchemas.length) {
+        page = injectSchemas(page, staticSchemas);
+      } else {
+        const jobMatch = pathname.match(/^\/jobs\/([^/?#]+)$/);
+        if (jobMatch) {
+          const jobSchema = await getJobPostingSchema(jobMatch[1]);
+          if (jobSchema) page = injectSchemas(page, [jobSchema]);
+        }
+      }
+
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);

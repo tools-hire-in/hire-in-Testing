@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +143,98 @@ export function parseJobDescription(text: string): DescriptionSegment[] {
 
   flushBullets();
   return segments;
+}
+
+function mapEmploymentType(jobType: string | null | undefined): string {
+  if (!jobType) return "OTHER";
+  const t = jobType.toUpperCase();
+  if (t.includes("FULL") && t.includes("TIME")) return "FULL_TIME";
+  if (t.includes("PART") && t.includes("TIME")) return "PART_TIME";
+  if (t.includes("CONTRACT") || t.includes("1099") || t.includes("C2C")) return "CONTRACTOR";
+  if (t.includes("TEMP") || t.includes("TRAVEL")) return "TEMPORARY";
+  if (t.includes("INTERN")) return "INTERN";
+  if (t.includes("PER_DIEM") || t.includes("PER DIEM")) return "PER_DIEM";
+  return "OTHER";
+}
+
+function buildJobPostingSchema(job: Job): object {
+  const locationIsRemote =
+    !job.city && !job.state
+      ? true
+      : (job.city ?? "").toLowerCase().includes("remote") ||
+        (job.state ?? "").toLowerCase().includes("remote");
+
+  const schema: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description: job.description || job.requirements || job.title,
+    datePosted: job.createdAt
+      ? new Date(job.createdAt).toISOString().slice(0, 10)
+      : undefined,
+    hiringOrganization: {
+      "@type": "Organization",
+      name: "Hire'in Solutions",
+      sameAs: "https://hire-in.com",
+      logo: "https://hire-in.com/logo.jpg",
+    },
+    identifier: {
+      "@type": "PropertyValue",
+      name: "Hire'in Solutions",
+      value: job.ceipalJobCode ?? job.id,
+    },
+    employmentType: mapEmploymentType(job.jobType),
+    directApply: true,
+  };
+
+  if (locationIsRemote) {
+    schema.jobLocationType = "TELECOMMUTE";
+    schema.applicantLocationRequirements = {
+      "@type": "Country",
+      name: "United States",
+    };
+  } else {
+    schema.jobLocation = {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: job.city ?? undefined,
+        addressRegion: job.state ?? undefined,
+        addressCountry: "US",
+      },
+    };
+  }
+
+  if (job.payRate) {
+    const num = parseFloat(job.payRate.replace(/[^0-9.]/g, ""));
+    if (!isNaN(num) && num > 0) {
+      schema.baseSalary = {
+        "@type": "MonetaryAmount",
+        currency: "USD",
+        value: {
+          "@type": "QuantitativeValue",
+          value: num,
+          unitText: "HOUR",
+        },
+      };
+    }
+  }
+
+  if (job.startDate) {
+    schema.jobStartDate = job.startDate;
+  }
+
+  if (job.updatedAt) {
+    const validThrough = new Date(job.updatedAt);
+    validThrough.setMonth(validThrough.getMonth() + 3);
+    schema.validThrough = validThrough.toISOString().slice(0, 10);
+  }
+
+  if (job.specialty) {
+    schema.occupationalCategory = job.specialty;
+  }
+
+  return schema;
 }
 
 function parseSkills(raw: string): string[] {
@@ -303,6 +396,7 @@ export default function JobDetail() {
 
   return (
     <Layout>
+      {job && <SchemaHead schema={buildJobPostingSchema(job)} />}
       <section className="py-10 lg:py-14 px-4 lg:px-6">
         <div className="max-w-6xl mx-auto">
           <Link href="/jobs">

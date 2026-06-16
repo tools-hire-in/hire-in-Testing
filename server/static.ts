@@ -4,6 +4,7 @@ import path from "path";
 import { db } from "./db";
 import { jobs } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { getStaticSchemas, getJobPostingSchema, injectSchemas } from "./seo-schemas";
 
 function isEmployeeSubdomain(hostname: string): boolean {
   return hostname.startsWith("employee.") || hostname.startsWith("www.employee.");
@@ -357,6 +358,16 @@ export function serveStatic(app: Express) {
         const meta = getRouteMeta(urlPath);
         if (meta) {
           html = injectRouteMeta(html, meta);
+        }
+
+        // Inject route-specific JSON-LD schemas into the initial HTML response
+        const staticSchemas = getStaticSchemas(urlPath);
+        if (staticSchemas.length) {
+          html = injectSchemas(html, staticSchemas);
+        } else if (/^\/jobs\/[^/]+$/.test(urlPath)) {
+          const jobId = urlPath.replace("/jobs/", "");
+          const jobSchema = await getJobPostingSchema(jobId);
+          if (jobSchema) html = injectSchemas(html, [jobSchema]);
         }
 
         let staticBody: string | null = null;
