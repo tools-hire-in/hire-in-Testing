@@ -125,7 +125,7 @@ export const contacts = pgTable("contacts", {
 // HR PORTAL TABLES
 // ==========================================
 
-export const attendanceStatusEnum = pgEnum("attendance_status", ["present", "absent", "half_day", "late", "on_leave", "holiday", "weekend"]);
+export const attendanceStatusEnum = pgEnum("attendance_status", ["present", "absent", "half_day", "short_day", "late", "on_leave", "holiday", "weekend"]);
 export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved", "rejected", "cancelled"]);
 export const ticketStatusEnum = pgEnum("ticket_status", ["open", "in_review", "resolved", "rejected"]);
 
@@ -1581,7 +1581,7 @@ export const shifts = pgTable("shifts", {
   istStartStd: varchar("ist_start_std").notNull(),
   istEndStd: varchar("ist_end_std").notNull(),
   scheduledHours: integer("scheduled_hours").notNull().default(9),
-  gracePeriodMinutes: integer("grace_period_minutes").default(15),
+  gracePeriodMinutes: integer("grace_period_minutes").default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });

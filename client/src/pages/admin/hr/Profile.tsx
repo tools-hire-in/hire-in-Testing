@@ -583,7 +583,7 @@ export default function Profile() {
     employee: "Employee",
   };
 
-  const presentDays = monthlyAttendance?.filter(r => ["present", "late", "half_day"].includes(r.status)).length || 0;
+  const presentDays = monthlyAttendance?.filter(r => ["present", "late", "half_day", "short_day"].includes(r.status)).length || 0;
   const totalHours = monthlyAttendance?.reduce((s, r) => s + parseFloat(r.totalHours || "0"), 0) || 0;
 
   const handleTabChange = (value: string) => {

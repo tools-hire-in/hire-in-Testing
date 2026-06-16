@@ -75,6 +75,14 @@ export async function runAbsentSweep(
 
   for (const user of activeUsers) {
     try {
+      // No shift assigned → we cannot know this employee's working window, so the
+      // 23:59 IST sweep must NOT stamp them absent (same intent as the overnight skip
+      // below). Their day stays blank until a shift is assigned / they punch in.
+      if (!user.shiftId) {
+        skipped++;
+        continue;
+      }
+
       if (user.shiftId) {
         const shiftRow = await db.execute(sql`
           SELECT ist_start_std, ist_end_std FROM shifts WHERE id = ${user.shiftId} AND is_active = true LIMIT 1

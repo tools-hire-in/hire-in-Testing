@@ -157,7 +157,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
 
     const userAttendance = attendanceByUser.get(user.id) || [];
     const presentDays = userAttendance.filter(a =>
-      a.status === "present" || a.status === "late" || a.status === "half_day"
+      a.status === "present" || a.status === "late" || a.status === "half_day" || a.status === "short_day"
     ).length;
     const userHolidayStamps = userAttendance.filter(a => a.status === "holiday");
     const regionalHolidayDays = userHolidayStamps.filter(a => !holidayDates.has(a.date)).length;

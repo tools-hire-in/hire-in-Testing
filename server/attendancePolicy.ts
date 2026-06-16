@@ -59,54 +59,56 @@ export async function computeLateStatus(
   const punchISTMinutes = punchIST.getUTCHours() * 60 + punchIST.getUTCMinutes();
 
   const shiftStartMinutes = shiftTimeToMinutes(timing.istStart);
-  const graceEnd = shiftStartMinutes + timing.gracePeriodMinutes;
-  const isOvernight = graceEnd >= 1440;
-  const graceEndNorm = graceEnd % 1440;
+  const grace = timing.gracePeriodMinutes;
 
+  // Signed minute difference from the shift start, wrapped into a 24h window
+  // centred on the shift start. This single formulation handles every case:
+  //   - on-time / late punches (positive delta),
+  //   - early punches before the shift starts (negative delta),
+  //   - overnight shifts and post-midnight punches (the wrap pulls a small
+  //     post-midnight minute-of-day back to a large positive delta = very late),
+  //   - DST (timing.istStart already reflects the active DST start time),
+  //   - zero grace (delta > 0 is immediately late).
+  // The ±720 boundary is the natural ambiguity split between "early this evening"
+  // and "very late" for overnight shifts.
+  let delta = punchISTMinutes - shiftStartMinutes;
+  if (delta >= 720) delta -= 1440;
+  if (delta < -720) delta += 1440;
+
+  // No grace → late the moment delta exceeds 0. With grace → late past start+grace.
+  const isLate = delta > grace;
+
+  const graceEndNorm = (shiftStartMinutes + grace) % 1440;
   const graceEndHH = String(Math.floor(graceEndNorm / 60)).padStart(2, "0");
   const graceEndMM = String(graceEndNorm % 60).padStart(2, "0");
 
-  let isLate: boolean;
-
-  if (!isOvernight) {
-    // Non-overnight: pre-shift punches have punchISTMinutes < shiftStart < graceEnd → not late.
-    isLate = punchISTMinutes > graceEnd;
+  let notes: string;
+  if (grace > 0) {
+    notes = isLate
+      ? `[Auto] Late punch-in. Grace window ended at ${graceEndHH}:${graceEndMM} IST`
+      : `Grace window ended at ${graceEndHH}:${graceEndMM} IST`;
   } else {
-    // Overnight: grace window crosses midnight (graceEnd >= 1440, graceEndNorm is small).
-    if (punchISTMinutes >= shiftStartMinutes) {
-      // Pre-midnight at/after shift start: still before grace end (which is tomorrow) → present.
-      isLate = false;
-    } else if (punchISTMinutes <= graceEndNorm) {
-      // Post-midnight within grace → present.
-      isLate = false;
-    } else {
-      // Ambiguous zone: punchISTMinutes is between graceEndNorm and shiftStartMinutes.
-      // Could be post-midnight (late) or pre-shift same evening (present).
-      // Use the full IST date: punches before noon IST are post-midnight → late;
-      // punches at or after noon IST are pre-shift same evening → present.
-      const punchISTDateMs = Date.UTC(
-        punchIST.getUTCFullYear(),
-        punchIST.getUTCMonth(),
-        punchIST.getUTCDate(),
-      );
-      const noonTodayUTC = punchISTDateMs + 12 * 60 * 60_000 - IST_OFFSET_MS;
-      isLate = punchTime.getTime() < noonTodayUTC;
-    }
+    notes = isLate
+      ? `[Auto] Late punch-in. Shift started at ${graceEndHH}:${graceEndMM} IST (no grace)`
+      : `On time. Shift started at ${graceEndHH}:${graceEndMM} IST`;
   }
 
-  return {
-    status: isLate ? "late" : "present",
-    notes: isLate
-      ? `[Auto] Late punch-in. Grace window ended at ${graceEndHH}:${graceEndMM} IST`
-      : `Grace window ended at ${graceEndHH}:${graceEndMM} IST`,
-  };
+  return { status: isLate ? "late" : "present", notes };
 }
 
 /**
- * Determine whether short worked hours at punch-out warrant a half-day status.
+ * Determine the day-completion status at punch-out from worked hours.
+ *
+ * Tiers (thresholds derived from the employee's OWN scheduled hours, so a
+ * part-timer on a shorter shift is judged against their own full day, i.e.
+ * part-time aware):
+ *   - worked < half the scheduled hours          → half_day
+ *   - worked ≥ half but < the full scheduled hours → short_day
+ *   - worked ≥ the full scheduled hours           → unchanged (present/late)
+ *
  * Only transitions "present" or "late" statuses; all others are left unchanged.
  */
-export async function computeHalfDayStatus(
+export async function computeDayCompletionStatus(
   shiftId: string,
   totalHoursNum: number,
   currentStatus: string,
@@ -117,11 +119,19 @@ export async function computeHalfDayStatus(
   const timing = await getCurrentShiftTiming(shiftId);
   if (!timing) return { status: currentStatus, notes: undefined };
 
-  const halfThreshold = timing.scheduledHours / 2;
+  const fullThreshold = timing.scheduledHours;
+  const halfThreshold = fullThreshold / 2;
+
   if (totalHoursNum < halfThreshold) {
     return {
       status: "half_day",
-      notes: `[Auto] Short hours: ${totalHoursNum.toFixed(2)} hrs worked (threshold: ${halfThreshold}h)`,
+      notes: `[Auto] Half day: ${totalHoursNum.toFixed(2)} hrs worked (under half of ${fullThreshold}h, i.e. ${halfThreshold}h)`,
+    };
+  }
+  if (totalHoursNum < fullThreshold) {
+    return {
+      status: "short_day",
+      notes: `[Auto] Short day: ${totalHoursNum.toFixed(2)} hrs worked (under full day of ${fullThreshold}h)`,
     };
   }
   return { status: currentStatus, notes: undefined };

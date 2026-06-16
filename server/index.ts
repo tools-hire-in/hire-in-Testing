@@ -591,7 +591,8 @@ async function ensureShiftTables() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 15`);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE shifts ALTER COLUMN grace_period_minutes SET DEFAULT 0`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS dst_config (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1457,6 +1458,33 @@ async function ensureHealthcarePlansTables() {
     log("Ensured attendance correction columns exist");
   } catch (err) {
     console.error("Attendance correction columns migration error:", err);
+  }
+
+  try {
+    // 'short_day' tier: worked >= half but < full scheduled hours. ADD VALUE cannot
+    // run inside a transaction block, so it is executed standalone here.
+    await db.execute(sql`ALTER TYPE attendance_status ADD VALUE IF NOT EXISTS 'short_day'`);
+    log("Ensured 'short_day' attendance status exists");
+  } catch (err) {
+    console.error("short_day enum migration error:", err);
+  }
+
+  try {
+    // No-grace policy: late is marked immediately after shift start. Apply grace=0 to
+    // existing shifts exactly once (guarded by a system_settings marker) so that any
+    // later HR-configured grace period is NOT overwritten on subsequent restarts.
+    const marker = await db.execute(sql`SELECT key FROM system_settings WHERE key = 'grace_zero_applied' LIMIT 1`);
+    if (marker.rows.length === 0) {
+      await db.execute(sql`UPDATE shifts SET grace_period_minutes = 0 WHERE grace_period_minutes IS DISTINCT FROM 0`);
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('grace_zero_applied', 'true'::jsonb, NOW())
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log("Applied one-time no-grace (grace_period_minutes=0) to all shifts");
+    }
+  } catch (err) {
+    console.error("Grace-zero one-time migration error:", err);
   }
 
   try {

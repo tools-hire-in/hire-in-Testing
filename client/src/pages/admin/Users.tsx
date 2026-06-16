@@ -137,6 +137,7 @@ export default function AdminUsers() {
   const [newSalary, setNewSalary] = useState("");
   const [newManagerId, setNewManagerId] = useState("");
   const [newGender, setNewGender] = useState("");
+  const [newShiftId, setNewShiftId] = useState("");
 
   const [newEmployeeCategory, setNewEmployeeCategory] = useState("experienced");
 
@@ -228,7 +229,7 @@ export default function AdminUsers() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string; hierarchyLevel?: string }) => {
+    mutationFn: async (data: { email: string; firstName: string; lastName: string; role: string; joiningDate?: string; designation?: string; departmentId?: string; hierarchyLevel?: string; shiftId?: string }) => {
       return apiRequest("POST", "/api/admin/users", data);
     },
     onSuccess: async (res) => {
@@ -247,7 +248,7 @@ export default function AdminUsers() {
       toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
-      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced");
+      setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced"); setNewShiftId("");
     },
     onError: () => {
       toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
@@ -591,6 +592,21 @@ export default function AdminUsers() {
             </Button>
           ))}
         </div>
+
+        {statusFilter === "active" && (() => {
+          const shiftless = (users || []).filter(u => u.isActive && !(u as any).attendanceExempt && !(u as any).shiftId);
+          if (shiftless.length === 0) return null;
+          return (
+            <div
+              className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/30 p-3 text-sm text-amber-800 dark:text-amber-200"
+              data-testid="banner-shiftless-users"
+            >
+              <span className="font-medium">{shiftless.length} active employee{shiftless.length === 1 ? "" : "s"} without a shift:</span>{" "}
+              {shiftless.map(u => `${u.firstName} ${u.lastName}`.trim() || u.email).join(", ")}.
+              {" "}Assign a shift (Actions → Assign Shift) so attendance is tracked correctly.
+            </div>
+          );
+        })()}
 
         <Card>
           <CardContent className="p-0">
@@ -971,16 +987,30 @@ export default function AdminUsers() {
                 </Select>
                 {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="gender">Gender</Label>
-                <Select value={newGender} onValueChange={setNewGender}>
-                  <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <Select value={newGender} onValueChange={setNewGender}>
+                    <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="shift">Shift <span className="text-destructive">*</span></Label>
+                  <Select value={newShiftId} onValueChange={setNewShiftId}>
+                    <SelectTrigger data-testid="select-invite-shift"><SelectValue placeholder="Select shift (required)" /></SelectTrigger>
+                    <SelectContent>
+                      {(shiftDefs || []).map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.displayLabel || s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!newShiftId && <p className="text-xs text-destructive">Shift is required for attendance tracking.</p>}
+                </div>
               </div>
               <Button
                 className="w-full"
@@ -993,8 +1023,9 @@ export default function AdminUsers() {
                   managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
                   gender: newGender || undefined,
                   employeeCategory: newEmployeeCategory,
+                  shiftId: newShiftId || undefined,
                 } as any)}
-                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || !newDepartmentId || newDepartmentId === "none" || inviteMutation.isPending}
+                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || !newDepartmentId || newDepartmentId === "none" || !newShiftId || inviteMutation.isPending}
                 data-testid="button-send-invite"
               >
                 {inviteMutation.isPending ? "Sending..." : "Send Invite"}

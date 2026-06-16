@@ -2196,11 +2196,11 @@ Attendance discipline is taken seriously at Hire'in Solutions. Your shift is you
 ### On-Time Expectation
 
 - You are expected to punch in **before or at** your shift's start time.
-- A **grace period** (typically 10–15 minutes) is configured on your shift. Punching in within the grace period will not mark you late — but this is not a routine entitlement. Consistent use of the grace period will be noted.
+- There is **no grace period**. Any punch-in after your shift start time is marked Late immediately, so plan to be punched in by your start time.
 
 ### What Counts as Late
 
-- Any punch-in **after** the grace period ends is marked as **Late** in the system.
+- Any punch-in **after** your shift start time is marked as **Late** in the system (no grace window).
 - Late arrivals affect your attendance percentage, which is considered in salary calculations and performance reviews.
 
 ### What Counts as Absent
@@ -2302,7 +2302,7 @@ Log in to the **HR portal** and navigate to **My Work → Attendance** (or the P
 ### Punching In
 
 - Click **Punch In** at the start of your shift.
-- The system records the exact timestamp. Ensure you punch in **before or within the grace period** of your shift start time.
+- The system records the exact timestamp. Ensure you punch in **at or before** your shift start time — there is no grace period, so any later punch-in is marked Late.
 - Do **not** ask a colleague to punch in on your behalf. Proxy punching is a serious violation of attendance policy and may result in disciplinary action.
 
 ### Punching Out

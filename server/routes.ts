@@ -711,7 +711,7 @@ export async function registerRoutes(
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
-      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary, managerId } = req.body;
+      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary, managerId, shiftId } = req.body;
 
       const assignedRole = role || "employee";
       const assignedRank = ROLE_RANK[assignedRole] ?? 0;
@@ -725,6 +725,19 @@ export async function registerRoutes(
 
       if (!departmentId) {
         return res.status(400).json({ error: "Department is required when creating a new employee" });
+      }
+
+      // Shift is mandatory: without it the attendance engine cannot determine the
+      // employee's working window (late-marking, absent sweep, day-completion all
+      // depend on it). Validate the shift exists and is active.
+      if (!shiftId) {
+        return res.status(400).json({ error: "Shift is required when creating a new employee" });
+      }
+      const shiftCheck = await db.execute(sql`
+        SELECT id FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1
+      `);
+      if (shiftCheck.rows.length === 0) {
+        return res.status(400).json({ error: "Selected shift is invalid or inactive" });
       }
       
       const existing = await storage.getAdminUserByEmail(email);
@@ -762,6 +775,7 @@ export async function registerRoutes(
         managerId: managerId || null,
         gender: gender || null,
         employeeCategory: categoryVal,
+        shiftId: shiftId,
       });
 
       storage.initializeEmployeeDocuments(user.id, categoryVal).catch(err =>
@@ -1700,7 +1714,7 @@ export async function registerRoutes(
       const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
       const monthRecords = await storage.getAttendanceByUser(userId, monthStart, monthEnd);
-      const presentRecords = monthRecords.filter(r => ["present", "late", "half_day"].includes(r.status));
+      const presentRecords = monthRecords.filter(r => ["present", "late", "half_day", "short_day"].includes(r.status));
       const totalHours = monthRecords.reduce((s, r) => s + parseFloat(r.totalHours || "0"), 0);
       const leaveRequests = await storage.getLeaveRequests({ userId });
       const pendingCount = leaveRequests.filter(lr => lr.status === "pending").length;
@@ -2059,7 +2073,16 @@ export async function registerRoutes(
 
       const existing = await storage.getTodayAttendance(userId);
       if (existing) {
-        if (!existing.punchIn && existing.status === "absent" && existing.notes?.includes("[Training non-compliance]")) {
+        // A blank "absent" row with no punch-in is an auto-generated placeholder
+        // (the 23:59 sweep's "[Auto] No punch-in recorded", or a training-non-compliance
+        // stub). When the employee actually punches in, convert that placeholder into a
+        // real present/late record instead of rejecting them as "already punched in".
+        const isAutoAbsentPlaceholder =
+          !existing.punchIn &&
+          existing.status === "absent" &&
+          (existing.notes?.includes("[Training non-compliance]") ||
+            existing.notes?.includes("[Auto] No punch-in recorded"));
+        if (isAutoAbsentPlaceholder) {
           // Determine late/present status for this corrected punch-in
           const punchInTime = new Date();
           let punchStatus: "present" | "late" = "present";
@@ -2167,8 +2190,8 @@ export async function registerRoutes(
       const typedUserOut = await storage.getAdminUser(userId) as AdminUser & { shiftId?: string | null };
       if (typedUserOut?.shiftId) {
         try {
-          const { computeHalfDayStatus } = await import("./attendancePolicy");
-          const result = await computeHalfDayStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
+          const { computeDayCompletionStatus } = await import("./attendancePolicy");
+          const result = await computeDayCompletionStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
           if (result.status !== currentStatus) {
             updatedStatus = result.status;
             halfDayNote = result.notes;
@@ -3828,11 +3851,11 @@ export async function registerRoutes(
         const empUser = await storage.getAdminUser(request.employeeId);
         if (empUser?.shiftId && effectivePunchIn) {
           try {
-            const { computeLateStatus, computeHalfDayStatus } = await import("./attendancePolicy");
+            const { computeLateStatus, computeDayCompletionStatus } = await import("./attendancePolicy");
             const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
             if (lateResult) {
               const halfResult = totalHoursNum
-                ? await computeHalfDayStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                ? await computeDayCompletionStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
                 : { status: lateResult.status };
               correctedStatus = halfResult.status;
             }
@@ -3961,7 +3984,7 @@ export async function registerRoutes(
       const empUserO = await storage.getAdminUser(employeeId);
       if (empUserO?.shiftId && resolvedPunchIn) {
         try {
-          const { computeLateStatus: cls, computeHalfDayStatus: chs } = await import("./attendancePolicy");
+          const { computeLateStatus: cls, computeDayCompletionStatus: chs } = await import("./attendancePolicy");
           const lateResult = await cls(empUserO.shiftId, new Date(resolvedPunchIn));
           if (lateResult) {
             let totalHrsNum: number | undefined;
@@ -4080,11 +4103,11 @@ export async function registerRoutes(
           let correctedStatus = "present";
           if (empUser?.shiftId && effectivePunchIn) {
             try {
-              const { computeLateStatus, computeHalfDayStatus } = await import("./attendancePolicy");
+              const { computeLateStatus, computeDayCompletionStatus } = await import("./attendancePolicy");
               const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
               if (lateResult) {
                 const halfResult = totalHoursNum
-                  ? await computeHalfDayStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                  ? await computeDayCompletionStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
                   : { status: lateResult.status };
                 correctedStatus = halfResult.status;
               }

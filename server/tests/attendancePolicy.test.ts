@@ -11,7 +11,7 @@ import request from "supertest";
 
 import {
   computeLateStatus,
-  computeHalfDayStatus,
+  computeDayCompletionStatus,
   isRegularisationAllowed,
   countWorkingDaysBack,
   queryGraceUsage,
@@ -61,10 +61,13 @@ async function insertLateRecord(userId: string, date: string) {
 }
 
 async function findEligibleUser(): Promise<string | null> {
+  // Must have a shift: shiftless active employees are intentionally excluded
+  // from the absent sweep (no-shift = no expected attendance to mark against).
   const r = await db.execute(sql`
     SELECT id FROM admin_users
     WHERE is_active = true AND deleted_at IS NULL
       AND employment_status = 'active' AND attendance_exempt = false
+      AND shift_id IS NOT NULL
     LIMIT 1
   `);
   return r.rows.length > 0 ? (r.rows[0] as { id: string }).id : null;
@@ -165,54 +168,60 @@ describe("computeLateStatus — SHIFT_A, DST-agnostic + null-grace fallback", ()
   });
 });
 
-// --- Suite 2: computeHalfDayStatus — real DB SHIFT_A ---
+// --- Suite 2: computeDayCompletionStatus — real DB SHIFT_A ---
 
-describe("computeHalfDayStatus — SHIFT_A (9h scheduled, 4.5h threshold)", () => {
+describe("computeDayCompletionStatus — SHIFT_A (9h scheduled: <4.5h half_day, 4.5–9h short_day, ≥9h present)", () => {
   it("3h worked → half_day", async () => {
-    const r = await computeHalfDayStatus(REAL_SHIFT_ID, 3, "present");
+    const r = await computeDayCompletionStatus(REAL_SHIFT_ID, 3, "present");
     assert.equal(r.status, "half_day");
     assert.ok(r.notes?.startsWith("[Auto]"));
     assert.ok(r.notes?.includes("4.5h"));
   });
 
-  it("exactly at threshold (4.5h) → no change", async () => {
-    const r = await computeHalfDayStatus(REAL_SHIFT_ID, 4.5, "present");
+  it("exactly at half threshold (4.5h) → short_day", async () => {
+    const r = await computeDayCompletionStatus(REAL_SHIFT_ID, 4.5, "present");
+    assert.equal(r.status, "short_day");
+    assert.ok(r.notes?.startsWith("[Auto]"));
+  });
+
+  it("8h worked (≥half, <full 9h) → short_day", async () => {
+    assert.equal((await computeDayCompletionStatus(REAL_SHIFT_ID, 8, "present")).status, "short_day");
+  });
+
+  it("9h worked (full day) → present (no change)", async () => {
+    const r = await computeDayCompletionStatus(REAL_SHIFT_ID, 9, "present");
     assert.equal(r.status, "present");
     assert.equal(r.notes, undefined);
   });
 
-  it("8h worked → present", async () => {
-    assert.equal((await computeHalfDayStatus(REAL_SHIFT_ID, 8, "present")).status, "present");
-  });
-
   it("late + 2h → half_day", async () => {
-    assert.equal((await computeHalfDayStatus(REAL_SHIFT_ID, 2, "late")).status, "half_day");
+    assert.equal((await computeDayCompletionStatus(REAL_SHIFT_ID, 2, "late")).status, "half_day");
   });
 
   it("on_leave not overridden", async () => {
-    const r = await computeHalfDayStatus(REAL_SHIFT_ID, 0, "on_leave");
+    const r = await computeDayCompletionStatus(REAL_SHIFT_ID, 0, "on_leave");
     assert.equal(r.status, "on_leave");
     assert.equal(r.notes, undefined);
   });
 
   it("absent not overridden", async () => {
-    assert.equal((await computeHalfDayStatus(REAL_SHIFT_ID, 0, "absent")).status, "absent");
+    assert.equal((await computeDayCompletionStatus(REAL_SHIFT_ID, 0, "absent")).status, "absent");
   });
 
   it("holiday not overridden", async () => {
-    assert.equal((await computeHalfDayStatus(REAL_SHIFT_ID, 0, "holiday")).status, "holiday");
+    assert.equal((await computeDayCompletionStatus(REAL_SHIFT_ID, 0, "holiday")).status, "holiday");
   });
 
   it("4h29m → half_day", async () => {
     assert.equal(
-      (await computeHalfDayStatus(REAL_SHIFT_ID, (4 * 60 + 29) / 60, "present")).status,
+      (await computeDayCompletionStatus(REAL_SHIFT_ID, (4 * 60 + 29) / 60, "present")).status,
       "half_day",
     );
   });
 
   it("unknown shift → status unchanged", async () => {
     assert.equal(
-      (await computeHalfDayStatus("NONEXISTENT_SHIFT_XYZ", 1, "present")).status,
+      (await computeDayCompletionStatus("NONEXISTENT_SHIFT_XYZ", 1, "present")).status,
       "present",
     );
   });
@@ -631,7 +640,7 @@ describe("Regularization window API — real storage.countLeaveDays enforcement"
 // --- Suite 9: Punch-in / Punch-out API — real storage + policy integration ---
 //
 // Thin test routes that call the same functions as the production punch routes
-// (computeLateStatus → storage.createAttendance, computeHalfDayStatus → storage.updateAttendance)
+// (computeLateStatus → storage.createAttendance, computeDayCompletionStatus → storage.updateAttendance)
 // with a controllable punchTime + date parameter so tests are deterministic.
 
 describe("Punch-in / Punch-out API — real storage + computeLateStatus/HalfDay", () => {
@@ -701,7 +710,7 @@ describe("Punch-in / Punch-out API — real storage + computeLateStatus/HalfDay"
       const totalHours    = totalHoursNum.toFixed(2);
 
       const halfResult    = shiftId
-        ? await computeHalfDayStatus(shiftId, totalHoursNum, existing.status)
+        ? await computeDayCompletionStatus(shiftId, totalHoursNum, existing.status)
         : null;
 
       const update: { punchOut: Date; totalHours: string; status?: string; notes?: string } = {
@@ -770,7 +779,7 @@ describe("Punch-in / Punch-out API — real storage + computeLateStatus/HalfDay"
     assert.equal((rows.rows[0] as { status: string }).status, "present");
   });
 
-  it("punch-out after 6h → status stays 'present' (> 4.5h threshold)", async () => {
+  it("punch-out after 6h → status='short_day' (≥4.5h half, <9h full)", async () => {
     const sixHrsLater = new Date(punchEarlyIST.getTime() + 6 * 60 * 60 * 1000);
     const res = await request(punchApp).post("/test/punch-out").send({
       shiftId: REAL_SHIFT_ID, punchOutTime: sixHrsLater.toISOString(), date: PUNCH_TEST_DATE,
@@ -779,6 +788,6 @@ describe("Punch-in / Punch-out API — real storage + computeLateStatus/HalfDay"
     const rows = await db.execute(sql`
       SELECT status FROM attendance WHERE user_id = ${PUNCH_USER_ID} AND date = ${PUNCH_TEST_DATE}
     `);
-    assert.equal((rows.rows[0] as { status: string }).status, "present");
+    assert.equal((rows.rows[0] as { status: string }).status, "short_day");
   });
 });

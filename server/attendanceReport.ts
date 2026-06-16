@@ -90,7 +90,7 @@ export async function buildAttendanceSnapshot(year: number, month: number): Prom
     if (user.attendanceExempt) continue;
 
     const userAttendance = attendanceByUser.get(user.id) || [];
-    const presentDays = userAttendance.filter(a => a.status === "present" || a.status === "late" || a.status === "half_day").length;
+    const presentDays = userAttendance.filter(a => a.status === "present" || a.status === "late" || a.status === "half_day" || a.status === "short_day").length;
     const regionalHolidayDays = userAttendance.filter(a => a.status === "holiday" && !publicHolidayDates.has(a.date)).length;
     const holidayDays = publicHolidayDates.size + regionalHolidayDays;
     const totalHours = userAttendance.reduce((s, a) => s + (Number(a.totalHours) || 0), 0);

@@ -112,6 +112,7 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   present:   { label: "Present",   cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
   absent:    { label: "Absent",    cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
   half_day:  { label: "Half Day",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  short_day: { label: "Short Day", cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
   late:      { label: "Late",      cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
   on_leave:  { label: "On Leave",  cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
   holiday:   { label: "Holiday",   cls: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
