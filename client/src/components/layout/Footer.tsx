@@ -111,6 +111,15 @@ export function Footer() {
               </li>
               <li>
                 <Link
+                  href="/capability-deck"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-capability-deck"
+                >
+                  Capability Deck
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/request-a-quote"
                   className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   data-testid="link-request-quote"
@@ -169,10 +178,28 @@ export function Footer() {
               </li>
               <li>
                 <Link
+                  href="/ehealthcare-staffing"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-ehealthcare-staffing"
+                >
+                  eHealthcare Staffing
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/services/it-software"
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   IT & Software Development
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/it-staffing"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="link-it-staffing"
+                >
+                  IT Staffing Solutions
                 </Link>
               </li>
               <li>
