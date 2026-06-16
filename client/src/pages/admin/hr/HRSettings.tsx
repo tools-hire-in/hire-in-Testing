@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2177,6 +2177,225 @@ function ShiftsSection() {
   );
 }
 
+interface AccessControlData {
+  matrix: Record<string, string[]>;
+  enabled: boolean;
+  roles: { value: string; label: string }[];
+  defaults: Record<string, string[]>;
+}
+
+const ACCESS_GROUP_LABELS: Record<string, string> = {
+  admin: "Admin & Recruitment",
+  auth: "Authentication",
+  companyProfile: "Company Profile",
+  contracts: "Contracts",
+  departments: "Departments",
+  hr: "HR Portal",
+  onboarding: "Onboarding & Training",
+  performance: "Performance",
+  rayoAcademy: "Rayo Academy",
+  system: "System",
+  systemSettings: "System Settings",
+};
+
+function prettyFeatureLabel(key: string): string {
+  const parts = key.split(".").slice(1);
+  if (parts.length === 0) return key;
+  return parts
+    .map((p) => p.replace(/([a-z])([A-Z])/g, "$1 $2"))
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" › ");
+}
+
+function AccessControlSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const [draft, setDraft] = useState<Record<string, string[]> | null>(null);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const { data, isLoading } = useQuery<AccessControlData>({
+    queryKey: ["/api/admin/access-control"],
+    enabled: isSuperAdmin,
+  });
+
+  useEffect(() => {
+    if (data?.matrix) setDraft(data.matrix);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: { matrix?: Record<string, string[]>; enabled?: boolean }) => {
+      const res = await apiRequest("PUT", "/api/admin/access-control", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/access-control"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/permissions"] });
+      toast({ title: "Access control updated", description: "Changes take effect immediately." });
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/access-control/reset");
+      return res.json();
+    },
+    onSuccess: (d: AccessControlData) => {
+      setDraft(d.matrix);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/access-control"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/permissions"] });
+      toast({ title: "Reset to defaults", description: "The matrix was restored to the shipped defaults." });
+    },
+    onError: () => toast({ title: "Failed to reset", variant: "destructive" }),
+  });
+
+  if (!isSuperAdmin) return null;
+
+  const roles = data?.roles ?? [];
+  const PROTECTED = "super_admin";
+
+  const toggleRole = (feature: string, role: string, checked: boolean) => {
+    if (role === PROTECTED) return; // guardrail: super_admin can't be removed
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const current = new Set(prev[feature] ?? []);
+      if (checked) current.add(role);
+      else current.delete(role);
+      current.add(PROTECTED);
+      return { ...prev, [feature]: Array.from(current) };
+    });
+  };
+
+  const isDirty = draft && data?.matrix && JSON.stringify(draft) !== JSON.stringify(data.matrix);
+
+  // Group feature keys by their first segment
+  const grouped: Record<string, string[]> = {};
+  if (draft) {
+    for (const key of Object.keys(draft).sort()) {
+      const group = key.split(".")[0];
+      (grouped[group] = grouped[group] || []).push(key);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Access Control (RBAC)
+          </CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">DB-driven</span>
+              <Switch
+                checked={data?.enabled ?? false}
+                onCheckedChange={(v) => saveMutation.mutate({ enabled: v })}
+                disabled={isLoading || saveMutation.isPending}
+                data-testid="switch-access-control-enabled"
+              />
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Edit which roles can use each feature. When <strong>DB-driven</strong> is off, the system uses the
+          shipped config defaults (current behavior). Super Admin always retains access and cannot be removed.
+        </p>
+
+        {isLoading || !draft ? (
+          <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <div className="space-y-3">
+            {Object.keys(grouped).sort().map((group) => {
+              const isOpen = openGroups[group] ?? false;
+              return (
+                <div key={group} className="border rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroups((p) => ({ ...p, [group]: !isOpen }))}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-accent rounded-lg"
+                    data-testid={`button-access-group-${group}`}
+                  >
+                    <span>{ACCESS_GROUP_LABELS[group] || group} <span className="text-muted-foreground font-normal">({grouped[group].length})</span></span>
+                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {isOpen && (
+                    <div className="overflow-x-auto border-t">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b bg-muted/40">
+                            <th className="text-left p-2 font-medium sticky left-0 bg-muted/40">Feature</th>
+                            {roles.map((r) => (
+                              <th key={r.value} className="p-2 font-medium text-center whitespace-nowrap">{r.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {grouped[group].map((feature) => (
+                            <tr key={feature} className="border-b hover:bg-muted/20" data-testid={`row-access-${feature}`}>
+                              <td className="p-2 sticky left-0 bg-background font-mono text-[11px]" title={feature}>
+                                {prettyFeatureLabel(feature)}
+                              </td>
+                              {roles.map((r) => {
+                                const checked = (draft[feature] ?? []).includes(r.value);
+                                const locked = r.value === PROTECTED;
+                                return (
+                                  <td key={r.value} className="p-2 text-center">
+                                    <Checkbox
+                                      checked={checked}
+                                      disabled={locked}
+                                      onCheckedChange={(c) => toggleRole(feature, r.value, !!c)}
+                                      data-testid={`checkbox-access-${feature}-${r.value}`}
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                onClick={() => draft && saveMutation.mutate({ matrix: draft })}
+                disabled={!isDirty || saveMutation.isPending}
+                data-testid="button-save-access-control"
+              >
+                {saveMutation.isPending ? "Saving..." : "Save changes"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => data?.matrix && setDraft(data.matrix)}
+                disabled={!isDirty}
+                data-testid="button-revert-access-control"
+              >
+                Revert
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => resetMutation.mutate()}
+                disabled={resetMutation.isPending}
+                data-testid="button-reset-access-control"
+              >
+                Reset to defaults
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -3062,6 +3281,8 @@ export default function HRSettings() {
         )}
 
         <FeatureFlagsSection />
+
+        <AccessControlSection />
 
         <CompanyProfileSection />
 

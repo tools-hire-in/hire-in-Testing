@@ -52,6 +52,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Job } from "@shared/schema";
 
@@ -90,6 +91,7 @@ const emptyFormData: JobFormData = {
 export function AdminJobsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { can } = usePermissions();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -344,10 +346,12 @@ export function AdminJobsContent() {
               <Upload className="h-4 w-4 mr-2" />
               Upload CSV
             </Button>
-            <Button onClick={openAddJob} data-testid="button-add-job">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Job
-            </Button>
+            {can("admin.jobs") && (
+              <Button onClick={openAddJob} data-testid="button-add-job">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Job
+              </Button>
+            )}
           </div>
         </div>
 

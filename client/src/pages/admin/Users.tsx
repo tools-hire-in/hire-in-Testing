@@ -44,6 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AdminUser, AdminUsersResponse } from "@shared/schema";
 
@@ -122,6 +123,7 @@ const DESIGNATIONS = [
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { can } = usePermissions();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
 
@@ -454,7 +456,7 @@ export default function AdminUsers() {
 
   const isSuperAdmin = user?.role === "super_admin";
   const isAdmin = user?.role === "admin";
-  const canManageUsers = isSuperAdmin || isAdmin || user?.role === "manager" || user?.role === "hr";
+  const canManageUsers = (isSuperAdmin || isAdmin || user?.role === "manager" || user?.role === "hr") && can("hr.users");
   const canEditHierarchy = isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "manager";
   const currentUserRank = roleRank[user?.role || ""] ?? 0;
 

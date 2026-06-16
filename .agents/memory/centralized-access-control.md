@@ -19,6 +19,15 @@ For every guard site, the registry entry for its key MUST equal that site's lega
 
 **Why:** each helper mirrors the pre-existing legacy middleware semantics of its file; mixing them up silently widens or narrows access.
 
+## Phase 2: DB-driven editable matrix
+A second flag layers on top: `access_control_db_enabled` (system_settings, boolean). When ON, `resolveRoles` consults a live in-memory matrix (`setLiveAccessMatrix`) seeded from `ACCESS_REGISTRY` and persisted as `access_control_matrix` (system_settings jsonb). When OFF, Phase 1 env behavior is unchanged.
+- Service: `server/accessControlService.ts` (seed/hydrate on boot, sanitize, save, reset). Boot hydration runs after `registerRoutes` in `server/index.ts`.
+- `sanitizeMatrix` **force-adds super_admin to every feature** — guardrail so the matrix can never lock out super admins. Editor checkbox for super_admin is locked.
+- Endpoints are hardcoded **super_admin-only** (`requireSuperAdmin`), NOT matrix-gated, so the editor can never be locked out of itself: `GET /api/me/permissions` (any auth), `GET/PUT /api/admin/access-control`, `POST .../reset`.
+- Frontend: `usePermissions()` hook (`can(featureKey)` returns true while loading to avoid flash-hide). Gates sidebar groups in AdminLayout (AND with role booleans) + key buttons (Jobs add, Users invite).
+
+**Why super_admin force-add + non-matrix-gated endpoints:** without both, a bad save could remove all access to the editor permanently with no recovery path.
+
 ## What stays in code (not centralized)
 Scoped/per-request authorization is intentionally left in handlers: `validateMyTeamAccess`, ROLE_RANK hierarchy, self-access, reviewer-membership, endorser checks, NIGHT_SHIFT_EXEMPT, secondary view-all arrays. These aren't static feature→role maps.
 

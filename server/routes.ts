@@ -12,7 +12,7 @@ import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
-import { resolveRoles } from "@shared/accessControl";
+import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
@@ -8974,6 +8974,80 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Update feature flags error:", error);
       res.status(500).json({ error: "Failed to update feature flags" });
+    }
+  });
+
+  // ==========================================
+  // ACCESS CONTROL (DB-driven RBAC, Super Admin editor)
+  // ==========================================
+
+  // Hardcoded Super-Admin-only gate — never resolved through the matrix, so the
+  // editor itself can never be locked out regardless of saved permissions.
+  function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (req.session.role !== "super_admin") return res.status(403).json({ error: "Super Admin access required" });
+    next();
+  }
+
+  // Current user's effective permissions (feature keys their role can access).
+  app.get("/api/me/permissions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const role = req.session.role || "";
+      const matrix = getEffectiveMatrix();
+      const permissions = Object.keys(matrix).filter((k) => matrix[k].includes(role));
+      res.json({ role, permissions, dbDriven: isDbDrivenAccessControl() });
+    } catch (error) {
+      console.error("Get my permissions error:", error);
+      res.status(500).json({ error: "Failed to fetch permissions" });
+    }
+  });
+
+  // Read the full editable matrix + master flag (Super Admin only).
+  app.get("/api/admin/access-control", require2FA, requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const { getAccessControlState } = await import("./accessControlService");
+      const state = await getAccessControlState();
+      res.json({
+        matrix: state.matrix,
+        enabled: state.enabled,
+        roles: ACCESS_CONTROL_ROLES,
+        defaults: ACCESS_REGISTRY,
+      });
+    } catch (error) {
+      console.error("Get access control error:", error);
+      res.status(500).json({ error: "Failed to fetch access control" });
+    }
+  });
+
+  // Update the matrix and/or the master flag (Super Admin only).
+  app.put("/api/admin/access-control", require2FA, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const { saveAccessControlMatrix, saveAccessControlEnabled, getAccessControlState } = await import("./accessControlService");
+      const { matrix, enabled } = req.body as { matrix?: unknown; enabled?: unknown };
+      if (matrix !== undefined) {
+        await saveAccessControlMatrix(matrix, req.session.userId!);
+      }
+      if (typeof enabled === "boolean") {
+        await saveAccessControlEnabled(enabled, req.session.userId!);
+      }
+      const state = await getAccessControlState();
+      res.json({ matrix: state.matrix, enabled: state.enabled });
+    } catch (error) {
+      console.error("Update access control error:", error);
+      res.status(500).json({ error: "Failed to update access control" });
+    }
+  });
+
+  // Reset the matrix back to the shipped config defaults (Super Admin only).
+  app.post("/api/admin/access-control/reset", require2FA, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const { resetAccessControlMatrix, getAccessControlState } = await import("./accessControlService");
+      await resetAccessControlMatrix(req.session.userId!);
+      const state = await getAccessControlState();
+      res.json({ matrix: state.matrix, enabled: state.enabled });
+    } catch (error) {
+      console.error("Reset access control error:", error);
+      res.status(500).json({ error: "Failed to reset access control" });
     }
   });
 

@@ -1968,6 +1968,14 @@ async function ensureHealthcarePlansTables() {
 
   await registerRoutes(httpServer, app);
 
+  try {
+    const { hydrateAccessControl } = await import("./accessControlService");
+    await hydrateAccessControl();
+    log("Access control matrix hydrated");
+  } catch (err) {
+    console.error("Access control hydration error (non-fatal):", err);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

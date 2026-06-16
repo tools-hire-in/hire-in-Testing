@@ -59,6 +59,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { usePermissions } from "@/hooks/use-permissions";
 import { COMPANY } from "@/lib/constants";
 import { NotificationBell } from "@/components/NotificationBell";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
@@ -180,6 +181,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const { isEnabled } = useFeatureFlags();
+  const { can } = usePermissions();
   const notificationsEnabled = isEnabled("notifications_enabled");
 
   const handleIdleTimeout = useCallback(() => {
@@ -387,11 +389,11 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const roleInfo = user?.role ? roleLabels[user.role] : roleLabels.employee;
   const userRole = user?.role || "employee";
 
-  const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager", "recruiter"].includes(userRole);
-  const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
-  const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole);
-  const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole);
-  const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole);
+  const hasRecruitmentAccess = ["super_admin", "admin", "operations", "manager", "recruiter"].includes(userRole) && can("admin.jobs");
+  const hasTeamAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("admin.myTeam.members");
+  const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole) && can("hr.users");
+  const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
+  const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth

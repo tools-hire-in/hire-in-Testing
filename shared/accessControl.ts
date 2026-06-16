@@ -227,13 +227,76 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "systemSettings": ["super_admin", "admin", "hr"],
 };
 
+// ============================================================================
+// Phase 2 — DB-driven live matrix
+// ----------------------------------------------------------------------------
+// The server hydrates an in-memory copy of the persisted (DB) matrix plus the
+// master flag via `setLiveAccessMatrix`. `resolveRoles` consults that live
+// matrix when the master flag is ON; otherwise it falls back to the Phase 1
+// behavior (env flag -> config defaults, else call-site fallback). The shared
+// module never touches the DB itself — it only holds the cache the server fills.
+// ============================================================================
+
+let liveMatrix: AccessRegistry | null = null;
+let dbDrivenEnabled = false;
+
+/** Settings keys used to persist the matrix and master flag. */
+export const ACCESS_CONTROL_MATRIX_KEY = "access_control_matrix";
+export const ACCESS_CONTROL_ENABLED_KEY = "access_control_db_enabled";
+
+/** The role that can never be locked out of any feature. */
+export const PROTECTED_ROLE = "super_admin";
+
+/** Canonical, editable role universe for the Access Control grid. */
+export const ACCESS_CONTROL_ROLES: { value: string; label: string }[] = [
+  { value: "super_admin", label: "Super Admin" },
+  { value: "admin", label: "Admin" },
+  { value: "hr", label: "HR" },
+  { value: "finance", label: "Finance" },
+  { value: "operations", label: "Operations" },
+  { value: "manager", label: "Manager" },
+  { value: "recruiter", label: "Recruiter" },
+  { value: "employee", label: "Employee" },
+  { value: "architect", label: "Architect" },
+];
+
+/**
+ * Hydrate / refresh the in-memory live matrix cache and master flag.
+ * Called by the server on boot and after every save.
+ */
+export function setLiveAccessMatrix(matrix: AccessRegistry | null, enabled: boolean): void {
+  liveMatrix = matrix;
+  dbDrivenEnabled = enabled;
+}
+
+/** True when the DB-driven master flag is currently active. */
+export function isDbDrivenAccessControl(): boolean {
+  return dbDrivenEnabled && !!liveMatrix;
+}
+
+/**
+ * The full effective feature -> roles matrix as the system currently resolves
+ * it. When DB-driven, the live matrix is merged over the config defaults (so
+ * keys absent from the DB still resolve). Otherwise the config defaults stand.
+ */
+export function getEffectiveMatrix(): AccessRegistry {
+  if (dbDrivenEnabled && liveMatrix) {
+    return { ...ACCESS_REGISTRY, ...liveMatrix };
+  }
+  return { ...ACCESS_REGISTRY };
+}
+
 /**
  * Resolve the allowed roles for a feature.
- * Flag ON + key present  -> registry roles (central config / future DB).
- * Otherwise              -> the call site's fallback roles (legacy behavior).
+ * DB-driven ON         -> live matrix entry (falling back to config default).
+ * Env flag ON          -> registry roles (central config defaults).
+ * Otherwise            -> the call site's fallback roles (legacy behavior).
  */
 export function resolveRoles(featureKey: string, fallbackRoles: string[]): string[] {
-  if (CENTRALIZED_ACCESS_CONTROL) {
+  if (dbDrivenEnabled && liveMatrix) {
+    const entry = liveMatrix[featureKey] ?? ACCESS_REGISTRY[featureKey];
+    if (entry) return entry;
+  } else if (CENTRALIZED_ACCESS_CONTROL) {
     const entry = ACCESS_REGISTRY[featureKey];
     if (entry) return entry;
   }
