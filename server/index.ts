@@ -1,4 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -541,6 +543,88 @@ async function ensureContentStudioTables() {
     log("Content Studio tables, indexes, and seed project ensured");
   } catch (err) {
     console.error("Content Studio table migration error:", err);
+  }
+}
+
+async function ensureCardTemplatesAndBrand() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "card_templates" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "project_id" varchar REFERENCES studio_projects(id),
+        "family" varchar NOT NULL,
+        "layout" varchar NOT NULL,
+        "platform" varchar NOT NULL,
+        "label" varchar,
+        "width" integer NOT NULL,
+        "height" integer NOT NULL,
+        "max_tips" integer,
+        "html" text NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    // One default template per family/layout/platform (project_id NULL).
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS card_templates_default_idx
+      ON card_templates(family, layout, platform)
+      WHERE project_id IS NULL
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_brand_settings" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "brand_name" varchar NOT NULL DEFAULT 'Hire''in Solutions',
+        "tagline" varchar,
+        "navy" varchar NOT NULL DEFAULT '#1F3A6E',
+        "orange_primary" varchar NOT NULL DEFAULT '#F47C20',
+        "orange_accent" varchar NOT NULL DEFAULT '#F96D3E',
+        "white" varchar NOT NULL DEFAULT '#FFFFFF',
+        "soft_gray" varchar NOT NULL DEFAULT '#F2F4F7',
+        "heading_font" varchar NOT NULL DEFAULT 'Playfair Display',
+        "body_font" varchar NOT NULL DEFAULT 'Inter',
+        "logo_url" varchar,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO studio_brand_settings (brand_name, tagline)
+      SELECT 'Hire''in Solutions', 'Smart Solutions. Stronger Teams.'
+      WHERE NOT EXISTS (SELECT 1 FROM studio_brand_settings)
+    `);
+
+    // Seed the hirein-v1 social-card matrix from disk (idempotent upsert).
+    try {
+      const dir = join(process.cwd(), "templates/social-cards/hirein-v1");
+      const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as Array<{
+        file: string; family: string; layout: string; platform: string;
+        label: string; width: number; height: number; maxTips?: number;
+      }>;
+      for (const m of manifest) {
+        const html = readFileSync(join(dir, m.file), "utf8");
+        await db.execute(sql`
+          INSERT INTO card_templates
+            (project_id, family, layout, platform, label, width, height, max_tips, html, is_active)
+          VALUES
+            (NULL, ${m.family}, ${m.layout}, ${m.platform}, ${m.label}, ${m.width}, ${m.height}, ${m.maxTips ?? null}, ${html}, true)
+          ON CONFLICT (family, layout, platform) WHERE project_id IS NULL
+          DO UPDATE SET
+            label = EXCLUDED.label,
+            width = EXCLUDED.width,
+            height = EXCLUDED.height,
+            max_tips = EXCLUDED.max_tips,
+            html = EXCLUDED.html,
+            is_active = true,
+            updated_at = now()
+        `);
+      }
+      log(`Card templates seeded (${manifest.length} from disk)`);
+    } catch (seedErr) {
+      console.error("Card template disk seed error (templates not found?):", seedErr);
+    }
+  } catch (err) {
+    console.error("Card templates / brand settings migration error:", err);
   }
 }
 
@@ -1748,6 +1832,7 @@ async function ensureHealthcarePlansTables() {
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
   await ensureContentStudioTables();
+  await ensureCardTemplatesAndBrand();
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();

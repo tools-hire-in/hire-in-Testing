@@ -21,8 +21,11 @@ import {
   Send,
   Globe,
   Star,
+  Palette,
+  Type,
+  LayoutTemplate,
 } from "lucide-react";
-import type { StudioProject } from "@shared/schema";
+import type { StudioProject, StudioBrandSettings } from "@shared/schema";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
 
@@ -98,6 +101,114 @@ function ComingSoon({ title, description }: { title: string; description: string
   );
 }
 
+const CARD_MATRIX: { layout: string; platforms: string[] }[] = [
+  { layout: "standard", platforms: ["LinkedIn", "Instagram square", "Instagram story", "X / Twitter"] },
+  { layout: "checklist", platforms: ["LinkedIn", "Instagram square"] },
+  { layout: "quote", platforms: ["LinkedIn", "Instagram square", "X / Twitter"] },
+];
+
+function Swatch({ name, value }: { name: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3" data-testid={`swatch-${name.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div
+        className="h-10 w-10 shrink-0 rounded-md border"
+        style={{ backgroundColor: value }}
+      />
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{name}</div>
+        <div className="font-mono text-xs uppercase text-muted-foreground">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function BrandReference({ brand }: { brand?: StudioBrandSettings }) {
+  const navy = brand?.navy ?? "#1F3A6E";
+  const orangePrimary = brand?.orangePrimary ?? "#F47C20";
+  const orangeAccent = brand?.orangeAccent ?? "#F96D3E";
+  const white = brand?.white ?? "#FFFFFF";
+  const softGray = brand?.softGray ?? "#F2F4F7";
+  const headingFont = brand?.headingFont ?? "Playfair Display";
+  const bodyFont = brand?.bodyFont ?? "Inter";
+  const brandName = brand?.brandName ?? "Hire'in Solutions";
+  const tagline = brand?.tagline ?? "Smart Solutions. Stronger Teams.";
+
+  return (
+    <>
+      <Card data-testid="card-brand-reference">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Palette className="h-4 w-4 text-orange-500" />
+            Brand reference
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            The live {brandName} palette and typography used by social-card templates.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Color palette
+            </h4>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+              <Swatch name="Navy" value={navy} />
+              <Swatch name="Orange" value={orangePrimary} />
+              <Swatch name="Orange Accent" value={orangeAccent} />
+              <Swatch name="White" value={white} />
+              <Swatch name="Soft Gray" value={softGray} />
+            </div>
+          </div>
+
+          <div>
+            <h4 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Type className="h-3.5 w-3.5" />
+              Typography
+            </h4>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border p-4" data-testid="font-heading">
+                <div className="text-2xl" style={{ fontFamily: `'${headingFont}', serif` }}>
+                  {brandName}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Headings · {headingFont}</div>
+              </div>
+              <div className="rounded-lg border p-4" data-testid="font-body">
+                <div className="text-base" style={{ fontFamily: `'${bodyFont}', sans-serif` }}>
+                  {tagline}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Body · {bodyFont}</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-template-matrix">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LayoutTemplate className="h-4 w-4 text-violet-500" />
+            Social-card templates
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Self-contained, on-brand card templates (family <code>hirein-v1</code>) seeded for every project.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {CARD_MATRIX.map((m) => (
+            <div key={m.layout} className="flex flex-wrap items-center gap-2" data-testid={`matrix-row-${m.layout}`}>
+              <span className="w-24 text-sm font-medium capitalize">{m.layout}</span>
+              {m.platforms.map((p) => (
+                <Badge key={p} variant="secondary">
+                  {p}
+                </Badge>
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 export default function Studio() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -131,6 +242,10 @@ export default function Studio() {
       return res.json();
     },
     enabled: !!selectedProjectId,
+  });
+
+  const { data: brand } = useQuery<StudioBrandSettings | null>({
+    queryKey: ["/api/admin/studio/brand"],
   });
 
   const selectedProject = useMemo(
@@ -354,11 +469,8 @@ export default function Studio() {
           </TabsContent>
 
           {/* Settings */}
-          <TabsContent value="settings" className="mt-6">
-            <ComingSoon
-              title="Studio Settings"
-              description="Configure projects, publishing targets, and team permissions. Settings management arrives in a later release."
-            />
+          <TabsContent value="settings" className="mt-6 space-y-6">
+            <BrandReference brand={brand ?? undefined} />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,0 +1,85 @@
+[
+  {
+    "file": "standard-linkedin.html",
+    "family": "hirein-v1",
+    "layout": "standard",
+    "platform": "linkedin",
+    "label": "LinkedIn / Facebook (1200×627)",
+    "width": 1200,
+    "height": 627
+  },
+  {
+    "file": "standard-instagram-square.html",
+    "family": "hirein-v1",
+    "layout": "standard",
+    "platform": "instagram-square",
+    "label": "Instagram square (1080×1080)",
+    "width": 1080,
+    "height": 1080
+  },
+  {
+    "file": "standard-instagram-story.html",
+    "family": "hirein-v1",
+    "layout": "standard",
+    "platform": "instagram-story",
+    "label": "Instagram / Facebook story (1080×1920)",
+    "width": 1080,
+    "height": 1920
+  },
+  {
+    "file": "standard-twitter.html",
+    "family": "hirein-v1",
+    "layout": "standard",
+    "platform": "twitter",
+    "label": "X / Twitter (1600×900)",
+    "width": 1600,
+    "height": 900
+  },
+  {
+    "file": "checklist-linkedin.html",
+    "family": "hirein-v1",
+    "layout": "checklist",
+    "platform": "linkedin",
+    "label": "LinkedIn / Facebook (1200×627)",
+    "width": 1200,
+    "height": 627,
+    "maxTips": 4
+  },
+  {
+    "file": "checklist-instagram-square.html",
+    "family": "hirein-v1",
+    "layout": "checklist",
+    "platform": "instagram-square",
+    "label": "Instagram square (1080×1080)",
+    "width": 1080,
+    "height": 1080,
+    "maxTips": 5
+  },
+  {
+    "file": "quote-linkedin.html",
+    "family": "hirein-v1",
+    "layout": "quote",
+    "platform": "linkedin",
+    "label": "LinkedIn / Facebook (1200×627)",
+    "width": 1200,
+    "height": 627
+  },
+  {
+    "file": "quote-instagram-square.html",
+    "family": "hirein-v1",
+    "layout": "quote",
+    "platform": "instagram-square",
+    "label": "Instagram square (1080×1080)",
+    "width": 1080,
+    "height": 1080
+  },
+  {
+    "file": "quote-twitter.html",
+    "family": "hirein-v1",
+    "layout": "quote",
+    "platform": "twitter",
+    "label": "X / Twitter (1600×900)",
+    "width": 1600,
+    "height": 900
+  }
+]

@@ -2292,6 +2292,40 @@ export const studioAuditEvents = pgTable("studio_audit_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Branded social-card template matrix (family × layout × platform). project_id
+// NULL = global default templates shared by every project.
+export const cardTemplates = pgTable("card_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => studioProjects.id),
+  family: varchar("family").notNull(),
+  layout: varchar("layout").notNull(),
+  platform: varchar("platform").notNull(),
+  label: varchar("label"),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  maxTips: integer("max_tips"),
+  html: text("html").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Singleton brand reference for Content Studio (palette + typography).
+export const studioBrandSettings = pgTable("studio_brand_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  brandName: varchar("brand_name").notNull().default("Hire'in Solutions"),
+  tagline: varchar("tagline"),
+  navy: varchar("navy").notNull().default("#1F3A6E"),
+  orangePrimary: varchar("orange_primary").notNull().default("#F47C20"),
+  orangeAccent: varchar("orange_accent").notNull().default("#F96D3E"),
+  white: varchar("white").notNull().default("#FFFFFF"),
+  softGray: varchar("soft_gray").notNull().default("#F2F4F7"),
+  headingFont: varchar("heading_font").notNull().default("Playfair Display"),
+  bodyFont: varchar("body_font").notNull().default("Inter"),
+  logoUrl: varchar("logo_url"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertStudioProjectSchema = createInsertSchema(studioProjects).omit({ id: true, createdAt: true });
 export const insertStudioAuthorProfileSchema = createInsertSchema(studioAuthorProfiles).omit({ id: true, createdAt: true });
 export const insertStudioArticleSchema = createInsertSchema(studioArticles).omit({ id: true, createdAt: true, updatedAt: true });
@@ -2317,3 +2351,8 @@ export type StudioNewsletterSubscriber = typeof studioNewsletterSubscribers.$inf
 export type InsertStudioNewsletterSubscriber = z.infer<typeof insertStudioNewsletterSubscriberSchema>;
 export type StudioAuditEvent = typeof studioAuditEvents.$inferSelect;
 export type InsertStudioAuditEvent = z.infer<typeof insertStudioAuditEventSchema>;
+
+export const insertCardTemplateSchema = createInsertSchema(cardTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type CardTemplate = typeof cardTemplates.$inferSelect;
+export type InsertCardTemplate = z.infer<typeof insertCardTemplateSchema>;
+export type StudioBrandSettings = typeof studioBrandSettings.$inferSelect;

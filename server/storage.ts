@@ -106,6 +106,10 @@ import {
   type InsertStudioAuthorProfile,
   type StudioAuditEvent,
   type InsertStudioAuditEvent,
+  cardTemplates,
+  studioBrandSettings,
+  type CardTemplate,
+  type StudioBrandSettings,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -386,6 +390,9 @@ export interface IStorage {
   // Audit
   createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
   getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
+  // Card templates + brand
+  getStudioBrandSettings(): Promise<StudioBrandSettings | undefined>;
+  getCardTemplates(family?: string): Promise<CardTemplate[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2987,6 +2994,22 @@ export class DatabaseStorage implements IStorage {
       .from(studioAuditEvents)
       .where(eq(studioAuditEvents.articleId, articleId))
       .orderBy(desc(studioAuditEvents.createdAt));
+  }
+
+  async getStudioBrandSettings(): Promise<StudioBrandSettings | undefined> {
+    const [row] = await db.select().from(studioBrandSettings).limit(1);
+    return row;
+  }
+
+  async getCardTemplates(family?: string): Promise<CardTemplate[]> {
+    const whereClause = family
+      ? and(eq(cardTemplates.family, family), eq(cardTemplates.isActive, true))
+      : eq(cardTemplates.isActive, true);
+    return await db
+      .select()
+      .from(cardTemplates)
+      .where(whereClause)
+      .orderBy(asc(cardTemplates.layout), asc(cardTemplates.platform));
   }
 
 }

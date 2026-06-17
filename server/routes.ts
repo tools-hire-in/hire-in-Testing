@@ -9503,6 +9503,40 @@ export async function registerRoutes(
     },
   );
 
+  // Brand reference (palette + typography) for Studio Settings.
+  app.get(
+    "/api/admin/studio/brand",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (_req: Request, res: Response) => {
+      try {
+        const brand = await storage.getStudioBrandSettings();
+        res.json(brand ?? null);
+      } catch (error) {
+        console.error("Get studio brand error:", error);
+        res.status(500).json({ error: "Failed to fetch brand settings" });
+      }
+    },
+  );
+
+  // List seeded social-card templates (matrix used by Content Studio).
+  app.get(
+    "/api/admin/studio/card-templates",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const family = typeof req.query.family === "string" && req.query.family ? req.query.family : undefined;
+        const templates = await storage.getCardTemplates(family);
+        // Omit the heavy html blob from the list view.
+        res.json(templates.map(({ html, ...rest }) => rest));
+      } catch (error) {
+        console.error("Get card templates error:", error);
+        res.status(500).json({ error: "Failed to fetch card templates" });
+      }
+    },
+  );
+
   // Read the full editable matrix + master flag (Super Admin only).
   app.get("/api/admin/access-control", require2FA, requireSuperAdmin, async (_req: Request, res: Response) => {
     try {
