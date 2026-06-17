@@ -163,6 +163,58 @@ async function getManagedClauseText(category: string, key: string, fallback: str
   }
 }
 
+// Neutral note stamped on a punch when the employee has no shift assigned. The
+// punch is still recorded (never blocked); the note flags that on-time / late
+// tracking cannot be computed until a shift is assigned.
+const NO_SHIFT_PUNCH_NOTE = "No shift configured — punch recorded; assign a shift to enable on-time tracking.";
+
+function employeeDisplayName(user: { firstName?: string | null; lastName?: string | null; email?: string | null } | null | undefined): string {
+  if (!user) return "An employee";
+  const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+  return name || user.email || "An employee";
+}
+
+/**
+ * Record an attendance exception (late punch-in, early logout, overtime) to the
+ * audit trail and notify the employee's manager via an in-app notification.
+ * The notification respects the global `notifications_enabled` feature flag; the
+ * audit entry is always written. All failures are swallowed so they can never
+ * block a punch.
+ */
+async function recordAttendanceException(opts: {
+  employeeId: string;
+  managerId: string | null;
+  action: string;
+  changes: Record<string, unknown>;
+  title: string;
+  message: string;
+}): Promise<void> {
+  try {
+    await storage.createAuditLog({
+      actorId: opts.employeeId,
+      targetId: opts.employeeId,
+      action: opts.action,
+      changes: opts.changes,
+    });
+  } catch (err) {
+    console.error("[attendance-exception] audit log failed:", err);
+  }
+  try {
+    if (!opts.managerId) return;
+    const setting = await storage.getSystemSetting("feature_flags");
+    const flags = (setting?.value as Record<string, boolean>) || {};
+    if (!flags.notifications_enabled) return;
+    await storage.createNotification({
+      userId: opts.managerId,
+      title: opts.title,
+      message: opts.message,
+      type: "warning",
+    });
+  } catch (err) {
+    console.error("[attendance-exception] manager notification failed:", err);
+  }
+}
+
 /**
  * ROLE-BASED ACCESS CONTROL (RBAC) DOCUMENTATION
  * 
@@ -2600,7 +2652,8 @@ export async function registerRoutes(
           // Determine late/present status for this corrected punch-in
           const punchInTime = new Date();
           let punchStatus: "present" | "late" = "present";
-          let noteStr: string | null = null;
+          // No shift → never block; record a neutral note so the audit trail is clear.
+          let noteStr: string | null = NO_SHIFT_PUNCH_NOTE;
           const typedUser2 = currentUser as AdminUser & { shiftId?: string | null };
           if (typedUser2.shiftId) {
             try {
@@ -2619,6 +2672,16 @@ export async function registerRoutes(
             status: punchStatus,
             notes: noteStr,
           });
+          if (punchStatus === "late") {
+            await recordAttendanceException({
+              employeeId: userId,
+              managerId: currentUser?.managerId ?? null,
+              action: "attendance_late_punch_in",
+              changes: { date: today, punchIn: punchInTime.toISOString(), note: noteStr },
+              title: "Late punch-in",
+              message: `${employeeDisplayName(currentUser)} punched in late on ${today}. ${noteStr ?? ""}`.trim(),
+            });
+          }
           return res.status(200).json(record);
         }
         return res.status(400).json({ error: "Already punched in today" });
@@ -2627,7 +2690,8 @@ export async function registerRoutes(
       // Determine if punch-in is late (after shift start + grace period)
       const punchInTime = new Date();
       let punchStatus: "present" | "late" = "present";
-      let graceNote: string | null = null;
+      // No shift → never block; record a neutral note so the audit trail is clear.
+      let graceNote: string | null = NO_SHIFT_PUNCH_NOTE;
       const typedUserForShift = currentUser as AdminUser & { shiftId?: string | null };
       if (typedUserForShift.shiftId) {
         try {
@@ -2649,6 +2713,16 @@ export async function registerRoutes(
         status: punchStatus,
         notes: graceNote,
       });
+      if (punchStatus === "late") {
+        await recordAttendanceException({
+          employeeId: userId,
+          managerId: currentUser?.managerId ?? null,
+          action: "attendance_late_punch_in",
+          changes: { date: today, punchIn: punchInTime.toISOString(), note: graceNote },
+          title: "Late punch-in",
+          message: `${employeeDisplayName(currentUser)} punched in late on ${today}. ${graceNote ?? ""}`.trim(),
+        });
+      }
       res.status(201).json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch in" });
@@ -2684,12 +2758,20 @@ export async function registerRoutes(
         });
       }
 
-      const existing = await storage.getTodayAttendance(userId);
+      // Locate the OPEN session (most recent record with a punch-in and no
+      // punch-out) rather than a strict UTC-today row. A night-shift session that
+      // starts in the evening (record dated the start day) and ends after 00:00
+      // UTC (= 5:30 AM IST the next day) must still attach to its start-day row;
+      // a UTC-today lookup would miss it and lose the log-off time.
+      const existing = await storage.getOpenAttendance(userId);
       if (!existing) {
-        return res.status(400).json({ error: "No punch-in record found for today" });
-      }
-      if (existing.punchOut) {
-        return res.status(400).json({ error: "Already punched out today" });
+        // Fall back to today's row to surface the precise reason (already punched
+        // out vs never punched in) without blocking.
+        const todayRow = await storage.getTodayAttendance(userId);
+        if (todayRow?.punchOut) {
+          return res.status(400).json({ error: "Already punched out" });
+        }
+        return res.status(400).json({ error: "No active punch-in record found" });
       }
       const punchOut = new Date();
       const punchIn = existing.punchIn ? new Date(existing.punchIn) : punchOut;
@@ -2700,29 +2782,57 @@ export async function registerRoutes(
       // Auto half-day detection: if worked hours < half of scheduled hours
       const currentStatus = existing.status as string;
       let updatedStatus: string | undefined;
-      let halfDayNote: string | undefined;
+      const noteSegments: string[] = [];
+      let logoutException: { action: string; title: string; message: string } | null = null;
       const typedUserOut = await storage.getAdminUser(userId) as AdminUser & { shiftId?: string | null };
       if (typedUserOut?.shiftId) {
         try {
-          const { computeDayCompletionStatus } = await import("./attendancePolicy");
+          const { computeDayCompletionStatus, computeLogoutStatus } = await import("./attendancePolicy");
           const result = await computeDayCompletionStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
           if (result.status !== currentStatus) {
             updatedStatus = result.status;
-            halfDayNote = result.notes;
+            if (result.notes) noteSegments.push(result.notes);
+          }
+          // Early-logout / overtime note relative to the shift END time (in addition
+          // to the worked-hours-based short/half-day handling above).
+          const logout = await computeLogoutStatus(typedUserOut.shiftId, punchOut);
+          if (logout?.notes) {
+            noteSegments.push(logout.notes);
+            if (logout.isException) {
+              logoutException = {
+                action: logout.kind === "early" ? "attendance_early_logout" : "attendance_overtime",
+                title: logout.kind === "early" ? "Early logout" : "Overtime logout",
+                message: `${employeeDisplayName(currentUser)} ${logout.kind === "early" ? "logged off early" : "logged off after overtime"} on ${existing.date}. ${logout.notes}`.trim(),
+              };
+            }
           }
         } catch (policyErr) {
-          console.error("[punch-out] Half-day computation failed:", policyErr);
+          console.error("[punch-out] Day-completion / logout computation failed:", policyErr);
         }
       }
 
       const updatePayload: Partial<typeof existing> & { punchOut: Date; totalHours: string; status?: string; notes?: string } = { punchOut, totalHours };
       if (updatedStatus) {
         updatePayload.status = updatedStatus;
+      }
+      if (noteSegments.length > 0) {
         const existingNotes = existing.notes ? `${existing.notes}; ` : "";
-        updatePayload.notes = existingNotes + halfDayNote;
+        updatePayload.notes = existingNotes + noteSegments.join("; ");
       }
 
       const record = await storage.updateAttendance(existing.id, updatePayload);
+
+      if (logoutException) {
+        await recordAttendanceException({
+          employeeId: userId,
+          managerId: currentUser?.managerId ?? null,
+          action: logoutException.action,
+          changes: { date: existing.date, punchOut: punchOut.toISOString(), totalHours },
+          title: logoutException.title,
+          message: logoutException.message,
+        });
+      }
+
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch out" });

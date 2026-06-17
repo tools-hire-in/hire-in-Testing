@@ -898,8 +898,8 @@ async function ensureShiftTables() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 0`);
-    await db.execute(sql`ALTER TABLE shifts ALTER COLUMN grace_period_minutes SET DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 15`);
+    await db.execute(sql`ALTER TABLE shifts ALTER COLUMN grace_period_minutes SET DEFAULT 15`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS dst_config (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1792,6 +1792,63 @@ async function ensureHealthcarePlansTables() {
     }
   } catch (err) {
     console.error("Grace-zero one-time migration error:", err);
+  }
+
+  try {
+    // Restore a 15-minute grace window once. The earlier no-grace migration
+    // zeroed every shift's grace_period_minutes, which wrongly flagged on-time
+    // staff as Late (especially Shift C under DST). This one-time restore (guarded
+    // by its own marker) sets grace back to 15 without re-firing on later
+    // restarts, so any subsequent HR-configured grace period is preserved.
+    const restoreMarker = await db.execute(sql`SELECT key FROM system_settings WHERE key = 'grace_restore_15_applied' LIMIT 1`);
+    if (restoreMarker.rows.length === 0) {
+      await db.execute(sql`UPDATE shifts SET grace_period_minutes = 15 WHERE grace_period_minutes IS DISTINCT FROM 15`);
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('grace_restore_15_applied', 'true'::jsonb, NOW())
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log("Restored grace_period_minutes=15 on all shifts (one-time)");
+    }
+  } catch (err) {
+    console.error("Grace-restore one-time migration error:", err);
+  }
+
+  try {
+    // One-time cleanup of wrongful auto-absent rows for shiftless employees. The
+    // 23:59 sweep is meant to skip staff with no shift, but production (running an
+    // older build) stamped "[Auto] No punch-in recorded" Absents on them. Those
+    // rows penalise balances/reports. We void them for employees who currently
+    // have no shift assigned, snapshotting what was removed for reviewability.
+    const cleanupMarker = await db.execute(sql`SELECT key FROM system_settings WHERE key = 'wrongful_absent_cleanup_v1' LIMIT 1`);
+    if (cleanupMarker.rows.length === 0) {
+      const doomed = await db.execute(sql`
+        SELECT a.id, a.user_id, a.date
+        FROM attendance a
+        JOIN admin_users u ON u.id = a.user_id
+        WHERE a.status = 'absent'
+          AND a.notes = '[Auto] No punch-in recorded'
+          AND a.punch_in IS NULL
+          AND u.shift_id IS NULL
+          AND a.date >= (CURRENT_DATE - INTERVAL '60 days')::text
+      `);
+      const removedRows = doomed.rows as { id: string; user_id: string; date: string }[];
+      if (removedRows.length > 0) {
+        const ids = removedRows.map(r => r.id);
+        await db.execute(sql`
+          DELETE FROM attendance
+          WHERE id = ANY(ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::varchar[])
+        `);
+      }
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('wrongful_absent_cleanup_v1', ${JSON.stringify({ removedCount: removedRows.length, removed: removedRows, ranAt: new Date().toISOString() })}::jsonb, NOW())
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log(`Cleaned up ${removedRows.length} wrongful auto-absent row(s) for shiftless employees`);
+    }
+  } catch (err) {
+    console.error("Wrongful-absent cleanup migration error:", err);
   }
 
   try {

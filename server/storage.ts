@@ -231,6 +231,7 @@ export interface IStorage {
   getAttendanceByUser(userId: string, startDate?: string, endDate?: string): Promise<Attendance[]>;
   getAttendanceByDate(date: string): Promise<Attendance[]>;
   getTodayAttendance(userId: string): Promise<Attendance | undefined>;
+  getOpenAttendance(userId: string): Promise<Attendance | undefined>;
   createAttendance(record: InsertAttendance): Promise<Attendance>;
   updateAttendance(id: string, record: Partial<InsertAttendance>): Promise<Attendance | undefined>;
   getAttendanceByTeam(userIds: string[], date: string): Promise<Attendance[]>;
@@ -1069,6 +1070,22 @@ export class DatabaseStorage implements IStorage {
     const today = new Date().toISOString().split("T")[0];
     const [record] = await db.select().from(attendance)
       .where(and(eq(attendance.userId, userId), eq(attendance.date, today)));
+    return record;
+  }
+
+  async getOpenAttendance(userId: string): Promise<Attendance | undefined> {
+    // Most recent record with a punch-in but no punch-out — i.e. the currently
+    // open work session. Used for punch-out so a night-shift session that ends
+    // after midnight UTC (early-morning IST) still attaches to its start-day row,
+    // rather than being lost by a strict UTC-today lookup.
+    const [record] = await db.select().from(attendance)
+      .where(and(
+        eq(attendance.userId, userId),
+        isNotNull(attendance.punchIn),
+        isNull(attendance.punchOut),
+      ))
+      .orderBy(desc(attendance.punchIn))
+      .limit(1);
     return record;
   }
 

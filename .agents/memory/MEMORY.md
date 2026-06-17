@@ -13,3 +13,4 @@
 - [Studio schema drift](studio-schema-drift.md) — studio_articles.category in schema but missing from dev DB; 500s insights read path. Use narrow selects in new public endpoints.
 - [Social card engine](social-card-engine.md) — Chromium renders branded PNGs at 2× scale; networkidle0 needs as-any cast; global-fallback template resolution; auto-trigger on approved.
 - [Pending changes guardrail](pending-changes-guardrail.md) — automated jobs PROPOSE into pending_changes (super-admin review); only absent_sweep guardrailed, accrual/year-end/salary-run are exempt idempotent bookkeeping.
+- [Test runner is node:test](test-runner-node-test.md) — server tests use node:test; run via `npx tsx --test`, not vitest (vitest picks up client config).

@@ -77,20 +77,26 @@ export async function computeLateStatus(
 
   // No grace → late the moment delta exceeds 0. With grace → late past start+grace.
   const isLate = delta > grace;
+  // delta > 0 but within the grace window → on-time but consumed grace.
+  const withinGrace = !isLate && delta > 0 && grace > 0;
 
   const graceEndNorm = (shiftStartMinutes + grace) % 1440;
   const graceEndHH = String(Math.floor(graceEndNorm / 60)).padStart(2, "0");
   const graceEndMM = String(graceEndNorm % 60).padStart(2, "0");
+  const startHH = String(Math.floor(shiftStartMinutes / 60)).padStart(2, "0");
+  const startMM = String(shiftStartMinutes % 60).padStart(2, "0");
 
+  // Explicitly label the three punch-in categories so the record makes the
+  // classification unambiguous: late, within-grace (on time but used grace), or on time.
   let notes: string;
-  if (grace > 0) {
-    notes = isLate
-      ? `[Auto] Late punch-in. Grace window ended at ${graceEndHH}:${graceEndMM} IST`
-      : `Grace window ended at ${graceEndHH}:${graceEndMM} IST`;
+  if (isLate) {
+    notes = grace > 0
+      ? `[Auto] Late punch-in: ${delta} min after shift start (${startHH}:${startMM} IST); grace window ended at ${graceEndHH}:${graceEndMM} IST`
+      : `[Auto] Late punch-in: ${delta} min after shift start (${startHH}:${startMM} IST, no grace)`;
+  } else if (withinGrace) {
+    notes = `Within grace: punched in ${delta} min after shift start (${startHH}:${startMM} IST); grace window ends ${graceEndHH}:${graceEndMM} IST`;
   } else {
-    notes = isLate
-      ? `[Auto] Late punch-in. Shift started at ${graceEndHH}:${graceEndMM} IST (no grace)`
-      : `On time. Shift started at ${graceEndHH}:${graceEndMM} IST`;
+    notes = `On time. Shift started at ${startHH}:${startMM} IST`;
   }
 
   return { status: isLate ? "late" : "present", notes };
@@ -135,6 +141,66 @@ export async function computeDayCompletionStatus(
     };
   }
   return { status: currentStatus, notes: undefined };
+}
+
+export interface LogoutStatus {
+  /** "early" = before shift end, "overtime" = well past shift end, "on_time" = around shift end. */
+  kind: "early" | "overtime" | "on_time";
+  notes: string | null;
+  /** True when this is a notable exception worth auditing / notifying a manager. */
+  isException: boolean;
+}
+
+// Any punch-out before the shift end is an early logout; any punch-out after the
+// shift end is overtime. A tiny ±1 min tolerance absorbs clock rounding so an
+// exactly-on-time logout is not spuriously flagged; everything outside it is
+// annotated and raised as an exception (audit + manager notification).
+const EARLY_LOGOUT_THRESHOLD_MIN = 1;
+const OVERTIME_THRESHOLD_MIN = 1;
+
+/**
+ * Determine whether a punch-out is an early logout or overtime relative to the
+ * employee's shift end time. Mirrors the wrap-around logic of computeLateStatus
+ * so overnight shifts (end after midnight IST) are handled correctly.
+ *
+ * Returns null when the shift cannot be found (caller should record no note).
+ */
+export async function computeLogoutStatus(
+  shiftId: string,
+  punchOutTime: Date,
+): Promise<LogoutStatus | null> {
+  const timing = await getCurrentShiftTiming(shiftId);
+  if (!timing) return null;
+
+  const punchIST = new Date(punchOutTime.getTime() + IST_OFFSET_MS);
+  const punchISTMinutes = punchIST.getUTCHours() * 60 + punchIST.getUTCMinutes();
+
+  const shiftEndMinutes = shiftTimeToMinutes(timing.istEnd);
+
+  // Signed minute difference from the shift end, wrapped into a 24h window
+  // centred on the shift end (same approach as computeLateStatus).
+  let delta = punchISTMinutes - shiftEndMinutes;
+  if (delta >= 720) delta -= 1440;
+  if (delta < -720) delta += 1440;
+
+  const endHH = String(Math.floor(shiftEndMinutes / 60)).padStart(2, "0");
+  const endMM = String(shiftEndMinutes % 60).padStart(2, "0");
+
+  if (delta < -EARLY_LOGOUT_THRESHOLD_MIN) {
+    return {
+      kind: "early",
+      notes: `[Auto] Early logout: punched out ${Math.abs(delta)} min before shift end (${endHH}:${endMM} IST)`,
+      isException: true,
+    };
+  }
+  if (delta > OVERTIME_THRESHOLD_MIN) {
+    return {
+      kind: "overtime",
+      notes: `[Auto] Overtime: punched out ${delta} min after shift end (${endHH}:${endMM} IST)`,
+      isException: true,
+    };
+  }
+  return { kind: "on_time", notes: null, isException: false };
 }
 
 /**
