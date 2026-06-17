@@ -91,6 +91,11 @@ import {
   attendanceRegularizations,
   type AttendanceRegularization,
   type InsertAttendanceRegularization,
+  studioProjects,
+  studioArticles,
+  type StudioProject,
+  type InsertStudioProject,
+  type StudioArticle,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -332,6 +337,17 @@ export interface IStorage {
     newApplications: number;
     totalContacts: number;
     newContacts: number;
+  }>;
+
+  // Content Studio
+  getStudioProjects(): Promise<StudioProject[]>;
+  createStudioProject(data: InsertStudioProject): Promise<StudioProject>;
+  getStudioDashboardStats(projectId?: string): Promise<{
+    totalArticles: number;
+    byStatus: Record<string, number>;
+    pendingReviews: number;
+    scheduled: number;
+    published: number;
   }>;
 }
 
@@ -2713,6 +2729,60 @@ export class DatabaseStorage implements IStorage {
     }
 
     return created;
+  }
+
+  // ==========================================
+  // CONTENT STUDIO
+  // ==========================================
+
+  async getStudioProjects(): Promise<StudioProject[]> {
+    return await db
+      .select()
+      .from(studioProjects)
+      .orderBy(desc(studioProjects.isPrimary), asc(studioProjects.name));
+  }
+
+  async createStudioProject(data: InsertStudioProject): Promise<StudioProject> {
+    const [created] = await db.insert(studioProjects).values(data).returning();
+    return created;
+  }
+
+  async getStudioDashboardStats(projectId?: string): Promise<{
+    totalArticles: number;
+    byStatus: Record<string, number>;
+    pendingReviews: number;
+    scheduled: number;
+    published: number;
+  }> {
+    const whereClause = projectId ? eq(studioArticles.projectId, projectId) : undefined;
+
+    const rows = await db
+      .select({ status: studioArticles.status, count: sql<number>`count(*)::int` })
+      .from(studioArticles)
+      .where(whereClause)
+      .groupBy(studioArticles.status);
+
+    const byStatus: Record<string, number> = {
+      draft: 0,
+      in_review: 0,
+      approved: 0,
+      scheduled: 0,
+      published: 0,
+      ready_to_export: 0,
+    };
+    let totalArticles = 0;
+    for (const r of rows) {
+      byStatus[r.status] = r.count;
+      totalArticles += r.count;
+    }
+
+    return {
+      totalArticles,
+      byStatus,
+      pendingReviews: byStatus.in_review,
+      scheduled: byStatus.scheduled,
+      published: byStatus.published,
+    };
   }
 
 }

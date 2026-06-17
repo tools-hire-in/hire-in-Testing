@@ -27,6 +27,7 @@ import {
   MessageCircle,
   FileText,
   ClipboardList,
+  Newspaper,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -414,6 +415,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole) && can("hr.users");
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
   const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
+  const hasStudioAccess = can("studio.view");
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth
@@ -528,6 +530,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badge: salaryPendingCount > 0 ? salaryPendingCount : undefined,
       icon: FileText,
       roles: ["super_admin", "admin"],
+    }] : []),
+    ...(hasStudioAccess ? [{
+      href: "/admin/studio",
+      label: "Content Studio",
+      icon: Newspaper,
+      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
     }] : []),
   ];
 

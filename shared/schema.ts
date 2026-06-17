@@ -2164,3 +2164,156 @@ export const signatureRecords = pgTable("signature_records", {
 export const insertSignatureRecordSchema = createInsertSchema(signatureRecords).omit({ id: true, createdAt: true });
 export type SignatureRecord = typeof signatureRecords.$inferSelect;
 export type InsertSignatureRecord = z.infer<typeof insertSignatureRecordSchema>;
+
+// ==========================================
+// CONTENT & MARKETING STUDIO MODULE
+// ==========================================
+
+// Article lifecycle pipeline.
+export const articleStatusEnum = pgEnum("article_status", [
+  "draft",
+  "in_review",
+  "approved",
+  "scheduled",
+  "published",
+  "ready_to_export",
+]);
+
+// Projects / brands the studio publishes for.
+export const studioProjects = pgTable("studio_projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  slug: varchar("slug").notNull().unique(),
+  description: text("description"),
+  brandColor: varchar("brand_color"),
+  logoUrl: varchar("logo_url"),
+  isPrimary: boolean("is_primary").default(false).notNull(),
+  publishesToInsights: boolean("publishes_to_insights").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Author bylines (decoupled from admin users so external/guest authors work).
+export const studioAuthorProfiles = pgTable("studio_author_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  projectId: varchar("project_id").references(() => studioProjects.id),
+  displayName: varchar("display_name").notNull(),
+  title: varchar("title"),
+  bio: text("bio"),
+  photoUrl: varchar("photo_url"),
+  linkedinUrl: varchar("linkedin_url"),
+  consentedAt: timestamp("consented_at"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Core article record.
+export const studioArticles = pgTable("studio_articles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  status: articleStatusEnum("status").default("draft").notNull(),
+  contentType: varchar("content_type").default("article").notNull(),
+  title: varchar("title").notNull(),
+  slug: varchar("slug"),
+  excerpt: text("excerpt"),
+  bodyMarkdown: text("body_markdown"),
+  bodyJson: jsonb("body_json"),
+  coverImageUrl: varchar("cover_image_url"),
+  seoTitle: varchar("seo_title"),
+  seoDescription: text("seo_description"),
+  ogImageUrl: varchar("og_image_url"),
+  tags: text("tags").array(),
+  readTimeMinutes: integer("read_time_minutes"),
+  authorProfileId: varchar("author_profile_id").references(() => studioAuthorProfiles.id),
+  reviewerUserId: varchar("reviewer_user_id"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  scheduledAt: timestamp("scheduled_at"),
+  publishedAt: timestamp("published_at"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Immutable snapshots of article body for version history.
+export const studioArticleVersions = pgTable("studio_article_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id").notNull().references(() => studioArticles.id),
+  versionNo: integer("version_no").notNull(),
+  title: varchar("title"),
+  bodyMarkdown: text("body_markdown"),
+  bodyJson: jsonb("body_json"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Review workflow assignments.
+export const studioReviewAssignments = pgTable("studio_review_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id").notNull().references(() => studioArticles.id),
+  reviewerUserId: varchar("reviewer_user_id").notNull(),
+  status: varchar("status").default("pending").notNull(),
+  dueAt: timestamp("due_at"),
+  decisionAt: timestamp("decision_at"),
+  comment: text("comment"),
+  assignedBy: varchar("assigned_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Public reactions on published articles.
+export const studioArticleReactions = pgTable("studio_article_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id").notNull().references(() => studioArticles.id),
+  reactionType: varchar("reaction_type").notNull(),
+  sessionHash: varchar("session_hash"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Newsletter opt-ins captured from public surfaces.
+export const studioNewsletterSubscribers = pgTable("studio_newsletter_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull().unique(),
+  projectId: varchar("project_id").references(() => studioProjects.id),
+  confirmedAt: timestamp("confirmed_at"),
+  unsubscribedAt: timestamp("unsubscribed_at"),
+  preferences: jsonb("preferences"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Append-only audit trail for studio actions.
+export const studioAuditEvents = pgTable("studio_audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id"),
+  actorUserId: varchar("actor_user_id"),
+  eventType: varchar("event_type").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertStudioProjectSchema = createInsertSchema(studioProjects).omit({ id: true, createdAt: true });
+export const insertStudioAuthorProfileSchema = createInsertSchema(studioAuthorProfiles).omit({ id: true, createdAt: true });
+export const insertStudioArticleSchema = createInsertSchema(studioArticles).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertStudioArticleVersionSchema = createInsertSchema(studioArticleVersions).omit({ id: true, createdAt: true });
+export const insertStudioReviewAssignmentSchema = createInsertSchema(studioReviewAssignments).omit({ id: true, createdAt: true });
+export const insertStudioArticleReactionSchema = createInsertSchema(studioArticleReactions).omit({ id: true, createdAt: true });
+export const insertStudioNewsletterSubscriberSchema = createInsertSchema(studioNewsletterSubscribers).omit({ id: true, createdAt: true });
+export const insertStudioAuditEventSchema = createInsertSchema(studioAuditEvents).omit({ id: true, createdAt: true });
+
+export type StudioProject = typeof studioProjects.$inferSelect;
+export type InsertStudioProject = z.infer<typeof insertStudioProjectSchema>;
+export type StudioAuthorProfile = typeof studioAuthorProfiles.$inferSelect;
+export type InsertStudioAuthorProfile = z.infer<typeof insertStudioAuthorProfileSchema>;
+export type StudioArticle = typeof studioArticles.$inferSelect;
+export type InsertStudioArticle = z.infer<typeof insertStudioArticleSchema>;
+export type StudioArticleVersion = typeof studioArticleVersions.$inferSelect;
+export type InsertStudioArticleVersion = z.infer<typeof insertStudioArticleVersionSchema>;
+export type StudioReviewAssignment = typeof studioReviewAssignments.$inferSelect;
+export type InsertStudioReviewAssignment = z.infer<typeof insertStudioReviewAssignmentSchema>;
+export type StudioArticleReaction = typeof studioArticleReactions.$inferSelect;
+export type InsertStudioArticleReaction = z.infer<typeof insertStudioArticleReactionSchema>;
+export type StudioNewsletterSubscriber = typeof studioNewsletterSubscribers.$inferSelect;
+export type InsertStudioNewsletterSubscriber = z.infer<typeof insertStudioNewsletterSubscriberSchema>;
+export type StudioAuditEvent = typeof studioAuditEvents.$inferSelect;
+export type InsertStudioAuditEvent = z.infer<typeof insertStudioAuditEventSchema>;

@@ -395,6 +395,155 @@ async function ensureHrLetterAmendmentTypes() {
   }
 }
 
+async function ensureContentStudioTables() {
+  try {
+    log("Ensuring Content Studio enum, tables, indexes, and seed project...");
+
+    await db.execute(sql`DO $$ BEGIN
+      CREATE TYPE "article_status" AS ENUM ('draft', 'in_review', 'approved', 'scheduled', 'published', 'ready_to_export');
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+    END $$`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_projects" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "name" varchar NOT NULL,
+        "slug" varchar NOT NULL UNIQUE,
+        "description" text,
+        "brand_color" varchar,
+        "logo_url" varchar,
+        "is_primary" boolean DEFAULT false NOT NULL,
+        "publishes_to_insights" boolean DEFAULT false NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "created_by" varchar,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_author_profiles" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "user_id" varchar,
+        "project_id" varchar REFERENCES studio_projects(id),
+        "display_name" varchar NOT NULL,
+        "title" varchar,
+        "bio" text,
+        "photo_url" varchar,
+        "linkedin_url" varchar,
+        "consented_at" timestamp,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_articles" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "project_id" varchar NOT NULL REFERENCES studio_projects(id),
+        "status" "article_status" DEFAULT 'draft' NOT NULL,
+        "content_type" varchar DEFAULT 'article' NOT NULL,
+        "title" varchar NOT NULL,
+        "slug" varchar,
+        "excerpt" text,
+        "body_markdown" text,
+        "body_json" jsonb,
+        "cover_image_url" varchar,
+        "seo_title" varchar,
+        "seo_description" text,
+        "og_image_url" varchar,
+        "tags" text[],
+        "read_time_minutes" integer,
+        "author_profile_id" varchar REFERENCES studio_author_profiles(id),
+        "reviewer_user_id" varchar,
+        "approved_by" varchar,
+        "approved_at" timestamp,
+        "scheduled_at" timestamp,
+        "published_at" timestamp,
+        "created_by" varchar,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_article_versions" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "article_id" varchar NOT NULL REFERENCES studio_articles(id),
+        "version_no" integer NOT NULL,
+        "title" varchar,
+        "body_markdown" text,
+        "body_json" jsonb,
+        "created_by" varchar,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_review_assignments" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "article_id" varchar NOT NULL REFERENCES studio_articles(id),
+        "reviewer_user_id" varchar NOT NULL,
+        "status" varchar DEFAULT 'pending' NOT NULL,
+        "due_at" timestamp,
+        "decision_at" timestamp,
+        "comment" text,
+        "assigned_by" varchar,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_article_reactions" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "article_id" varchar NOT NULL REFERENCES studio_articles(id),
+        "reaction_type" varchar NOT NULL,
+        "session_hash" varchar,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_newsletter_subscribers" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "email" varchar NOT NULL UNIQUE,
+        "project_id" varchar REFERENCES studio_projects(id),
+        "confirmed_at" timestamp,
+        "unsubscribed_at" timestamp,
+        "preferences" jsonb,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_audit_events" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "article_id" varchar,
+        "actor_user_id" varchar,
+        "event_type" varchar NOT NULL,
+        "metadata" jsonb,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_articles_project_idx ON studio_articles(project_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_articles_status_idx ON studio_articles(status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_article_versions_article_idx ON studio_article_versions(article_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_review_assignments_article_idx ON studio_review_assignments(article_id)`);
+
+    // Seed the primary Hire'in project (idempotent — slug is unique).
+    await db.execute(sql`
+      INSERT INTO studio_projects (name, slug, description, brand_color, is_primary, publishes_to_insights, is_active)
+      VALUES ('Hire''in Solutions', 'hirein', 'Primary brand — publishes to the public Insights surface.', '#1F3A6E', true, true, true)
+      ON CONFLICT (slug) DO NOTHING
+    `);
+
+    log("Content Studio tables, indexes, and seed project ensured");
+  } catch (err) {
+    console.error("Content Studio table migration error:", err);
+  }
+}
+
 async function ensureOfferLetterApprovalColumns() {
   try {
     await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS approved_by VARCHAR REFERENCES admin_users(id)`);
@@ -1598,6 +1747,7 @@ async function ensureHealthcarePlansTables() {
   }
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
+  await ensureContentStudioTables();
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();

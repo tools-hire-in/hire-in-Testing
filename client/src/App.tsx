@@ -69,6 +69,7 @@ const PerformanceAnalytics = lazy(() => import("@/pages/admin/performance/Analyt
 const PolicyGate = lazy(() => import("@/pages/admin/PolicyGate"));
 const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
+const Studio = lazy(() => import("@/pages/admin/studio/Studio"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 
 function AdminFallback() {
@@ -183,6 +184,9 @@ function PublicRouter() {
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
 
+      {/* Content Studio */}
+      <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
+
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />
 
@@ -264,6 +268,9 @@ function EmployeeRouter() {
 
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
+
+      {/* Content Studio */}
+      <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />

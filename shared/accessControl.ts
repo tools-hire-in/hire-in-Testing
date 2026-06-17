@@ -223,6 +223,18 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "rayoAcademy.assign": ["super_admin", "admin", "hr", "manager", "operations"],
   "rayoAcademy.provision": ["super_admin", "admin", "hr"],
   "rayoAcademy.teamProgress": ["super_admin", "admin", "hr", "manager", "operations"],
+  "studio.view": ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
+  "studio.create_article": ["super_admin", "admin", "marketing_manager", "content_editor"],
+  "studio.edit_article": ["super_admin", "admin", "marketing_manager", "content_editor"],
+  "studio.generate_ai_draft": ["super_admin", "admin", "marketing_manager", "content_editor"],
+  "studio.review_article": ["super_admin", "admin", "marketing_manager", "reviewer"],
+  "studio.marketing_approve": ["super_admin", "admin", "marketing_manager"],
+  "studio.schedule_publish": ["super_admin", "admin", "marketing_manager"],
+  "studio.publish_article": ["super_admin", "admin", "marketing_manager"],
+  "studio.manage_authors": ["super_admin", "admin", "marketing_manager"],
+  "studio.manage_assets": ["super_admin", "admin", "marketing_manager", "content_editor"],
+  "studio.view_analytics": ["super_admin", "admin", "marketing_manager"],
+  "studio.manage_settings": ["super_admin", "admin", "marketing_manager"],
   "system.featureFlags": ["super_admin", "admin"],
   "systemSettings": ["super_admin", "admin", "hr"],
 };
@@ -258,6 +270,9 @@ export const ACCESS_CONTROL_ROLES: { value: string; label: string }[] = [
   { value: "recruiter", label: "Recruiter" },
   { value: "employee", label: "Employee" },
   { value: "architect", label: "Architect" },
+  { value: "marketing_manager", label: "Marketing Manager" },
+  { value: "content_editor", label: "Content Editor" },
+  { value: "reviewer", label: "Reviewer" },
 ];
 
 /**

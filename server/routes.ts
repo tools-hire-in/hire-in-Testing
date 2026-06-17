@@ -9058,6 +9058,45 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // CONTENT & MARKETING STUDIO
+  // ==========================================
+
+  // List studio projects (project switcher + Projects tab).
+  app.get(
+    "/api/admin/studio/projects",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (_req: Request, res: Response) => {
+      try {
+        const projects = await storage.getStudioProjects();
+        res.json(projects);
+      } catch (error) {
+        console.error("Get studio projects error:", error);
+        res.status(500).json({ error: "Failed to fetch studio projects" });
+      }
+    },
+  );
+
+  // Dashboard stats (counts by status for the selected project, or all).
+  app.get(
+    "/api/admin/studio/stats",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId
+          : undefined;
+        const stats = await storage.getStudioDashboardStats(projectId);
+        res.json(stats);
+      } catch (error) {
+        console.error("Get studio stats error:", error);
+        res.status(500).json({ error: "Failed to fetch studio stats" });
+      }
+    },
+  );
+
   // Read the full editable matrix + master flag (Super Admin only).
   app.get("/api/admin/access-control", require2FA, requireSuperAdmin, async (_req: Request, res: Response) => {
     try {
