@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { InsightCard } from "@/components/insights/InsightCard";
+import { ReactionBar } from "@/components/insights/ReactionBar";
+import { ShareBar } from "@/components/insights/ShareBar";
 import { insightCategoryLabel, ctaForCategory } from "@shared/insights";
 import { formatInsightDate, type InsightDetailResponse } from "@/lib/insights";
 import { Clock, ArrowLeft, ArrowRight, Linkedin, CheckCircle2, Lightbulb } from "lucide-react";
@@ -267,6 +269,10 @@ export default function InsightArticle() {
               </CardContent>
             </Card>
           )}
+
+          {/* Reader reactions + share */}
+          <ReactionBar articleId={article.id} />
+          <ShareBar title={article.title} />
         </div>
       </article>
 

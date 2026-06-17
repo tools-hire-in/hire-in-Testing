@@ -10,3 +10,4 @@
 - [CSS var() empty-fallback trap](css-var-fallback-empty.md) — var(--x,default) ignores fallback when --x is set-but-empty; wrap templated custom props in Mustache sections so they stay unset.
 - [AI integration chat models](ai-integration-models.md) — chat goes through AI_INTEGRATIONS_* proxy (not OPENAI_API_KEY); gpt-5.4 works; gpt-5* return empty when max_completion_tokens too small.
 - [Dev server has no backend watch](dev-server-no-watch.md) — plain tsx (no watch); backend route changes need a workflow restart, else API returns SPA HTML.
+- [Studio schema drift](studio-schema-drift.md) — studio_articles.category in schema but missing from dev DB; 500s insights read path. Use narrow selects in new public endpoints.

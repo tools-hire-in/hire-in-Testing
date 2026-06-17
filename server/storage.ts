@@ -97,6 +97,7 @@ import {
   studioArticleVersions,
   studioAuthorProfiles,
   studioAuditEvents,
+  studioArticleReactions,
   studioPromptTemplates,
   studioGenerations,
   studioReviewAssignments,
@@ -110,6 +111,7 @@ import {
   type InsertStudioAuthorProfile,
   type StudioAuditEvent,
   type InsertStudioAuditEvent,
+  type StudioArticleReaction,
   cardTemplates,
   studioBrandSettings,
   type CardTemplate,
@@ -400,6 +402,15 @@ export interface IStorage {
   // Audit
   createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
   getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
+  // Public reactions
+  isInsightPublished(articleId: string): Promise<boolean>;
+  getArticleReactionCounts(articleId: string): Promise<Record<string, number>>;
+  getUserArticleReaction(articleId: string, sessionHash: string): Promise<StudioArticleReaction | undefined>;
+  toggleArticleReaction(
+    articleId: string,
+    sessionHash: string,
+    reactionType: string,
+  ): Promise<{ action: "added" | "removed" | "switched"; previousType: string | null; reactionType: string }>;
   // Card templates + brand
   getStudioBrandSettings(): Promise<StudioBrandSettings | undefined>;
   getCardTemplates(family?: string): Promise<CardTemplate[]>;
@@ -3075,6 +3086,79 @@ export class DatabaseStorage implements IStorage {
       .from(studioAuditEvents)
       .where(eq(studioAuditEvents.articleId, articleId))
       .orderBy(desc(studioAuditEvents.createdAt));
+  }
+
+  // ---- Public reactions ----
+  async isInsightPublished(articleId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: studioArticles.id })
+      .from(studioArticles)
+      .where(
+        and(
+          eq(studioArticles.id, articleId),
+          eq(studioArticles.status, "published"),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  async getArticleReactionCounts(articleId: string): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        reactionType: studioArticleReactions.reactionType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studioArticleReactions)
+      .where(eq(studioArticleReactions.articleId, articleId))
+      .groupBy(studioArticleReactions.reactionType);
+    const counts: Record<string, number> = {};
+    for (const r of rows) counts[r.reactionType] = Number(r.count);
+    return counts;
+  }
+
+  async getUserArticleReaction(
+    articleId: string,
+    sessionHash: string,
+  ): Promise<StudioArticleReaction | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioArticleReactions)
+      .where(
+        and(
+          eq(studioArticleReactions.articleId, articleId),
+          eq(studioArticleReactions.sessionHash, sessionHash),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
+  // One reaction per (article, session). Re-clicking the same type removes it
+  // (toggle off); clicking a different type switches the existing row.
+  async toggleArticleReaction(
+    articleId: string,
+    sessionHash: string,
+    reactionType: string,
+  ): Promise<{ action: "added" | "removed" | "switched"; previousType: string | null; reactionType: string }> {
+    const existing = await this.getUserArticleReaction(articleId, sessionHash);
+    if (existing) {
+      if (existing.reactionType === reactionType) {
+        await db
+          .delete(studioArticleReactions)
+          .where(eq(studioArticleReactions.id, existing.id));
+        return { action: "removed", previousType: existing.reactionType, reactionType };
+      }
+      await db
+        .update(studioArticleReactions)
+        .set({ reactionType })
+        .where(eq(studioArticleReactions.id, existing.id));
+      return { action: "switched", previousType: existing.reactionType, reactionType };
+    }
+    await db
+      .insert(studioArticleReactions)
+      .values({ articleId, sessionHash, reactionType });
+    return { action: "added", previousType: null, reactionType };
   }
 
   async getStudioBrandSettings(): Promise<StudioBrandSettings | undefined> {

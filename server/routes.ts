@@ -23,6 +23,7 @@ import {
   type StudioRoutingRules,
 } from "@shared/schema";
 import { computeReadTime } from "@shared/studioContent";
+import { INSIGHT_REACTION_VALUES } from "@shared/insights";
 import {
   getComplianceMode,
   type AiGenerationParams,
@@ -451,6 +452,95 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to load insight:", error);
       res.status(500).json({ message: "Failed to load article" });
+    }
+  });
+
+  // ---- Public reader reactions (no auth) ----
+  // Stable-but-anonymous identity: we store an opaque anonId in the session and
+  // attribute reactions to an HMAC of it (never the raw id). No anonId is
+  // created on read — only when a visitor actually reacts.
+  function hashSessionAnonId(anonId: string): string {
+    return crypto
+      .createHmac("sha256", process.env.SESSION_SECRET || "insights-reaction-secret")
+      .update(anonId)
+      .digest("hex");
+  }
+
+  const reactSchema = z.object({
+    reactionType: z.enum(INSIGHT_REACTION_VALUES as [string, ...string[]]),
+  });
+
+  // Reaction counts for an article + the current session's reaction (if any).
+  app.get("/api/insights/:articleId/reactions", async (req, res) => {
+    try {
+      const counts = await storage.getArticleReactionCounts(req.params.articleId);
+      let userReaction: string | null = null;
+      if (req.session?.anonId) {
+        const existing = await storage.getUserArticleReaction(
+          req.params.articleId,
+          hashSessionAnonId(req.session.anonId),
+        );
+        userReaction = existing?.reactionType ?? null;
+      }
+      res.json({ counts, userReaction });
+    } catch (error) {
+      console.error("Failed to load reactions:", error);
+      res.status(500).json({ message: "Failed to load reactions" });
+    }
+  });
+
+  // Toggle a reaction for the current session. One reaction per session per
+  // article: same type toggles off, a different type switches.
+  app.post("/api/insights/:articleId/react", async (req, res) => {
+    try {
+      const parsed = reactSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid reaction type" });
+      }
+
+      const published = await storage.isInsightPublished(req.params.articleId);
+      if (!published) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+
+      if (!req.session.anonId) {
+        req.session.anonId = crypto.randomUUID();
+      }
+      const sessionHash = hashSessionAnonId(req.session.anonId);
+
+      const result = await storage.toggleArticleReaction(
+        req.params.articleId,
+        sessionHash,
+        parsed.data.reactionType,
+      );
+
+      // Append to the studio audit trail so the analytics dashboard can chart
+      // reaction trends. A switch emits a removed (old) + added (new) pair.
+      if (result.action === "switched") {
+        await storage.createStudioAuditEvent({
+          articleId: req.params.articleId,
+          eventType: "reaction_removed",
+          metadata: { action: "removed", reactionType: result.previousType },
+        });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.articleId,
+          eventType: "reaction_added",
+          metadata: { action: "added", reactionType: result.reactionType },
+        });
+      } else {
+        await storage.createStudioAuditEvent({
+          articleId: req.params.articleId,
+          eventType: result.action === "removed" ? "reaction_removed" : "reaction_added",
+          metadata: { action: result.action, reactionType: result.reactionType },
+        });
+      }
+
+      const counts = await storage.getArticleReactionCounts(req.params.articleId);
+      const userReaction = result.action === "removed" ? null : result.reactionType;
+      res.json({ counts, userReaction });
+    } catch (error) {
+      console.error("Failed to record reaction:", error);
+      res.status(500).json({ message: "Failed to record reaction" });
     }
   });
 

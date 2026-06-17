@@ -26,6 +26,9 @@ declare module "express-session" {
     role: string;
     firstName: string;
     lastName: string;
+    // Stable anonymous identifier used to attribute public reactions to a
+    // visitor without requiring login. Hashed before storage.
+    anonId: string;
   }
 }
 

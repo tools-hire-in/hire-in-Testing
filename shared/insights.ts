@@ -98,3 +98,21 @@ export function ctaForCategory(value: string | null | undefined): InsightCta {
   if (!value) return DEFAULT_CTA;
   return CTA_BY_CATEGORY[value] ?? DEFAULT_CTA;
 }
+
+// Reader reactions shown on public article pages. The `value` is what gets
+// stored on studio_article_reactions.reaction_type and is the single source of
+// truth shared by the reaction bar (frontend) and the react API (backend).
+export interface InsightReaction {
+  value: string;
+  emoji: string;
+  label: string;
+}
+
+export const INSIGHT_REACTIONS: InsightReaction[] = [
+  { value: "helpful", emoji: "👍", label: "Helpful" },
+  { value: "insightful", emoji: "💡", label: "Insightful" },
+  { value: "love", emoji: "❤️", label: "Love this" },
+  { value: "saved", emoji: "🔖", label: "Saved it" },
+];
+
+export const INSIGHT_REACTION_VALUES = INSIGHT_REACTIONS.map((r) => r.value);
