@@ -35,7 +35,7 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, type SalaryReportAdjustment } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -9699,23 +9699,23 @@ export async function registerRoutes(
     string,
     { to: string; permission: string; roles: string[] }[]
   > = {
+    // Generic editor transition only. Approval-gate moves (review approve,
+    // marketing recommend, final sign-off, publish/schedule/reschedule/
+    // unpublish/archive) all flow through dedicated endpoints below so the
+    // "Super Admin is the only role that can publish" rule cannot be bypassed
+    // through the generic transition matrix.
     draft: [
       { to: "in_review", permission: "studio.edit_article", roles: ["marketing_manager", "content_editor"] },
     ],
     in_review: [
-      { to: "approved", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
       { to: "draft", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
     ],
-    approved: [
-      { to: "published", permission: "studio.publish_article", roles: ["marketing_manager"] },
-      { to: "scheduled", permission: "studio.schedule_publish", roles: ["marketing_manager"] },
-      { to: "draft", permission: "studio.edit_article", roles: ["marketing_manager", "content_editor"] },
-    ],
-    scheduled: [
-      { to: "published", permission: "studio.publish_article", roles: ["marketing_manager"] },
-      { to: "approved", permission: "studio.schedule_publish", roles: ["marketing_manager"] },
-    ],
+    pending_marketing: [],
+    pending_final_approval: [],
+    approved: [],
+    scheduled: [],
     published: [],
+    archived: [],
     ready_to_export: [],
   };
 
@@ -9914,7 +9914,7 @@ export async function registerRoutes(
         }
 
         const decisionMap: Record<string, { assignmentStatus: string; articleStatus: string; eventType: string }> = {
-          approve: { assignmentStatus: "approved", articleStatus: "approved", eventType: "review_approved" },
+          approve: { assignmentStatus: "approved", articleStatus: "pending_marketing", eventType: "review_approved" },
           request_changes: { assignmentStatus: "changes_requested", articleStatus: "draft", eventType: "review_changes_requested" },
           decline: { assignmentStatus: "declined", articleStatus: "draft", eventType: "review_declined" },
         };
@@ -9967,10 +9967,658 @@ export async function registerRoutes(
           }
         }
 
+        // On approval, the article enters the marketing polish queue. Notify
+        // marketing managers so they can pick it up.
+        if (decision === "approve") {
+          try {
+            const admins = await storage.getAdminUsers();
+            const marketers = admins.filter(
+              (u) => u.isActive !== false && u.role === "marketing_manager",
+            );
+            await Promise.all(
+              marketers.map((m) =>
+                storage.createNotification({
+                  userId: m.id,
+                  type: "studio_marketing_queue",
+                  title: "New article ready for marketing",
+                  message: `"${article.title}" passed review and is ready for marketing polish.`,
+                  isRead: false,
+                  metadata: { articleId: article.id, status: "pending_marketing" },
+                }),
+              ),
+            );
+          } catch (notifyErr) {
+            console.error("Studio marketing queue notification error:", notifyErr);
+          }
+        }
+
         res.json({ ...updated, assignmentStatus: mapped.assignmentStatus });
       } catch (error: any) {
         console.error("Studio review-decision error:", error);
         res.status(400).json({ error: error?.message || "Failed to record decision" });
+      }
+    },
+  );
+
+  // ---- Marketing approval & Super Admin final sign-off ----
+
+  // Helper: only the super_admin role may publish/schedule/sign off. We use an
+  // inline role check (not requirePermission) because the access-parity tooling
+  // auto-grants admin to every permission key, which would violate the hard
+  // "Super Admin only" rule for publishing.
+  const ensureSuperAdmin = (req: Request, res: Response): boolean => {
+    if (req.session.role !== "super_admin") {
+      res.status(403).json({ error: "Only a Super Admin can perform this action" });
+      return false;
+    }
+    return true;
+  };
+
+  const baseUrlFrom = (req: Request) => {
+    const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+    return `${proto}://${req.get("host")}`;
+  };
+
+  const userDisplayName = (u: { firstName?: string | null; lastName?: string | null; email?: string | null } | undefined | null) => {
+    if (!u) return null;
+    const n = `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim();
+    return n || u.email || null;
+  };
+
+  // Translate a marketing "edits" payload into a safe partial article update.
+  // Only the fields marketing is allowed to polish are honored; social caption
+  // edits are merged into the existing canonical Social Kit by platform.
+  const buildMarketingPolishUpdates = (article: StudioArticle, edits: any): Record<string, any> => {
+    const updates: Record<string, any> = {};
+    if (!edits || typeof edits !== "object") return updates;
+    if (typeof edits.seoTitle === "string") updates.seoTitle = edits.seoTitle.trim() || null;
+    if (typeof edits.seoDescription === "string") updates.seoDescription = edits.seoDescription.trim() || null;
+    if (typeof edits.coverImageUrl === "string") updates.coverImageUrl = edits.coverImageUrl.trim() || null;
+    if (typeof edits.authorProfileId === "string" && edits.authorProfileId) {
+      updates.authorProfileId = edits.authorProfileId;
+    }
+    if (Array.isArray(edits.captions)) {
+      const existing = (article as any).socialKitJsonb ?? null;
+      const baseCaptions: any[] = Array.isArray(existing?.captions) ? existing.captions : [];
+      const byPlatform = new Map<string, any>();
+      for (const c of baseCaptions) {
+        if (c && typeof c.platform === "string") byPlatform.set(c.platform, { ...c });
+      }
+      for (const edit of edits.captions) {
+        if (!edit || typeof edit.platform !== "string" || typeof edit.text !== "string") continue;
+        const prev = byPlatform.get(edit.platform) ?? { platform: edit.platform, variants: [] };
+        byPlatform.set(edit.platform, { ...prev, text: edit.text });
+      }
+      updates.socialKitJsonb = { ...(existing ?? {}), captions: Array.from(byPlatform.values()) };
+    }
+    return updates;
+  };
+
+  // Resolve the byline author to an admin user id (if the author profile is
+  // linked to a system user) so they can be notified alongside the editor.
+  const resolveAuthorUserId = async (article: StudioArticle): Promise<string | null> => {
+    const apid = (article as any).authorProfileId;
+    if (!apid) return null;
+    try {
+      const profile = await storage.getStudioAuthorProfile(apid);
+      return profile?.userId ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Find the marketing manager who recommended this article (last
+  // marketing_recommended audit event), so reject/publish notices reach them.
+  const findMarketingRecommender = async (articleId: string): Promise<string | null> => {
+    const events = await storage.getStudioAuditEvents(articleId);
+    const rec = [...events]
+      .filter((e) => e.eventType === "marketing_recommended" && e.actorUserId)
+      .pop();
+    return rec?.actorUserId ?? null;
+  };
+
+  // Marketing queue: articles awaiting marketing polish/recommendation.
+  app.get(
+    "/api/admin/studio/approvals",
+    requireAuth,
+    requirePermission("studio.marketing_approve", "marketing_manager"),
+    async (req, res) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const items = await storage.getStudioApprovalQueue(["pending_marketing"], projectId);
+        res.json(items);
+      } catch (error: any) {
+        console.error("Studio approvals queue error:", error);
+        res.status(500).json({ error: "Failed to fetch approvals queue" });
+      }
+    },
+  );
+
+  // Final sign-off queue: articles recommended by marketing, awaiting Super
+  // Admin sign-off. Super Admin only.
+  app.get(
+    "/api/admin/studio/final-approval",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const items = await storage.getStudioApprovalQueue(["pending_final_approval"], projectId);
+        res.json(items);
+      } catch (error: any) {
+        console.error("Studio final-approval queue error:", error);
+        res.status(500).json({ error: "Failed to fetch final-approval queue" });
+      }
+    },
+  );
+
+  // Publishing calendar: scheduled + published articles within a date range.
+  app.get(
+    "/api/admin/studio/calendar",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req, res) => {
+      try {
+        const now = new Date();
+        const from = req.query.from ? new Date(String(req.query.from)) : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const to = req.query.to ? new Date(String(req.query.to)) : new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+          return res.status(400).json({ error: "Invalid date range" });
+        }
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const items = await storage.getStudioCalendarArticles(from, to, projectId);
+        res.json(items);
+      } catch (error: any) {
+        console.error("Studio calendar error:", error);
+        res.status(500).json({ error: "Failed to fetch calendar" });
+      }
+    },
+  );
+
+  // Workflow detail: article + author + project + assignments + audit trail.
+  // Used by both the marketing and final-approval review screens.
+  app.get(
+    "/api/admin/studio/articles/:id/workflow",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req, res) => {
+      try {
+        const detail = await storage.getStudioWorkflowDetail(req.params.id);
+        if (!detail) return res.status(404).json({ error: "Article not found" });
+        res.json(detail);
+      } catch (error: any) {
+        console.error("Studio workflow detail error:", error);
+        res.status(500).json({ error: "Failed to fetch workflow detail" });
+      }
+    },
+  );
+
+  // Marketing decision: recommend (→ pending_final_approval) or reject (→ draft).
+  // Marketing may polish and recommend but can never publish.
+  app.post(
+    "/api/admin/studio/articles/:id/marketing-decision",
+    requireAuth,
+    requirePermission("studio.marketing_approve", "marketing_manager"),
+    async (req, res) => {
+      try {
+        const { decision, reason, edits } = req.body ?? {};
+        if (!["recommend", "reject", "save"].includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision" });
+        }
+        if (decision === "reject" && !reason?.trim()) {
+          return res.status(400).json({ error: "A reason is required to reject" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "pending_marketing") {
+          return res.status(409).json({ error: "Article is not awaiting marketing review" });
+        }
+
+        const userId = req.session.userId!;
+
+        // Build the marketing polish patch (SEO, featured image, author byline,
+        // edited social captions). Applied on save and recommend.
+        const polish = buildMarketingPolishUpdates(article, edits);
+
+        // "save" just persists the polish edits without advancing the workflow.
+        if (decision === "save") {
+          const saved = Object.keys(polish).length
+            ? await storage.updateStudioArticle(req.params.id, polish as any)
+            : article;
+          if (Object.keys(polish).length) {
+            await storage.createStudioAuditEvent({
+              articleId: req.params.id,
+              actorUserId: userId,
+              eventType: "marketing_polished",
+              metadata: { fields: Object.keys(polish) },
+            } as any);
+          }
+          return res.json(saved);
+        }
+
+        const toStatus = decision === "recommend" ? "pending_final_approval" : "draft";
+        // On recommend, persist any pending polish edits alongside the status change.
+        const statusUpdate =
+          decision === "recommend" ? { ...polish, status: toStatus } : { status: toStatus };
+        const updated = await storage.updateStudioArticle(req.params.id, statusUpdate as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: decision === "recommend" ? "marketing_recommended" : "marketing_rejected",
+          metadata: { reason: reason?.trim() || null },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: toStatus, via: "marketing_decision" },
+        } as any);
+
+        const actor = await storage.getAdminUser(userId);
+        const actorName = userDisplayName(actor);
+
+        if (decision === "recommend") {
+          // Notify all super admins that an article awaits final sign-off.
+          try {
+            const admins = await storage.getAdminUsers();
+            const supers = admins.filter((u) => u.isActive !== false && u.role === "super_admin");
+            await Promise.all(
+              supers.map((s) =>
+                storage.createNotification({
+                  userId: s.id,
+                  type: "studio_final_queue",
+                  title: "Article awaiting final sign-off",
+                  message: `"${article.title}" was recommended by marketing and needs your sign-off.`,
+                  isRead: false,
+                  metadata: { articleId: article.id, status: "pending_final_approval" },
+                }),
+              ),
+            );
+          } catch (notifyErr) {
+            console.error("Studio final-queue notification error:", notifyErr);
+          }
+        } else {
+          // Reject → notify the author/editor in-app + email.
+          try {
+            if (article.createdBy) {
+              await storage.createNotification({
+                userId: article.createdBy,
+                type: "studio_marketing_rejected",
+                title: "Article sent back for changes",
+                message: `"${article.title}" was sent back during marketing review: ${reason.trim()}`,
+                isRead: false,
+                metadata: { articleId: article.id, stage: "marketing" },
+              });
+              const author = await storage.getAdminUser(article.createdBy);
+              if (author?.email) {
+                await sendStudioRejectionEmail({
+                  to: author.email,
+                  recipientName: userDisplayName(author) || "there",
+                  articleTitle: article.title,
+                  stage: "marketing",
+                  reason: reason.trim(),
+                  rejectedByName: actorName,
+                  editUrl: `${baseUrlFrom(req)}/admin/studio/articles/${article.id}`,
+                });
+              }
+            }
+          } catch (notifyErr) {
+            console.error("Studio marketing reject notification error:", notifyErr);
+          }
+        }
+
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio marketing-decision error:", error);
+        res.status(400).json({ error: error?.message || "Failed to record marketing decision" });
+      }
+    },
+  );
+
+  // Shared publish/schedule routine used by the final-decision and direct
+  // publish endpoints. Enforces the risk-flag publish gate.
+  const performPublish = async (
+    article: StudioArticle,
+    userId: string,
+    opts: { scheduledAt?: Date | null },
+  ): Promise<{ updated: StudioArticle | undefined; scheduled: boolean }> => {
+    const compliance = getComplianceMode((article as any).complianceMode);
+    const flags = (article as any).riskFlags;
+    const hasUnresolvedFlags =
+      Array.isArray(flags) && flags.length > 0 && !(article as any).riskFlagsResolvedAt;
+    if (compliance.blocksPublishOnRiskFlags && hasUnresolvedFlags) {
+      const err: any = new Error(
+        "This article has unresolved AI risk flags and its compliance mode blocks publishing. Resolve the flags first.",
+      );
+      err.code = "risk_flags_block_publish";
+      err.riskFlags = flags;
+      throw err;
+    }
+    const isFuture = !!opts.scheduledAt && opts.scheduledAt.getTime() > Date.now();
+    const updates: any = isFuture
+      ? { status: "scheduled", scheduledAt: opts.scheduledAt }
+      : { status: "published", publishedAt: new Date(), scheduledAt: opts.scheduledAt ?? null };
+    const updated = await storage.updateStudioArticle(article.id, updates);
+    return { updated, scheduled: isFuture };
+  };
+
+  // Notify author, editor, and the marketing recommender that an article went
+  // live (or was scheduled). In-app + email.
+  const notifyPublished = async (
+    req: Request,
+    article: StudioArticle,
+    scheduled: boolean,
+    scheduledAt: Date | null,
+    publishedAt: Date | null,
+  ) => {
+    try {
+      const signer = await storage.getAdminUser(req.session.userId!);
+      const signerName = userDisplayName(signer);
+      const recommenderId = await findMarketingRecommender(article.id);
+      const authorUserId = await resolveAuthorUserId(article);
+      const recipientIds = Array.from(
+        new Set([article.createdBy, authorUserId, recommenderId].filter((x): x is string => !!x)),
+      );
+      const title = scheduled ? "Article scheduled" : "Article published";
+      const msg = scheduled
+        ? `"${article.title}" was signed off and scheduled${scheduledAt ? ` for ${scheduledAt.toLocaleString()}` : ""}.`
+        : `"${article.title}" was signed off and is now live.`;
+      await Promise.all(
+        recipientIds.map(async (rid) => {
+          await storage.createNotification({
+            userId: rid,
+            type: "studio_published",
+            title,
+            message: msg,
+            isRead: false,
+            metadata: { articleId: article.id, scheduled },
+          });
+          const u = await storage.getAdminUser(rid);
+          if (u?.email) {
+            await sendStudioPublishedEmail({
+              to: u.email,
+              recipientName: userDisplayName(u) || "there",
+              articleTitle: article.title,
+              scheduledFor: scheduled && scheduledAt ? scheduledAt.toLocaleString() : null,
+              publishedAt: !scheduled && publishedAt ? publishedAt.toLocaleString() : null,
+              publishedByName: signerName,
+            });
+          }
+        }),
+      );
+    } catch (notifyErr) {
+      console.error("Studio publish notification error:", notifyErr);
+    }
+  };
+
+  // Final decision: schedule / publish / reject. Super Admin only.
+  app.post(
+    "/api/admin/studio/articles/:id/final-decision",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const { decision, scheduledAt, reason } = req.body ?? {};
+        if (!["publish", "schedule", "reject"].includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "pending_final_approval") {
+          return res.status(409).json({ error: "Article is not awaiting final sign-off" });
+        }
+        const userId = req.session.userId!;
+
+        if (decision === "reject") {
+          if (!reason?.trim()) {
+            return res.status(400).json({ error: "A reason is required to reject" });
+          }
+          const updated = await storage.updateStudioArticle(req.params.id, { status: "draft" } as any);
+          await storage.createStudioAuditEvent({
+            articleId: req.params.id,
+            actorUserId: userId,
+            eventType: "final_rejected",
+            metadata: { reason: reason.trim() },
+          } as any);
+          await storage.createStudioAuditEvent({
+            articleId: req.params.id,
+            actorUserId: userId,
+            eventType: "status_changed",
+            metadata: { from: article.status, to: "draft", via: "final_decision" },
+          } as any);
+
+          // Notify editor + the marketing recommender.
+          try {
+            const signer = await storage.getAdminUser(userId);
+            const signerName = userDisplayName(signer);
+            const recommenderId = await findMarketingRecommender(article.id);
+            const recipientIds = Array.from(
+              new Set([article.createdBy, recommenderId].filter((x): x is string => !!x)),
+            );
+            await Promise.all(
+              recipientIds.map(async (rid) => {
+                await storage.createNotification({
+                  userId: rid,
+                  type: "studio_final_rejected",
+                  title: "Article sent back for changes",
+                  message: `"${article.title}" was sent back during final sign-off: ${reason.trim()}`,
+                  isRead: false,
+                  metadata: { articleId: article.id, stage: "final" },
+                });
+                const u = await storage.getAdminUser(rid);
+                if (u?.email) {
+                  await sendStudioRejectionEmail({
+                    to: u.email,
+                    recipientName: userDisplayName(u) || "there",
+                    articleTitle: article.title,
+                    stage: "final",
+                    reason: reason.trim(),
+                    rejectedByName: signerName,
+                    editUrl: `${baseUrlFrom(req)}/admin/studio/articles/${article.id}`,
+                  });
+                }
+              }),
+            );
+          } catch (notifyErr) {
+            console.error("Studio final reject notification error:", notifyErr);
+          }
+          return res.json(updated);
+        }
+
+        // publish or schedule
+        const when = decision === "schedule" ? (scheduledAt ? new Date(scheduledAt) : null) : null;
+        if (decision === "schedule" && (!when || isNaN(when.getTime()))) {
+          return res.status(400).json({ error: "A valid scheduledAt is required to schedule" });
+        }
+        const { updated, scheduled } = await performPublish(article, userId, { scheduledAt: when });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "final_approved",
+          metadata: { scheduled, scheduledAt: when?.toISOString() ?? null },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: scheduled ? "article_scheduled" : "article_published",
+          metadata: { scheduledAt: when?.toISOString() ?? null },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: scheduled ? "scheduled" : "published", via: "final_decision" },
+        } as any);
+        await notifyPublished(req, updated ?? article, scheduled, when, scheduled ? null : new Date());
+        res.json(updated);
+      } catch (error: any) {
+        if (error?.code === "risk_flags_block_publish") {
+          return res.status(409).json({ error: error.message, code: error.code, riskFlags: error.riskFlags });
+        }
+        console.error("Studio final-decision error:", error);
+        res.status(400).json({ error: error?.message || "Failed to record final decision" });
+      }
+    },
+  );
+
+  // Direct publish (publish now). Super Admin only. Works from
+  // pending_final_approval, scheduled, or approved (unpublished) states.
+  app.post(
+    "/api/admin/studio/articles/:id/publish",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!["pending_final_approval", "scheduled", "approved"].includes(article.status)) {
+          return res.status(409).json({ error: `Cannot publish from ${article.status}` });
+        }
+        const userId = req.session.userId!;
+        const { updated } = await performPublish(article, userId, { scheduledAt: null });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "article_published",
+          metadata: { from: article.status },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: "published", via: "publish" },
+        } as any);
+        await notifyPublished(req, updated ?? article, false, null, new Date());
+        res.json(updated);
+      } catch (error: any) {
+        if (error?.code === "risk_flags_block_publish") {
+          return res.status(409).json({ error: error.message, code: error.code, riskFlags: error.riskFlags });
+        }
+        console.error("Studio publish error:", error);
+        res.status(400).json({ error: error?.message || "Failed to publish article" });
+      }
+    },
+  );
+
+  // Unpublish a live article → back to approved (a Super-Admin holding state).
+  app.post(
+    "/api/admin/studio/articles/:id/unpublish",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!["published", "scheduled"].includes(article.status)) {
+          return res.status(409).json({ error: `Cannot unpublish from ${article.status}` });
+        }
+        const userId = req.session.userId!;
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "approved",
+          publishedAt: null,
+          scheduledAt: null,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "article_unpublished",
+          metadata: { from: article.status },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: "approved", via: "unpublish" },
+        } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio unpublish error:", error);
+        res.status(400).json({ error: error?.message || "Failed to unpublish article" });
+      }
+    },
+  );
+
+  // Reschedule a scheduled (or live) article to a new future time. Super Admin only.
+  app.post(
+    "/api/admin/studio/articles/:id/reschedule",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const { scheduledAt } = req.body ?? {};
+        const when = scheduledAt ? new Date(scheduledAt) : null;
+        if (!when || isNaN(when.getTime())) {
+          return res.status(400).json({ error: "A valid scheduledAt is required" });
+        }
+        if (when.getTime() <= Date.now()) {
+          return res.status(400).json({ error: "Scheduled time must be in the future" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!["scheduled", "published", "pending_final_approval"].includes(article.status)) {
+          return res.status(409).json({ error: `Cannot reschedule from ${article.status}` });
+        }
+        const userId = req.session.userId!;
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "scheduled",
+          scheduledAt: when,
+          publishedAt: null,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "article_scheduled",
+          metadata: { from: article.status, scheduledAt: when.toISOString(), rescheduled: true },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: "scheduled", via: "reschedule" },
+        } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio reschedule error:", error);
+        res.status(400).json({ error: error?.message || "Failed to reschedule article" });
+      }
+    },
+  );
+
+  // Archive an article (take it out of all queues). Super Admin only.
+  app.post(
+    "/api/admin/studio/articles/:id/archive",
+    requireAuth,
+    async (req, res) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status === "archived") {
+          return res.status(409).json({ error: "Article is already archived" });
+        }
+        const userId = req.session.userId!;
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "archived",
+          publishedAt: null,
+          scheduledAt: null,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "article_archived",
+          metadata: { from: article.status },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: "archived", via: "archive" },
+        } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio archive error:", error);
+        res.status(400).json({ error: error?.message || "Failed to archive article" });
       }
     },
   );

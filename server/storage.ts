@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   jobs,
   applications,
@@ -433,6 +434,24 @@ export interface IStorage {
     projectName: string | null;
   })[]>;
   getLastStudioAssignmentTimes(reviewerUserIds: string[]): Promise<Record<string, Date | null>>;
+  getStudioApprovalQueue(statuses: string[], projectId?: string): Promise<(StudioArticle & {
+    authorName: string | null;
+    projectName: string | null;
+    reviewerName: string | null;
+  })[]>;
+  getStudioWorkflowDetail(id: string): Promise<{
+    article: StudioArticle;
+    authorName: string | null;
+    projectName: string | null;
+    assignments: StudioReviewAssignment[];
+    auditEvents: StudioAuditEvent[];
+  } | undefined>;
+  getStudioCalendarArticles(from: Date, to: Date, projectId?: string): Promise<(StudioArticle & {
+    authorName: string | null;
+    projectName: string | null;
+    publishesToInsights: boolean;
+  })[]>;
+  getDueScheduledStudioArticles(now: Date): Promise<StudioArticle[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3262,6 +3281,121 @@ export class DatabaseStorage implements IStorage {
       result[r.reviewerUserId] = r.last ? new Date(r.last as any) : null;
     }
     return result;
+  }
+
+  async getStudioApprovalQueue(statuses: string[], projectId?: string): Promise<(StudioArticle & {
+    authorName: string | null;
+    projectName: string | null;
+    reviewerName: string | null;
+  })[]> {
+    if (statuses.length === 0) return [];
+    const conditions = [inArray(studioArticles.status, statuses as any)];
+    if (projectId) conditions.push(eq(studioArticles.projectId, projectId));
+    const reviewer = alias(adminUsers, "reviewer_user");
+    const rows = await db
+      .select({
+        article: studioArticles,
+        authorName: studioAuthorProfiles.displayName,
+        projectName: studioProjects.name,
+        reviewerFirst: reviewer.firstName,
+        reviewerLast: reviewer.lastName,
+        reviewerEmail: reviewer.email,
+      })
+      .from(studioArticles)
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .leftJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .leftJoin(reviewer, eq(studioArticles.approvedBy, reviewer.id))
+      .where(and(...conditions))
+      // Oldest first — the queue should surface the longest-waiting article.
+      .orderBy(asc(studioArticles.updatedAt));
+    return rows.map((r) => {
+      const rn = `${r.reviewerFirst ?? ""} ${r.reviewerLast ?? ""}`.trim();
+      return {
+        ...r.article,
+        authorName: r.authorName ?? null,
+        projectName: r.projectName ?? null,
+        reviewerName: rn || r.reviewerEmail || null,
+      };
+    });
+  }
+
+  async getStudioWorkflowDetail(id: string): Promise<{
+    article: StudioArticle;
+    authorName: string | null;
+    projectName: string | null;
+    assignments: StudioReviewAssignment[];
+    auditEvents: StudioAuditEvent[];
+  } | undefined> {
+    const [row] = await db
+      .select({
+        article: studioArticles,
+        authorName: studioAuthorProfiles.displayName,
+        projectName: studioProjects.name,
+      })
+      .from(studioArticles)
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .leftJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .where(eq(studioArticles.id, id));
+    if (!row) return undefined;
+    const assignments = await this.getStudioReviewAssignmentsForArticle(id);
+    const auditEvents = await this.getStudioAuditEvents(id);
+    return {
+      article: row.article,
+      authorName: row.authorName ?? null,
+      projectName: row.projectName ?? null,
+      assignments,
+      auditEvents,
+    };
+  }
+
+  async getStudioCalendarArticles(from: Date, to: Date, projectId?: string): Promise<(StudioArticle & {
+    authorName: string | null;
+    projectName: string | null;
+    publishesToInsights: boolean;
+  })[]> {
+    const dateInRange = or(
+      and(
+        eq(studioArticles.status, "scheduled" as any),
+        gte(studioArticles.scheduledAt, from),
+        lte(studioArticles.scheduledAt, to),
+      ),
+      and(
+        eq(studioArticles.status, "published" as any),
+        gte(studioArticles.publishedAt, from),
+        lte(studioArticles.publishedAt, to),
+      ),
+    );
+    const conditions = [dateInRange];
+    if (projectId) conditions.push(eq(studioArticles.projectId, projectId));
+    const rows = await db
+      .select({
+        article: studioArticles,
+        authorName: studioAuthorProfiles.displayName,
+        projectName: studioProjects.name,
+        publishesToInsights: studioProjects.publishesToInsights,
+      })
+      .from(studioArticles)
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .leftJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .where(and(...conditions));
+    return rows.map((r) => ({
+      ...r.article,
+      authorName: r.authorName ?? null,
+      projectName: r.projectName ?? null,
+      publishesToInsights: r.publishesToInsights ?? false,
+    }));
+  }
+
+  async getDueScheduledStudioArticles(now: Date): Promise<StudioArticle[]> {
+    return await db
+      .select()
+      .from(studioArticles)
+      .where(
+        and(
+          eq(studioArticles.status, "scheduled" as any),
+          lte(studioArticles.scheduledAt, now),
+        ),
+      );
   }
 
 }

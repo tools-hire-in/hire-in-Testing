@@ -2177,6 +2177,9 @@ export const articleStatusEnum = pgEnum("article_status", [
   "scheduled",
   "published",
   "ready_to_export",
+  "pending_marketing",
+  "pending_final_approval",
+  "archived",
 ]);
 
 // Projects / brands the studio publishes for.

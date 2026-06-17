@@ -29,6 +29,9 @@ import {
   ClipboardList,
   Newspaper,
   Inbox,
+  Megaphone,
+  ShieldCheck,
+  CalendarDays,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -417,6 +420,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
   const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
   const hasStudioAccess = can("studio.view");
+  const hasMarketingApproveAccess = can("studio.marketing_approve");
+  const isSuperAdmin = userRole === "super_admin";
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth
@@ -544,6 +549,24 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Inbox,
       roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
     }] : []),
+    ...(hasMarketingApproveAccess ? [{
+      href: "/admin/studio/approvals",
+      label: "Marketing Approvals",
+      icon: Megaphone,
+      roles: ["super_admin", "admin", "marketing_manager"],
+    }] : []),
+    ...(isSuperAdmin ? [{
+      href: "/admin/studio/final-approval",
+      label: "Final Sign-Off",
+      icon: ShieldCheck,
+      roles: ["super_admin"],
+    }] : []),
+    ...(hasStudioAccess ? [{
+      href: "/admin/studio/calendar",
+      label: "Publishing Calendar",
+      icon: CalendarDays,
+      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -557,7 +580,10 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
-    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
+    if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
+    if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
+    if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
+    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !location.startsWith("/admin/studio/approvals") && !location.startsWith("/admin/studio/final-approval") && !location.startsWith("/admin/studio/calendar") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     return location.startsWith(href);
   };
 

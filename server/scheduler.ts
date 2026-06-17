@@ -850,6 +850,51 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // Content Studio: every 5 minutes, flip scheduled articles whose time has
+  // arrived to published.
+  cron.schedule("*/5 * * * *", async () => {
+    try {
+      const now = new Date();
+      const due = await storage.getDueScheduledStudioArticles(now);
+      if (due.length === 0) return;
+      for (const article of due) {
+        try {
+          await storage.updateStudioArticle(article.id, {
+            status: "published",
+            publishedAt: new Date(),
+          } as any);
+          await storage.createStudioAuditEvent({
+            articleId: article.id,
+            actorUserId: null,
+            eventType: "article_published",
+            metadata: { via: "scheduler", scheduledAt: article.scheduledAt ?? null },
+          } as any);
+          await storage.createStudioAuditEvent({
+            articleId: article.id,
+            actorUserId: null,
+            eventType: "status_changed",
+            metadata: { from: "scheduled", to: "published", via: "scheduler" },
+          } as any);
+          if (article.createdBy) {
+            await storage.createNotification({
+              userId: article.createdBy,
+              type: "studio_published",
+              title: "Scheduled article published",
+              message: `"${article.title}" went live on schedule.`,
+              isRead: false,
+              metadata: { articleId: article.id, scheduled: false },
+            });
+          }
+        } catch (articleErr) {
+          console.error(`[scheduler] Studio auto-publish failed for ${article.id}:`, articleErr);
+        }
+      }
+      console.log(`[scheduler] Studio auto-publish: ${due.length} article(s) published.`);
+    } catch (err) {
+      console.error("[scheduler] Studio auto-publish sweep failed:", err);
+    }
+  });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");

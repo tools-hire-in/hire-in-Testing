@@ -75,6 +75,9 @@ const StudioAuthors = lazy(() => import("@/pages/admin/studio/Authors"));
 const StudioArticleEditor = lazy(() => import("@/pages/admin/studio/ArticleEditor"));
 const StudioInbox = lazy(() => import("@/pages/admin/studio/Inbox"));
 const StudioReviewArticle = lazy(() => import("@/pages/admin/studio/ReviewArticle"));
+const StudioApprovals = lazy(() => import("@/pages/admin/studio/Approvals"));
+const StudioFinalApproval = lazy(() => import("@/pages/admin/studio/FinalApproval"));
+const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 
 function AdminFallback() {
@@ -195,6 +198,9 @@ function PublicRouter() {
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
+      <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
+      <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}
@@ -285,6 +291,9 @@ function EmployeeRouter() {
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
+      <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
+      <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}

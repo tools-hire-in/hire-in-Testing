@@ -1985,6 +1985,29 @@ async function ensureHealthcarePlansTables() {
     console.error("Contract dispatch schema migration error:", err);
   }
 
+  // ── Content Studio approval-workflow enum values ────────────────────────────
+  try {
+    // New statuses for the marketing → super-admin sign-off gate (idempotent).
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'pending_marketing';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'pending_final_approval';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'archived';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    log("Content Studio article_status enum values ensured");
+  } catch (err) {
+    console.error("Content Studio article_status enum migration error:", err);
+  }
+
   // ── 22nd Century Healthcare SSA template seeder ─────────────────────────────
   try {
     const { seedContractTemplates } = await import("./contractTemplateSeed");

@@ -2334,3 +2334,121 @@ export async function sendWhatsNewEmail(options: {
 
   return { sent, failed };
 }
+
+export async function sendStudioPublishedEmail(options: {
+  to: string;
+  recipientName: string;
+  articleTitle: string;
+  projectName?: string | null;
+  scheduledFor?: string | null;
+  publishedAt?: string | null;
+  publishedByName?: string | null;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const isScheduled = !!options.scheduledFor;
+    const headline = isScheduled ? "Article Scheduled" : "Article Published";
+    const detailRow = (label: string, value?: string | null) =>
+      value
+        ? `<tr><td style="color:#64748b;padding:6px 0;width:140px;">${label}:</td><td style="color:#1e293b;font-weight:500;padding:6px 0;">${value}</td></tr>`
+        : "";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `${isScheduled ? "Scheduled" : "Published"}: ${options.articleTitle}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Content Studio</h1>
+            <p style="color: #e2e8f0; margin: 8px 0 0; font-size: 14px;">${headline}</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              ${isScheduled
+                ? `<strong>${options.articleTitle}</strong> has received final sign-off and is scheduled to go live.`
+                : `<strong>${options.articleTitle}</strong> has received final sign-off and is now published.`}
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <table style="width: 100%; border-collapse: collapse;">
+                ${detailRow("Project", options.projectName)}
+                ${detailRow("Scheduled for", options.scheduledFor)}
+                ${detailRow("Published at", options.publishedAt)}
+                ${detailRow("Signed off by", options.publishedByName)}
+              </table>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.recipientName},\n\n${options.articleTitle} has received final sign-off and is ${isScheduled ? "scheduled to go live" : "now published"}.\n\n${options.projectName ? `Project: ${options.projectName}\n` : ""}${options.scheduledFor ? `Scheduled for: ${options.scheduledFor}\n` : ""}${options.publishedAt ? `Published at: ${options.publishedAt}\n` : ""}${options.publishedByName ? `Signed off by: ${options.publishedByName}\n` : ""}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Studio published email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send studio published email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendStudioRejectionEmail(options: {
+  to: string;
+  recipientName: string;
+  articleTitle: string;
+  stage: "marketing" | "final";
+  reason: string;
+  rejectedByName?: string | null;
+  editUrl?: string | null;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const stageLabel = options.stage === "final" ? "final sign-off" : "marketing review";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `Changes requested: ${options.articleTitle}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Content Studio</h1>
+            <p style="color: #e2e8f0; margin: 8px 0 0; font-size: 14px;">Sent Back for Changes</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              <strong>${options.articleTitle}</strong> was sent back to draft during ${stageLabel}${options.rejectedByName ? ` by ${options.rejectedByName}` : ""}.
+            </p>
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #991b1b; font-weight: 600; margin: 0 0 8px;">Reason</p>
+              <p style="color: #7f1d1d; line-height: 1.6; margin: 0;">${options.reason}</p>
+            </div>
+            ${options.editUrl ? `<div style="text-align: center; margin: 24px 0;">
+              <a href="${options.editUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Open Article
+              </a>
+            </div>` : ""}
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.recipientName},\n\n${options.articleTitle} was sent back to draft during ${stageLabel}${options.rejectedByName ? ` by ${options.rejectedByName}` : ""}.\n\nReason: ${options.reason}\n${options.editUrl ? `\nOpen article: ${options.editUrl}\n` : ""}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Studio rejection email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send studio rejection email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
