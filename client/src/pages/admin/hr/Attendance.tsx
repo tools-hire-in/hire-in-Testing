@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BreakWidget } from "@/components/admin/BreakWidget";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -161,6 +162,26 @@ function getWorkingDaysBack(date: string, today: string, holidaySet: Set<string>
 
 const MIN_REASON_CHARS = 20;
 
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getLast7Days(): string[] {
+  const out: string[] = [];
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    out.push(toLocalDateStr(d));
+  }
+  return out;
+}
+
+function formatDateOption(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 const WINDOW_CLOSED_MESSAGES: Record<string, string> = {
   month_end_blackout: "This date falls in the month-end payroll lock period. Self-service filing is closed. Please contact HR directly.",
   next_punch_in_exists: "Your filing window has closed — you have already punched in for a subsequent day, which locks the prior record.",
@@ -170,17 +191,26 @@ const WINDOW_CLOSED_MESSAGES: Record<string, string> = {
 
 function ReportIssueModal({
   date,
+  pendingDates,
   onClose,
 }: {
-  date: string;
+  date?: string;
+  pendingDates?: Set<string>;
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const isStandalone = !date;
+  const [selectedDate, setSelectedDate] = useState(date ?? "");
   const [requestType, setRequestType] = useState("");
   const [requestedPunchIn, setRequestedPunchIn] = useState("");
   const [requestedPunchOut, setRequestedPunchOut] = useState("");
   const [reason, setReason] = useState("");
   const [windowClosedMsg, setWindowClosedMsg] = useState<string | null>(null);
+
+  const effectiveDate = date ?? selectedDate;
+
+  // Standalone flow: offer the last 7 calendar days, excluding any with a pending request.
+  const dateOptions = getLast7Days().filter((d) => !(pendingDates?.has(d)));
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -189,7 +219,7 @@ function ReportIssueModal({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          attendanceDate: date,
+          attendanceDate: effectiveDate,
           requestType,
           requestedPunchIn: requestedPunchIn || undefined,
           requestedPunchOut: requestedPunchOut || undefined,
@@ -203,12 +233,17 @@ function ReportIssueModal({
           setWindowClosedMsg(friendly);
           throw new Error("WINDOW_CLOSED");
         }
+        if (res.status === 400 && /already exists/i.test(body.error || "")) {
+          setWindowClosedMsg("A regularization request for this date is already pending review. You cannot raise another until it is resolved.");
+          throw new Error("WINDOW_CLOSED");
+        }
         throw new Error(body.error || "Failed to submit");
       }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/my"] });
       toast({ title: "Request Submitted", description: "Your regularization request has been submitted." });
       onClose();
     },
@@ -226,12 +261,31 @@ function ReportIssueModal({
     <Dialog open onOpenChange={onClose}>
       <DialogContent data-testid="dialog-report-issue">
         <DialogHeader>
-          <DialogTitle>Report Attendance Issue</DialogTitle>
+          <DialogTitle>{isStandalone ? "Raise Regularization" : "Report Attendance Issue"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>Date</Label>
-            <p className="text-sm font-medium text-foreground">{date}</p>
+            {isStandalone ? (
+              dateOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="text-no-eligible-dates">
+                  All dates in the last 7 days already have a pending request.
+                </p>
+              ) : (
+                <Select value={selectedDate} onValueChange={(v) => { setSelectedDate(v); setWindowClosedMsg(null); }}>
+                  <SelectTrigger data-testid="select-reg-date">
+                    <SelectValue placeholder="Select a date..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dateOptions.map((d) => (
+                      <SelectItem key={d} value={d}>{formatDateOption(d)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )
+            ) : (
+              <p className="text-sm font-medium text-foreground" data-testid="text-reg-date">{date}</p>
+            )}
           </div>
 
           {windowClosedMsg ? (
@@ -311,7 +365,7 @@ function ReportIssueModal({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={!requestType || !reasonValid || submitMutation.isPending}
+            disabled={!effectiveDate || !requestType || !reasonValid || submitMutation.isPending}
             data-testid="button-submit-regularization"
           >
             {submitMutation.isPending ? "Submitting..." : "Submit Request"}
@@ -492,6 +546,7 @@ export default function Attendance() {
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [reportIssueDate, setReportIssueDate] = useState<string | null>(null);
+  const [showRaiseModal, setShowRaiseModal] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
@@ -631,6 +686,11 @@ export default function Attendance() {
   const pendingDates = new Set(
     (myRegularizations || []).filter(r => r.status === "pending").map(r => r.attendanceDate)
   );
+
+  // Eligible dates for a standalone "Raise Regularization" = last 7 calendar days
+  // not already covered by a pending request.
+  const eligibleRaiseDates = getLast7Days().filter(d => !pendingDates.has(d));
+  const allDatesCovered = eligibleRaiseDates.length === 0;
 
   return (
     <AdminLayout>
@@ -892,13 +952,13 @@ export default function Attendance() {
                                 ) : windowOpen ? (
                                   <Button
                                     size="sm"
-                                    variant="ghost"
-                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    variant="outline"
+                                    className="h-7 px-2.5 text-xs border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
                                     onClick={() => setReportIssueDate(r.date)}
                                     data-testid={`button-report-issue-${r.date}`}
                                   >
-                                    <AlertCircle className="h-3.5 w-3.5 mr-1" />
-                                    Report Issue
+                                    <Plus className="h-3.5 w-3.5 mr-1" />
+                                    Fix Record
                                   </Button>
                                 ) : windowClosed ? (
                                   <span
@@ -925,9 +985,41 @@ export default function Attendance() {
 
           <PillTabsContent value="regularizations">
             <div className="space-y-4 max-w-3xl">
-              <div>
-                <h2 className="text-base font-semibold">My Regularization Requests</h2>
-                <p className="text-xs text-muted-foreground">All attendance correction requests you have raised</p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold">My Regularization Requests</h2>
+                  <p className="text-xs text-muted-foreground">All attendance correction requests you have raised</p>
+                </div>
+                {allDatesCovered ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0}>
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          disabled
+                          data-testid="button-raise-regularization"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Raise Regularization
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      All dates in the last 7 days already have a pending request.
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setShowRaiseModal(true)}
+                    data-testid="button-raise-regularization"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Raise Regularization
+                  </Button>
+                )}
               </div>
               <Card>
                 <CardContent className="p-0">
@@ -945,11 +1037,12 @@ export default function Attendance() {
         </PillTabs>
       </div>
 
-      {/* Report Issue Modal */}
-      {reportIssueDate && (
+      {/* Report Issue / Raise Regularization Modal */}
+      {(reportIssueDate || showRaiseModal) && (
         <ReportIssueModal
-          date={reportIssueDate}
-          onClose={() => setReportIssueDate(null)}
+          date={reportIssueDate ?? undefined}
+          pendingDates={pendingDates}
+          onClose={() => { setReportIssueDate(null); setShowRaiseModal(false); }}
         />
       )}
     </AdminLayout>
