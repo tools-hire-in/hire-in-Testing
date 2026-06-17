@@ -28,6 +28,7 @@ function getIstDateTime(): { year: number; month: number; day: number } {
 
 export interface AbsentSweepResult {
   date: string;
+  /** Number of absence PROPOSALS enqueued for Super Admin review (nothing is auto-written). */
   created: number;
   skipped: number;
   skippedWeekend?: boolean;
@@ -38,6 +39,12 @@ export interface AbsentSweepResult {
  * Core absent-sweep logic, extracted so it can be called from integration tests.
  * Pass `overrideDate` to run against a specific date (bypasses weekend/holiday check when
  * `skipGuards` is true — used in tests to exercise the per-user logic directly).
+ *
+ * GUARDRAIL: this sweep never writes attendance rows directly. For every active employee
+ * with no punch-in / leave / holiday on the day, it PROPOSES an "absent" change into the
+ * pending_changes store. A Super Admin reviews and approves (which applies the row) or
+ * rejects (which discards it). The dedupe index makes re-runs idempotent and prevents a
+ * previously-reviewed proposal from being recreated.
  */
 export async function runAbsentSweep(
   overrideDate: string,
@@ -124,12 +131,23 @@ export async function runAbsentSweep(
         continue;
       }
 
-      await db.execute(sql`
-        INSERT INTO attendance (user_id, date, status, notes)
-        VALUES (${user.id}, ${todayStr}, 'absent', '[Auto] No punch-in recorded')
-        ON CONFLICT DO NOTHING
-      `);
-      created++;
+      // GUARDRAIL: do NOT write an absent row. Propose it for Super Admin review.
+      // The dedupe index makes this idempotent and won't resurrect a reviewed proposal.
+      const proposed = await storage.proposePendingChange({
+        sourceJob: "absent_sweep",
+        runDate: todayStr,
+        targetUserId: user.id,
+        targetTable: "attendance",
+        targetRecordId: null,
+        changeType: "insert",
+        field: "status",
+        currentValue: "(no record)",
+        proposedValue: "absent",
+        reason: "No punch-in recorded",
+        payload: { status: "absent", notes: "[Auto] No punch-in recorded", date: todayStr },
+      });
+      if (proposed) created++;
+      else skipped++; // already proposed/reviewed previously
     } catch (userErr) {
       console.error(`[scheduler] Absent sweep failed for user ${user.id}:`, userErr);
     }
@@ -138,6 +156,23 @@ export async function runAbsentSweep(
   return { date: todayStr, created, skipped };
 }
 
+/**
+ * GUARDRAIL POLICY — automated jobs vs. user-entered data.
+ *
+ * Jobs that could OVERWRITE values a human entered (attendance, leave, salary) must never
+ * write directly. They PROPOSE into the pending_changes store for Super Admin review:
+ *   - End-of-day absent sweep → proposes "absent" attendance rows (see runAbsentSweep).
+ *
+ * EXEMPT bookkeeping jobs MAY keep writing directly because they are additive and
+ * idempotent — they only create/advance system-owned ledger rows, never clobbering a value
+ * a user typed:
+ *   - Monthly leave accrual (advances accrual ledger; re-run safe via per-month dedupe).
+ *   - Year-end carry-forward / lapse batch (one-shot per year, logged + idempotent).
+ *   - Holiday/weekend stamping & per-shift grace-zero normalization (config defaults, no-clobber).
+ *   - Salary report run creation (saved as pending_approval; never auto-applied to payroll).
+ * Startup config migrations follow the same rule: CREATE ... IF NOT EXISTS / ensure blocks
+ * are no-clobber and safe to re-run on every boot.
+ */
 export function startScheduler() {
   // Salary report: last day of month at 6 PM CST — generate and hold for approval
   cron.schedule("0 18 28-31 * *", async () => {
@@ -452,7 +487,37 @@ export function startScheduler() {
       } else if (result.skippedHoliday) {
         console.log(`[scheduler] Absent sweep skipped — public holiday: ${result.skippedHoliday}`);
       } else {
-        console.log(`[scheduler] Absent sweep complete for ${todayStr}: ${result.created} absent records created, ${result.skipped} skipped.`);
+        console.log(`[scheduler] Absent sweep complete for ${todayStr}: ${result.created} absence proposal(s) enqueued, ${result.skipped} skipped.`);
+
+        // Daily summary: notify Super Admins of proposals awaiting review.
+        // Respects the notifications_enabled feature flag.
+        if (result.created > 0) {
+          try {
+            const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+            if (flags?.notifications_enabled) {
+              const superAdmins = await db.select({ id: adminUsers.id })
+                .from(adminUsers)
+                .where(and(
+                  isNull(adminUsers.deletedAt),
+                  eq(adminUsers.isActive, true),
+                  eq(adminUsers.role, "super_admin"),
+                ));
+              for (const sa of superAdmins) {
+                await storage.createNotification({
+                  userId: sa.id,
+                  type: "pending_changes_digest",
+                  title: `${result.created} attendance proposal${result.created === 1 ? "" : "s"} need review`,
+                  message: `The end-of-day absent sweep proposed ${result.created} absence${result.created === 1 ? "" : "s"} for ${todayStr}. Review and approve or reject in Automated Changes.`,
+                  isRead: false,
+                  metadata: { runDate: todayStr, sourceJob: "absent_sweep", count: result.created },
+                }).catch(console.error);
+              }
+              console.log(`[scheduler] Absent sweep digest sent to ${superAdmins.length} super admin(s).`);
+            }
+          } catch (notifyErr) {
+            console.error("[scheduler] Absent sweep digest notification failed:", notifyErr);
+          }
+        }
       }
     } catch (error) {
       console.error("[scheduler] Absent sweep failed:", error);

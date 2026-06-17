@@ -32,6 +32,7 @@ import {
   Megaphone,
   ShieldCheck,
   CalendarDays,
+  ClipboardCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -561,6 +562,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: ShieldCheck,
       roles: ["super_admin"],
     }] : []),
+    ...(isSuperAdmin ? [{
+      href: "/admin/automated-changes",
+      label: "Automated Changes",
+      icon: ClipboardCheck,
+      roles: ["super_admin"],
+    }] : []),
     ...(hasStudioAccess ? [{
       href: "/admin/studio/calendar",
       label: "Publishing Calendar",
@@ -582,6 +589,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
+    if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !location.startsWith("/admin/studio/approvals") && !location.startsWith("/admin/studio/final-approval") && !location.startsWith("/admin/studio/calendar") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     return location.startsWith(href);

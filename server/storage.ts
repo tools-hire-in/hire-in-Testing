@@ -15,6 +15,7 @@ import {
   leaveAccruals,
   tickets,
   auditLogs,
+  pendingChanges,
   regionalHolidaySelections,
   salarySlips,
   leaveAdjustments,
@@ -65,6 +66,8 @@ import {
   type InsertTicket,
   type AuditLog,
   type InsertAuditLog,
+  type PendingChange,
+  type InsertPendingChange,
   type RegionalHolidaySelection,
   type InsertRegionalHolidaySelection,
   type SalarySlip,
@@ -277,6 +280,14 @@ export interface IStorage {
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogs(filters?: { actorId?: string; targetId?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLog[]>;
   getAuditLogCount(filters?: { actorId?: string; targetId?: string; action?: string }): Promise<number>;
+
+  // Pending Changes (automated-job guardrail)
+  proposePendingChange(change: InsertPendingChange): Promise<PendingChange | undefined>;
+  getPendingChanges(filters?: { status?: string; sourceJob?: string; runDate?: string }): Promise<PendingChange[]>;
+  getPendingChange(id: string): Promise<PendingChange | undefined>;
+  countPendingChanges(status?: string): Promise<number>;
+  approvePendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
+  rejectPendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
 
   // Salary Slips
   getSalarySlipsByUser(userId: string, year?: number): Promise<SalarySlip[]>;
@@ -2238,6 +2249,132 @@ export class DatabaseStorage implements IStorage {
       .from(auditLogs)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
     return result?.count ?? 0;
+  }
+
+  // ==========================================
+  // PENDING CHANGES (automated-job guardrail)
+  // ==========================================
+  // Automated jobs PROPOSE changes here instead of overwriting user-entered data.
+  // The unique index dedupes re-runs (ON CONFLICT DO NOTHING) so an already-reviewed
+  // proposal is never resurrected by a later run.
+  async proposePendingChange(change: InsertPendingChange): Promise<PendingChange | undefined> {
+    const [created] = await db.insert(pendingChanges)
+      .values(change)
+      .onConflictDoNothing()
+      .returning();
+    return created;
+  }
+
+  async getPendingChanges(filters?: { status?: string; sourceJob?: string; runDate?: string }): Promise<PendingChange[]> {
+    const conditions = [];
+    if (filters?.status) conditions.push(eq(pendingChanges.status, filters.status as any));
+    if (filters?.sourceJob) conditions.push(eq(pendingChanges.sourceJob, filters.sourceJob));
+    if (filters?.runDate) conditions.push(eq(pendingChanges.runDate, filters.runDate));
+
+    return db.select().from(pendingChanges)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(pendingChanges.runDate), asc(pendingChanges.createdAt));
+  }
+
+  async getPendingChange(id: string): Promise<PendingChange | undefined> {
+    const [row] = await db.select().from(pendingChanges).where(eq(pendingChanges.id, id));
+    return row;
+  }
+
+  async countPendingChanges(status: string = "pending"): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(pendingChanges)
+      .where(eq(pendingChanges.status, status as any));
+    return result?.count ?? 0;
+  }
+
+  // Approve a single proposal: re-validate guardrails, apply the change transactionally,
+  // write an audit log, and mark the proposal approved. All-or-nothing.
+  async approvePendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }> {
+    return db.transaction(async (tx) => {
+      const [change] = await tx.select().from(pendingChanges)
+        .where(eq(pendingChanges.id, id))
+        .for("update");
+      if (!change) return { ok: false, reason: "Proposal not found" };
+      if (change.status !== "pending") return { ok: false, reason: "Proposal already reviewed" };
+
+      // ── Apply the change based on its target ──────────────────────────────────
+      if (change.targetTable === "attendance" && change.changeType === "insert") {
+        const payload = (change.payload as Record<string, any>) || {};
+        const userId = change.targetUserId!;
+        const date = change.runDate;
+
+        // Re-check: never clobber a row the employee/HR created after the proposal.
+        const existing = await tx.select({ id: attendance.id })
+          .from(attendance)
+          .where(and(eq(attendance.userId, userId), eq(attendance.date, date)))
+          .limit(1);
+        if (existing.length > 0) {
+          return { ok: false, reason: "An attendance record now exists for this day — proposal is stale" };
+        }
+
+        await tx.insert(attendance).values({
+          userId,
+          date,
+          status: (payload.status as any) ?? "absent",
+          notes: payload.notes ?? change.reason ?? "[Auto] Approved absent proposal",
+        });
+      } else {
+        return { ok: false, reason: `Unsupported change target: ${change.targetTable}/${change.changeType}` };
+      }
+
+      await tx.update(pendingChanges)
+        .set({ status: "approved", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: note ?? null })
+        .where(eq(pendingChanges.id, id));
+
+      await tx.insert(auditLogs).values({
+        actorId: reviewerId,
+        targetId: change.targetUserId ?? null,
+        action: "pending_change_approved",
+        changes: {
+          pendingChangeId: change.id,
+          sourceJob: change.sourceJob,
+          targetTable: change.targetTable,
+          runDate: change.runDate,
+          field: change.field,
+          proposedValue: change.proposedValue,
+          note: note ?? null,
+        },
+      });
+
+      return { ok: true };
+    });
+  }
+
+  // Reject a single proposal: discard it (no data write) and audit the rejection.
+  async rejectPendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }> {
+    return db.transaction(async (tx) => {
+      const [change] = await tx.select().from(pendingChanges)
+        .where(eq(pendingChanges.id, id))
+        .for("update");
+      if (!change) return { ok: false, reason: "Proposal not found" };
+      if (change.status !== "pending") return { ok: false, reason: "Proposal already reviewed" };
+
+      await tx.update(pendingChanges)
+        .set({ status: "rejected", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: note ?? null })
+        .where(eq(pendingChanges.id, id));
+
+      await tx.insert(auditLogs).values({
+        actorId: reviewerId,
+        targetId: change.targetUserId ?? null,
+        action: "pending_change_rejected",
+        changes: {
+          pendingChangeId: change.id,
+          sourceJob: change.sourceJob,
+          targetTable: change.targetTable,
+          runDate: change.runDate,
+          field: change.field,
+          note: note ?? null,
+        },
+      });
+
+      return { ok: true };
+    });
   }
 
   // ==========================================

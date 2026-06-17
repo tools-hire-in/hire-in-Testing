@@ -12,3 +12,4 @@
 - [Dev server has no backend watch](dev-server-no-watch.md) — plain tsx (no watch); backend route changes need a workflow restart, else API returns SPA HTML.
 - [Studio schema drift](studio-schema-drift.md) — studio_articles.category in schema but missing from dev DB; 500s insights read path. Use narrow selects in new public endpoints.
 - [Social card engine](social-card-engine.md) — Chromium renders branded PNGs at 2× scale; networkidle0 needs as-any cast; global-fallback template resolution; auto-trigger on approved.
+- [Pending changes guardrail](pending-changes-guardrail.md) — automated jobs PROPOSE into pending_changes (super-admin review); only absent_sweep guardrailed, accrual/year-end/salary-run are exempt idempotent bookkeeping.

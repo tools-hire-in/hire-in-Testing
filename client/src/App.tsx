@@ -79,6 +79,7 @@ const StudioInbox = lazy(() => import("@/pages/admin/studio/Inbox"));
 const StudioReviewArticle = lazy(() => import("@/pages/admin/studio/ReviewArticle"));
 const StudioApprovals = lazy(() => import("@/pages/admin/studio/Approvals"));
 const StudioFinalApproval = lazy(() => import("@/pages/admin/studio/FinalApproval"));
+const AutomatedChanges = lazy(() => import("@/pages/admin/AutomatedChanges"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
@@ -206,6 +207,7 @@ function PublicRouter() {
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
       <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
       <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      <Route path="/admin/automated-changes">{() => <Suspense fallback={<AdminFallback />}><AutomatedChanges /></Suspense>}</Route>
       <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
@@ -301,6 +303,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
       <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
       <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      <Route path="/admin/automated-changes">{() => <Suspense fallback={<AdminFallback />}><AutomatedChanges /></Suspense>}</Route>
       <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>

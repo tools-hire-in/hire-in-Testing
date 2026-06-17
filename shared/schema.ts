@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, index, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1910,6 +1910,66 @@ export const salaryReportRunsRelations = relations(salaryReportRuns, ({ one }) =
     relationName: "reportApprover",
   }),
 }));
+
+// ==========================================
+// PENDING CHANGES (Automated-job guardrail)
+// ==========================================
+// Automated/scheduled jobs that would otherwise overwrite user-entered values
+// (attendance, leave, salary) instead PROPOSE their changes into this store.
+// A Super Admin reviews each proposal and approves (apply transactionally + audit)
+// or rejects (discard). Nothing is auto-applied.
+export const pendingChangeStatusEnum = pgEnum("pending_change_status", ["pending", "approved", "rejected"]);
+
+export const pendingChanges = pgTable("pending_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Which automated job produced this proposal (e.g. "absent_sweep")
+  sourceJob: varchar("source_job").notNull(),
+  // The calendar date the change pertains to, used to group the daily report (YYYY-MM-DD)
+  runDate: varchar("run_date").notNull(),
+  // Employee the change affects
+  targetUserId: varchar("target_user_id").references(() => adminUsers.id),
+  // Table + record the change targets ("attendance"; targetRecordId NULL for inserts)
+  targetTable: varchar("target_table").notNull(),
+  targetRecordId: varchar("target_record_id"),
+  // "insert" | "update"
+  changeType: varchar("change_type").notNull(),
+  // The field being changed (e.g. "status")
+  field: varchar("field"),
+  // Human-readable before/after for the review UI
+  currentValue: text("current_value"),
+  proposedValue: text("proposed_value"),
+  // Why the job proposed this (e.g. "No punch-in recorded")
+  reason: text("reason"),
+  // Full machine payload the approve handler applies (e.g. { status, date, notes })
+  payload: jsonb("payload"),
+  status: pendingChangeStatusEnum("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNote: text("review_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  // One proposal per job/user/table/date/field — re-running a sweep is idempotent
+  // (ON CONFLICT DO NOTHING) and never resurrects an already-reviewed proposal.
+  uniqueIndex("uq_pending_change_dedupe").on(
+    table.sourceJob,
+    table.targetUserId,
+    table.targetTable,
+    table.runDate,
+    table.field,
+  ),
+  index("idx_pending_change_status_date").on(table.status, table.runDate),
+]);
+
+export const insertPendingChangeSchema = createInsertSchema(pendingChanges).omit({
+  id: true,
+  status: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewNote: true,
+  createdAt: true,
+});
+export type PendingChange = typeof pendingChanges.$inferSelect;
+export type InsertPendingChange = z.infer<typeof insertPendingChangeSchema>;
 
 // ==========================================
 

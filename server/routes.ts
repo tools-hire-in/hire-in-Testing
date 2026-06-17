@@ -9436,6 +9436,121 @@ export async function registerRoutes(
     next();
   }
 
+  // ==========================================
+  // PENDING CHANGES (automated-job guardrail) — Super Admin only
+  // ==========================================
+  // Automated/scheduled jobs PROPOSE changes here instead of overwriting user-entered
+  // values. A Super Admin reviews each proposal and approves (apply transactionally +
+  // audit) or rejects (discard). Nothing is ever auto-applied.
+
+  // Count of proposals awaiting review (for the sidebar badge).
+  app.get("/api/admin/pending-changes/count", requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const count = await storage.countPendingChanges("pending");
+      res.json({ count });
+    } catch (error) {
+      console.error("Pending changes count error:", error);
+      res.status(500).json({ error: "Failed to fetch pending changes count" });
+    }
+  });
+
+  // List proposals (default: pending), enriched with employee name + grouped by run date.
+  app.get("/api/admin/pending-changes", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const status = (req.query.status as string) || "pending";
+      const changes = await storage.getPendingChanges({ status });
+
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const enriched = changes.map((c) => {
+        const u = c.targetUserId ? userMap.get(c.targetUserId) : undefined;
+        return {
+          ...c,
+          employeeName: u ? `${u.firstName} ${u.lastName}`.trim() : "Unknown",
+          employeeEmail: u?.email ?? null,
+        };
+      });
+
+      // Group into a dated daily report (newest date first).
+      const groupsMap = new Map<string, typeof enriched>();
+      for (const c of enriched) {
+        if (!groupsMap.has(c.runDate)) groupsMap.set(c.runDate, []);
+        groupsMap.get(c.runDate)!.push(c);
+      }
+      const groups = Array.from(groupsMap.entries())
+        .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+        .map(([runDate, items]) => ({ runDate, count: items.length, items }));
+
+      res.json({ total: enriched.length, groups });
+    } catch (error) {
+      console.error("Pending changes list error:", error);
+      res.status(500).json({ error: "Failed to fetch pending changes" });
+    }
+  });
+
+  // Approve a single proposal (apply + audit, transactional).
+  app.post("/api/admin/pending-changes/:id/approve", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const result = await storage.approvePendingChange(req.params.id, req.session.userId!, req.body?.note);
+      if (!result.ok) return res.status(409).json({ error: result.reason });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Approve pending change error:", error);
+      res.status(500).json({ error: "Failed to approve proposal" });
+    }
+  });
+
+  // Reject a single proposal (discard + audit).
+  app.post("/api/admin/pending-changes/:id/reject", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const result = await storage.rejectPendingChange(req.params.id, req.session.userId!, req.body?.note);
+      if (!result.ok) return res.status(409).json({ error: result.reason });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Reject pending change error:", error);
+      res.status(500).json({ error: "Failed to reject proposal" });
+    }
+  });
+
+  // Bulk approve.
+  app.post("/api/admin/pending-changes/bulk-approve", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      if (ids.length === 0) return res.status(400).json({ error: "No proposal ids provided" });
+      let approved = 0;
+      const failures: { id: string; reason?: string }[] = [];
+      for (const id of ids) {
+        const result = await storage.approvePendingChange(id, req.session.userId!, req.body?.note);
+        if (result.ok) approved++;
+        else failures.push({ id, reason: result.reason });
+      }
+      res.json({ approved, failed: failures.length, failures });
+    } catch (error) {
+      console.error("Bulk approve pending changes error:", error);
+      res.status(500).json({ error: "Failed to bulk approve proposals" });
+    }
+  });
+
+  // Bulk reject.
+  app.post("/api/admin/pending-changes/bulk-reject", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      if (ids.length === 0) return res.status(400).json({ error: "No proposal ids provided" });
+      let rejected = 0;
+      const failures: { id: string; reason?: string }[] = [];
+      for (const id of ids) {
+        const result = await storage.rejectPendingChange(id, req.session.userId!, req.body?.note);
+        if (result.ok) rejected++;
+        else failures.push({ id, reason: result.reason });
+      }
+      res.json({ rejected, failed: failures.length, failures });
+    } catch (error) {
+      console.error("Bulk reject pending changes error:", error);
+      res.status(500).json({ error: "Failed to bulk reject proposals" });
+    }
+  });
+
   // Current user's effective permissions (feature keys their role can access).
   app.get("/api/me/permissions", requireAuth, async (req: Request, res: Response) => {
     try {

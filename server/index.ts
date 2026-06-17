@@ -2291,6 +2291,44 @@ async function ensureHealthcarePlansTables() {
     console.error("Attendance report approval table migration error:", err);
   }
 
+  // ── Pending Changes (automated-job guardrail) ─────────────────────────────────
+  // Automated/scheduled jobs propose changes here instead of overwriting user data.
+  // A Super Admin reviews and approves (apply + audit) or rejects (discard).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pending_changes (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        source_job VARCHAR NOT NULL,
+        run_date VARCHAR NOT NULL,
+        target_user_id VARCHAR REFERENCES admin_users(id),
+        target_table VARCHAR NOT NULL,
+        target_record_id VARCHAR,
+        change_type VARCHAR NOT NULL,
+        field VARCHAR,
+        current_value TEXT,
+        proposed_value TEXT,
+        reason TEXT,
+        payload JSONB,
+        status VARCHAR NOT NULL DEFAULT 'pending',
+        reviewed_by VARCHAR REFERENCES admin_users(id),
+        reviewed_at TIMESTAMP,
+        review_note TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_change_dedupe
+        ON pending_changes(source_job, target_user_id, target_table, run_date, field)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_pending_change_status_date
+        ON pending_changes(status, run_date)
+    `);
+    log("Pending changes table ensured");
+  } catch (err) {
+    console.error("Pending changes table migration error:", err);
+  }
+
   // Auto-create attendance report run for current month on server start if none exists
   checkAndAutoCreateRun().catch(err =>
     console.error("[index] Attendance auto-create on startup failed:", err)
