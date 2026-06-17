@@ -2327,6 +2327,16 @@ export const studioArticles = pgTable("studio_articles", {
   // Set once when the per-publish new-content notification email has been sent
   // to newsletter subscribers. Guards against re-sending on re-publish/edit.
   notifiedAt: timestamp("notified_at"),
+  // Launch seeding metadata (Task #473 — Hire'in Insights pilot). seedBatchId
+  // tags articles loaded by a batch seed (idempotent re-run guard). The
+  // requires* flags mark articles that must pass author + marketing approval
+  // before they can be published. suggestedAuthorRole / audience are byline +
+  // targeting metadata carried from the seed document.
+  seedBatchId: varchar("seed_batch_id"),
+  requiresAuthorApproval: boolean("requires_author_approval").default(false).notNull(),
+  requiresMarketingApproval: boolean("requires_marketing_approval").default(false).notNull(),
+  suggestedAuthorRole: varchar("suggested_author_role"),
+  audience: text("audience").array(),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

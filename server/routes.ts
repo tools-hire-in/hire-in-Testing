@@ -11559,6 +11559,48 @@ export async function registerRoutes(
     },
   );
 
+  // ---- Hire'in Insights launch announcement (Super Admin, one-time) ----
+
+  app.get(
+    "/api/admin/studio/insights-launch/status",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const { isLaunchAnnouncementSent } = await import("./insightsLaunch");
+        const announced = await isLaunchAnnouncementSent();
+        res.json({ announced, canSend: req.session.role === "super_admin" });
+      } catch (error: any) {
+        console.error("Insights launch status error:", error);
+        res.status(500).json({ error: "Failed to fetch launch status" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/studio/insights-launch/announce",
+    requireAuth,
+    requireRole("super_admin"),
+    async (req: Request, res: Response) => {
+      try {
+        const { sendLaunchAnnouncement } = await import("./insightsLaunch");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const result = await sendLaunchAnnouncement({
+          actorId: req.session.userId!,
+          baseUrl,
+          force: false,
+        });
+        if (!result.ok) {
+          return res.status(409).json({ error: "Launch announcement has already been sent." });
+        }
+        res.json(result);
+      } catch (error: any) {
+        console.error("Insights launch announce error:", error);
+        res.status(500).json({ error: error?.message || "Failed to send launch announcement" });
+      }
+    },
+  );
+
   // ---- Versions ----
 
   // List versions for an article.

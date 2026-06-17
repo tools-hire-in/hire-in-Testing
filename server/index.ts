@@ -542,6 +542,12 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS category varchar`);
     // Newsletter notify guard: set once when per-publish subscriber email sent.
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS notified_at timestamp`);
+    // Launch seeding metadata (Task #473 — Hire'in Insights pilot).
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS seed_batch_id varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS requires_author_approval boolean DEFAULT false NOT NULL`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS requires_marketing_approval boolean DEFAULT false NOT NULL`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS suggested_author_role varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS audience text[]`);
     // Newsletter deliverability suppression columns (analytics subscriber counts).
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);
@@ -551,6 +557,8 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS font_url varchar`);
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS footer_url varchar`);
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS active_template_family varchar DEFAULT 'hirein-v1' NOT NULL`);
+    // Category -> reviewer pool routing config (older DBs predate this column).
+    await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS routing_rules jsonb`);
 
     // Seeded, versioned prompt library.
     await db.execute(sql`
@@ -1972,6 +1980,15 @@ async function ensureHealthcarePlansTables() {
     log(`Content Studio prompt library: ${seedResult.inserted} new of ${seedResult.total} templates`);
   } catch (err) {
     console.error("Content Studio prompt library seed error:", err);
+  }
+  try {
+    const { runInsightsLaunchSetup } = await import("./insightsLaunch");
+    const launch = await runInsightsLaunchSetup();
+    if (launch.ok) {
+      log(`Hire'in Insights launch: ${launch.inserted} seeded, ${launch.skipped} existing`);
+    }
+  } catch (err) {
+    console.error("Hire'in Insights launch setup error:", err);
   }
   await backfillEmployeeIds();
   await backfillHrLetterNames();

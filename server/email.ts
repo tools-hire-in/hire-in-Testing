@@ -1223,6 +1223,7 @@ export async function sendLeaveAppliedEmail(options: {
 
 export async function sendReviewAssignmentEmail(options: {
   to: string;
+  cc?: string[];
   reviewerName: string;
   articleTitle: string;
   excerpt?: string | null;
@@ -1238,8 +1239,10 @@ export async function sendReviewAssignmentEmail(options: {
       value
         ? `<tr><td style="color:#64748b;padding:6px 0;width:120px;">${label}:</td><td style="color:#1e293b;font-weight:500;padding:6px 0;">${value}</td></tr>`
         : "";
-    const msg = {
+    const ccList = (options.cc ?? []).filter((e) => e && e !== options.to);
+    const msg: any = {
       to: options.to,
+      ...(ccList.length ? { cc: Array.from(new Set(ccList)) } : {}),
       from: { email: fromEmail, name: "Alina Carter" },
       subject: `New article to review: ${options.articleTitle}${options.dueDate ? ` — due ${options.dueDate}` : ""}`,
       html: `
@@ -1285,6 +1288,67 @@ export async function sendReviewAssignmentEmail(options: {
     return { success: true };
   } catch (error: any) {
     console.error("Failed to send review assignment email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// One-time internal "Hire'in Insights is live" launch announcement. Sent to the
+// whole active team with the founder CC'd by convention. Internal-only — this is
+// not a public/marketing send.
+export async function sendInsightsLaunchAnnouncementEmail(options: {
+  to: string[];
+  portalUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const recipients = Array.from(new Set((options.to ?? []).filter(Boolean)));
+    if (recipients.length === 0) return { success: false, error: "no_recipients" };
+    const founderCc = "simranjeet@hire-in.com";
+    const cc = recipients.includes(founderCc) ? [] : [founderCc];
+    const msg: any = {
+      to: recipients,
+      ...(cc.length ? { cc } : {}),
+      from: { email: fromEmail, name: "Alina Carter" },
+      replyTo: { email: "alina.carter@hire-in.com", name: "Alina Carter" },
+      subject: "Hire'in Insights is live — internal pilot launch",
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Insights</h1>
+            <p style="color: #ffe8d6; margin: 8px 0 0; font-size: 14px;">Internal pilot launch</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Our content engine is live</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              The first Hire'in Insights content package is loaded into Content Studio. These articles cover
+              healthcare and IT staffing, recruiter playbooks, candidate tips, employer guides and AI in recruiting.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Every article moves through <strong>draft → review → approval → publish</strong>. If you are assigned a
+              review, you will get a notification and an email — please action it within the review window. Nothing
+              goes public, and no social post is published, until a human approves it.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.portalUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Open Content Studio
+              </a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Our content engine is live.\n\nThe first Hire'in Insights content package is loaded into Content Studio (healthcare & IT staffing, recruiter playbooks, candidate tips, employer guides, AI in recruiting).\n\nEvery article moves through draft -> review -> approval -> publish. If you are assigned a review, you will get a notification and an email. Nothing goes public, and no social post is published, until a human approves it.\n\nOpen Content Studio: ${options.portalUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Insights launch announcement sent to ${recipients.length} recipients`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send insights launch announcement:", error?.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }

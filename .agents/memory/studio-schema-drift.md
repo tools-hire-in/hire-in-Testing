@@ -5,8 +5,9 @@ description: Why public studio/insights read endpoints should select narrow colu
 
 In the isolated dev env, several studio columns exist in `shared/schema.ts` but are
 MISSING from the actual DB (auto-migrations disabled; the original CREATE TABLE IF NOT
-EXISTS ensure-blocks never add later-added columns). Known drifters: `studio_articles.category`
-and `studio_newsletter_subscribers.suppressed_at` / `bounce_count` / `last_bounce_at`.
+EXISTS ensure-blocks never add later-added columns). Known drifters: `studio_articles.category`,
+`studio_newsletter_subscribers.suppressed_at` / `bounce_count` / `last_bounce_at`, and
+`studio_projects.routing_rules` (whole-row `getStudioProjects` 500s until an ALTER ensure adds it).
 Any `db.select()` (all columns) against these tables throws `column ... does not exist`
 (Postgres 42703), which 500s the read path (insights getters, getNewsletterSubscriberCounts).
 
@@ -27,3 +28,11 @@ flag) AND resilient to this drift — they keep working even when the env DB lag
 **How to apply:** if a studio/insights feature 500s with a missing-column error in dev,
 it is env drift, not your bug. Either select only the columns you need, or add the missing
 column via idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (see db-push-interactive-prompt).
+
+**Studio article_status enum has no `reviewer_pending`.** Valid values: draft, in_review,
+approved, scheduled, published, ready_to_export, pending_marketing, pending_final_approval,
+archived. A "seeded, awaiting reviewer" article must be stored as `in_review` (the only status
+that makes the reviewer inbox + review-decision flow functional); track the seed/approval state
+via `seed_batch_id` + `requires_author_approval`/`requires_marketing_approval` flags, not a status.
+**Why:** review-decision endpoint 409s unless status === 'in_review', and the enum cannot hold a
+made-up value.
