@@ -1221,6 +1221,74 @@ export async function sendLeaveAppliedEmail(options: {
   }
 }
 
+export async function sendReviewAssignmentEmail(options: {
+  to: string;
+  reviewerName: string;
+  articleTitle: string;
+  excerpt?: string | null;
+  contentType?: string | null;
+  category?: string | null;
+  projectName?: string | null;
+  dueDate?: string | null;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const detailRow = (label: string, value?: string | null) =>
+      value
+        ? `<tr><td style="color:#64748b;padding:6px 0;width:120px;">${label}:</td><td style="color:#1e293b;font-weight:500;padding:6px 0;">${value}</td></tr>`
+        : "";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `New article to review: ${options.articleTitle}${options.dueDate ? ` — due ${options.dueDate}` : ""}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Hire'in Content Studio</h1>
+            <p style="color: #e2e8f0; margin: 8px 0 0; font-size: 14px;">New Review Assignment</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.reviewerName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              You have a new article to review: <strong>${options.articleTitle}</strong>${options.dueDate ? ` — due <strong>${options.dueDate}</strong>` : ""}.
+            </p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 12px;">Article Details</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                ${detailRow("Title", options.articleTitle)}
+                ${detailRow("Project", options.projectName)}
+                ${detailRow("Content Type", options.contentType)}
+                ${detailRow("Category", options.category)}
+                ${detailRow("Due", options.dueDate)}
+              </table>
+              ${options.excerpt ? `<p style="color:#475569;line-height:1.6;margin:16px 0 0;">${options.excerpt}</p>` : ""}
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.reviewUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Review Article
+              </a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.reviewerName},\n\nYou have a new article to review: ${options.articleTitle}${options.dueDate ? ` — due ${options.dueDate}` : ""}.\n\n${options.projectName ? `Project: ${options.projectName}\n` : ""}${options.contentType ? `Content Type: ${options.contentType}\n` : ""}${options.category ? `Category: ${options.category}\n` : ""}${options.excerpt ? `\n${options.excerpt}\n` : ""}\nReview at: ${options.reviewUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Review assignment email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send review assignment email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendLeaveDecisionEmail(options: {
   to: string;
   employeeName: string;

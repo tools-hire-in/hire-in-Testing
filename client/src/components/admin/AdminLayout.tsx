@@ -28,6 +28,7 @@ import {
   FileText,
   ClipboardList,
   Newspaper,
+  Inbox,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -537,6 +538,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Newspaper,
       roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
     }] : []),
+    ...(hasStudioAccess ? [{
+      href: "/admin/studio/inbox",
+      label: "Reviewer Inbox",
+      icon: Inbox,
+      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -549,6 +556,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
+    if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
+    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     return location.startsWith(href);
   };
 

@@ -98,6 +98,7 @@ import {
   studioAuditEvents,
   studioPromptTemplates,
   studioGenerations,
+  studioReviewAssignments,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -112,12 +113,12 @@ import {
   studioBrandSettings,
   type CardTemplate,
   type StudioBrandSettings,
-  studioPromptTemplates,
-  studioGenerations,
   type StudioPromptTemplate,
   type InsertStudioPromptTemplate,
   type StudioGeneration,
   type InsertStudioGeneration,
+  type StudioReviewAssignment,
+  type InsertStudioReviewAssignment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -418,6 +419,20 @@ export interface IStorage {
   ): Promise<StudioGeneration | undefined>;
   getStudioGenerations(articleId: string): Promise<StudioGeneration[]>;
   countStudioGenerationsByUserSince(userId: string, since: Date): Promise<number>;
+
+  updateStudioProject(id: string, updates: Partial<InsertStudioProject>): Promise<StudioProject | undefined>;
+  getStudioProject(id: string): Promise<StudioProject | undefined>;
+
+  createStudioReviewAssignment(data: InsertStudioReviewAssignment): Promise<StudioReviewAssignment>;
+  getStudioReviewAssignment(id: string): Promise<StudioReviewAssignment | undefined>;
+  getActiveStudioReviewAssignment(articleId: string): Promise<StudioReviewAssignment | undefined>;
+  updateStudioReviewAssignment(id: string, updates: Partial<InsertStudioReviewAssignment>): Promise<StudioReviewAssignment | undefined>;
+  getStudioReviewAssignmentsForArticle(articleId: string): Promise<StudioReviewAssignment[]>;
+  getStudioInboxForReviewer(userId: string): Promise<(StudioReviewAssignment & {
+    article: StudioArticle | null;
+    projectName: string | null;
+  })[]>;
+  getLastStudioAssignmentTimes(reviewerUserIds: string[]): Promise<Record<string, Date | null>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3108,6 +3123,24 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // ---- Projects (mutations + single fetch) ----
+  async getStudioProject(id: string): Promise<StudioProject | undefined> {
+    const [row] = await db.select().from(studioProjects).where(eq(studioProjects.id, id));
+    return row;
+  }
+
+  async updateStudioProject(
+    id: string,
+    updates: Partial<InsertStudioProject>,
+  ): Promise<StudioProject | undefined> {
+    const [updated] = await db
+      .update(studioProjects)
+      .set(updates)
+      .where(eq(studioProjects.id, id))
+      .returning();
+    return updated;
+  }
+
   async getStudioGenerations(articleId: string): Promise<StudioGeneration[]> {
     return await db
       .select()
@@ -3127,6 +3160,108 @@ export class DatabaseStorage implements IStorage {
         ),
       );
     return count ?? 0;
+  }
+
+  // ---- Review assignments ----
+  async createStudioReviewAssignment(
+    data: InsertStudioReviewAssignment,
+  ): Promise<StudioReviewAssignment> {
+    const [created] = await db.insert(studioReviewAssignments).values(data).returning();
+    return created;
+  }
+
+  async getStudioReviewAssignment(id: string): Promise<StudioReviewAssignment | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioReviewAssignments)
+      .where(eq(studioReviewAssignments.id, id));
+    return row;
+  }
+
+  async getActiveStudioReviewAssignment(
+    articleId: string,
+  ): Promise<StudioReviewAssignment | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioReviewAssignments)
+      .where(
+        and(
+          eq(studioReviewAssignments.articleId, articleId),
+          eq(studioReviewAssignments.status, "pending"),
+        ),
+      )
+      .orderBy(desc(studioReviewAssignments.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async updateStudioReviewAssignment(
+    id: string,
+    updates: Partial<InsertStudioReviewAssignment>,
+  ): Promise<StudioReviewAssignment | undefined> {
+    const [updated] = await db
+      .update(studioReviewAssignments)
+      .set(updates)
+      .where(eq(studioReviewAssignments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getStudioReviewAssignmentsForArticle(
+    articleId: string,
+  ): Promise<StudioReviewAssignment[]> {
+    return await db
+      .select()
+      .from(studioReviewAssignments)
+      .where(eq(studioReviewAssignments.articleId, articleId))
+      .orderBy(desc(studioReviewAssignments.createdAt));
+  }
+
+  async getStudioInboxForReviewer(userId: string): Promise<(StudioReviewAssignment & {
+    article: StudioArticle | null;
+    projectName: string | null;
+  })[]> {
+    const rows = await db
+      .select({
+        assignment: studioReviewAssignments,
+        article: studioArticles,
+        projectName: studioProjects.name,
+      })
+      .from(studioReviewAssignments)
+      .leftJoin(studioArticles, eq(studioReviewAssignments.articleId, studioArticles.id))
+      .leftJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .where(
+        and(
+          eq(studioReviewAssignments.reviewerUserId, userId),
+          eq(studioReviewAssignments.status, "pending"),
+        ),
+      )
+      .orderBy(asc(studioReviewAssignments.dueAt), desc(studioReviewAssignments.createdAt));
+    return rows.map((r) => ({
+      ...r.assignment,
+      article: r.article ?? null,
+      projectName: r.projectName ?? null,
+    }));
+  }
+
+  async getLastStudioAssignmentTimes(
+    reviewerUserIds: string[],
+  ): Promise<Record<string, Date | null>> {
+    const result: Record<string, Date | null> = {};
+    for (const id of reviewerUserIds) result[id] = null;
+    if (reviewerUserIds.length === 0) return result;
+    const rows = await db
+      .select({
+        reviewerUserId: studioReviewAssignments.reviewerUserId,
+        last: sql<Date>`max(${studioReviewAssignments.createdAt})`,
+      })
+      .from(studioReviewAssignments)
+      .where(inArray(studioReviewAssignments.reviewerUserId, reviewerUserIds))
+      .groupBy(studioReviewAssignments.reviewerUserId);
+    for (const r of rows) {
+      result[r.reviewerUserId] = r.last ? new Date(r.last as any) : null;
+    }
+    return result;
   }
 
 }

@@ -28,6 +28,8 @@ import {
 import type { StudioProject, StudioBrandSettings } from "@shared/schema";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
+import { RoutingSettings } from "./RoutingSettings";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const STORAGE_KEY = "studio.selectedProjectId";
 
@@ -212,6 +214,8 @@ function BrandReference({ brand }: { brand?: StudioBrandSettings }) {
 export default function Studio() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const { can } = usePermissions();
+  const canManageSettings = can("studio.manage_settings");
 
   const { data: projects, isLoading: projectsLoading } = useQuery<StudioProject[]>({
     queryKey: ["/api/admin/studio/projects"],
@@ -471,6 +475,29 @@ export default function Studio() {
           {/* Settings */}
           <TabsContent value="settings" className="mt-6 space-y-6">
             <BrandReference brand={brand ?? undefined} />
+            {!canManageSettings ? (
+              <ComingSoon
+                title="Studio Settings"
+                description="You don't have permission to manage studio settings."
+              />
+            ) : !selectedProjectId ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold" data-testid="text-routing-heading">
+                    Review Routing
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Route articles to reviewer pools by category for{" "}
+                    {selectedProject?.name ?? "this project"}.
+                  </p>
+                </div>
+                <RoutingSettings projectId={selectedProjectId} />
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

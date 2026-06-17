@@ -19,6 +19,8 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import {
   insertStudioArticleSchema,
   insertStudioAuthorProfileSchema,
+  type StudioArticle,
+  type StudioRoutingRules,
 } from "@shared/schema";
 import { computeReadTime } from "@shared/studioContent";
 import {
@@ -32,6 +34,7 @@ import {
   isAiConfigured,
   AiGenerationError,
 } from "./services/aiDraftService";
+import { z } from "zod";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, type SalaryReportAdjustment } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -9078,6 +9081,136 @@ export async function registerRoutes(
   // CONTENT & MARKETING STUDIO
   // ==========================================
 
+  // ---- Smart-routing helpers ----
+
+  // Resolve the reviewer pool for an article's category from a project's
+  // routing rules, falling back to the default pool when no rule matches.
+  function resolveReviewerPool(
+    routingRules: unknown,
+    category?: string | null,
+  ): string[] {
+    const rules = (routingRules ?? {}) as StudioRoutingRules;
+    if (category && Array.isArray(rules.rules)) {
+      const match = rules.rules.find(
+        (r) => (r.category ?? "").trim().toLowerCase() === category.trim().toLowerCase(),
+      );
+      if (match && Array.isArray(match.reviewerUserIds) && match.reviewerUserIds.length) {
+        return match.reviewerUserIds;
+      }
+    }
+    return Array.isArray(rules.defaultReviewerUserIds) ? rules.defaultReviewerUserIds : [];
+  }
+
+  // Pick a reviewer from a pool. Default strategy is least-recently-assigned:
+  // never-assigned reviewers are chosen first, then whoever was assigned the
+  // longest time ago. Pool order breaks ties (round-robin friendly).
+  async function pickReviewerFromPool(
+    pool: string[],
+    excludeUserId?: string,
+  ): Promise<string | null> {
+    const candidates = pool.filter((id) => id && id !== excludeUserId);
+    if (candidates.length === 0) return null;
+    const times = await storage.getLastStudioAssignmentTimes(candidates);
+    let best: string | null = null;
+    let bestVal = Infinity;
+    for (const id of candidates) {
+      const t = times[id];
+      const val = t ? new Date(t).getTime() : -1; // never assigned sorts first
+      if (val < bestVal) {
+        bestVal = val;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  // Create a review assignment, point the article at the reviewer, and fire the
+  // in-app notification + SendGrid email. Returns the created assignment.
+  async function assignReviewerToArticle(
+    article: StudioArticle,
+    reviewerUserId: string,
+    assignedBy: string | undefined,
+    baseUrl: string,
+    opts?: { dueAt?: Date; comment?: string | null },
+  ) {
+    const dueAt = opts?.dueAt ?? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const assignment = await storage.createStudioReviewAssignment({
+      articleId: article.id,
+      reviewerUserId,
+      status: "pending",
+      dueAt,
+      assignedBy: assignedBy ?? null,
+      comment: opts?.comment ?? null,
+    } as any);
+    await storage.updateStudioArticle(article.id, { reviewerUserId } as any);
+
+    const dueLabel = dueAt.toLocaleDateString();
+    try {
+      await storage.createNotification({
+        userId: reviewerUserId,
+        type: "studio_review_assigned",
+        title: "New article to review",
+        message: `You have a new article to review: ${article.title} — due ${dueLabel}`,
+        isRead: false,
+        metadata: { articleId: article.id, assignmentId: assignment.id, link: "/admin/studio/inbox" },
+      });
+    } catch (notifyErr) {
+      console.error("Studio review notification error:", notifyErr);
+    }
+
+    try {
+      const reviewer = await storage.getAdminUser(reviewerUserId);
+      if (reviewer?.email) {
+        const project = await storage.getStudioProject(article.projectId);
+        const { sendReviewAssignmentEmail } = await import("./email");
+        sendReviewAssignmentEmail({
+          to: reviewer.email,
+          reviewerName: `${reviewer.firstName ?? ""} ${reviewer.lastName ?? ""}`.trim() || reviewer.email,
+          articleTitle: article.title,
+          excerpt: article.excerpt,
+          contentType: article.contentType,
+          category: article.category,
+          projectName: project?.name ?? null,
+          dueDate: dueLabel,
+          reviewUrl: `${baseUrl}/admin/studio/articles/${article.id}/review`,
+        }).catch((e) => console.error("Review assignment email error:", e));
+      }
+    } catch (emailErr) {
+      console.error("Review assignment email lookup error:", emailErr);
+    }
+
+    return assignment;
+  }
+
+  // Auto-route an article that just entered review. Returns the chosen reviewer
+  // id, or null when no pool is configured for its category.
+  async function autoRouteArticle(
+    article: StudioArticle,
+    actorId: string | undefined,
+    baseUrl: string,
+  ): Promise<string | null> {
+    const project = await storage.getStudioProject(article.projectId);
+    const pool = resolveReviewerPool(project?.routingRules, article.category);
+    const reviewerUserId = await pickReviewerFromPool(pool);
+    if (!reviewerUserId) {
+      await storage.createStudioAuditEvent({
+        articleId: article.id,
+        actorUserId: actorId ?? null,
+        eventType: "review_unassigned",
+        metadata: { reason: "no_reviewer_pool", category: article.category ?? null },
+      } as any);
+      return null;
+    }
+    await assignReviewerToArticle(article, reviewerUserId, actorId, baseUrl);
+    await storage.createStudioAuditEvent({
+      articleId: article.id,
+      actorUserId: actorId ?? null,
+      eventType: "review_assigned",
+      metadata: { reviewerUserId, category: article.category ?? null, auto: true },
+    } as any);
+    return reviewerUserId;
+  }
+
   // List studio projects (project switcher + Projects tab).
   app.get(
     "/api/admin/studio/projects",
@@ -9651,10 +9784,325 @@ export async function registerRoutes(
           eventType: "status_changed",
           metadata: { from: article.status, to },
         });
-        res.json(updated);
+
+        // Smart routing: auto-assign a reviewer when an article enters review.
+        let autoAssignedReviewerId: string | null = null;
+        if (to === "in_review") {
+          try {
+            const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+            const baseUrl = `${proto}://${req.get("host")}`;
+            autoAssignedReviewerId = await autoRouteArticle(
+              (updated ?? article) as StudioArticle,
+              req.session.userId,
+              baseUrl,
+            );
+          } catch (routeErr) {
+            console.error("Studio auto-route error:", routeErr);
+          }
+        }
+
+        res.json({ ...updated, autoAssignedReviewerId });
       } catch (error: any) {
         console.error("Studio transition error:", error);
         res.status(400).json({ error: error?.message || "Failed to transition article" });
+      }
+    },
+  );
+
+  // ---- Reviewer Inbox & Smart Routing ----
+
+  // List candidate reviewers (all active admin users). The DB user_role enum has
+  // no dedicated reviewer role, so any active admin user can be in a pool.
+  app.get(
+    "/api/admin/studio/reviewers",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (_req, res) => {
+      try {
+        const users = await storage.getAdminUsers();
+        res.json(
+          users
+            .filter((u) => u.isActive !== false)
+            .map((u) => ({
+              id: u.id,
+              email: u.email,
+              firstName: u.firstName ?? null,
+              lastName: u.lastName ?? null,
+              role: u.role,
+            })),
+        );
+      } catch (error: any) {
+        console.error("Studio reviewers list error:", error);
+        res.status(500).json({ error: "Failed to fetch reviewers" });
+      }
+    },
+  );
+
+  // Reviewer's own inbox: pending assignments addressed to them.
+  app.get(
+    "/api/admin/studio/inbox",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = req.session.userId!;
+        const inbox = await storage.getStudioInboxForReviewer(userId);
+        res.json(inbox);
+      } catch (error: any) {
+        console.error("Studio inbox error:", error);
+        res.status(500).json({ error: "Failed to fetch inbox" });
+      }
+    },
+  );
+
+  // Review detail: the article plus its assignment history. Accessible to the
+  // assigned reviewer or super_admin/admin (managers can view to track).
+  app.get(
+    "/api/admin/studio/articles/:id/review",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const assignments = await storage.getStudioReviewAssignmentsForArticle(req.params.id);
+        const active = await storage.getActiveStudioReviewAssignment(req.params.id);
+        const role = req.session.role!;
+        const userId = req.session.userId!;
+        const isPrivileged = role === "super_admin" || role === "admin";
+        const isAssignedReviewer = active?.reviewerUserId === userId;
+        if (!isPrivileged && !isAssignedReviewer) {
+          return res.status(403).json({ error: "You are not assigned to review this article" });
+        }
+        res.json({ article, assignments, activeAssignment: active ?? null });
+      } catch (error: any) {
+        console.error("Studio review detail error:", error);
+        res.status(500).json({ error: "Failed to fetch review detail" });
+      }
+    },
+  );
+
+  // Reviewer decision: approve / request_changes / decline. Enforced to the
+  // assigned reviewer (or super_admin) only — otherwise 403.
+  app.post(
+    "/api/admin/studio/articles/:id/review-decision",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { decision, comment } = req.body ?? {};
+        const allowed = ["approve", "request_changes", "decline"];
+        if (!allowed.includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision" });
+        }
+        if (decision !== "approve" && !comment?.trim()) {
+          return res.status(400).json({ error: "A comment is required for this decision" });
+        }
+
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const active = await storage.getActiveStudioReviewAssignment(req.params.id);
+        if (!active) {
+          return res.status(409).json({ error: "No active review assignment for this article" });
+        }
+
+        const role = req.session.role!;
+        const userId = req.session.userId!;
+        const isSuperAdmin = role === "super_admin";
+        if (active.reviewerUserId !== userId && !isSuperAdmin) {
+          return res.status(403).json({ error: "You are not the assigned reviewer" });
+        }
+        if (article.status !== "in_review") {
+          return res.status(409).json({ error: "Article is not currently in review" });
+        }
+
+        const decisionMap: Record<string, { assignmentStatus: string; articleStatus: string; eventType: string }> = {
+          approve: { assignmentStatus: "approved", articleStatus: "approved", eventType: "review_approved" },
+          request_changes: { assignmentStatus: "changes_requested", articleStatus: "draft", eventType: "review_changes_requested" },
+          decline: { assignmentStatus: "declined", articleStatus: "draft", eventType: "review_declined" },
+        };
+        const mapped = decisionMap[decision];
+
+        await storage.updateStudioReviewAssignment(active.id, {
+          status: mapped.assignmentStatus,
+          decisionAt: new Date(),
+          comment: comment ?? null,
+        } as any);
+
+        const articleUpdates: any = { status: mapped.articleStatus };
+        if (decision === "approve") {
+          articleUpdates.approvedBy = userId;
+          articleUpdates.approvedAt = new Date();
+        }
+        const updated = await storage.updateStudioArticle(req.params.id, articleUpdates);
+
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: mapped.eventType,
+          metadata: { assignmentId: active.id, comment: comment ?? null },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: mapped.articleStatus, via: "review_decision" },
+        } as any);
+
+        // Notify the article author of the outcome.
+        if (article.createdBy && article.createdBy !== userId) {
+          try {
+            const labels: Record<string, string> = {
+              approve: "approved",
+              request_changes: "sent back for changes",
+              decline: "declined",
+            };
+            await storage.createNotification({
+              userId: article.createdBy,
+              type: "studio_review_decision",
+              title: `Your article was ${labels[decision]}`,
+              message: `"${article.title}" was ${labels[decision]}${comment?.trim() ? `: ${comment.trim()}` : "."}`,
+              isRead: false,
+              metadata: { articleId: article.id, decision },
+            });
+          } catch (notifyErr) {
+            console.error("Studio decision notification error:", notifyErr);
+          }
+        }
+
+        res.json({ ...updated, assignmentStatus: mapped.assignmentStatus });
+      } catch (error: any) {
+        console.error("Studio review-decision error:", error);
+        res.status(400).json({ error: error?.message || "Failed to record decision" });
+      }
+    },
+  );
+
+  // Reassign: assigned reviewer can hand off; super_admin/admin can override.
+  app.post(
+    "/api/admin/studio/articles/:id/reassign",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { reviewerUserId, comment } = req.body ?? {};
+        if (!reviewerUserId || typeof reviewerUserId !== "string") {
+          return res.status(400).json({ error: "reviewerUserId is required" });
+        }
+
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "in_review") {
+          return res.status(409).json({ error: "Article is not currently in review" });
+        }
+
+        const role = req.session.role!;
+        const userId = req.session.userId!;
+        const isPrivileged = role === "super_admin" || role === "admin";
+        const active = await storage.getActiveStudioReviewAssignment(req.params.id);
+        const isAssignedReviewer = active?.reviewerUserId === userId;
+        if (!isPrivileged && !isAssignedReviewer) {
+          return res.status(403).json({ error: "You cannot reassign this article" });
+        }
+
+        const newReviewer = await storage.getAdminUser(reviewerUserId);
+        if (!newReviewer || newReviewer.isActive === false) {
+          return res.status(400).json({ error: "Selected reviewer is not available" });
+        }
+
+        // Close the current assignment, if any.
+        if (active) {
+          await storage.updateStudioReviewAssignment(active.id, {
+            status: "reassigned",
+            decisionAt: new Date(),
+            comment: comment ?? null,
+          } as any);
+        }
+
+        const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+        const baseUrl = `${proto}://${req.get("host")}`;
+        await assignReviewerToArticle(article as StudioArticle, reviewerUserId, userId, baseUrl, {
+          comment: comment ?? null,
+        });
+
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "review_reassigned",
+          metadata: {
+            from: active?.reviewerUserId ?? null,
+            to: reviewerUserId,
+            override: isPrivileged && !isAssignedReviewer,
+            comment: comment ?? null,
+          },
+        } as any);
+
+        res.json({ ok: true, reviewerUserId });
+      } catch (error: any) {
+        console.error("Studio reassign error:", error);
+        res.status(400).json({ error: error?.message || "Failed to reassign article" });
+      }
+    },
+  );
+
+  // Get a project's routing configuration.
+  app.get(
+    "/api/admin/studio/projects/:id/routing",
+    requireAuth,
+    requirePermission("studio.manage_settings"),
+    async (req, res) => {
+      try {
+        const project = await storage.getStudioProject(req.params.id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        const rules = (project.routingRules ?? { rules: [] }) as StudioRoutingRules;
+        res.json({
+          projectId: project.id,
+          strategy: rules.strategy ?? "least_recently_assigned",
+          defaultReviewerUserIds: rules.defaultReviewerUserIds ?? [],
+          rules: Array.isArray(rules.rules) ? rules.rules : [],
+        });
+      } catch (error: any) {
+        console.error("Studio routing get error:", error);
+        res.status(500).json({ error: "Failed to fetch routing config" });
+      }
+    },
+  );
+
+  // Update a project's routing configuration.
+  app.put(
+    "/api/admin/studio/projects/:id/routing",
+    requireAuth,
+    requirePermission("studio.manage_settings"),
+    async (req, res) => {
+      try {
+        const project = await storage.getStudioProject(req.params.id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+
+        const routingSchema = z.object({
+          strategy: z.enum(["least_recently_assigned", "round_robin"]).optional(),
+          defaultReviewerUserIds: z.array(z.string()).optional(),
+          rules: z
+            .array(
+              z.object({
+                category: z.string().min(1),
+                reviewerUserIds: z.array(z.string()),
+              }),
+            )
+            .default([]),
+        });
+        const parsed = routingSchema.parse(req.body ?? {});
+
+        const updated = await storage.updateStudioProject(req.params.id, {
+          routingRules: parsed,
+        } as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "routing_updated",
+          metadata: { projectId: req.params.id, ruleCount: parsed.rules.length },
+        } as any);
+
+        res.json(updated?.routingRules ?? parsed);
+      } catch (error: any) {
+        console.error("Studio routing update error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update routing config" });
       }
     },
   );

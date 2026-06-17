@@ -2190,6 +2190,11 @@ export const studioProjects = pgTable("studio_projects", {
   isPrimary: boolean("is_primary").default(false).notNull(),
   publishesToInsights: boolean("publishes_to_insights").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  // Category -> reviewer pool routing config used by the smart-routing engine.
+  // Shape: { strategy?: "least_recently_assigned" | "round_robin",
+  //          defaultReviewerUserIds?: string[],
+  //          rules: { category: string; reviewerUserIds: string[] }[] }
+  routingRules: jsonb("routing_rules"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -2215,6 +2220,7 @@ export const studioArticles = pgTable("studio_articles", {
   projectId: varchar("project_id").notNull().references(() => studioProjects.id),
   status: articleStatusEnum("status").default("draft").notNull(),
   contentType: varchar("content_type").default("article").notNull(),
+  category: varchar("category"),
   title: varchar("title").notNull(),
   slug: varchar("slug"),
   excerpt: text("excerpt"),
@@ -2423,3 +2429,14 @@ export type StudioPromptTemplate = typeof studioPromptTemplates.$inferSelect;
 export type InsertStudioPromptTemplate = z.infer<typeof insertStudioPromptTemplateSchema>;
 export type StudioGeneration = typeof studioGenerations.$inferSelect;
 export type InsertStudioGeneration = z.infer<typeof insertStudioGenerationSchema>;
+
+// Smart-routing config shapes (stored in studioProjects.routingRules jsonb).
+export interface StudioRoutingRule {
+  category: string;
+  reviewerUserIds: string[];
+}
+export interface StudioRoutingRules {
+  strategy?: "least_recently_assigned" | "round_robin";
+  defaultReviewerUserIds?: string[];
+  rules: StudioRoutingRule[];
+}

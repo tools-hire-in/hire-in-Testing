@@ -85,6 +85,7 @@ interface EditorState {
   excerpt: string;
   bodyMarkdown: string;
   contentType: string;
+  category: string;
   tags: string;
   slug: string;
   seoTitle: string;
@@ -153,6 +154,7 @@ function ArticleEditorInner({ id }: { id: string }) {
         excerpt: article.excerpt ?? "",
         bodyMarkdown: article.bodyMarkdown ?? "",
         contentType: article.contentType ?? "quick_take",
+        category: article.category ?? "",
         tags: (article.tags ?? []).join(", "),
         slug: article.slug ?? "",
         seoTitle: article.seoTitle ?? "",
@@ -182,6 +184,7 @@ function ArticleEditorInner({ id }: { id: string }) {
     excerpt: state.excerpt || null,
     bodyMarkdown: state.bodyMarkdown,
     contentType: state.contentType,
+    category: state.category.trim() || null,
     tags: state.tags
       ? state.tags.split(",").map((t) => t.trim()).filter(Boolean)
       : [],
@@ -254,6 +257,7 @@ function ArticleEditorInner({ id }: { id: string }) {
         excerpt: restored.excerpt ?? "",
         bodyMarkdown: restored.bodyMarkdown ?? "",
         contentType: restored.contentType ?? "quick_take",
+        category: restored.category ?? "",
         tags: (restored.tags ?? []).join(", "),
         slug: restored.slug ?? "",
         seoTitle: restored.seoTitle ?? "",
@@ -917,6 +921,21 @@ function ArticleEditorInner({ id }: { id: string }) {
                     Target {contentType.blurb}. Read time clamps to this range.
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Input
+                  id="category"
+                  value={form.category}
+                  onChange={(e) => update({ category: e.target.value })}
+                  placeholder="e.g. Healthcare, IT, Engineering"
+                  disabled={!canEdit}
+                  data-testid="input-category"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Routes the review to the matching reviewer pool when submitted.
+                </p>
               </div>
 
               <div className="space-y-2">
