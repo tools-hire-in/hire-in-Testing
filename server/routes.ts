@@ -303,6 +303,43 @@ export async function registerRoutes(
     return { ...rest, ...extraFields };
   }
 
+  // Strip internal workflow/compliance fields from a published insight before
+  // exposing it on the public surface. Only the checklist items are surfaced
+  // from the social kit; the rest of the kit is internal.
+  function sanitizePublicInsight(a: any) {
+    const kit = a.socialKitJsonb && typeof a.socialKitJsonb === "object" ? a.socialKitJsonb : null;
+    const checklistItems: string[] = Array.isArray(kit?.checklist_card_items)
+      ? kit.checklist_card_items.filter((s: any) => typeof s === "string" && s.trim())
+      : [];
+    return {
+      id: a.id,
+      slug: a.slug,
+      title: a.title,
+      excerpt: a.excerpt,
+      bodyMarkdown: a.bodyMarkdown,
+      category: a.category,
+      contentType: a.contentType,
+      coverImageUrl: a.coverImageUrl,
+      ogImageUrl: a.ogImageUrl,
+      seoTitle: a.seoTitle,
+      seoDescription: a.seoDescription,
+      tags: a.tags ?? [],
+      readTimeMinutes: a.readTimeMinutes,
+      publishedAt: a.publishedAt,
+      updatedAt: a.updatedAt,
+      checklistItems,
+      author: a.authorName
+        ? {
+            name: a.authorName,
+            title: a.authorTitle ?? null,
+            bio: a.authorBio ?? null,
+            photoUrl: a.authorPhotoUrl ?? null,
+            linkedinUrl: a.authorLinkedinUrl ?? null,
+          }
+        : null,
+    };
+  }
+
   // Dynamic sitemap — includes all static marketing pages + active job detail pages
   app.get("/sitemap.xml", async (req, res) => {
     try {
@@ -341,7 +378,19 @@ export async function registerRoutes(
         return { loc: `/jobs/${job.id}`, changefreq: "weekly", priority: "0.7", lastmod };
       });
 
-      const allEntries = [...staticPages, ...jobEntries];
+      const insightSlugs = await storage.getPublishedInsightSlugs();
+      const insightEntries = insightSlugs.map((a) => {
+        const stamp = a.publishedAt ?? a.updatedAt;
+        const lastmod = stamp ? new Date(stamp).toISOString().slice(0, 10) : today;
+        return { loc: `/insights/${a.slug}`, changefreq: "monthly", priority: "0.7", lastmod };
+      });
+
+      const allEntries = [
+        ...staticPages,
+        { loc: "/insights", changefreq: "weekly", priority: "0.8", lastmod: today },
+        ...insightEntries,
+        ...jobEntries,
+      ];
       const urlNodes = allEntries
         .map(
           (e) =>
@@ -354,6 +403,54 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to generate sitemap:", error);
       res.status(500).end("Internal Server Error");
+    }
+  });
+
+  // ==========================================
+  // PUBLIC INSIGHTS (Content Studio read path)
+  // Only published Hire'in articles (publishesToInsights) are exposed.
+  // ==========================================
+
+  // List published insights, optionally filtered by category.
+  app.get("/api/insights", async (req, res) => {
+    try {
+      const category =
+        typeof req.query.category === "string" && req.query.category.trim()
+          ? req.query.category.trim()
+          : undefined;
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 12;
+
+      const { items, total } = await storage.getPublishedInsights({
+        category,
+        page: Number.isFinite(page) ? page : 1,
+        pageSize: Number.isFinite(pageSize) ? pageSize : 12,
+      });
+
+      res.set("Cache-Control", "public, max-age=300");
+      res.json({ items: items.map(sanitizePublicInsight), total });
+    } catch (error) {
+      console.error("Failed to list insights:", error);
+      res.status(500).json({ message: "Failed to load insights" });
+    }
+  });
+
+  // Single published insight by slug, with related articles.
+  app.get("/api/insights/:slug", async (req, res) => {
+    try {
+      const article = await storage.getPublishedInsightBySlug(req.params.slug);
+      if (!article) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+      const related = await storage.getRelatedInsights(article.id, article.category, 3);
+      res.set("Cache-Control", "public, max-age=300");
+      res.json({
+        article: sanitizePublicInsight(article),
+        related: related.map(sanitizePublicInsight),
+      });
+    } catch (error) {
+      console.error("Failed to load insight:", error);
+      res.status(500).json({ message: "Failed to load article" });
     }
   });
 

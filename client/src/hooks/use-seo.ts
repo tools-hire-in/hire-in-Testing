@@ -42,14 +42,41 @@ function removeCanonical() {
   if (el) el.remove();
 }
 
+function setOgMetaIf(property: string, content?: string | null) {
+  if (!content) return;
+  setOgMeta(property, content);
+}
+
+function removeOgMeta(property: string) {
+  const el = document.querySelector<HTMLMetaElement>(`meta[property="${property}"]`);
+  if (el) el.remove();
+}
+
 interface SEOOptions {
   title: string;
   description: string;
   canonical?: string;
   image?: string;
+  /** OpenGraph type. Defaults to "website". Use "article" for blog posts. */
+  type?: "website" | "article";
+  /** ISO date — only used when type === "article". */
+  publishedTime?: string;
+  /** ISO date — only used when type === "article". */
+  modifiedTime?: string;
+  /** Author display name — only used when type === "article". */
+  author?: string;
 }
 
-export function useSEO({ title, description, canonical, image }: SEOOptions) {
+export function useSEO({
+  title,
+  description,
+  canonical,
+  image,
+  type = "website",
+  publishedTime,
+  modifiedTime,
+  author,
+}: SEOOptions) {
   useEffect(() => {
     const prevTitle = document.title;
     const ogImage = image || DEFAULT_IMAGE;
@@ -59,10 +86,17 @@ export function useSEO({ title, description, canonical, image }: SEOOptions) {
 
     setOgMeta("og:title", title);
     setOgMeta("og:description", description);
-    setOgMeta("og:type", "website");
+    setOgMeta("og:type", type);
     setOgMeta("og:site_name", SITE_NAME);
     setOgMeta("og:image", ogImage);
     setOgMeta("og:image:alt", `${SITE_NAME} — AI-Powered Recruitment & Staffing`);
+
+    if (type === "article") {
+      setOgMetaIf("article:published_time", publishedTime);
+      setOgMetaIf("article:modified_time", modifiedTime);
+      setOgMetaIf("article:author", author);
+      setOgMetaIf("article:section", "Insights");
+    }
 
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:title", title);
@@ -79,7 +113,12 @@ export function useSEO({ title, description, canonical, image }: SEOOptions) {
       setMeta("description", DEFAULT_DESCRIPTION);
       setOgMeta("og:image", DEFAULT_IMAGE);
       setMeta("twitter:image", DEFAULT_IMAGE);
+      setOgMeta("og:type", "website");
+      removeOgMeta("article:published_time");
+      removeOgMeta("article:modified_time");
+      removeOgMeta("article:author");
+      removeOgMeta("article:section");
       if (canonical) removeCanonical();
     };
-  }, [title, description, canonical, image]);
+  }, [title, description, canonical, image, type, publishedTime, modifiedTime, author]);
 }

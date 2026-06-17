@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull, isNotNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   jobs,
@@ -452,7 +452,29 @@ export interface IStorage {
     publishesToInsights: boolean;
   })[]>;
   getDueScheduledStudioArticles(now: Date): Promise<StudioArticle[]>;
+
+  // Public Insights read path (published Hire'in articles only).
+  getPublishedInsights(filters: {
+    category?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ items: PublicInsightArticle[]; total: number }>;
+  getPublishedInsightBySlug(slug: string): Promise<PublicInsightArticle | undefined>;
+  getRelatedInsights(
+    articleId: string,
+    category: string | null,
+    limit: number,
+  ): Promise<PublicInsightArticle[]>;
+  getPublishedInsightSlugs(): Promise<{ slug: string; publishedAt: Date | null; updatedAt: Date }[]>;
 }
+
+export type PublicInsightArticle = StudioArticle & {
+  authorName: string | null;
+  authorTitle: string | null;
+  authorBio: string | null;
+  authorPhotoUrl: string | null;
+  authorLinkedinUrl: string | null;
+};
 
 export class DatabaseStorage implements IStorage {
   // Jobs
@@ -3396,6 +3418,135 @@ export class DatabaseStorage implements IStorage {
           lte(studioArticles.scheduledAt, now),
         ),
       );
+  }
+
+  // ---- Public Insights read path -----------------------------------------
+  // Only published articles belonging to an insights-enabled project (Hire'in)
+  // with a non-empty slug are exposed publicly.
+  private insightSelect() {
+    return {
+      article: studioArticles,
+      authorName: studioAuthorProfiles.displayName,
+      authorTitle: studioAuthorProfiles.title,
+      authorBio: studioAuthorProfiles.bio,
+      authorPhotoUrl: studioAuthorProfiles.photoUrl,
+      authorLinkedinUrl: studioAuthorProfiles.linkedinUrl,
+    };
+  }
+
+  private mapInsightRow(r: any): PublicInsightArticle {
+    return {
+      ...r.article,
+      authorName: r.authorName ?? null,
+      authorTitle: r.authorTitle ?? null,
+      authorBio: r.authorBio ?? null,
+      authorPhotoUrl: r.authorPhotoUrl ?? null,
+      authorLinkedinUrl: r.authorLinkedinUrl ?? null,
+    };
+  }
+
+  async getPublishedInsights(filters: {
+    category?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ items: PublicInsightArticle[]; total: number }> {
+    const conditions = [
+      eq(studioArticles.status, "published" as any),
+      eq(studioProjects.publishesToInsights, true),
+      isNotNull(studioArticles.slug),
+      ne(studioArticles.slug, ""),
+    ];
+    if (filters.category) {
+      conditions.push(eq(studioArticles.category, filters.category));
+    }
+    const whereClause = and(...conditions);
+
+    const page = Math.max(1, filters.page ?? 1);
+    const pageSize = Math.min(50, Math.max(1, filters.pageSize ?? 12));
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studioArticles)
+      .innerJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .where(whereClause);
+
+    const rows = await db
+      .select(this.insightSelect())
+      .from(studioArticles)
+      .innerJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .where(whereClause)
+      .orderBy(desc(studioArticles.publishedAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    return { items: rows.map((r) => this.mapInsightRow(r)), total };
+  }
+
+  async getPublishedInsightBySlug(slug: string): Promise<PublicInsightArticle | undefined> {
+    const [row] = await db
+      .select(this.insightSelect())
+      .from(studioArticles)
+      .innerJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .where(
+        and(
+          eq(studioArticles.slug, slug),
+          eq(studioArticles.status, "published" as any),
+          eq(studioProjects.publishesToInsights, true),
+        ),
+      )
+      .limit(1);
+    return row ? this.mapInsightRow(row) : undefined;
+  }
+
+  async getRelatedInsights(
+    articleId: string,
+    category: string | null,
+    limit: number,
+  ): Promise<PublicInsightArticle[]> {
+    const conditions = [
+      eq(studioArticles.status, "published" as any),
+      eq(studioProjects.publishesToInsights, true),
+      isNotNull(studioArticles.slug),
+      ne(studioArticles.slug, ""),
+      ne(studioArticles.id, articleId),
+    ];
+    if (category) {
+      conditions.push(eq(studioArticles.category, category));
+    }
+    const rows = await db
+      .select(this.insightSelect())
+      .from(studioArticles)
+      .innerJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .where(and(...conditions))
+      .orderBy(desc(studioArticles.publishedAt))
+      .limit(Math.max(1, limit));
+    return rows.map((r) => this.mapInsightRow(r));
+  }
+
+  async getPublishedInsightSlugs(): Promise<{ slug: string; publishedAt: Date | null; updatedAt: Date }[]> {
+    const rows = await db
+      .select({
+        slug: studioArticles.slug,
+        publishedAt: studioArticles.publishedAt,
+        updatedAt: studioArticles.updatedAt,
+      })
+      .from(studioArticles)
+      .innerJoin(studioProjects, eq(studioArticles.projectId, studioProjects.id))
+      .where(
+        and(
+          eq(studioArticles.status, "published" as any),
+          eq(studioProjects.publishesToInsights, true),
+          isNotNull(studioArticles.slug),
+          ne(studioArticles.slug, ""),
+        ),
+      )
+      .orderBy(desc(studioArticles.publishedAt));
+    return rows
+      .filter((r) => !!r.slug)
+      .map((r) => ({ slug: r.slug as string, publishedAt: r.publishedAt, updatedAt: r.updatedAt }));
   }
 
 }

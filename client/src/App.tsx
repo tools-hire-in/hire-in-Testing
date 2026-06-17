@@ -31,6 +31,8 @@ import AddendumAccept from "@/pages/AddendumAccept";
 import VerifyLetter from "@/pages/VerifyLetter";
 import Contracts from "@/pages/Contracts";
 import ContractSign from "@/pages/ContractSign";
+import Insights from "@/pages/Insights";
+import InsightArticle from "@/pages/InsightArticle";
 
 const AdminLogin = lazy(() => import("@/pages/admin/Login"));
 const ForgotPassword = lazy(() => import("@/pages/admin/ForgotPassword"));
@@ -117,6 +119,8 @@ function PublicRouter() {
       <Route path="/contracts" component={Contracts} />
       <Route path="/jobs" component={Jobs} />
       <Route path="/jobs/:id" component={JobDetail} />
+      <Route path="/insights" component={Insights} />
+      <Route path="/insights/:slug" component={InsightArticle} />
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
