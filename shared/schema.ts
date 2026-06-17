@@ -2232,6 +2232,17 @@ export const studioArticles = pgTable("studio_articles", {
   approvedAt: timestamp("approved_at"),
   scheduledAt: timestamp("scheduled_at"),
   publishedAt: timestamp("published_at"),
+  // Canonical normalized Social Kit (captions, quote/checklist, hashtags,
+  // suggested visual template, quality notes). Populated by AI generation.
+  socialKitJsonb: jsonb("social_kit_jsonb"),
+  // Compliance posture for AI generation + publish gating
+  // (normal | healthcare_safe | public_sector_safe | no_claims | source_required).
+  complianceMode: varchar("compliance_mode").default("normal").notNull(),
+  // Outstanding AI risk flags / source-verification items that hard-block
+  // publish for healthcare/government/credentialing content until acknowledged.
+  riskFlags: jsonb("risk_flags"),
+  riskFlagsResolvedAt: timestamp("risk_flags_resolved_at"),
+  riskFlagsResolvedBy: varchar("risk_flags_resolved_by"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2326,6 +2337,56 @@ export const studioBrandSettings = pgTable("studio_brand_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Seeded, versioned prompt library. Editable without code changes; every edit
+// bumps the version (a new row keyed by project + content_type + version).
+export const studioPromptTemplates = pgTable("studio_prompt_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // null projectId = global template available to every project.
+  projectId: varchar("project_id").references(() => studioProjects.id),
+  // Library key: article_generator, shape_my_draft, master_social_kit,
+  // linkedin_thought_leadership, recruiter_playbook, candidate_tips,
+  // employer_guide, healthcare_staffing, it_staffing, quote_card,
+  // checklist_card, quality_reviewer, etc.
+  contentType: varchar("content_type").notNull(),
+  version: integer("version").default(1).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  userPromptTemplate: text("user_prompt_template").notNull(),
+  modelName: varchar("model_name").notNull(),
+  // economy | standard — drives the model selection in aiDraftService.
+  modelTier: varchar("model_tier").default("standard").notNull(),
+  maxTokens: integer("max_tokens").default(4000).notNull(),
+  // Which canonical output schema this template's raw output maps into
+  // (article_draft | social_kit | quality_review).
+  outputSchemaRef: varchar("output_schema_ref").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Versioned record of every AI generation, for audit + reproducibility.
+export const studioGenerations = pgTable("studio_generations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id"),
+  articleId: varchar("article_id"),
+  promptTemplateId: varchar("prompt_template_id"),
+  promptVersion: integer("prompt_version"),
+  // article_draft | social_kit | quality_review
+  kind: varchar("kind").notNull(),
+  contentType: varchar("content_type"),
+  modelName: varchar("model_name"),
+  inputJson: jsonb("input_json"),
+  outputJson: jsonb("output_json"),
+  // Attached gated quality-reviewer result (risk_flags/required_edits/scores).
+  qualityReviewJson: jsonb("quality_review_json"),
+  tokenEstimate: integer("token_estimate"),
+  generatedByUserId: varchar("generated_by_user_id"),
+  // draft | reviewed | approved | rejected | archived
+  status: varchar("status").default("draft").notNull(),
+  reviewedByUserId: varchar("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at"),
+  approvalNotes: text("approval_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertStudioProjectSchema = createInsertSchema(studioProjects).omit({ id: true, createdAt: true });
 export const insertStudioAuthorProfileSchema = createInsertSchema(studioAuthorProfiles).omit({ id: true, createdAt: true });
 export const insertStudioArticleSchema = createInsertSchema(studioArticles).omit({ id: true, createdAt: true, updatedAt: true });
@@ -2334,6 +2395,8 @@ export const insertStudioReviewAssignmentSchema = createInsertSchema(studioRevie
 export const insertStudioArticleReactionSchema = createInsertSchema(studioArticleReactions).omit({ id: true, createdAt: true });
 export const insertStudioNewsletterSubscriberSchema = createInsertSchema(studioNewsletterSubscribers).omit({ id: true, createdAt: true });
 export const insertStudioAuditEventSchema = createInsertSchema(studioAuditEvents).omit({ id: true, createdAt: true });
+export const insertStudioPromptTemplateSchema = createInsertSchema(studioPromptTemplates).omit({ id: true, createdAt: true });
+export const insertStudioGenerationSchema = createInsertSchema(studioGenerations).omit({ id: true, createdAt: true });
 
 export type StudioProject = typeof studioProjects.$inferSelect;
 export type InsertStudioProject = z.infer<typeof insertStudioProjectSchema>;
@@ -2356,3 +2419,7 @@ export const insertCardTemplateSchema = createInsertSchema(cardTemplates).omit({
 export type CardTemplate = typeof cardTemplates.$inferSelect;
 export type InsertCardTemplate = z.infer<typeof insertCardTemplateSchema>;
 export type StudioBrandSettings = typeof studioBrandSettings.$inferSelect;
+export type StudioPromptTemplate = typeof studioPromptTemplates.$inferSelect;
+export type InsertStudioPromptTemplate = z.infer<typeof insertStudioPromptTemplateSchema>;
+export type StudioGeneration = typeof studioGenerations.$inferSelect;
+export type InsertStudioGeneration = z.infer<typeof insertStudioGenerationSchema>;

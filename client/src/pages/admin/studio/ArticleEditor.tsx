@@ -39,7 +39,23 @@ import {
   ImagePlus,
   Clock3,
   ChevronRight,
+  Sparkles,
+  Wand2,
+  Share2,
+  Copy,
+  AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { COMPLIANCE_MODES, type CanonicalSocialKit } from "@shared/studioAi";
 import {
   STUDIO_CONTENT_TYPES,
   getStudioContentType,
@@ -82,10 +98,23 @@ function ArticleEditorInner({ id }: { id: string }) {
   const { toast } = useToast();
   const { can } = usePermissions();
   const canEdit = can("studio.edit_article");
+  const canGenerate = can("studio.generate_ai_draft");
 
   const [form, setForm] = useState<EditorState | null>(null);
   const [dirty, setDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // AI generation modal state.
+  const [genOpen, setGenOpen] = useState(false);
+  const [genMode, setGenMode] = useState<"topic" | "shape">("topic");
+  const [genTopic, setGenTopic] = useState("");
+  const [genRawInput, setGenRawInput] = useState("");
+  const [genKeyPoints, setGenKeyPoints] = useState("");
+  const [genSourceNotes, setGenSourceNotes] = useState("");
+  const [genIndustry, setGenIndustry] = useState("");
+  const [genCompliance, setGenCompliance] = useState("normal");
+  const [riskFlags, setRiskFlags] = useState<string[]>([]);
+  const [requiredEdits, setRequiredEdits] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<EditorState | null>(null);
   const dirtyRef = useRef(false);
@@ -268,6 +297,127 @@ function ArticleEditorInner({ id }: { id: string }) {
     },
   });
 
+  const generateArticleMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, any> = {
+        mode: genMode,
+        industry: genIndustry || undefined,
+        complianceMode: genCompliance,
+        contentType: formRef.current?.contentType,
+        sourceNotes: genSourceNotes || undefined,
+      };
+      if (genMode === "topic") {
+        payload.topic = genTopic;
+        payload.keyPoints = genKeyPoints
+          ? genKeyPoints.split("\n").map((l) => l.trim()).filter(Boolean)
+          : undefined;
+      } else {
+        payload.rawInput = genRawInput;
+      }
+      const res = await apiRequest(
+        "POST",
+        `/api/admin/studio/articles/${id}/generate-article`,
+        payload,
+      );
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const draft = data.draft;
+      // Apply the generated draft into the editor (never auto-publishes).
+      setForm((f) =>
+        f
+          ? {
+              ...f,
+              title: draft.title || f.title,
+              excerpt: draft.excerpt || f.excerpt,
+              bodyMarkdown: draft.body_markdown || f.bodyMarkdown,
+              slug: draft.slug || f.slug,
+              seoTitle: draft.meta_title || f.seoTitle,
+              seoDescription: draft.meta_description || f.seoDescription,
+            }
+          : f,
+      );
+      setDirty(true);
+      setRiskFlags(data.riskFlags ?? data.qualityReview?.risk_flags ?? []);
+      setRequiredEdits(data.qualityReview?.required_edits ?? []);
+      setGenOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      const flagCount = (data.riskFlags ?? []).length;
+      toast({
+        title: "Draft generated",
+        description:
+          flagCount > 0
+            ? `${flagCount} risk flag(s) raised — review before publishing.`
+            : "Review the draft, then Save.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Generation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const generateSocialKitMutation = useMutation({
+    mutationFn: async () => {
+      // Persist current edits so the kit derives from saved content.
+      if (dirtyRef.current) {
+        await apiRequest(
+          "PATCH",
+          `/api/admin/studio/articles/${id}`,
+          buildPayload(formRef.current!, false),
+        );
+        setDirty(false);
+        setLastSaved(new Date());
+      }
+      const res = await apiRequest(
+        "POST",
+        `/api/admin/studio/articles/${id}/generate-social-kit`,
+        { complianceMode: genCompliance, industry: genIndustry || undefined },
+      );
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      const warnCount = (data.warnings ?? []).length;
+      toast({
+        title: "Social Kit generated",
+        description: warnCount > 0 ? `${warnCount} length warning(s) — see the Social Kit tab.` : "See the Social Kit tab.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Social Kit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resolveRiskFlagsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        `/api/admin/studio/articles/${id}/resolve-risk-flags`,
+        {},
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      setRiskFlags([]);
+      setRequiredEdits([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      toast({ title: "Risk flags resolved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not resolve flags", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const copyText = useCallback(
+    (text: string, label: string) => {
+      navigator.clipboard?.writeText(text).then(
+        () => toast({ title: `${label} copied` }),
+        () => toast({ title: "Copy failed", variant: "destructive" }),
+      );
+    },
+    [toast],
+  );
+
   // Auto-save every 60s when dirty.
   useEffect(() => {
     if (!canEdit) return;
@@ -397,6 +547,38 @@ function ArticleEditorInner({ id }: { id: string }) {
                   ? `Saved ${lastSaved.toLocaleTimeString()}`
                   : "All changes saved"}
           </span>
+          {canGenerate && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGenOpen(true)}
+                disabled={generateArticleMutation.isPending}
+                data-testid="button-open-generate"
+              >
+                {generateArticleMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Generate Draft
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generateSocialKitMutation.mutate()}
+                disabled={generateSocialKitMutation.isPending || !form.bodyMarkdown.trim()}
+                data-testid="button-generate-social-kit"
+              >
+                {generateSocialKitMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Share2 className="mr-2 h-4 w-4" />
+                )}
+                Social Kit
+              </Button>
+            </>
+          )}
           {canEdit && (
             <Button
               variant="outline"
@@ -436,6 +618,45 @@ function ArticleEditorInner({ id }: { id: string }) {
             data-testid="input-article-title"
           />
 
+          {riskFlags.length > 0 && (
+            <Alert variant="destructive" data-testid="alert-risk-flags">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>
+                {riskFlags.length} AI risk flag{riskFlags.length > 1 ? "s" : ""} raised
+              </AlertTitle>
+              <AlertDescription>
+                <ul className="ml-4 list-disc space-y-1 text-sm">
+                  {riskFlags.map((f, i) => (
+                    <li key={i} data-testid={`text-risk-flag-${i}`}>{f}</li>
+                  ))}
+                </ul>
+                {requiredEdits.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide">Suggested edits</p>
+                    <ul className="ml-4 list-disc space-y-1 text-sm">
+                      {requiredEdits.map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {can("studio.review_article") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => resolveRiskFlagsMutation.mutate()}
+                    disabled={resolveRiskFlagsMutation.isPending}
+                    data-testid="button-resolve-risk-flags"
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Resolve flags (clears publish block)
+                  </Button>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Tabs defaultValue="write">
             <div className="flex items-center justify-between">
               <TabsList>
@@ -444,6 +665,9 @@ function ArticleEditorInner({ id }: { id: string }) {
                 </TabsTrigger>
                 <TabsTrigger value="preview" data-testid="tab-preview">
                   Preview
+                </TabsTrigger>
+                <TabsTrigger value="social" data-testid="tab-social">
+                  Social Kit
                 </TabsTrigger>
               </TabsList>
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -493,6 +717,172 @@ function ArticleEditorInner({ id }: { id: string }) {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="social" className="mt-3">
+              {(() => {
+                const kit = (article.socialKitJsonb as CanonicalSocialKit | null) ?? null;
+                if (!kit) {
+                  return (
+                    <Card>
+                      <CardContent className="p-6 text-sm text-muted-foreground" data-testid="text-no-social-kit">
+                        No Social Kit yet. Click <span className="font-medium">Social Kit</span> above to generate
+                        captions, story frames, and cards from this article.
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                const platformLabels: Record<string, string> = {
+                  linkedin: "LinkedIn",
+                  instagram: "Instagram",
+                  facebook: "Facebook",
+                  twitter: "X (Twitter)",
+                };
+                return (
+                  <div className="space-y-4">
+                    {(kit.captions ?? []).map((cap) => (
+                      <Card key={cap.platform} data-testid={`card-caption-${cap.platform}`}>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                          <CardTitle className="text-sm">
+                            {platformLabels[cap.platform] ?? cap.platform}
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {cap.text.length} chars
+                            </span>
+                          </CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => copyText(cap.text, platformLabels[cap.platform] ?? cap.platform)}
+                            data-testid={`button-copy-${cap.platform}`}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <p className="whitespace-pre-wrap text-sm" data-testid={`text-caption-${cap.platform}`}>
+                            {cap.text}
+                          </p>
+                          {(cap.variants ?? []).length > 0 && (
+                            <div className="space-y-1.5 border-t pt-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Variants
+                              </p>
+                              {cap.variants!.map((v, i) => (
+                                <div
+                                  key={i}
+                                  className="flex items-start justify-between gap-2 rounded-md bg-muted/40 p-2 text-xs"
+                                  data-testid={`variant-${cap.platform}-${i}`}
+                                >
+                                  <span className="whitespace-pre-wrap">{v}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={() => copyText(v, "Variant")}
+                                    data-testid={`button-copy-variant-${cap.platform}-${i}`}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {(kit.hashtags?.[cap.platform] ?? []).length > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              {kit.hashtags![cap.platform].map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    {(kit.thread ?? []).length > 0 && (
+                      <Card data-testid="card-thread">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                          <CardTitle className="text-sm">Thread</CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => copyText(kit.thread!.join("\n\n"), "Thread")}
+                            data-testid="button-copy-thread"
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardHeader>
+                        <CardContent className="space-y-1.5">
+                          {kit.thread!.map((t, i) => (
+                            <p key={i} className="text-sm" data-testid={`text-thread-${i}`}>
+                              {i + 1}. {t}
+                            </p>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {(kit.story_frames ?? []).length > 0 && (
+                      <Card data-testid="card-story-frames">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">Story frames</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-wrap gap-2">
+                          {kit.story_frames!.map((s, i) => (
+                            <Badge key={i} variant="secondary" data-testid={`badge-story-${i}`}>
+                              {s}
+                            </Badge>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {kit.quote_card_text && (
+                      <Card data-testid="card-quote">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                          <CardTitle className="text-sm">Quote card</CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => copyText(kit.quote_card_text, "Quote")}
+                            data-testid="button-copy-quote"
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm italic">{kit.quote_card_text}</p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {(kit.checklist_card_items ?? []).length > 0 && (
+                      <Card data-testid="card-checklist">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">Checklist card</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ul className="ml-4 list-disc space-y-1 text-sm">
+                            {kit.checklist_card_items!.map((c, i) => (
+                              <li key={i} data-testid={`text-checklist-${i}`}>{c}</li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {(kit.suggested_visual_template || kit.suggested_category_badge) && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-social-suggestions">
+                        Suggested visual: {kit.suggested_visual_template || "n/a"}
+                        {kit.suggested_category_badge ? ` · Badge: ${kit.suggested_category_badge}` : ""}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </TabsContent>
           </Tabs>
         </div>
@@ -737,10 +1127,173 @@ function ArticleEditorInner({ id }: { id: string }) {
           </Card>
         </div>
       </div>
+
+      {/* AI Generate Draft modal — two input modes. */}
+      <Dialog open={genOpen} onOpenChange={setGenOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Generate article draft
+            </DialogTitle>
+            <DialogDescription>
+              AI generates a brand-safe draft into the editor. It never publishes — you review and save.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setGenMode("topic")}
+                className={`rounded-md border p-3 text-left text-sm transition ${
+                  genMode === "topic" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+                data-testid="button-mode-topic"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Sparkles className="h-4 w-4" /> Start from a topic
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Give a topic and key points; AI writes the draft.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenMode("shape")}
+                className={`rounded-md border p-3 text-left text-sm transition ${
+                  genMode === "shape" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+                data-testid="button-mode-shape"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Wand2 className="h-4 w-4" /> Shape my idea / draft
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Paste your notes; AI keeps your facts and polishes.
+                </span>
+              </button>
+            </div>
+
+            {genMode === "topic" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="gen-topic">Topic</Label>
+                  <Input
+                    id="gen-topic"
+                    value={genTopic}
+                    onChange={(e) => setGenTopic(e.target.value)}
+                    placeholder="e.g. How to reduce time-to-hire for night-shift nurses"
+                    data-testid="input-gen-topic"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gen-key-points">Key points (one per line, optional)</Label>
+                  <Textarea
+                    id="gen-key-points"
+                    rows={3}
+                    value={genKeyPoints}
+                    onChange={(e) => setGenKeyPoints(e.target.value)}
+                    placeholder={"Credentialing checks\nShift reliability\nCompliance"}
+                    data-testid="input-gen-key-points"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="gen-raw">Your idea, notes, or rough draft</Label>
+                <Textarea
+                  id="gen-raw"
+                  rows={6}
+                  value={genRawInput}
+                  onChange={(e) => setGenRawInput(e.target.value)}
+                  placeholder="Paste your draft or notes here. AI preserves your facts and figures."
+                  data-testid="input-gen-raw"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="gen-source-notes">Source notes (verified facts only, optional)</Label>
+              <Textarea
+                id="gen-source-notes"
+                rows={2}
+                value={genSourceNotes}
+                onChange={(e) => setGenSourceNotes(e.target.value)}
+                placeholder="Any stats or facts the AI may cite. Unsupported claims get flagged."
+                data-testid="input-gen-source-notes"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Industry</Label>
+                <Select value={genIndustry || "none"} onValueChange={(v) => setGenIndustry(v === "none" ? "" : v)}>
+                  <SelectTrigger data-testid="select-gen-industry">
+                    <SelectValue placeholder="General" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">General</SelectItem>
+                    <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="it">IT</SelectItem>
+                    <SelectItem value="government">Government</SelectItem>
+                    <SelectItem value="non_it">Non-IT</SelectItem>
+                    <SelectItem value="hr_tech">HR tech</SelectItem>
+                    <SelectItem value="food">Food / hospitality</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Compliance mode</Label>
+                <Select value={genCompliance} onValueChange={setGenCompliance}>
+                  <SelectTrigger data-testid="select-gen-compliance">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPLIANCE_MODES.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {getComplianceBlurb(genCompliance)}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenOpen(false)} data-testid="button-cancel-generate">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => generateArticleMutation.mutate()}
+              disabled={
+                generateArticleMutation.isPending ||
+                (genMode === "topic" ? !genTopic.trim() : !genRawInput.trim())
+              }
+              data-testid="button-run-generate"
+            >
+              {generateArticleMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
   // ref declared below to keep hook order stable
+}
+
+function getComplianceBlurb(value: string): string {
+  return COMPLIANCE_MODES.find((m) => m.value === value)?.blurb ?? "";
 }
 
 // Holds the most recent presigned upload object path between request + complete.

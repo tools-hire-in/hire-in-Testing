@@ -21,6 +21,17 @@ import {
   insertStudioAuthorProfileSchema,
 } from "@shared/schema";
 import { computeReadTime } from "@shared/studioContent";
+import {
+  getComplianceMode,
+  type AiGenerationParams,
+} from "@shared/studioAi";
+import {
+  generateArticleDraft,
+  generateSocialKit,
+  runQualityReview,
+  isAiConfigured,
+  AiGenerationError,
+} from "./services/aiDraftService";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, type SalaryReportAdjustment } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -9242,6 +9253,313 @@ export async function registerRoutes(
     },
   );
 
+  // ---- AI generation (draft + Social Kit) ----
+  // Rate limit: 10 generations per user per rolling hour.
+  const AI_GENERATION_RATE_LIMIT = 10;
+
+  async function checkAiRateLimit(userId: string, res: Response): Promise<boolean> {
+    const since = new Date(Date.now() - 60 * 60 * 1000);
+    const count = await storage.countStudioGenerationsByUserSince(userId, since);
+    if (count >= AI_GENERATION_RATE_LIMIT) {
+      res.status(429).json({
+        error: `Rate limit reached (${AI_GENERATION_RATE_LIMIT} generations/hour). Try again later.`,
+        code: "rate_limit",
+      });
+      return false;
+    }
+    return true;
+  }
+
+  function buildArticleParams(article: any, body: any): AiGenerationParams {
+    const compliance = getComplianceMode(body?.complianceMode ?? article.complianceMode);
+    return {
+      industry: body?.industry,
+      content_type: body?.contentType ?? article.contentType,
+      topic: body?.topic,
+      raw_input: body?.rawInput,
+      key_points: Array.isArray(body?.keyPoints) ? body.keyPoints.join("\n") : body?.keyPoints,
+      source_notes: body?.sourceNotes,
+      target_audience: body?.targetAudience,
+      author_name: body?.authorName,
+      author_title: body?.authorTitle,
+      tone: body?.tone,
+      desired_length: body?.desiredLength,
+      cta_text: body?.ctaText,
+      cta_url: body?.ctaUrl,
+      compliance_mode: compliance.value,
+    };
+  }
+
+  function handleAiError(error: any, res: Response) {
+    if (error instanceof AiGenerationError) {
+      const status =
+        error.code === "rate_limit" ? 429 : error.code === "validation" || error.code === "malformed" ? 422 : 502;
+      return res.status(status).json({ error: error.message, code: error.code, retryable: error.retryable });
+    }
+    console.error("AI generation error:", error);
+    return res.status(500).json({ error: error?.message || "AI generation failed", code: "upstream" });
+  }
+
+  // Generate a full article draft. Modes: "topic" (default) | "shape".
+  app.post(
+    "/api/admin/studio/articles/:id/generate-article",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const mode = req.body?.mode === "shape" ? "shape" : "topic";
+        const contentTypeKey = mode === "shape" ? "shape_my_draft" : "article_generator";
+
+        if (mode === "topic" && !req.body?.topic?.trim()) {
+          return res.status(400).json({ error: "topic is required for topic mode" });
+        }
+        if (mode === "shape" && !req.body?.rawInput?.trim()) {
+          return res.status(400).json({ error: "rawInput is required for shape mode" });
+        }
+
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
+        if (!template) {
+          return res.status(500).json({ error: `Prompt template '${contentTypeKey}' not found` });
+        }
+
+        const params = buildArticleParams(article, req.body);
+        const compliance = getComplianceMode(params.compliance_mode);
+
+        // Record the generation up-front (status reflects outcome).
+        const generation = await storage.createStudioGeneration({
+          projectId: article.projectId,
+          articleId: article.id,
+          promptTemplateId: template.id,
+          promptVersion: template.version,
+          kind: "article_draft",
+          contentType: contentTypeKey,
+          modelName: template.modelName,
+          inputJson: { mode, ...params },
+          generatedByUserId: req.session.userId,
+          status: "draft",
+        } as any);
+
+        let result;
+        try {
+          result = await generateArticleDraft(template, params);
+        } catch (err) {
+          await storage.updateStudioGeneration(generation.id, {
+            status: "rejected",
+            approvalNotes: err instanceof Error ? err.message : "generation failed",
+          } as any);
+          return handleAiError(err, res);
+        }
+
+        // Gated quality reviewer pass.
+        let qualityReview = null;
+        if (compliance.requiresQualityReview) {
+          try {
+            const reviewer = await storage.getActiveStudioPromptTemplate("quality_reviewer", article.projectId);
+            if (reviewer) {
+              qualityReview = await runQualityReview(reviewer, params, result.draft.body_markdown);
+            }
+          } catch (err) {
+            console.error("Quality review error (non-fatal):", err);
+          }
+        }
+
+        const riskFlags = qualityReview?.risk_flags ?? [];
+
+        await storage.updateStudioGeneration(generation.id, {
+          outputJson: result.rawOutput,
+          qualityReviewJson: qualityReview,
+          tokenEstimate: result.tokenEstimate,
+          modelName: result.model,
+          status: "reviewed",
+        } as any);
+
+        // Track compliance mode + risk flags on the article so the publish gate
+        // can act on them. New flags reset any prior resolution.
+        await storage.updateStudioArticle(article.id, {
+          complianceMode: compliance.value,
+          riskFlags: riskFlags as any,
+          riskFlagsResolvedAt: null as any,
+          riskFlagsResolvedBy: null as any,
+        } as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: req.session.userId,
+          eventType: "ai_article_generated",
+          metadata: {
+            mode,
+            generationId: generation.id,
+            promptVersion: template.version,
+            complianceMode: compliance.value,
+            riskFlagCount: riskFlags.length,
+          },
+        });
+
+        res.json({
+          draft: result.draft,
+          qualityReview,
+          riskFlags,
+          complianceMode: compliance.value,
+          generationId: generation.id,
+          model: result.model,
+        });
+      } catch (error: any) {
+        handleAiError(error, res);
+      }
+    },
+  );
+
+  // Generate a Social Kit from the article. Persists socialKitJsonb on success.
+  app.post(
+    "/api/admin/studio/articles/:id/generate-social-kit",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!article.bodyMarkdown?.trim()) {
+          return res.status(400).json({ error: "Article has no body to derive a Social Kit from" });
+        }
+
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const contentTypeKey =
+          typeof req.body?.contentType === "string" && req.body.contentType
+            ? req.body.contentType
+            : "master_social_kit";
+        const template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
+        if (!template) {
+          return res.status(500).json({ error: `Prompt template '${contentTypeKey}' not found` });
+        }
+
+        const compliance = getComplianceMode(req.body?.complianceMode ?? article.complianceMode);
+        const params: AiGenerationParams = {
+          industry: req.body?.industry,
+          platform: req.body?.platform,
+          article_title: article.title,
+          article_summary: article.excerpt ?? "",
+          article_body: article.bodyMarkdown,
+          cta_text: req.body?.ctaText,
+          cta_url: req.body?.ctaUrl,
+          visual_template: req.body?.visualTemplate,
+          compliance_mode: compliance.value,
+        };
+
+        const generation = await storage.createStudioGeneration({
+          projectId: article.projectId,
+          articleId: article.id,
+          promptTemplateId: template.id,
+          promptVersion: template.version,
+          kind: "social_kit",
+          contentType: contentTypeKey,
+          modelName: template.modelName,
+          inputJson: { ...params, article_body: undefined },
+          generatedByUserId: req.session.userId,
+          status: "draft",
+        } as any);
+
+        let result;
+        try {
+          result = await generateSocialKit(template, params);
+        } catch (err) {
+          await storage.updateStudioGeneration(generation.id, {
+            status: "rejected",
+            approvalNotes: err instanceof Error ? err.message : "generation failed",
+          } as any);
+          return handleAiError(err, res);
+        }
+
+        await storage.updateStudioGeneration(generation.id, {
+          outputJson: result.rawOutput,
+          tokenEstimate: result.tokenEstimate,
+          modelName: result.model,
+          status: "reviewed",
+        } as any);
+
+        // Persist the canonical kit on the article (never auto-publishes).
+        await storage.updateStudioArticle(article.id, {
+          socialKitJsonb: result.kit as any,
+        } as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: req.session.userId,
+          eventType: "ai_social_kit_generated",
+          metadata: {
+            generationId: generation.id,
+            promptVersion: template.version,
+            contentType: contentTypeKey,
+            warningCount: result.warnings.length,
+          },
+        });
+
+        res.json({
+          socialKit: result.kit,
+          warnings: result.warnings,
+          generationId: generation.id,
+          model: result.model,
+        });
+      } catch (error: any) {
+        handleAiError(error, res);
+      }
+    },
+  );
+
+  // List generation history for an article.
+  app.get(
+    "/api/admin/studio/articles/:id/generations",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const generations = await storage.getStudioGenerations(req.params.id);
+        res.json(generations);
+      } catch (error) {
+        console.error("Get studio generations error:", error);
+        res.status(500).json({ error: "Failed to fetch generations" });
+      }
+    },
+  );
+
+  // Resolve (clear) risk flags on an article so it can pass the publish gate.
+  app.post(
+    "/api/admin/studio/articles/:id/resolve-risk-flags",
+    requireAuth,
+    requirePermission("studio.review_article", "marketing_manager", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          riskFlagsResolvedAt: new Date(),
+          riskFlagsResolvedBy: req.session.userId,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "risk_flags_resolved",
+          metadata: { notes: req.body?.notes ?? null },
+        });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Resolve risk flags error:", error);
+        res.status(400).json({ error: error?.message || "Failed to resolve risk flags" });
+      }
+    },
+  );
+
   // ---- Status transitions (role-gated) ----
   // Each target status maps to the permission required to move there.
   const STUDIO_TRANSITIONS: Record<
@@ -9294,6 +9612,24 @@ export async function registerRoutes(
         );
         if (!permittedRoles.includes(role)) {
           return res.status(403).json({ error: "Insufficient permissions for this transition" });
+        }
+
+        // Risk-flag publish gate: when the article's compliance mode blocks
+        // publish on unresolved risk flags, prevent publish/schedule until a
+        // reviewer has explicitly resolved them.
+        if (to === "published" || to === "scheduled") {
+          const compliance = getComplianceMode((article as any).complianceMode);
+          const flags = (article as any).riskFlags;
+          const hasUnresolvedFlags =
+            Array.isArray(flags) && flags.length > 0 && !(article as any).riskFlagsResolvedAt;
+          if (compliance.blocksPublishOnRiskFlags && hasUnresolvedFlags) {
+            return res.status(409).json({
+              error:
+                "This article has unresolved AI risk flags and its compliance mode blocks publishing. Resolve the flags first.",
+              code: "risk_flags_block_publish",
+              riskFlags: flags,
+            });
+          }
         }
 
         const updates: any = { status: to };

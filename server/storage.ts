@@ -96,6 +96,8 @@ import {
   studioArticleVersions,
   studioAuthorProfiles,
   studioAuditEvents,
+  studioPromptTemplates,
+  studioGenerations,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -110,6 +112,12 @@ import {
   studioBrandSettings,
   type CardTemplate,
   type StudioBrandSettings,
+  studioPromptTemplates,
+  studioGenerations,
+  type StudioPromptTemplate,
+  type InsertStudioPromptTemplate,
+  type StudioGeneration,
+  type InsertStudioGeneration,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -393,6 +401,23 @@ export interface IStorage {
   // Card templates + brand
   getStudioBrandSettings(): Promise<StudioBrandSettings | undefined>;
   getCardTemplates(family?: string): Promise<CardTemplate[]>;
+
+  // Prompt library (seeded + versioned)
+  getStudioPromptTemplates(projectId?: string): Promise<StudioPromptTemplate[]>;
+  getStudioPromptTemplate(id: string): Promise<StudioPromptTemplate | undefined>;
+  getActiveStudioPromptTemplate(
+    contentType: string,
+    projectId?: string | null,
+  ): Promise<StudioPromptTemplate | undefined>;
+
+  // Versioned generation / audit records
+  createStudioGeneration(data: InsertStudioGeneration): Promise<StudioGeneration>;
+  updateStudioGeneration(
+    id: string,
+    updates: Partial<InsertStudioGeneration>,
+  ): Promise<StudioGeneration | undefined>;
+  getStudioGenerations(articleId: string): Promise<StudioGeneration[]>;
+  countStudioGenerationsByUserSince(userId: string, since: Date): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3010,6 +3035,98 @@ export class DatabaseStorage implements IStorage {
       .from(cardTemplates)
       .where(whereClause)
       .orderBy(asc(cardTemplates.layout), asc(cardTemplates.platform));
+  }
+
+  // ---- Prompt library ----
+  async getStudioPromptTemplates(projectId?: string): Promise<StudioPromptTemplate[]> {
+    const conditions = [eq(studioPromptTemplates.isActive, true)];
+    if (projectId) {
+      conditions.push(
+        or(
+          eq(studioPromptTemplates.projectId, projectId),
+          isNull(studioPromptTemplates.projectId),
+        )!,
+      );
+    }
+    return await db
+      .select()
+      .from(studioPromptTemplates)
+      .where(and(...conditions))
+      .orderBy(asc(studioPromptTemplates.contentType), desc(studioPromptTemplates.version));
+  }
+
+  async getStudioPromptTemplate(id: string): Promise<StudioPromptTemplate | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioPromptTemplates)
+      .where(eq(studioPromptTemplates.id, id));
+    return row;
+  }
+
+  async getActiveStudioPromptTemplate(
+    contentType: string,
+    projectId?: string | null,
+  ): Promise<StudioPromptTemplate | undefined> {
+    // Prefer a project-specific template; fall back to a global one. Highest
+    // version of the most recent active row wins.
+    const rows = await db
+      .select()
+      .from(studioPromptTemplates)
+      .where(
+        and(
+          eq(studioPromptTemplates.contentType, contentType),
+          eq(studioPromptTemplates.isActive, true),
+          projectId
+            ? or(
+                eq(studioPromptTemplates.projectId, projectId),
+                isNull(studioPromptTemplates.projectId),
+              )
+            : isNull(studioPromptTemplates.projectId),
+        ),
+      )
+      .orderBy(desc(studioPromptTemplates.version));
+    // Project-specific first.
+    const projectMatch = projectId ? rows.find((r) => r.projectId === projectId) : undefined;
+    return projectMatch ?? rows[0];
+  }
+
+  // ---- Generation / audit records ----
+  async createStudioGeneration(data: InsertStudioGeneration): Promise<StudioGeneration> {
+    const [created] = await db.insert(studioGenerations).values(data).returning();
+    return created;
+  }
+
+  async updateStudioGeneration(
+    id: string,
+    updates: Partial<InsertStudioGeneration>,
+  ): Promise<StudioGeneration | undefined> {
+    const [updated] = await db
+      .update(studioGenerations)
+      .set(updates)
+      .where(eq(studioGenerations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getStudioGenerations(articleId: string): Promise<StudioGeneration[]> {
+    return await db
+      .select()
+      .from(studioGenerations)
+      .where(eq(studioGenerations.articleId, articleId))
+      .orderBy(desc(studioGenerations.createdAt));
+  }
+
+  async countStudioGenerationsByUserSince(userId: string, since: Date): Promise<number> {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studioGenerations)
+      .where(
+        and(
+          eq(studioGenerations.generatedByUserId, userId),
+          sql`${studioGenerations.createdAt} >= ${since}`,
+        ),
+      );
+    return count ?? 0;
   }
 
 }

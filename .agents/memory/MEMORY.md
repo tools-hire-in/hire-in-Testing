@@ -8,3 +8,4 @@
 - [Centralized Access Control](centralized-access-control.md) — feature→roles registry + CENTRALIZED_ACCESS_CONTROL flag; parity invariant (registry==legacy fallback) keeps flag ON==OFF; auto-grant asymmetry per file.
 - [Access registry forward-decl keys](access-registry-forward-decl.md) — adding perm keys before routes exist passes parity but genAccessControl wipes call-site-less keys; new grid roles need no enum migration.
 - [CSS var() empty-fallback trap](css-var-fallback-empty.md) — var(--x,default) ignores fallback when --x is set-but-empty; wrap templated custom props in Mustache sections so they stay unset.
+- [AI integration chat models](ai-integration-models.md) — chat goes through AI_INTEGRATIONS_* proxy (not OPENAI_API_KEY); gpt-5.4 works; gpt-5* return empty when max_completion_tokens too small.

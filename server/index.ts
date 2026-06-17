@@ -528,10 +528,67 @@ async function ensureContentStudioTables() {
       )
     `);
 
+    // AI generation: Social Kit + compliance + risk-flag columns on articles.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS social_kit_jsonb jsonb`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS compliance_mode varchar DEFAULT 'normal' NOT NULL`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS risk_flags jsonb`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS risk_flags_resolved_at timestamp`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS risk_flags_resolved_by varchar`);
+
+    // Seeded, versioned prompt library.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_prompt_templates" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "project_id" varchar REFERENCES studio_projects(id),
+        "content_type" varchar NOT NULL,
+        "version" integer DEFAULT 1 NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "system_prompt" text NOT NULL,
+        "user_prompt_template" text NOT NULL,
+        "model_name" varchar NOT NULL,
+        "model_tier" varchar DEFAULT 'standard' NOT NULL,
+        "max_tokens" integer DEFAULT 4000 NOT NULL,
+        "output_schema_ref" varchar NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    // Unique key for idempotent seeding of global (project-less) templates.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS studio_prompt_templates_global_key
+      ON studio_prompt_templates(content_type, version)
+      WHERE project_id IS NULL
+    `);
+
+    // Versioned generation / audit records.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "studio_generations" (
+        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "project_id" varchar,
+        "article_id" varchar,
+        "prompt_template_id" varchar,
+        "prompt_version" integer,
+        "kind" varchar NOT NULL,
+        "content_type" varchar,
+        "model_name" varchar,
+        "input_json" jsonb,
+        "output_json" jsonb,
+        "quality_review_json" jsonb,
+        "token_estimate" integer,
+        "generated_by_user_id" varchar,
+        "status" varchar DEFAULT 'draft' NOT NULL,
+        "reviewed_by_user_id" varchar,
+        "reviewed_at" timestamp,
+        "approval_notes" text,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_articles_project_idx ON studio_articles(project_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_articles_status_idx ON studio_articles(status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_article_versions_article_idx ON studio_article_versions(article_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_review_assignments_article_idx ON studio_review_assignments(article_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_generations_article_idx ON studio_generations(article_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_generations_user_idx ON studio_generations(generated_by_user_id)`);
 
     // Seed the primary Hire'in project (idempotent — slug is unique).
     await db.execute(sql`
@@ -1833,6 +1890,13 @@ async function ensureHealthcarePlansTables() {
   await ensureOfferLetterAddendumsTable();
   await ensureContentStudioTables();
   await ensureCardTemplatesAndBrand();
+  try {
+    const { seedStudioPromptLibrary } = await import("./studioPromptSeed");
+    const seedResult = await seedStudioPromptLibrary();
+    log(`Content Studio prompt library: ${seedResult.inserted} new of ${seedResult.total} templates`);
+  } catch (err) {
+    console.error("Content Studio prompt library seed error:", err);
+  }
   await backfillEmployeeIds();
   await backfillHrLetterNames();
   await backfillHolidayAttendance();
