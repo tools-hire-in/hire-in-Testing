@@ -93,9 +93,19 @@ import {
   type InsertAttendanceRegularization,
   studioProjects,
   studioArticles,
+  studioArticleVersions,
+  studioAuthorProfiles,
+  studioAuditEvents,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
+  type InsertStudioArticle,
+  type StudioArticleVersion,
+  type InsertStudioArticleVersion,
+  type StudioAuthorProfile,
+  type InsertStudioAuthorProfile,
+  type StudioAuditEvent,
+  type InsertStudioAuditEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -349,6 +359,33 @@ export interface IStorage {
     scheduled: number;
     published: number;
   }>;
+  // Articles
+  getStudioArticles(filters: {
+    projectId?: string;
+    status?: string;
+    contentType?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ items: (StudioArticle & { authorName: string | null })[]; total: number }>;
+  getStudioArticle(id: string): Promise<StudioArticle | undefined>;
+  createStudioArticle(data: InsertStudioArticle): Promise<StudioArticle>;
+  updateStudioArticle(id: string, updates: Partial<InsertStudioArticle>): Promise<StudioArticle | undefined>;
+  deleteStudioArticle(id: string): Promise<void>;
+  // Versions
+  getStudioArticleVersions(articleId: string): Promise<StudioArticleVersion[]>;
+  getStudioArticleVersion(id: string): Promise<StudioArticleVersion | undefined>;
+  createStudioArticleVersion(
+    data: Omit<InsertStudioArticleVersion, "versionNo"> & { versionNo?: number },
+  ): Promise<StudioArticleVersion>;
+  // Authors
+  getStudioAuthorProfiles(projectId?: string): Promise<StudioAuthorProfile[]>;
+  getStudioAuthorProfile(id: string): Promise<StudioAuthorProfile | undefined>;
+  createStudioAuthorProfile(data: InsertStudioAuthorProfile): Promise<StudioAuthorProfile>;
+  updateStudioAuthorProfile(id: string, updates: Partial<InsertStudioAuthorProfile>): Promise<StudioAuthorProfile | undefined>;
+  // Audit
+  createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
+  getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2783,6 +2820,173 @@ export class DatabaseStorage implements IStorage {
       scheduled: byStatus.scheduled,
       published: byStatus.published,
     };
+  }
+
+  // ---- Articles ----
+  async getStudioArticles(filters: {
+    projectId?: string;
+    status?: string;
+    contentType?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ items: (StudioArticle & { authorName: string | null })[]; total: number }> {
+    const conditions = [];
+    if (filters.projectId) conditions.push(eq(studioArticles.projectId, filters.projectId));
+    if (filters.status) conditions.push(eq(studioArticles.status, filters.status as any));
+    if (filters.contentType) conditions.push(eq(studioArticles.contentType, filters.contentType));
+    if (filters.search) {
+      conditions.push(ilike(studioArticles.title, `%${filters.search}%`));
+    }
+    const whereClause = conditions.length ? and(...conditions) : undefined;
+
+    const page = Math.max(1, filters.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studioArticles)
+      .where(whereClause);
+
+    const rows = await db
+      .select({
+        article: studioArticles,
+        authorName: studioAuthorProfiles.displayName,
+      })
+      .from(studioArticles)
+      .leftJoin(
+        studioAuthorProfiles,
+        eq(studioArticles.authorProfileId, studioAuthorProfiles.id),
+      )
+      .where(whereClause)
+      .orderBy(desc(studioArticles.updatedAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    return {
+      items: rows.map((r) => ({ ...r.article, authorName: r.authorName ?? null })),
+      total,
+    };
+  }
+
+  async getStudioArticle(id: string): Promise<StudioArticle | undefined> {
+    const [row] = await db.select().from(studioArticles).where(eq(studioArticles.id, id));
+    return row;
+  }
+
+  async createStudioArticle(data: InsertStudioArticle): Promise<StudioArticle> {
+    const [created] = await db.insert(studioArticles).values(data).returning();
+    return created;
+  }
+
+  async updateStudioArticle(
+    id: string,
+    updates: Partial<InsertStudioArticle>,
+  ): Promise<StudioArticle | undefined> {
+    const [updated] = await db
+      .update(studioArticles)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(studioArticles.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteStudioArticle(id: string): Promise<void> {
+    await db.delete(studioArticleVersions).where(eq(studioArticleVersions.articleId, id));
+    await db.delete(studioAuditEvents).where(eq(studioAuditEvents.articleId, id));
+    await db.delete(studioArticles).where(eq(studioArticles.id, id));
+  }
+
+  // ---- Versions ----
+  async getStudioArticleVersions(articleId: string): Promise<StudioArticleVersion[]> {
+    return await db
+      .select()
+      .from(studioArticleVersions)
+      .where(eq(studioArticleVersions.articleId, articleId))
+      .orderBy(desc(studioArticleVersions.versionNo));
+  }
+
+  async getStudioArticleVersion(id: string): Promise<StudioArticleVersion | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioArticleVersions)
+      .where(eq(studioArticleVersions.id, id));
+    return row;
+  }
+
+  async createStudioArticleVersion(
+    data: Omit<InsertStudioArticleVersion, "versionNo"> & { versionNo?: number },
+  ): Promise<StudioArticleVersion> {
+    let versionNo = data.versionNo;
+    if (versionNo === undefined) {
+      const [{ max }] = await db
+        .select({ max: sql<number>`coalesce(max(${studioArticleVersions.versionNo}), 0)::int` })
+        .from(studioArticleVersions)
+        .where(eq(studioArticleVersions.articleId, data.articleId));
+      versionNo = (max ?? 0) + 1;
+    }
+    const [created] = await db
+      .insert(studioArticleVersions)
+      .values({ ...data, versionNo })
+      .returning();
+    return created;
+  }
+
+  // ---- Authors ----
+  async getStudioAuthorProfiles(projectId?: string): Promise<StudioAuthorProfile[]> {
+    const conditions = [];
+    if (projectId) {
+      conditions.push(
+        or(
+          eq(studioAuthorProfiles.projectId, projectId),
+          isNull(studioAuthorProfiles.projectId),
+        ),
+      );
+    }
+    return await db
+      .select()
+      .from(studioAuthorProfiles)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(studioAuthorProfiles.isActive), asc(studioAuthorProfiles.displayName));
+  }
+
+  async getStudioAuthorProfile(id: string): Promise<StudioAuthorProfile | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioAuthorProfiles)
+      .where(eq(studioAuthorProfiles.id, id));
+    return row;
+  }
+
+  async createStudioAuthorProfile(data: InsertStudioAuthorProfile): Promise<StudioAuthorProfile> {
+    const [created] = await db.insert(studioAuthorProfiles).values(data).returning();
+    return created;
+  }
+
+  async updateStudioAuthorProfile(
+    id: string,
+    updates: Partial<InsertStudioAuthorProfile>,
+  ): Promise<StudioAuthorProfile | undefined> {
+    const [updated] = await db
+      .update(studioAuthorProfiles)
+      .set(updates)
+      .where(eq(studioAuthorProfiles.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ---- Audit ----
+  async createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent> {
+    const [created] = await db.insert(studioAuditEvents).values(data).returning();
+    return created;
+  }
+
+  async getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]> {
+    return await db
+      .select()
+      .from(studioAuditEvents)
+      .where(eq(studioAuditEvents.articleId, articleId))
+      .orderBy(desc(studioAuditEvents.createdAt));
   }
 
 }

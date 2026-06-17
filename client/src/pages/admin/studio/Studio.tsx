@@ -23,6 +23,8 @@ import {
   Star,
 } from "lucide-react";
 import type { StudioProject } from "@shared/schema";
+import { ArticlesPanel } from "./ArticlesPanel";
+import { AuthorsPanel } from "./AuthorsPanel";
 
 const STORAGE_KEY = "studio.selectedProjectId";
 
@@ -278,18 +280,24 @@ export default function Studio() {
 
           {/* Articles */}
           <TabsContent value="articles" className="mt-6">
-            <ComingSoon
-              title="Article Editor"
-              description="Create, edit, and manage articles with AI-assisted drafting. This workspace will arrive with the Article Editor release."
-            />
+            {selectedProjectId ? (
+              <ArticlesPanel projectId={selectedProjectId} />
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
           </TabsContent>
 
           {/* Authors */}
           <TabsContent value="authors" className="mt-6">
-            <ComingSoon
-              title="Author Profiles"
-              description="Manage bylines, bios, and author consent. Author management ships alongside the Article Editor."
-            />
+            {selectedProjectId ? (
+              <AuthorsPanel projectId={selectedProjectId} />
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
           </TabsContent>
 
           {/* Projects */}

@@ -16,6 +16,11 @@ import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTR
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
+import {
+  insertStudioArticleSchema,
+  insertStudioAuthorProfileSchema,
+} from "@shared/schema";
+import { computeReadTime } from "@shared/studioContent";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, type SalaryReportAdjustment } from "./email";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -9093,6 +9098,407 @@ export async function registerRoutes(
       } catch (error) {
         console.error("Get studio stats error:", error);
         res.status(500).json({ error: "Failed to fetch studio stats" });
+      }
+    },
+  );
+
+  // ---- Articles ----
+
+  // List articles with filters + pagination.
+  app.get(
+    "/api/admin/studio/articles",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const q = req.query;
+        const result = await storage.getStudioArticles({
+          projectId: typeof q.projectId === "string" && q.projectId ? q.projectId : undefined,
+          status: typeof q.status === "string" && q.status ? q.status : undefined,
+          contentType: typeof q.contentType === "string" && q.contentType ? q.contentType : undefined,
+          search: typeof q.search === "string" && q.search ? q.search : undefined,
+          page: q.page ? parseInt(q.page as string, 10) : undefined,
+          pageSize: q.pageSize ? parseInt(q.pageSize as string, 10) : undefined,
+        });
+        res.json(result);
+      } catch (error) {
+        console.error("Get studio articles error:", error);
+        res.status(500).json({ error: "Failed to fetch articles" });
+      }
+    },
+  );
+
+  // Get a single article.
+  app.get(
+    "/api/admin/studio/articles/:id",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        res.json(article);
+      } catch (error) {
+        console.error("Get studio article error:", error);
+        res.status(500).json({ error: "Failed to fetch article" });
+      }
+    },
+  );
+
+  // Create a new draft article.
+  app.post(
+    "/api/admin/studio/articles",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = insertStudioArticleSchema.partial().parse(req.body ?? {});
+        if (!parsed.projectId) return res.status(400).json({ error: "projectId is required" });
+        if (!parsed.title || !parsed.title.trim()) {
+          return res.status(400).json({ error: "title is required" });
+        }
+        const contentType = parsed.contentType || "quick_take";
+        const readTimeMinutes = computeReadTime(parsed.bodyMarkdown, contentType);
+        const created = await storage.createStudioArticle({
+          ...parsed,
+          projectId: parsed.projectId,
+          title: parsed.title.trim(),
+          contentType,
+          status: "draft",
+          readTimeMinutes,
+          createdBy: req.session.userId,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: created.id,
+          actorUserId: req.session.userId,
+          eventType: "article_created",
+          metadata: { title: created.title, contentType },
+        });
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create studio article error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create article" });
+      }
+    },
+  );
+
+  // Update an article (metadata + body). Recomputes read time.
+  app.patch(
+    "/api/admin/studio/articles/:id",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioArticle(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Article not found" });
+
+        const updates = insertStudioArticleSchema.partial().parse(req.body ?? {});
+        // Status changes must go through the transition endpoint.
+        delete (updates as any).status;
+        delete (updates as any).createdBy;
+
+        const contentType = updates.contentType ?? existing.contentType;
+        const bodyMarkdown =
+          updates.bodyMarkdown !== undefined ? updates.bodyMarkdown : existing.bodyMarkdown;
+        const readTimeMinutes = computeReadTime(bodyMarkdown, contentType);
+
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          ...updates,
+          readTimeMinutes,
+        });
+        const isAutosave = req.body?.autosave === true;
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: isAutosave ? "article_autosaved" : "article_updated",
+          metadata: { readTimeMinutes },
+        });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update studio article error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update article" });
+      }
+    },
+  );
+
+  // Delete an article (drafts only).
+  app.delete(
+    "/api/admin/studio/articles/:id",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioArticle(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Article not found" });
+        if (existing.status !== "draft") {
+          return res.status(400).json({ error: "Only draft articles can be deleted" });
+        }
+        await storage.deleteStudioArticle(req.params.id);
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Delete studio article error:", error);
+        res.status(500).json({ error: "Failed to delete article" });
+      }
+    },
+  );
+
+  // ---- Status transitions (role-gated) ----
+  // Each target status maps to the permission required to move there.
+  const STUDIO_TRANSITIONS: Record<
+    string,
+    { to: string; permission: string; roles: string[] }[]
+  > = {
+    draft: [
+      { to: "in_review", permission: "studio.edit_article", roles: ["marketing_manager", "content_editor"] },
+    ],
+    in_review: [
+      { to: "approved", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
+      { to: "draft", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
+    ],
+    approved: [
+      { to: "published", permission: "studio.publish_article", roles: ["marketing_manager"] },
+      { to: "scheduled", permission: "studio.schedule_publish", roles: ["marketing_manager"] },
+      { to: "draft", permission: "studio.edit_article", roles: ["marketing_manager", "content_editor"] },
+    ],
+    scheduled: [
+      { to: "published", permission: "studio.publish_article", roles: ["marketing_manager"] },
+      { to: "approved", permission: "studio.schedule_publish", roles: ["marketing_manager"] },
+    ],
+    published: [],
+    ready_to_export: [],
+  };
+
+  app.post(
+    "/api/admin/studio/articles/:id/transition",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const { to, scheduledAt } = req.body ?? {};
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const allowed = STUDIO_TRANSITIONS[article.status] || [];
+        const transition = allowed.find((t) => t.to === to);
+        if (!transition) {
+          return res
+            .status(400)
+            .json({ error: `Cannot move from ${article.status} to ${to}` });
+        }
+
+        // Role check for this specific transition.
+        const role = req.session.role!;
+        const permittedRoles = resolveRoles(
+          transition.permission,
+          Array.from(new Set(["super_admin", "admin", ...transition.roles])),
+        );
+        if (!permittedRoles.includes(role)) {
+          return res.status(403).json({ error: "Insufficient permissions for this transition" });
+        }
+
+        const updates: any = { status: to };
+        if (to === "approved") {
+          updates.approvedBy = req.session.userId;
+          updates.approvedAt = new Date();
+        }
+        if (to === "scheduled") {
+          updates.scheduledAt = scheduledAt ? new Date(scheduledAt) : new Date();
+        }
+        if (to === "published") {
+          updates.publishedAt = new Date();
+        }
+
+        const updated = await storage.updateStudioArticle(req.params.id, updates);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to },
+        });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio transition error:", error);
+        res.status(400).json({ error: error?.message || "Failed to transition article" });
+      }
+    },
+  );
+
+  // ---- Versions ----
+
+  // List versions for an article.
+  app.get(
+    "/api/admin/studio/articles/:id/versions",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const versions = await storage.getStudioArticleVersions(req.params.id);
+        res.json(versions);
+      } catch (error) {
+        console.error("Get studio versions error:", error);
+        res.status(500).json({ error: "Failed to fetch versions" });
+      }
+    },
+  );
+
+  // Snapshot the current article body as an explicit version.
+  app.post(
+    "/api/admin/studio/articles/:id/versions",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const version = await storage.createStudioArticleVersion({
+          articleId: req.params.id,
+          title: article.title,
+          bodyMarkdown: article.bodyMarkdown,
+          bodyJson: article.bodyJson,
+          createdBy: req.session.userId,
+        });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "version_saved",
+          metadata: { versionNo: version.versionNo },
+        });
+        res.status(201).json(version);
+      } catch (error: any) {
+        console.error("Create studio version error:", error);
+        res.status(400).json({ error: error?.message || "Failed to save version" });
+      }
+    },
+  );
+
+  // Restore a version's body back onto the article.
+  app.post(
+    "/api/admin/studio/articles/:id/versions/:versionId/restore",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const version = await storage.getStudioArticleVersion(req.params.versionId);
+        if (!version || version.articleId !== req.params.id) {
+          return res.status(404).json({ error: "Version not found" });
+        }
+        // Snapshot current state before overwriting, so restore is reversible.
+        await storage.createStudioArticleVersion({
+          articleId: req.params.id,
+          title: article.title,
+          bodyMarkdown: article.bodyMarkdown,
+          bodyJson: article.bodyJson,
+          createdBy: req.session.userId,
+        });
+        const readTimeMinutes = computeReadTime(version.bodyMarkdown, article.contentType);
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          title: version.title ?? article.title,
+          bodyMarkdown: version.bodyMarkdown,
+          bodyJson: version.bodyJson,
+          readTimeMinutes,
+        });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "version_restored",
+          metadata: { restoredVersionNo: version.versionNo },
+        });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Restore studio version error:", error);
+        res.status(400).json({ error: error?.message || "Failed to restore version" });
+      }
+    },
+  );
+
+  // ---- Authors ----
+
+  app.get(
+    "/api/admin/studio/authors",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId =
+          typeof req.query.projectId === "string" && req.query.projectId
+            ? req.query.projectId
+            : undefined;
+        const authors = await storage.getStudioAuthorProfiles(projectId);
+        res.json(authors);
+      } catch (error) {
+        console.error("Get studio authors error:", error);
+        res.status(500).json({ error: "Failed to fetch authors" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/studio/authors",
+    requireAuth,
+    requirePermission("studio.manage_authors", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
+        if (!parsed.displayName || !parsed.displayName.trim()) {
+          return res.status(400).json({ error: "displayName is required" });
+        }
+        const created = await storage.createStudioAuthorProfile({
+          ...parsed,
+          displayName: parsed.displayName.trim(),
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "author_created",
+          metadata: { authorId: created.id, displayName: created.displayName },
+        });
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create studio author error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create author" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/admin/studio/authors/:id",
+    requireAuth,
+    requirePermission("studio.manage_authors", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioAuthorProfile(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Author not found" });
+        const updates = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
+        const updated = await storage.updateStudioAuthorProfile(req.params.id, updates);
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "author_updated",
+          metadata: { authorId: req.params.id },
+        });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update studio author error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update author" });
+      }
+    },
+  );
+
+  // ---- Image upload (featured / cover images via presigned URL) ----
+  app.post(
+    "/api/admin/studio/upload-url",
+    requireAuth,
+    requirePermission("studio.manage_assets", "marketing_manager", "content_editor"),
+    async (_req: Request, res: Response) => {
+      try {
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+        res.json({ uploadURL, objectPath });
+      } catch (error) {
+        console.error("Studio upload URL error:", error);
+        res.status(500).json({ error: "Failed to generate upload URL" });
       }
     },
   );
