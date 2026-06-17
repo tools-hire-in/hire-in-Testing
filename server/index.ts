@@ -535,6 +535,14 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS risk_flags_resolved_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS risk_flags_resolved_by varchar`);
 
+    // Social-card engine (Task #432): per-article layout override + generated card URLs.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS card_layout varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS social_cards_jsonb jsonb`);
+    // Multi-brand card variables on the project record.
+    await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS font_url varchar`);
+    await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS footer_url varchar`);
+    await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS active_template_family varchar DEFAULT 'hirein-v1' NOT NULL`);
+
     // Seeded, versioned prompt library.
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS "studio_prompt_templates" (
@@ -628,6 +636,8 @@ async function ensureCardTemplatesAndBrand() {
       ON card_templates(family, layout, platform)
       WHERE project_id IS NULL
     `);
+    // Optional cached preview thumbnail URL on card templates (Task #432).
+    await db.execute(sql`ALTER TABLE card_templates ADD COLUMN IF NOT EXISTS thumbnail_url varchar`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS "studio_brand_settings" (

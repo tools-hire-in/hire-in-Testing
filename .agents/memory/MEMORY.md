@@ -11,3 +11,4 @@
 - [AI integration chat models](ai-integration-models.md) — chat goes through AI_INTEGRATIONS_* proxy (not OPENAI_API_KEY); gpt-5.4 works; gpt-5* return empty when max_completion_tokens too small.
 - [Dev server has no backend watch](dev-server-no-watch.md) — plain tsx (no watch); backend route changes need a workflow restart, else API returns SPA HTML.
 - [Studio schema drift](studio-schema-drift.md) — studio_articles.category in schema but missing from dev DB; 500s insights read path. Use narrow selects in new public endpoints.
+- [Social card engine](social-card-engine.md) — Chromium renders branded PNGs at 2× scale; networkidle0 needs as-any cast; global-fallback template resolution; auto-trigger on approved.

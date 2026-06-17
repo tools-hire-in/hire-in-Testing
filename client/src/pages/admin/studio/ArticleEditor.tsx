@@ -45,6 +45,8 @@ import {
   Copy,
   AlertTriangle,
   ShieldCheck,
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -63,6 +65,7 @@ import {
 } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
+import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
 
 // Client mirror of the server transition map (permission key per target).
 const TRANSITIONS: Record<string, { to: string; label: string; permission: string }[]> = {
@@ -723,7 +726,8 @@ function ArticleEditorInner({ id }: { id: string }) {
               </Card>
             </TabsContent>
 
-            <TabsContent value="social" className="mt-3">
+            <TabsContent value="social" className="mt-3 space-y-4">
+              <BrandedSocialCards article={article} />
               {(() => {
                 const kit = (article.socialKitJsonb as CanonicalSocialKit | null) ?? null;
                 if (!kit) {
@@ -1325,5 +1329,148 @@ export default function ArticleEditor() {
     <AdminLayout>
       <ArticleEditorInner id={id} key={id} />
     </AdminLayout>
+  );
+}
+
+const CARD_LAYOUT_OPTIONS = [
+  { value: "standard", label: "Standard" },
+  { value: "checklist", label: "Checklist" },
+  { value: "quote", label: "Quote" },
+];
+
+interface GeneratedCard {
+  layout: string;
+  platform: string;
+  url: string;
+  width: number;
+  height: number;
+}
+
+function budgetSummary(b: CardBudget): string {
+  const parts: string[] = [];
+  if (b.title) parts.push(`Title ≤${b.title}`);
+  if (b.quote) parts.push(`Quote ≤${b.quote}`);
+  if (b.supporting) parts.push(`Body ≤${b.supporting}`);
+  if (b.category) parts.push(`Tag ≤${b.category}`);
+  if (b.tipTitle) parts.push(`Tip title ≤${b.tipTitle}`);
+  if (b.tipDesc) parts.push(`Tip text ≤${b.tipDesc}`);
+  if (b.maxTips) parts.push(`${b.maxTips} tips max`);
+  return parts.join(" · ");
+}
+
+function BrandedSocialCards({ article }: { article: StudioArticle }) {
+  const { toast } = useToast();
+  const stored = (article.socialCardsJsonb as { layout?: string; cards?: GeneratedCard[] } | null) ?? null;
+  const [layout, setLayout] = useState<string>(article.cardLayout ?? stored?.layout ?? "standard");
+  const cards = stored?.cards ?? [];
+  const variants = cardVariantsForLayout(layout as any);
+
+  const regenerate = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/admin/studio/articles/${article.id}/regenerate-cards`, { layout }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", article.id] });
+      toast({ title: "Social cards regenerated" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Could not regenerate cards", description: e?.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card data-testid="card-branded-social-cards">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+        <div>
+          <CardTitle className="text-sm">Branded Social Cards</CardTitle>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Auto-generated when the article is approved. Pick a layout and regenerate any time.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={layout} onValueChange={setLayout}>
+            <SelectTrigger className="h-8 w-[140px]" data-testid="select-card-layout">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CARD_LAYOUT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} data-testid={`option-layout-${o.value}`}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            onClick={() => regenerate.mutate()}
+            disabled={regenerate.isPending}
+            data-testid="button-regenerate-cards"
+          >
+            {regenerate.isPending ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+            )}
+            Regenerate
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4 rounded-md border bg-muted/30 p-3" data-testid="section-char-budgets">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            Character budgets for the {layout} layout
+          </p>
+          <ul className="space-y-1">
+            {variants.map((v) => {
+              const summary = budgetSummary(cardBudget(layout, v.platform));
+              return (
+                <li
+                  key={v.platform}
+                  className="flex flex-wrap items-baseline gap-x-2 text-xs"
+                  data-testid={`budget-${v.platform}`}
+                >
+                  <span className="font-medium">{v.platform}</span>
+                  <span className="text-muted-foreground">
+                    {summary || "No specific limits"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {cards.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground" data-testid="text-no-cards">
+            No cards generated yet. Approve the article or click Regenerate.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {cards.map((c) => (
+              <div
+                key={`${c.layout}-${c.platform}`}
+                className="rounded-lg border p-2"
+                data-testid={`card-social-${c.platform}`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-medium">{c.platform}</span>
+                  <a href={c.url} download data-testid={`link-download-${c.platform}`}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+                </div>
+                <div className="overflow-hidden rounded-md border bg-muted/30">
+                  <img
+                    src={c.url}
+                    alt={`${c.layout} ${c.platform}`}
+                    className="w-full"
+                    style={{ aspectRatio: `${c.width} / ${c.height}` }}
+                    data-testid={`img-card-${c.platform}`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

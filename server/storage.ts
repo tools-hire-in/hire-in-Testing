@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull, isNotNull, ne } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql, gte, lte, asc, inArray, isNull, isNotNull, ne, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   jobs,
@@ -115,6 +115,7 @@ import {
   cardTemplates,
   studioBrandSettings,
   type CardTemplate,
+  type InsertCardTemplate,
   type StudioBrandSettings,
   type StudioPromptTemplate,
   type InsertStudioPromptTemplate,
@@ -414,6 +415,18 @@ export interface IStorage {
   // Card templates + brand
   getStudioBrandSettings(): Promise<StudioBrandSettings | undefined>;
   getCardTemplates(family?: string): Promise<CardTemplate[]>;
+  getCardTemplate(id: string): Promise<CardTemplate | undefined>;
+  getCardTemplateFor(
+    family: string,
+    layout: string,
+    platform: string,
+    projectId?: string | null,
+  ): Promise<CardTemplate | undefined>;
+  updateCardTemplate(
+    id: string,
+    updates: Partial<InsertCardTemplate>,
+  ): Promise<CardTemplate | undefined>;
+  upsertCardTemplateByVariant(data: InsertCardTemplate): Promise<CardTemplate>;
 
   // Prompt library (seeded + versioned)
   getStudioPromptTemplates(projectId?: string): Promise<StudioPromptTemplate[]>;
@@ -3166,15 +3179,107 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getCardTemplates(family?: string): Promise<CardTemplate[]> {
-    const whereClause = family
-      ? and(eq(cardTemplates.family, family), eq(cardTemplates.isActive, true))
-      : eq(cardTemplates.isActive, true);
+  async getCardTemplates(family?: string, includeInactive = false): Promise<CardTemplate[]> {
+    const conditions = [
+      family ? eq(cardTemplates.family, family) : undefined,
+      includeInactive ? undefined : eq(cardTemplates.isActive, true),
+    ].filter(Boolean) as SQL[];
+    const whereClause =
+      conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions);
     return await db
       .select()
       .from(cardTemplates)
       .where(whereClause)
       .orderBy(asc(cardTemplates.layout), asc(cardTemplates.platform));
+  }
+
+  async getCardTemplate(id: string): Promise<CardTemplate | undefined> {
+    const [row] = await db
+      .select()
+      .from(cardTemplates)
+      .where(eq(cardTemplates.id, id))
+      .limit(1);
+    return row;
+  }
+
+  async getCardTemplateFor(
+    family: string,
+    layout: string,
+    platform: string,
+    projectId?: string | null,
+  ): Promise<CardTemplate | undefined> {
+    // Prefer a project-specific override, then fall back to the global default.
+    if (projectId) {
+      const [override] = await db
+        .select()
+        .from(cardTemplates)
+        .where(
+          and(
+            eq(cardTemplates.family, family),
+            eq(cardTemplates.layout, layout),
+            eq(cardTemplates.platform, platform),
+            eq(cardTemplates.projectId, projectId),
+            eq(cardTemplates.isActive, true),
+          ),
+        )
+        .limit(1);
+      if (override) return override;
+    }
+    const [global] = await db
+      .select()
+      .from(cardTemplates)
+      .where(
+        and(
+          eq(cardTemplates.family, family),
+          eq(cardTemplates.layout, layout),
+          eq(cardTemplates.platform, platform),
+          isNull(cardTemplates.projectId),
+          eq(cardTemplates.isActive, true),
+        ),
+      )
+      .limit(1);
+    return global;
+  }
+
+  async updateCardTemplate(
+    id: string,
+    updates: Partial<InsertCardTemplate>,
+  ): Promise<CardTemplate | undefined> {
+    const [row] = await db
+      .update(cardTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(cardTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async upsertCardTemplateByVariant(
+    data: InsertCardTemplate,
+  ): Promise<CardTemplate> {
+    const existing = await db
+      .select()
+      .from(cardTemplates)
+      .where(
+        and(
+          eq(cardTemplates.family, data.family),
+          eq(cardTemplates.layout, data.layout),
+          eq(cardTemplates.platform, data.platform),
+          data.projectId
+            ? eq(cardTemplates.projectId, data.projectId)
+            : isNull(cardTemplates.projectId),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      const [row] = await db
+        .update(cardTemplates)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(cardTemplates.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(cardTemplates).values(data).returning();
+    return row;
   }
 
   // ---- Prompt library ----

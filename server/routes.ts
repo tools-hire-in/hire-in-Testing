@@ -17,6 +17,18 @@ import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import {
+  generateArticleCards,
+  renderTemplateToPng,
+} from "./cardGenerationService";
+import {
+  resolveCardLayout,
+  sampleCardVariables,
+  cardBudget,
+  CARD_LAYOUTS,
+  CARD_PLATFORMS,
+  isCardLayout,
+} from "@shared/socialCards";
+import {
   insertStudioArticleSchema,
   insertStudioAuthorProfileSchema,
   type StudioArticle,
@@ -9972,6 +9984,29 @@ export async function registerRoutes(
           metadata: { from: article.status, to },
         });
 
+        // Social card engine (Task #432): when an article is approved, render its
+        // branded social cards in the background (non-blocking) and notify.
+        if (to === "approved") {
+          (async () => {
+            try {
+              const result = await generateArticleCards(req.params.id);
+              await storage.createStudioAuditEvent({
+                articleId: req.params.id,
+                actorUserId: req.session.userId,
+                eventType: "social_cards_generated",
+                metadata: {
+                  layout: result.layout,
+                  family: result.family,
+                  cardCount: result.cards.length,
+                  skipped: result.skipped,
+                },
+              });
+            } catch (cardErr) {
+              console.error("Studio social card generation error:", cardErr);
+            }
+          })();
+        }
+
         // Smart routing: auto-assign a reviewer when an article enters review.
         let autoAssignedReviewerId: string | null = null;
         if (to === "in_review") {
@@ -11146,12 +11181,140 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const family = typeof req.query.family === "string" && req.query.family ? req.query.family : undefined;
-        const templates = await storage.getCardTemplates(family);
+        const includeInactive = req.query.includeInactive === "true" || req.query.includeInactive === "1";
+        const templates = await storage.getCardTemplates(family, includeInactive);
         // Omit the heavy html blob from the list view.
         res.json(templates.map(({ html, ...rest }) => rest));
       } catch (error) {
         console.error("Get card templates error:", error);
         res.status(500).json({ error: "Failed to fetch card templates" });
+      }
+    },
+  );
+
+  // Single template (includes the HTML body) for the Template Settings editor.
+  app.get(
+    "/api/admin/studio/card-templates/:id",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const template = await storage.getCardTemplate(req.params.id);
+        if (!template) return res.status(404).json({ error: "Template not found" });
+        res.json(template);
+      } catch (error) {
+        console.error("Get card template error:", error);
+        res.status(500).json({ error: "Failed to fetch card template" });
+      }
+    },
+  );
+
+  // Live PNG preview of a template rendered with sample data (Template Settings).
+  app.get(
+    "/api/admin/studio/card-templates/:id/preview",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const template = await storage.getCardTemplate(req.params.id);
+        if (!template) return res.status(404).json({ error: "Template not found" });
+        const layout = isCardLayout(template.layout) ? template.layout : "standard";
+        const vars = sampleCardVariables(layout);
+        const png = await renderTemplateToPng(
+          { html: template.html, width: template.width, height: template.height },
+          vars as any,
+        );
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(png);
+      } catch (error) {
+        console.error("Card template preview error:", error);
+        res.status(500).json({ error: "Failed to render preview" });
+      }
+    },
+  );
+
+  // Activate / deactivate a template variant (Super Admin / marketing manager).
+  app.patch(
+    "/api/admin/studio/card-templates/:id",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { isActive } = req.body ?? {};
+        if (typeof isActive !== "boolean") {
+          return res.status(400).json({ error: "isActive (boolean) is required" });
+        }
+        const updated = await storage.updateCardTemplate(req.params.id, { isActive });
+        if (!updated) return res.status(404).json({ error: "Template not found" });
+        const { html, ...rest } = updated;
+        res.json(rest);
+      } catch (error) {
+        console.error("Update card template error:", error);
+        res.status(500).json({ error: "Failed to update card template" });
+      }
+    },
+  );
+
+  // Switch the active template family for a project (multi-brand).
+  app.patch(
+    "/api/admin/studio/projects/:id/template-family",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { family } = req.body ?? {};
+        if (typeof family !== "string" || !family.trim()) {
+          return res.status(400).json({ error: "family is required" });
+        }
+        const updated = await storage.updateStudioProject(req.params.id, {
+          activeTemplateFamily: family.trim(),
+        });
+        if (!updated) return res.status(404).json({ error: "Project not found" });
+        res.json(updated);
+      } catch (error) {
+        console.error("Switch template family error:", error);
+        res.status(500).json({ error: "Failed to switch template family" });
+      }
+    },
+  );
+
+  // Regenerate an article's social cards on demand (optional layout override).
+  app.post(
+    "/api/admin/studio/articles/:id/regenerate-cards",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const { layout } = req.body ?? {};
+        if (layout !== undefined && layout !== null && !isCardLayout(layout)) {
+          return res.status(400).json({
+            error: `Invalid layout. Use one of: ${CARD_LAYOUTS.join(", ")}`,
+          });
+        }
+        // Persist the per-article layout override when provided.
+        if (isCardLayout(layout) && layout !== article.cardLayout) {
+          await storage.updateStudioArticle(req.params.id, { cardLayout: layout });
+        }
+        const result = await generateArticleCards(req.params.id, {
+          layoutOverride: isCardLayout(layout) ? layout : article.cardLayout,
+        });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "social_cards_regenerated",
+          metadata: {
+            layout: result.layout,
+            cardCount: result.cards.length,
+            skipped: result.skipped,
+          },
+        });
+        res.json(result);
+      } catch (error: any) {
+        console.error("Regenerate cards error:", error);
+        res.status(500).json({ error: error?.message || "Failed to regenerate cards" });
       }
     },
   );

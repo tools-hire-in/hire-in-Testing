@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -496,6 +498,20 @@ export default function Studio() {
                   </p>
                 </div>
                 <RoutingSettings projectId={selectedProjectId} />
+
+                <div className="border-t pt-4">
+                  <h2 className="text-lg font-semibold" data-testid="text-templates-heading">
+                    Social Card Templates
+                  </h2>
+                  <p className="mb-3 text-sm text-muted-foreground">
+                    Manage the branded card variants rendered when articles are approved.
+                  </p>
+                  <Link href="/admin/studio/settings/templates">
+                    <Button variant="outline" data-testid="button-manage-templates">
+                      Manage card templates
+                    </Button>
+                  </Link>
+                </div>
               </div>
             )}
           </TabsContent>

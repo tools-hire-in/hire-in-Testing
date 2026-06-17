@@ -2190,6 +2190,12 @@ export const studioProjects = pgTable("studio_projects", {
   description: text("description"),
   brandColor: varchar("brand_color"),
   logoUrl: varchar("logo_url"),
+  // Optional brand web-font stylesheet URL + canonical footer URL injected into
+  // social cards. active_template_family selects which card template set new
+  // generations use (defaults to the global "hirein-v1" family).
+  fontUrl: varchar("font_url"),
+  footerUrl: varchar("footer_url"),
+  activeTemplateFamily: varchar("active_template_family").default("hirein-v1").notNull(),
   isPrimary: boolean("is_primary").default(false).notNull(),
   publishesToInsights: boolean("publishes_to_insights").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
@@ -2244,6 +2250,12 @@ export const studioArticles = pgTable("studio_articles", {
   // Canonical normalized Social Kit (captions, quote/checklist, hashtags,
   // suggested visual template, quality notes). Populated by AI generation.
   socialKitJsonb: jsonb("social_kit_jsonb"),
+  // Social-card engine (Task #432): per-article card layout override
+  // (standard | checklist | quote); null = auto-map from content type.
+  cardLayout: varchar("card_layout"),
+  // Map of "{layout}-{platform}" -> { url, width, height, label } for the
+  // generated PNG social cards. Populated by the card generation service.
+  socialCardsJsonb: jsonb("social_cards_jsonb"),
   // Compliance posture for AI generation + publish gating
   // (normal | healthcare_safe | public_sector_safe | no_claims | source_required).
   complianceMode: varchar("compliance_mode").default("normal").notNull(),
@@ -2325,6 +2337,8 @@ export const cardTemplates = pgTable("card_templates", {
   height: integer("height").notNull(),
   maxTips: integer("max_tips"),
   html: text("html").notNull(),
+  // Optional cached preview thumbnail (GCS URL). null = live-render preview.
+  thumbnailUrl: varchar("thumbnail_url"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
