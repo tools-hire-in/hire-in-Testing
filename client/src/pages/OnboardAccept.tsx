@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
+import { AnnexureInitialing } from "@/components/esign/AnnexureInitialing";
 
 interface OfferData {
   id: string;
@@ -241,10 +242,7 @@ export default function OnboardAccept() {
             performanceClauseText: offer.performanceClauseText,
             policyAnnexures: offer.policyAnnexures,
             annexureInitials: annexureInitials,
-            onAnnexureInitialChange:
-              offer.status !== "accepted" && offer.status !== "onboarded" && offer.status !== "countersigned" && offer.status !== "cancelled"
-                ? handleAnnexureInitialChange
-                : undefined,
+            annexureInitialedAt: annexureInitialedAt,
           }}
         />
 
@@ -253,6 +251,13 @@ export default function OnboardAccept() {
             <div className="p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Accept This Offer</h3>
               <div className="space-y-6">
+                {policyAnnexureKeys.length > 0 && (
+                  <AnnexureInitialing
+                    annexureKeys={policyAnnexureKeys}
+                    initials={annexureInitials}
+                    onInitialChange={handleAnnexureInitialChange}
+                  />
+                )}
                 <SignatureBlock
                   consent={{
                     label:
