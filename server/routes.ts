@@ -557,6 +557,58 @@ export async function registerRoutes(
     }
   });
 
+  // Record an article view for the analytics dashboard. Rate-limited to one
+  // counted view per session per article per hour (tracked in the session) so a
+  // single reader refreshing does not inflate the view count.
+  const VIEW_WINDOW_MS = 60 * 60 * 1000;
+  app.post("/api/insights/:articleId/view", async (req, res) => {
+    try {
+      const published = await storage.isInsightPublished(req.params.articleId);
+      if (!published) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+
+      const now = Date.now();
+      const seen = (req.session.studioViews ?? {}) as Record<string, number>;
+      const last = seen[req.params.articleId];
+      if (last && now - last < VIEW_WINDOW_MS) {
+        return res.json({ counted: false });
+      }
+      seen[req.params.articleId] = now;
+      req.session.studioViews = seen;
+
+      await storage.createStudioAuditEvent({
+        articleId: req.params.articleId,
+        eventType: "article_viewed",
+        metadata: null,
+      });
+      res.json({ counted: true });
+    } catch (error) {
+      console.error("Failed to record view:", error);
+      res.status(500).json({ message: "Failed to record view" });
+    }
+  });
+
+  // Record a CTA click on a published article for the analytics dashboard.
+  app.post("/api/insights/:articleId/cta-click", async (req, res) => {
+    try {
+      const published = await storage.isInsightPublished(req.params.articleId);
+      if (!published) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+      const href = typeof req.body?.href === "string" ? req.body.href.slice(0, 512) : null;
+      await storage.createStudioAuditEvent({
+        articleId: req.params.articleId,
+        eventType: "cta_clicked",
+        metadata: href ? { href } : null,
+      });
+      res.json({ counted: true });
+    } catch (error) {
+      console.error("Failed to record CTA click:", error);
+      res.status(500).json({ message: "Failed to record CTA click" });
+    }
+  });
+
   // ==========================================
   // NEWSLETTER (public subscribe / unsubscribe / SendGrid events)
   // ==========================================
@@ -9729,6 +9781,34 @@ export async function registerRoutes(
       } catch (error) {
         console.error("Get studio stats error:", error);
         res.status(500).json({ error: "Failed to fetch studio stats" });
+      }
+    },
+  );
+
+  // Analytics dashboard (read layer): workflow + audience metrics aggregated
+  // from studio_audit_events, article reactions, and the article pipeline.
+  app.get(
+    "/api/admin/studio/analytics",
+    requireAuth,
+    requirePermission("studio.view_analytics", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId =
+          typeof req.query.projectId === "string" && req.query.projectId
+            ? req.query.projectId
+            : undefined;
+        const parseDate = (v: unknown): Date | undefined => {
+          if (typeof v !== "string" || !v) return undefined;
+          const d = new Date(v);
+          return isNaN(d.getTime()) ? undefined : d;
+        };
+        const dateFrom = parseDate(req.query.date_from);
+        const dateTo = parseDate(req.query.date_to);
+        const analytics = await storage.getStudioAnalytics({ projectId, dateFrom, dateTo });
+        res.json(analytics);
+      } catch (error) {
+        console.error("Get studio analytics error:", error);
+        res.status(500).json({ error: "Failed to fetch studio analytics" });
       }
     },
   );

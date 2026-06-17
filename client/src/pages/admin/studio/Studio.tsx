@@ -469,10 +469,18 @@ export default function Studio() {
 
           {/* Analytics */}
           <TabsContent value="analytics" className="mt-6">
-            <ComingSoon
-              title="Content Analytics"
-              description="Track reactions, reach, and newsletter growth across projects. Analytics dashboards arrive in a later release."
-            />
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <h3 className="text-lg font-semibold">Content Analytics</h3>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  Track workflow throughput, views, reactions, CTA clicks, and newsletter growth
+                  across your content.
+                </p>
+                <Link href="/admin/studio/analytics">
+                  <Button data-testid="button-open-analytics">Open analytics dashboard</Button>
+                </Link>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Settings */}

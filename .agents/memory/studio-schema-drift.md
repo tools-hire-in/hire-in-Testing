@@ -1,13 +1,22 @@
 ---
-name: Studio article schema drift (category column)
+name: Studio schema drift (later-added columns missing in dev DB)
 description: Why public studio/insights read endpoints should select narrow columns, not whole rows
 ---
 
-In the isolated dev env, `studio_articles.category` exists in `shared/schema.ts` but is
-MISSING from the actual DB (auto-migrations disabled; ensure-blocks use CREATE TABLE IF
-NOT EXISTS so they never add later-added columns). Any `db.select()` (all columns) against
-studio_articles throws `column ... does not exist` (Postgres 42703), which 500s the whole
-insights read path (getPublishedInsights, getStudioArticle, getPublishedInsightBySlug).
+In the isolated dev env, several studio columns exist in `shared/schema.ts` but are
+MISSING from the actual DB (auto-migrations disabled; the original CREATE TABLE IF NOT
+EXISTS ensure-blocks never add later-added columns). Known drifters: `studio_articles.category`
+and `studio_newsletter_subscribers.suppressed_at` / `bounce_count` / `last_bounce_at`.
+Any `db.select()` (all columns) against these tables throws `column ... does not exist`
+(Postgres 42703), which 500s the read path (insights getters, getNewsletterSubscriberCounts).
+
+**Rule:** when adding a new column to a studio table in `shared/schema.ts`, also add a matching
+idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` ensure line in the server startup block,
+because the original CREATE-TABLE-IF-NOT-EXISTS ensures never backfill later-added columns and
+auto-migrations are disabled.
+
+**Why:** the env DB lags the schema, so any whole-row `db.select()` against the table throws
+42703 and 500s the read path until the column physically exists in both dev and prod.
 
 **Rule:** new public read endpoints that only need to check existence/status should select
 narrow columns (e.g. `db.select({ id, status })`) instead of reusing whole-row getters.

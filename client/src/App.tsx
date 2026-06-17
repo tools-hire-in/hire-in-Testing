@@ -83,6 +83,7 @@ const AutomatedChanges = lazy(() => import("@/pages/admin/AutomatedChanges"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
+const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 
 function AdminFallback() {
@@ -211,6 +212,7 @@ function PublicRouter() {
       <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
+      <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}
@@ -307,6 +309,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
+      <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import ReactMarkdown from "react-markdown";
@@ -37,6 +38,34 @@ export default function InsightArticle() {
   });
 
   const article = data?.article;
+  const viewedRef = useRef<string | null>(null);
+
+  // Record a single view per article load for the studio analytics dashboard.
+  // The backend additionally rate-limits to one counted view per session/hour.
+  useEffect(() => {
+    const id = article?.id;
+    if (!id || viewedRef.current === id) return;
+    viewedRef.current = id;
+    fetch(`/api/insights/${encodeURIComponent(id)}/view`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {
+      /* analytics is best-effort */
+    });
+  }, [article?.id]);
+
+  const handleCtaClick = () => {
+    const id = article?.id;
+    if (!id) return;
+    fetch(`/api/insights/${encodeURIComponent(id)}/cta-click`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ href: cta?.href ?? null }),
+    }).catch(() => {
+      /* analytics is best-effort */
+    });
+  };
 
   useSEO({
     title: article ? `${article.seoTitle || article.title} | Hire'in Solutions` : "Insights | Hire'in Solutions",
@@ -222,7 +251,7 @@ export default function InsightArticle() {
             <h2 className="text-2xl font-bold lg:text-3xl">{cta.heading}</h2>
             <p className="mx-auto mt-3 max-w-xl text-primary-foreground/80">{cta.body}</p>
             <Link href={cta.href}>
-              <Button size="lg" variant="secondary" className="mt-6" data-testid="button-cta">
+              <Button size="lg" variant="secondary" className="mt-6" data-testid="button-cta" onClick={handleCtaClick}>
                 {cta.buttonLabel}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>

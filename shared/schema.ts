@@ -2391,7 +2391,14 @@ export const studioAuditEvents = pgTable("studio_audit_events", {
   eventType: varchar("event_type").notNull(),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Analytics dashboard reads aggregate audit events by type over a time
+  // window (views, cta clicks, reactions, marketing decisions).
+  eventTypeCreatedAtIdx: index("studio_audit_events_event_type_created_at_idx").on(
+    table.eventType,
+    table.createdAt,
+  ),
+}));
 
 // Branded social-card template matrix (family × layout × platform). project_id
 // NULL = global default templates shared by every project.

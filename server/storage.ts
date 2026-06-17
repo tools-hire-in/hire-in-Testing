@@ -131,6 +131,34 @@ import {
   type InsertStudioReviewAssignment,
 } from "@shared/schema";
 
+export interface StudioAnalytics {
+  range: { dateFrom: string | null; dateTo: string | null };
+  workflow: {
+    publishedCount: number;
+    medianDraftToPublishDays: number | null;
+    slaRatePct: number | null;
+    slaSampleSize: number;
+    marketingRejectionRatePct: number | null;
+    marketingDecisionCount: number;
+  };
+  audience: {
+    views: number;
+    ctaClicks: number;
+    ctaRatePct: number | null;
+    reactionsByType: { reactionType: string; count: number }[];
+    totalReactions: number;
+  };
+  topArticles: { id: string; title: string; views: number; reactions: number; ctaClicks: number }[];
+  authorLeaderboard: {
+    authorProfileId: string | null;
+    authorName: string;
+    published: number;
+    avgReactionsPerArticle: number;
+  }[];
+  categoryBreakdown: { category: string; published: number; avgViewsPerCategory: number }[];
+  subscribers: { confirmed: number; newThisMonth: number };
+}
+
 export interface IStorage {
   // Jobs
   getJobs(filters?: { search?: string; specialty?: string; state?: string; jobType?: string; industrySpecialties?: string[] }): Promise<Job[]>;
@@ -417,6 +445,7 @@ export interface IStorage {
   // Audit
   createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
   getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
+  getStudioAnalytics(filters: { projectId?: string; dateFrom?: Date; dateTo?: Date }): Promise<StudioAnalytics>;
   // Public reactions
   isInsightPublished(articleId: string): Promise<boolean>;
   getArticleReactionCounts(articleId: string): Promise<Record<string, number>>;
@@ -3248,6 +3277,303 @@ export class DatabaseStorage implements IStorage {
       .from(studioAuditEvents)
       .where(eq(studioAuditEvents.articleId, articleId))
       .orderBy(desc(studioAuditEvents.createdAt));
+  }
+
+  async getStudioAnalytics(filters: {
+    projectId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+  }): Promise<StudioAnalytics> {
+    const { projectId, dateFrom, dateTo } = filters;
+    const since = dateFrom && !isNaN(dateFrom.getTime()) ? dateFrom : undefined;
+    const until = dateTo && !isNaN(dateTo.getTime()) ? dateTo : undefined;
+
+    // Whole, inclusive business days between two dates (excludes Sat/Sun).
+    const businessDaysBetween = (start: Date, end: Date): number => {
+      if (end <= start) return 0;
+      const ms = end.getTime() - start.getTime();
+      const totalDays = ms / (24 * 60 * 60 * 1000);
+      const fullWeeks = Math.floor(totalDays / 7);
+      let business = fullWeeks * 5;
+      let remaining = totalDays - fullWeeks * 7;
+      let cursor = new Date(start.getTime() + fullWeeks * 7 * 24 * 60 * 60 * 1000);
+      while (remaining > 0) {
+        cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+        const dow = cursor.getDay();
+        if (dow !== 0 && dow !== 6) business += 1;
+        remaining -= 1;
+      }
+      return business;
+    };
+
+    // ---- Workflow: published count + draft->publish duration (business days) ----
+    const publishedConditions = [eq(studioArticles.status, "published"), isNotNull(studioArticles.publishedAt)];
+    if (projectId) publishedConditions.push(eq(studioArticles.projectId, projectId));
+    if (since) publishedConditions.push(gte(studioArticles.publishedAt, since));
+    if (until) publishedConditions.push(lte(studioArticles.publishedAt, until));
+
+    const publishedRows = await db
+      .select({
+        id: studioArticles.id,
+        title: studioArticles.title,
+        category: studioArticles.category,
+        authorProfileId: studioArticles.authorProfileId,
+        authorName: studioAuthorProfiles.displayName,
+        createdAt: studioArticles.createdAt,
+        publishedAt: studioArticles.publishedAt,
+      })
+      .from(studioArticles)
+      .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
+      .where(and(...publishedConditions));
+
+    const publishedCount = publishedRows.length;
+
+    const durations = publishedRows
+      .filter((r) => r.createdAt && r.publishedAt)
+      .map((r) => businessDaysBetween(new Date(r.createdAt as any), new Date(r.publishedAt as any)))
+      .sort((a, b) => a - b);
+    let medianDraftToPublishDays: number | null = null;
+    if (durations.length) {
+      const mid = Math.floor(durations.length / 2);
+      medianDraftToPublishDays =
+        durations.length % 2 === 0 ? (durations[mid - 1] + durations[mid]) / 2 : durations[mid];
+    }
+
+    // Author leaderboard + category breakdown from the same published set.
+    // Group published article ids by author and category; reaction/view averages
+    // are folded in after the audience maps are built (below).
+    const authorMap = new Map<
+      string,
+      { authorProfileId: string | null; authorName: string; articleIds: string[] }
+    >();
+    const categoryMap = new Map<string, string[]>();
+    for (const r of publishedRows) {
+      const key = r.authorProfileId ?? "__none__";
+      const existing = authorMap.get(key);
+      if (existing) existing.articleIds.push(r.id);
+      else
+        authorMap.set(key, {
+          authorProfileId: r.authorProfileId ?? null,
+          authorName: r.authorName ?? "Unattributed",
+          articleIds: [r.id],
+        });
+      const cat = r.category ?? "uncategorized";
+      const catIds = categoryMap.get(cat);
+      if (catIds) catIds.push(r.id);
+      else categoryMap.set(cat, [r.id]);
+    }
+
+    // ---- Workflow: 5-day review SLA rate ----
+    const slaConditions = [isNotNull(studioReviewAssignments.decisionAt)];
+    if (since) slaConditions.push(gte(studioReviewAssignments.decisionAt, since));
+    if (until) slaConditions.push(lte(studioReviewAssignments.decisionAt, until));
+    if (projectId) slaConditions.push(eq(studioArticles.projectId, projectId));
+    const slaRows = await db
+      .select({
+        createdAt: studioReviewAssignments.createdAt,
+        decisionAt: studioReviewAssignments.decisionAt,
+      })
+      .from(studioReviewAssignments)
+      .leftJoin(studioArticles, eq(studioReviewAssignments.articleId, studioArticles.id))
+      .where(and(...slaConditions));
+    const slaSampleSize = slaRows.length;
+    let slaRatePct: number | null = null;
+    if (slaSampleSize) {
+      const within = slaRows.filter(
+        (r) =>
+          r.createdAt &&
+          r.decisionAt &&
+          businessDaysBetween(new Date(r.createdAt as any), new Date(r.decisionAt as any)) <= 5,
+      ).length;
+      slaRatePct = Math.round((within / slaSampleSize) * 1000) / 10;
+    }
+
+    // ---- Workflow: marketing rejection rate ----
+    // marketing_recommended + marketing_rejected events (optionally project/time scoped).
+    const marketingConditions = [
+      inArray(studioAuditEvents.eventType, ["marketing_recommended", "marketing_rejected"]),
+    ];
+    if (since) marketingConditions.push(gte(studioAuditEvents.createdAt, since));
+    if (until) marketingConditions.push(lte(studioAuditEvents.createdAt, until));
+    if (projectId) marketingConditions.push(eq(studioArticles.projectId, projectId));
+    const marketingRows = await db
+      .select({ eventType: studioAuditEvents.eventType })
+      .from(studioAuditEvents)
+      .leftJoin(studioArticles, eq(studioAuditEvents.articleId, studioArticles.id))
+      .where(and(...marketingConditions));
+    const marketingDecisionCount = marketingRows.length;
+    let marketingRejectionRatePct: number | null = null;
+    if (marketingDecisionCount) {
+      const rejected = marketingRows.filter((r) => r.eventType === "marketing_rejected").length;
+      marketingRejectionRatePct = Math.round((rejected / marketingDecisionCount) * 1000) / 10;
+    }
+
+    // ---- Audience: views + cta clicks (audit events) ----
+    const audienceConditions = [
+      inArray(studioAuditEvents.eventType, ["article_viewed", "cta_clicked"]),
+    ];
+    if (since) audienceConditions.push(gte(studioAuditEvents.createdAt, since));
+    if (until) audienceConditions.push(lte(studioAuditEvents.createdAt, until));
+    if (projectId) audienceConditions.push(eq(studioArticles.projectId, projectId));
+    const audienceRows = await db
+      .select({
+        eventType: studioAuditEvents.eventType,
+        articleId: studioAuditEvents.articleId,
+        title: studioArticles.title,
+      })
+      .from(studioAuditEvents)
+      .leftJoin(studioArticles, eq(studioAuditEvents.articleId, studioArticles.id))
+      .where(and(...audienceConditions));
+
+    let views = 0;
+    let ctaClicks = 0;
+    const viewsByArticle = new Map<string, { title: string; views: number }>();
+    const ctaByArticle = new Map<string, number>();
+    for (const r of audienceRows) {
+      if (r.eventType === "article_viewed") {
+        views += 1;
+        if (r.articleId) {
+          const e = viewsByArticle.get(r.articleId);
+          if (e) e.views += 1;
+          else viewsByArticle.set(r.articleId, { title: r.title ?? "Untitled", views: 1 });
+        }
+      } else if (r.eventType === "cta_clicked") {
+        ctaClicks += 1;
+        if (r.articleId) ctaByArticle.set(r.articleId, (ctaByArticle.get(r.articleId) ?? 0) + 1);
+      }
+    }
+    const ctaRatePct = views > 0 ? Math.round((ctaClicks / views) * 1000) / 10 : null;
+
+    // ---- Audience: reactions by type ----
+    const reactionConditions: SQL[] = [];
+    if (since) reactionConditions.push(gte(studioArticleReactions.createdAt, since));
+    if (until) reactionConditions.push(lte(studioArticleReactions.createdAt, until));
+    if (projectId) reactionConditions.push(eq(studioArticles.projectId, projectId));
+    const reactionRows = await db
+      .select({
+        reactionType: studioArticleReactions.reactionType,
+        articleId: studioArticleReactions.articleId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studioArticleReactions)
+      .leftJoin(studioArticles, eq(studioArticleReactions.articleId, studioArticles.id))
+      .where(reactionConditions.length ? and(...reactionConditions) : undefined)
+      .groupBy(studioArticleReactions.reactionType, studioArticleReactions.articleId);
+
+    const reactionTypeMap = new Map<string, number>();
+    const reactionsByArticle = new Map<string, number>();
+    let totalReactions = 0;
+    for (const r of reactionRows) {
+      const c = Number(r.count);
+      totalReactions += c;
+      reactionTypeMap.set(r.reactionType, (reactionTypeMap.get(r.reactionType) ?? 0) + c);
+      if (r.articleId) reactionsByArticle.set(r.articleId, (reactionsByArticle.get(r.articleId) ?? 0) + c);
+    }
+    const reactionsByType = Array.from(reactionTypeMap.entries())
+      .map(([reactionType, count]) => ({ reactionType, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // ---- Top articles (by views, enriched with reactions + CTA clicks) ----
+    const articleIds = new Set<string>([
+      ...viewsByArticle.keys(),
+      ...reactionsByArticle.keys(),
+      ...ctaByArticle.keys(),
+    ]);
+    const articleTitleById = new Map<string, string>();
+    for (const r of publishedRows) articleTitleById.set(r.id, r.title ?? "Untitled");
+    const topArticles = Array.from(articleIds)
+      .map((id) => ({
+        id,
+        title: viewsByArticle.get(id)?.title ?? articleTitleById.get(id) ?? "Untitled",
+        views: viewsByArticle.get(id)?.views ?? 0,
+        reactions: reactionsByArticle.get(id) ?? 0,
+        ctaClicks: ctaByArticle.get(id) ?? 0,
+      }))
+      .sort((a, b) => b.views - a.views || b.reactions - a.reactions || b.ctaClicks - a.ctaClicks)
+      .slice(0, 5);
+
+    // ---- Author leaderboard: published count + avg reactions per article ----
+    const authorLeaderboard = Array.from(authorMap.values())
+      .map((a) => {
+        const totalAuthorReactions = a.articleIds.reduce(
+          (sum, id) => sum + (reactionsByArticle.get(id) ?? 0),
+          0,
+        );
+        const published = a.articleIds.length;
+        return {
+          authorProfileId: a.authorProfileId,
+          authorName: a.authorName,
+          published,
+          avgReactionsPerArticle:
+            published > 0 ? Math.round((totalAuthorReactions / published) * 10) / 10 : 0,
+        };
+      })
+      .sort((a, b) => b.published - a.published || b.avgReactionsPerArticle - a.avgReactionsPerArticle);
+
+    // ---- Category breakdown: published count + avg views per article ----
+    const categoryBreakdown = Array.from(categoryMap.entries())
+      .map(([category, ids]) => {
+        const totalCategoryViews = ids.reduce(
+          (sum, id) => sum + (viewsByArticle.get(id)?.views ?? 0),
+          0,
+        );
+        const published = ids.length;
+        return {
+          category,
+          published,
+          avgViewsPerCategory:
+            published > 0 ? Math.round((totalCategoryViews / published) * 10) / 10 : 0,
+        };
+      })
+      .sort((a, b) => b.published - a.published);
+
+    // ---- Subscribers: total confirmed + new this calendar month ----
+    const subscriberConditions = [
+      isNotNull(studioNewsletterSubscribers.confirmedAt),
+      isNull(studioNewsletterSubscribers.unsubscribedAt),
+      isNull(studioNewsletterSubscribers.suppressedAt),
+    ];
+    if (projectId) subscriberConditions.push(eq(studioNewsletterSubscribers.projectId, projectId));
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [confirmedRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studioNewsletterSubscribers)
+      .where(and(...subscriberConditions));
+    const [newThisMonthRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studioNewsletterSubscribers)
+      .where(and(...subscriberConditions, gte(studioNewsletterSubscribers.confirmedAt, monthStart)));
+    const subscribers = {
+      confirmed: Number(confirmedRow?.count ?? 0),
+      newThisMonth: Number(newThisMonthRow?.count ?? 0),
+    };
+
+    return {
+      range: {
+        dateFrom: since ? since.toISOString() : null,
+        dateTo: until ? until.toISOString() : null,
+      },
+      workflow: {
+        publishedCount,
+        medianDraftToPublishDays,
+        slaRatePct,
+        slaSampleSize,
+        marketingRejectionRatePct,
+        marketingDecisionCount,
+      },
+      audience: {
+        views,
+        ctaClicks,
+        ctaRatePct,
+        reactionsByType,
+        totalReactions,
+      },
+      topArticles,
+      authorLeaderboard,
+      categoryBreakdown,
+      subscribers,
+    };
   }
 
   // ---- Public reactions ----

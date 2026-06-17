@@ -29,6 +29,9 @@ declare module "express-session" {
     // Stable anonymous identifier used to attribute public reactions to a
     // visitor without requiring login. Hashed before storage.
     anonId: string;
+    // Per-article last-view timestamps (ms) used to rate-limit counted article
+    // views for the Content Studio analytics dashboard (1/session/hour).
+    studioViews?: Record<string, number>;
   }
 }
 

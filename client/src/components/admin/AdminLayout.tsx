@@ -33,6 +33,7 @@ import {
   ShieldCheck,
   CalendarDays,
   ClipboardCheck,
+  BarChart3,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -422,6 +423,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
   const hasStudioAccess = can("studio.view");
   const hasMarketingApproveAccess = can("studio.marketing_approve");
+  const hasStudioAnalyticsAccess = can("studio.view_analytics");
   const isSuperAdmin = userRole === "super_admin";
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
@@ -574,6 +576,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: CalendarDays,
       roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
     }] : []),
+    ...(hasStudioAnalyticsAccess ? [{
+      href: "/admin/studio/analytics",
+      label: "Content Analytics",
+      icon: BarChart3,
+      roles: ["super_admin", "admin", "marketing_manager"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -591,7 +599,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
-    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !location.startsWith("/admin/studio/approvals") && !location.startsWith("/admin/studio/final-approval") && !location.startsWith("/admin/studio/calendar") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
+    if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
+    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !location.startsWith("/admin/studio/approvals") && !location.startsWith("/admin/studio/final-approval") && !location.startsWith("/admin/studio/calendar") && !location.startsWith("/admin/studio/analytics") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     return location.startsWith(href);
   };
 

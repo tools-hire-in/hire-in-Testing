@@ -538,6 +538,13 @@ async function ensureContentStudioTables() {
     // Social-card engine (Task #432): per-article layout override + generated card URLs.
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS card_layout varchar`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS social_cards_jsonb jsonb`);
+    // Content category (used by analytics category breakdown + insights filtering).
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS category varchar`);
+    // Newsletter deliverability suppression columns (analytics subscriber counts).
+    await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
+    await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);
+    await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS last_bounce_at timestamp`);
+    await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS preferences jsonb`);
     // Multi-brand card variables on the project record.
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS font_url varchar`);
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS footer_url varchar`);
