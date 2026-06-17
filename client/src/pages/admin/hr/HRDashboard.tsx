@@ -32,6 +32,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BreakWidget } from "@/components/admin/BreakWidget";
+import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed";
@@ -219,6 +220,8 @@ export default function HRDashboard() {
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
   const isEmployeeOnly = !isManagerRole;
 
+  const pendingCorrectionsCount = usePendingRegularizationCount(isAuthenticated && isManagerRole);
+
   const { data: myShift } = useQuery<MyShift | null>({
     queryKey: ["/api/hr/my-shift"],
     enabled: isAuthenticated && isEmployeeOnly,
@@ -405,6 +408,21 @@ export default function HRDashboard() {
                     Review →
                   </Button>
                 </div>
+              )}
+              {pendingCorrectionsCount > 0 && (
+                <button
+                  type="button"
+                  className="mt-2 w-full flex items-center gap-2 text-xs text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 rounded-lg p-2 hover:bg-orange-100 dark:hover:bg-orange-950/50 transition-colors text-left"
+                  onClick={() => setLocation("/admin/hr/my-team?tab=corrections")}
+                  data-testid="card-pending-corrections"
+                >
+                  <FileCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    <span className="font-semibold">{pendingCorrectionsCount}</span> attendance{" "}
+                    {pendingCorrectionsCount === 1 ? "correction" : "corrections"} awaiting your review
+                  </span>
+                  <span className="ml-auto font-medium" data-testid="link-review-corrections">Review →</span>
+                </button>
               )}
               {corrSummaryHR !== undefined && (
                 <button

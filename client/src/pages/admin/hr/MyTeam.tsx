@@ -74,6 +74,8 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ShiftTimingInfo {
   istStart: string;
@@ -1220,12 +1222,58 @@ function EmergencyContactsTab({
   );
 }
 
-// Team-level manager queue: shows ALL pending regularization requests across direct reports
+// Read-only attendance context card shown inside the manager review modal
+function RegAttendanceContext({ employeeId, date }: { employeeId: string; date: string }) {
+  const { data, isLoading } = useQuery<{ attendance: AttendanceRecord[] }>({
+    queryKey: ["/api/hr/attendance/member", employeeId, "range", date],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/attendance/member/${employeeId}/range?startDate=${date}&endDate=${date}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!employeeId && !!date,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-border p-3 space-y-2" data-testid="reg-context-loading">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    );
+  }
+
+  const rec = (data?.attendance || []).find(r => r.date === date) || null;
+
+  return (
+    <div className="rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 p-3 text-xs space-y-1.5" data-testid="reg-context-card">
+      <p className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+        <Clock className="h-3.5 w-3.5" /> Recorded Attendance
+      </p>
+      {rec ? (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <div><span className="text-muted-foreground">Date: </span><span className="font-mono">{rec.date}</span></div>
+          <div><span className="text-muted-foreground">Status: </span><span className="font-medium">{(rec.status || "—").replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground">Punch In: </span><span className="font-mono" data-testid="reg-context-punch-in">{formatTime(rec.punchIn)}</span></div>
+          <div><span className="text-muted-foreground">Punch Out: </span><span className="font-mono" data-testid="reg-context-punch-out">{formatTime(rec.punchOut)}</span></div>
+          <div><span className="text-muted-foreground">Hours: </span><span className="font-mono">{rec.totalHours ?? "—"}</span></div>
+        </div>
+      ) : (
+        <p className="text-muted-foreground" data-testid="reg-context-empty">No attendance record on file for this date (likely marked absent / no punch).</p>
+      )}
+    </div>
+  );
+}
+
 function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: string) => void }) {
   const { toast } = useToast();
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [decision, setDecision] = useState<"approved" | "rejected">("approved");
   const [comment, setComment] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkComment, setBulkComment] = useState("");
 
   const { data: requests, isLoading } = useQuery<any[]>({
     queryKey: ["/api/hr/attendance/regularization", "team-queue"],
@@ -1241,6 +1289,11 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
   });
   const cutoffDay = policyConfig?.managerCutoffDay ?? 20;
 
+  const invalidateQueues = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization", "team-queue"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization", "pending-count"] });
+  };
+
   const reviewMutation = useMutation({
     mutationFn: () =>
       apiRequest("PATCH", `/api/hr/attendance/regularization/${reviewId}/review`, {
@@ -1248,7 +1301,7 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
         reviewerComment: comment,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization", "team-queue"] });
+      invalidateQueues();
       toast({ title: decision === "approved" ? "Request Approved" : "Request Rejected" });
       setReviewId(null);
       setComment("");
@@ -1258,9 +1311,40 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
     },
   });
 
+  const bulkMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/hr/attendance/regularization/bulk-approve", {
+        ids: Array.from(selectedIds),
+        reviewerComment: bulkComment,
+      }),
+    onSuccess: async (res: any) => {
+      let approvedCount = selectedIds.size;
+      let skippedCount = 0;
+      try {
+        const data = await res.json();
+        approvedCount = data.approvedCount ?? approvedCount;
+        skippedCount = data.skippedCount ?? 0;
+      } catch {}
+      invalidateQueues();
+      toast({
+        title: "Requests Approved",
+        description: `${approvedCount} approved${skippedCount > 0 ? `, ${skippedCount} skipped` : ""}`,
+      });
+      setBulkOpen(false);
+      setBulkComment("");
+      setSelectedIds(new Set());
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to bulk approve", variant: "destructive" });
+    },
+  });
+
   const pending = (requests || []).filter(r => r.status === "pending");
 
-  if (pending.length === 0) return null;
+  const isWithinWindow = (r: any) => {
+    const reqDay = Number(r.attendanceDate?.split("-")[2] ?? 0);
+    return reqDay <= cutoffDay;
+  };
 
   // Group by employee
   const byEmployee: Record<string, { name: string; requests: any[] }> = {};
@@ -1269,19 +1353,60 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
     byEmployee[r.employeeId].requests.push(r);
   }
 
+  const selectableIds = pending.filter(isWithinWindow).map(r => r.id);
+  const allSelectableChecked = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id));
+
+  const toggleId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllSelectable = () => {
+    if (allSelectableChecked) setSelectedIds(new Set());
+    else setSelectedIds(new Set(selectableIds));
+  };
+
   const reviewing = pending.find(r => r.id === reviewId);
+
+  if (!isLoading && pending.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground" data-testid="corrections-empty-state">
+          <CheckCircle className="h-10 w-10 mx-auto mb-3 text-green-500/70" />
+          <p className="text-sm font-medium">No pending attendance corrections</p>
+          <p className="text-xs mt-1">Regularization requests from your team will appear here for review.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <>
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-amber-500" />
-            Pending Regularization Requests
-            <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 text-xs font-semibold">
-              {pending.length}
-            </span>
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-amber-500" />
+              Pending Regularization Requests
+              <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 text-xs font-semibold">
+                {pending.length}
+              </span>
+            </CardTitle>
+            {selectableIds.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleAllSelectable}
+                className="text-xs text-primary hover:underline shrink-0"
+                data-testid="button-select-all-corrections"
+              >
+                {allSelectableChecked ? "Clear selection" : `Select all (${selectableIds.length})`}
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -1299,20 +1424,28 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
                   </button>
                   <div className="space-y-1.5">
                     {empReqs.map(r => {
-                      const reqDay = Number(r.attendanceDate?.split("-")[2] ?? 0);
-                      const pastCutoff = reqDay > cutoffDay;
+                      const within = isWithinWindow(r);
                       return (
                         <div key={r.id} className="flex items-center gap-3 text-sm" data-testid={`team-queue-row-${r.id}`}>
+                          {within ? (
+                            <Checkbox
+                              checked={selectedIds.has(r.id)}
+                              onCheckedChange={() => toggleId(r.id)}
+                              data-testid={`checkbox-correction-${r.id}`}
+                            />
+                          ) : (
+                            <span className="w-4 shrink-0" />
+                          )}
                           <span className="font-mono text-xs">{r.attendanceDate}</span>
                           <span className="text-muted-foreground text-xs">{REG_TYPE_LABELS_QUEUE[r.requestType] || r.requestType}</span>
-                          {pastCutoff ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-0.5" title={`Past cutoff day ${cutoffDay} — HR must handle`}>
-                              Refer to HR
-                            </span>
-                          ) : (
-                            <Button size="sm" variant="outline" className="h-6 text-xs px-2 py-0" onClick={() => { setReviewId(r.id); setDecision("approved"); setComment(""); }} data-testid={`button-queue-review-${r.id}`}>
+                          {within ? (
+                            <Button size="sm" variant="outline" className="h-6 text-xs px-2 py-0 ml-auto" onClick={() => { setReviewId(r.id); setDecision("approved"); setComment(""); }} data-testid={`button-queue-review-${r.id}`}>
                               Review
                             </Button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-0.5 ml-auto" title={`Past cutoff day ${cutoffDay} — HR must handle`}>
+                              Refer to HR
+                            </span>
                           )}
                         </div>
                       );
@@ -1325,6 +1458,50 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
         </CardContent>
       </Card>
 
+      {/* Sticky bulk-approve bar */}
+      {selectedIds.size >= 2 && (
+        <div className="sticky bottom-4 z-40 flex items-center justify-between gap-3 rounded-xl border border-border bg-background shadow-lg px-4 py-3" data-testid="bulk-approve-bar">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <Button size="sm" onClick={() => setBulkOpen(true)} data-testid="button-open-bulk-approve">
+            <CheckCircle className="h-4 w-4 mr-1.5" /> Approve Selected
+          </Button>
+        </div>
+      )}
+
+      {/* Bulk approve confirm */}
+      <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o) setBulkOpen(false); }}>
+        <DialogContent data-testid="dialog-bulk-approve">
+          <DialogHeader>
+            <DialogTitle>Approve {selectedIds.size} Requests</DialogTitle>
+            <DialogDescription>
+              These {selectedIds.size} attendance corrections will be approved with one shared comment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Shared Comment <span className="text-destructive">*</span></Label>
+            <Textarea
+              value={bulkComment}
+              onChange={(e) => setBulkComment(e.target.value)}
+              placeholder="Reason / note applied to all selected approvals (min 10 characters)..."
+              data-testid="input-bulk-approve-comment"
+            />
+            {bulkComment.trim().length > 0 && bulkComment.trim().length < 10 && (
+              <p className="text-xs text-destructive">Comment must be at least 10 characters.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => bulkMutation.mutate()}
+              disabled={bulkComment.trim().length < 10 || bulkMutation.isPending}
+              data-testid="button-confirm-bulk-approve"
+            >
+              {bulkMutation.isPending ? "Approving..." : `Approve ${selectedIds.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {reviewId && reviewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-background border border-border rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 space-y-4">
@@ -1335,6 +1512,7 @@ function ManagerRegularizationQueue({ onViewEmployee }: { onViewEmployee: (id: s
               <p><span className="text-muted-foreground">Type: </span>{REG_TYPE_LABELS_QUEUE[reviewing.requestType] || reviewing.requestType}</p>
               <p><span className="text-muted-foreground">Reason: </span>{reviewing.reason}</p>
             </div>
+            <RegAttendanceContext employeeId={reviewing.employeeId} date={reviewing.attendanceDate} />
             <div className="flex gap-2">
               <Button size="sm" variant={decision === "approved" ? "default" : "outline"} onClick={() => setDecision("approved")} data-testid="button-queue-approve">
                 <CheckCircle className="h-4 w-4 mr-1" /> Approve
@@ -3209,7 +3387,13 @@ export default function MyTeam() {
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [pageTab, setPageTab] = useState<"team" | "plans">("team");
+  const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections">(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t === "corrections" || t === "plans") return t;
+    } catch {}
+    return "team";
+  });
 
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
@@ -3257,6 +3441,8 @@ export default function MyTeam() {
     },
     staleTime: 30000,
   });
+
+  const pendingCorrectionsCount = usePendingRegularizationCount(true);
 
   const detailsQuery = useQuery<EmployeeDetails>({
     queryKey: ["/api/admin/my-team", selectedUserId, "details"],
@@ -3929,11 +4115,20 @@ export default function MyTeam() {
           </div>
         </div>
 
-        <Tabs value={pageTab} onValueChange={v => setPageTab(v as "team" | "plans")}>
+        <Tabs value={pageTab} onValueChange={v => setPageTab(v as "team" | "plans" | "corrections")}>
           <TabsList data-testid="tabs-page-level">
             <TabsTrigger value="team" data-testid="tab-team">
               <Users className="h-4 w-4 mr-1.5" />
               Team
+            </TabsTrigger>
+            <TabsTrigger value="corrections" data-testid="tab-corrections">
+              <ClipboardList className="h-4 w-4 mr-1.5" />
+              Corrections
+              {pendingCorrectionsCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-orange-500 text-white px-1.5 py-0.5 text-xs font-medium" data-testid="badge-corrections-count">
+                  {pendingCorrectionsCount > 9 ? "9+" : pendingCorrectionsCount}
+                </span>
+              )}
             </TabsTrigger>
             {(activePlansQuery.isLoading || (activePlansQuery.data?.length ?? 0) > 0) && (
               <TabsTrigger value="plans" data-testid="tab-plans">
@@ -3960,7 +4155,21 @@ export default function MyTeam() {
               />
             </div>
 
-            <ManagerRegularizationQueue onViewEmployee={(id) => setSelectedUserId(id)} />
+            {pendingCorrectionsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setPageTab("corrections")}
+                className="w-full flex items-center gap-2 text-sm text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900 rounded-lg p-3 hover:bg-orange-100 dark:hover:bg-orange-950/50 transition-colors text-left"
+                data-testid="banner-go-to-corrections"
+              >
+                <ClipboardList className="h-4 w-4 shrink-0" />
+                <span>
+                  <span className="font-semibold">{pendingCorrectionsCount}</span> pending attendance{" "}
+                  {pendingCorrectionsCount === 1 ? "correction" : "corrections"} awaiting your review
+                </span>
+                <span className="ml-auto font-medium">Go to Corrections →</span>
+              </button>
+            )}
 
             {membersQuery.isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -4008,6 +4217,10 @@ export default function MyTeam() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="corrections" className="mt-4 space-y-6">
+            <ManagerRegularizationQueue onViewEmployee={(id) => setSelectedUserId(id)} />
           </TabsContent>
 
           <TabsContent value="plans" className="mt-4">

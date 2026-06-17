@@ -2,6 +2,7 @@ import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { Link, useLocation } from "wouter";
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import {
   LayoutDashboard,
   Briefcase,
@@ -25,6 +26,7 @@ import {
   CalendarOff,
   MessageCircle,
   FileText,
+  ClipboardList,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +87,7 @@ interface NavItem {
   roles: string[];
   badge?: number;
   badgeColor?: string;
+  regCount?: number;
   gated?: boolean;
 }
 
@@ -148,11 +151,28 @@ function NavItemButton({
                 {item.badge > 9 ? "9+" : item.badge}
               </span>
             ) : null}
+            {!open && item.regCount && item.regCount > 0 ? (
+              <span
+                className="absolute -bottom-1.5 -right-1.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-1 ring-background"
+                data-testid={`badge-nav-reg-dot-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                title={`${item.regCount} pending attendance correction${item.regCount === 1 ? "" : "s"}`}
+              />
+            ) : null}
           </div>
           <span className="flex-1 group-data-[collapsible=icon]:hidden">{item.label}</span>
+          {open && item.regCount && item.regCount > 0 ? (
+            <span
+              className="ml-auto inline-flex items-center gap-1 text-xs font-bold rounded-full min-w-5 h-5 px-1.5 bg-orange-500 text-white"
+              data-testid={`badge-nav-reg-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+              title={`${item.regCount} pending attendance correction${item.regCount === 1 ? "" : "s"}`}
+            >
+              <ClipboardList className="h-3 w-3" />
+              {item.regCount > 9 ? "9+" : item.regCount}
+            </span>
+          ) : null}
           {open && item.badge && item.badge > 0 ? (
             <span
-              className={`ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-white ${item.badgeColor || "bg-red-500"}`}
+              className={`${item.regCount && item.regCount > 0 ? "ml-1" : "ml-auto"} text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-white ${item.badgeColor || "bg-red-500"}`}
               data-testid={`badge-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
               {item.badge > 9 ? "9+" : item.badge}
@@ -415,7 +435,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const trainingReqBadge = (trainingRequestsCount?.actionable ?? 0);
 
-  // Combined My Team badge: leave approvals + training requests
+  // Pending regularization (attendance correction) requests for the team
+  const pendingRegCount = usePendingRegularizationCount(
+    !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "")
+  );
+
+  // Combined My Team badge: leave approvals + training requests.
+  // Pending regularizations get their own distinct indicator (see teamNavItems regCount)
+  // so they appear/disappear independently of leave/training signals.
   const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge;
 
   // People & HR badge: endorsements + training requests actionable by HR/admin/super_admin
@@ -470,6 +497,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["super_admin", "admin", "hr", "operations", "manager"],
       badge: myTeamBadge > 0 ? myTeamBadge : undefined,
       badgeColor: trainingReqBadge > 0 ? "bg-amber-500" : "bg-blue-500",
+      regCount: pendingRegCount,
     }] : []),
     ...(hasNewHireAccess ? [{
       href: "/admin/new-hire",
