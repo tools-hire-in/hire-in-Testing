@@ -48,7 +48,8 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
+import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
@@ -553,6 +554,178 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to record reaction:", error);
       res.status(500).json({ message: "Failed to record reaction" });
+    }
+  });
+
+  // ==========================================
+  // NEWSLETTER (public subscribe / unsubscribe / SendGrid events)
+  // ==========================================
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Single opt-in subscribe. Subscriber is active immediately.
+  app.post("/api/newsletter/subscribe", async (req, res) => {
+    try {
+      const raw = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      if (!raw || !EMAIL_RE.test(raw) || raw.length > 254) {
+        return res.status(400).json({ status: "invalid", message: "Please enter a valid email address." });
+      }
+
+      const baseUrl = baseUrlFrom(req);
+      const existing = await storage.getNewsletterSubscriberByEmail(raw);
+
+      if (existing) {
+        const isActive = !existing.unsubscribedAt && !existing.suppressedAt;
+        if (isActive) {
+          return res.json({ status: "already_subscribed", message: "You're already subscribed" });
+        }
+        // Reactivate a previously unsubscribed/suppressed subscriber.
+        const reactivated = await storage.updateNewsletterSubscriber(existing.id, {
+          unsubscribedAt: null,
+          suppressedAt: null,
+          bounceCount: 0,
+          lastBounceAt: null,
+          confirmedAt: new Date(),
+        });
+        const subId = reactivated?.id ?? existing.id;
+        sendNewsletterWelcomeEmail({
+          to: raw,
+          unsubscribeUrl: unsubscribeUrlFor(subId, baseUrl),
+          insightsUrl: insightsUrl(baseUrl),
+        }).catch((e) => console.error("Welcome email (reactivate) failed:", e));
+        return res.json({ status: "subscribed", message: "You're subscribed!" });
+      }
+
+      const created = await storage.createNewsletterSubscriber({
+        email: raw,
+        confirmedAt: new Date(),
+      } as any);
+      sendNewsletterWelcomeEmail({
+        to: raw,
+        unsubscribeUrl: unsubscribeUrlFor(created.id, baseUrl),
+        insightsUrl: insightsUrl(baseUrl),
+      }).catch((e) => console.error("Welcome email failed:", e));
+      return res.json({ status: "subscribed", message: "You're subscribed!" });
+    } catch (error) {
+      console.error("Newsletter subscribe error:", error);
+      res.status(500).json({ status: "error", message: "Something went wrong. Please try again." });
+    }
+  });
+
+  // One-click unsubscribe via signed token. Renders a simple HTML page.
+  app.get("/api/newsletter/unsubscribe/:token", async (req, res) => {
+    const renderPage = (heading: string, body: string) =>
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>Hire'in Insights</title>
+        <style>
+          body{margin:0;font-family:'Inter','Segoe UI',Arial,sans-serif;background:#f2f4f7;color:#1e293b;}
+          .wrap{max-width:520px;margin:64px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(15,23,42,.08);}
+          .hd{background:linear-gradient(135deg,#1F3A6E 0%,#F47C20 100%);padding:28px;text-align:center;color:#fff;}
+          .hd h1{margin:0;font-size:22px;font-weight:700;}
+          .bd{padding:32px;text-align:center;}
+          .bd h2{margin:0 0 12px;font-size:20px;}
+          .bd p{color:#475569;line-height:1.6;margin:0 0 20px;}
+          .btn{display:inline-block;background:#1F3A6E;color:#fff;text-decoration:none;padding:11px 26px;border-radius:6px;font-weight:600;}
+        </style></head>
+        <body><div class="wrap"><div class="hd"><h1>Hire'in Insights</h1></div>
+        <div class="bd"><h2>${heading}</h2><p>${body}</p>
+        <a class="btn" href="https://hire-in.com/insights">Back to Insights</a></div></div></body></html>`;
+
+    try {
+      const subId = verifyUnsubscribeToken(req.params.token);
+      if (!subId) {
+        return res.status(400).send(renderPage("Invalid link", "This unsubscribe link is invalid or has been tampered with."));
+      }
+      const sub = await storage.getNewsletterSubscriber(subId);
+      if (!sub) {
+        return res.status(404).send(renderPage("Not found", "We couldn't find that subscription."));
+      }
+      if (!sub.unsubscribedAt) {
+        await storage.updateNewsletterSubscriber(sub.id, { unsubscribedAt: new Date() });
+      }
+      return res.send(
+        renderPage(
+          "You've been unsubscribed",
+          `${sub.email} will no longer receive Hire'in Insights emails. Changed your mind? You can resubscribe anytime from our Insights page.`,
+        ),
+      );
+    } catch (error) {
+      console.error("Newsletter unsubscribe error:", error);
+      res.status(500).send(renderPage("Something went wrong", "Please try again later."));
+    }
+  });
+
+  // SendGrid Event Webhook — bounce / dropped / blocked / spamreport handling.
+  // NOTE (team setup): configure this URL + signed event verification in the
+  // SendGrid dashboard (Settings > Mail Settings > Event Webhook). Set the
+  // SENDGRID_WEBHOOK_VERIFICATION_KEY env var to the public key SendGrid shows
+  // so signatures are verified; without it events are accepted unverified.
+  app.post("/api/newsletter/sendgrid-events", async (req, res) => {
+    try {
+      const verifyKey = process.env.SENDGRID_WEBHOOK_VERIFICATION_KEY;
+      if (verifyKey) {
+        const signature = req.get("X-Twilio-Email-Event-Webhook-Signature");
+        const timestamp = req.get("X-Twilio-Email-Event-Webhook-Timestamp");
+        const rawBody = (req as any).rawBody as Buffer | undefined;
+        let verified = false;
+        if (signature && timestamp && rawBody) {
+          try {
+            const payload = Buffer.concat([Buffer.from(timestamp), rawBody]);
+            const pubKeyPem = `-----BEGIN PUBLIC KEY-----\n${verifyKey}\n-----END PUBLIC KEY-----`;
+            const verifier = crypto.createVerify("sha256");
+            verifier.update(payload);
+            verifier.end();
+            verified = verifier.verify(pubKeyPem, Buffer.from(signature, "base64"));
+          } catch (e) {
+            console.error("SendGrid signature verify error:", e);
+          }
+        }
+        if (!verified) {
+          return res.status(403).json({ error: "Invalid signature" });
+        }
+      }
+
+      const events = Array.isArray(req.body) ? req.body : [];
+      for (const ev of events) {
+        const email = typeof ev?.email === "string" ? ev.email.toLowerCase() : "";
+        const type = typeof ev?.event === "string" ? ev.event : "";
+        if (!email) continue;
+        const sub = await storage.getNewsletterSubscriberByEmail(email);
+        if (!sub) continue;
+
+        if (type === "delivered") {
+          if (sub.bounceCount > 0) {
+            await storage.updateNewsletterSubscriber(sub.id, { bounceCount: 0 });
+          }
+          continue;
+        }
+
+        const isHard =
+          type === "spamreport" ||
+          type === "blocked" ||
+          (type === "bounce" && (ev?.type === "bounce" || ev?.bounce_classification === "Invalid Address"));
+        const isSoft = type === "dropped" || (type === "bounce" && !isHard);
+
+        if (type === "spamreport" || isHard) {
+          await storage.updateNewsletterSubscriber(sub.id, {
+            suppressedAt: sub.suppressedAt ?? new Date(),
+            lastBounceAt: new Date(),
+            bounceCount: sub.bounceCount + 1,
+          });
+        } else if (isSoft) {
+          const nextCount = sub.bounceCount + 1;
+          await storage.updateNewsletterSubscriber(sub.id, {
+            bounceCount: nextCount,
+            lastBounceAt: new Date(),
+            suppressedAt: nextCount >= 2 ? (sub.suppressedAt ?? new Date()) : sub.suppressedAt,
+          });
+        }
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("SendGrid event webhook error:", error);
+      res.status(500).json({ error: "Failed to process events" });
     }
   });
 
@@ -9445,6 +9618,101 @@ export async function registerRoutes(
     },
   );
 
+  // ---- Newsletter notifications feature flag (studio.manage_settings) ----
+  app.get(
+    "/api/admin/studio/newsletter-flag",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (_req: Request, res: Response) => {
+      try {
+        const setting = await storage.getSystemSetting(NEWSLETTER_FLAG_KEY);
+        const v = setting?.value as any;
+        const enabled = typeof v === "boolean" ? v : !!(v && typeof v === "object" && v.enabled);
+        res.json({ enabled });
+      } catch (error) {
+        console.error("Get newsletter flag error:", error);
+        res.status(500).json({ error: "Failed to fetch flag" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/admin/studio/newsletter-flag",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const enabled = !!req.body?.enabled;
+        await storage.upsertSystemSetting(NEWSLETTER_FLAG_KEY, enabled, req.session.userId);
+        res.json({ enabled });
+      } catch (error) {
+        console.error("Update newsletter flag error:", error);
+        res.status(500).json({ error: "Failed to update flag" });
+      }
+    },
+  );
+
+  // ---- Newsletter subscribers (studio.manage_settings) ----
+  app.get(
+    "/api/admin/studio/subscribers",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (_req: Request, res: Response) => {
+      try {
+        const [subscribers, counts] = await Promise.all([
+          storage.getAllNewsletterSubscribers(),
+          storage.getNewsletterSubscriberCounts(),
+        ]);
+        const items = subscribers.map((s) => ({
+          id: s.id,
+          email: s.email,
+          status: s.suppressedAt ? "suppressed" : s.unsubscribedAt ? "unsubscribed" : "active",
+          subscribedAt: s.createdAt,
+          unsubscribedAt: s.unsubscribedAt,
+          suppressedAt: s.suppressedAt,
+          lastBounceAt: s.lastBounceAt,
+          bounceCount: s.bounceCount,
+        }));
+        res.json({ items, counts });
+      } catch (error) {
+        console.error("Get subscribers error:", error);
+        res.status(500).json({ error: "Failed to fetch subscribers" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/studio/subscribers/export",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (_req: Request, res: Response) => {
+      try {
+        const subscribers = await storage.getAllNewsletterSubscribers();
+        const esc = (v: any) => {
+          const s = v == null ? "" : String(v);
+          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const header = ["Email", "Status", "Subscribed At", "Unsubscribed At", "Suppressed At", "Last Bounce At", "Bounce Count"];
+        const rows = subscribers.map((s) => [
+          s.email,
+          s.suppressedAt ? "Suppressed" : s.unsubscribedAt ? "Unsubscribed" : "Active",
+          s.createdAt ? new Date(s.createdAt).toISOString() : "",
+          s.unsubscribedAt ? new Date(s.unsubscribedAt).toISOString() : "",
+          s.suppressedAt ? new Date(s.suppressedAt).toISOString() : "",
+          s.lastBounceAt ? new Date(s.lastBounceAt).toISOString() : "",
+          s.bounceCount,
+        ]);
+        const csv = [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="newsletter-subscribers-${new Date().toISOString().slice(0, 10)}.csv"`);
+        res.send(csv);
+      } catch (error) {
+        console.error("Export subscribers error:", error);
+        res.status(500).json({ error: "Failed to export subscribers" });
+      }
+    },
+  );
+
   // ---- Articles ----
 
   // List articles with filters + pagination.
@@ -9977,6 +10245,9 @@ export async function registerRoutes(
         }
 
         const updated = await storage.updateStudioArticle(req.params.id, updates);
+        if (to === "published") {
+          void notifyNewContentSubscribers(req.params.id);
+        }
         await storage.createStudioAuditEvent({
           articleId: req.params.id,
           actorUserId: req.session.userId,
@@ -10522,6 +10793,12 @@ export async function registerRoutes(
       ? { status: "scheduled", scheduledAt: opts.scheduledAt }
       : { status: "published", publishedAt: new Date(), scheduledAt: opts.scheduledAt ?? null };
     const updated = await storage.updateStudioArticle(article.id, updates);
+    // Fire-and-forget per-publish subscriber notification (gated internally by
+    // the newsletter flag + publishesToInsights + notifiedAt guard). Uses the
+    // public production base URL so links work for real subscribers.
+    if (!isFuture) {
+      void notifyNewContentSubscribers(article.id);
+    }
     return { updated, scheduled: isFuture };
   };
 

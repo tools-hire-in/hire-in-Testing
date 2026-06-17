@@ -2452,3 +2452,127 @@ export async function sendStudioRejectionEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+// ===========================================================================
+// Newsletter (Hire'in Insights) — subscribe welcome + new-content notification
+// ===========================================================================
+
+// Shared transparency + unsubscribe footer used by every newsletter email
+// (legal requirement: state why they get it + a one-click unsubscribe link).
+function newsletterFooterHtml(email: string, unsubscribeUrl: string) {
+  return `
+          <div style="background: #f8fafc; padding: 24px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #64748b; font-size: 12px; line-height: 1.6; margin: 0 0 8px;">
+              You're receiving this because you subscribed to Hire'in Insights as
+              <span style="color: #1F3A6E; font-weight: 600;">${email}</span>.
+            </p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px;">
+              <a href="${unsubscribeUrl}" style="color: #F47C20; text-decoration: underline;">Unsubscribe</a>
+              from these emails at any time.
+            </p>
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>`;
+}
+
+function newsletterFooterText(email: string, unsubscribeUrl: string) {
+  return `\n\nYou're receiving this because you subscribed to Hire'in Insights as ${email}.\nUnsubscribe at any time: ${unsubscribeUrl}\n\n© ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP).`;
+}
+
+export async function sendNewsletterWelcomeEmail(options: {
+  to: string;
+  unsubscribeUrl: string;
+  insightsUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Insights" },
+      subject: "You're subscribed to Hire'in Insights",
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 36px 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 700; font-family: 'Playfair Display', Georgia, serif;">Hire'in Insights</h1>
+            <p style="color: #e2e8f0; margin: 10px 0 0; font-size: 14px;">Welcome aboard</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">You're subscribed!</h2>
+            <p style="color: #475569; line-height: 1.7; margin: 0 0 16px;">
+              Thanks for subscribing to <strong>Hire'in Insights</strong>. You'll now get a short email
+              whenever we publish a new article on staffing, hiring, and recruitment — no spam, just the
+              ideas worth your time.
+            </p>
+            <p style="color: #475569; line-height: 1.7; margin: 0 0 24px;">
+              In the meantime, explore what we've already published.
+            </p>
+            <div style="text-align: center; margin: 8px 0 8px;">
+              <a href="${options.insightsUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Browse Insights
+              </a>
+            </div>
+          </div>
+          ${newsletterFooterHtml(options.to, options.unsubscribeUrl)}
+        </div>
+      `,
+      text: `You're subscribed!\n\nThanks for subscribing to Hire'in Insights. You'll now get a short email whenever we publish a new article on staffing, hiring, and recruitment.\n\nBrowse Insights: ${options.insightsUrl}${newsletterFooterText(options.to, options.unsubscribeUrl)}`,
+    };
+    await client.send(msg);
+    console.log(`Newsletter welcome email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send newsletter welcome email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendNewsletterNotificationEmail(options: {
+  to: string;
+  unsubscribeUrl: string;
+  articleTitle: string;
+  articleExcerpt?: string | null;
+  articleImageUrl?: string | null;
+  articleUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const image = options.articleImageUrl
+      ? `<img src="${options.articleImageUrl}" alt="${options.articleTitle}" style="width: 100%; max-width: 536px; border-radius: 10px; display: block; margin: 0 0 20px;" />`
+      : "";
+    const excerpt = options.articleExcerpt
+      ? `<p style="color: #475569; line-height: 1.7; margin: 0 0 24px; font-size: 15px;">${options.articleExcerpt}</p>`
+      : "";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in Insights" },
+      subject: `New on Hire'in Insights: ${options.articleTitle}`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #F47C20 100%); padding: 28px 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; font-family: 'Playfair Display', Georgia, serif;">Hire'in Insights</h1>
+            <p style="color: #e2e8f0; margin: 8px 0 0; font-size: 13px;">New article published</p>
+          </div>
+          <div style="padding: 32px;">
+            ${image}
+            <h2 style="color: #1e293b; margin: 0 0 14px; font-size: 22px; line-height: 1.3; font-family: 'Playfair Display', Georgia, serif;">${options.articleTitle}</h2>
+            ${excerpt}
+            <div style="text-align: center; margin: 8px 0 8px;">
+              <a href="${options.articleUrl}" style="display: inline-block; background: #F47C20; color: #ffffff; text-decoration: none; padding: 13px 36px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+                Read the article
+              </a>
+            </div>
+          </div>
+          ${newsletterFooterHtml(options.to, options.unsubscribeUrl)}
+        </div>
+      `,
+      text: `New on Hire'in Insights: ${options.articleTitle}\n\n${options.articleExcerpt ? options.articleExcerpt + "\n\n" : ""}Read the article: ${options.articleUrl}${newsletterFooterText(options.to, options.unsubscribeUrl)}`,
+    };
+    await client.send(msg);
+    console.log(`Newsletter notification email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send newsletter notification email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}

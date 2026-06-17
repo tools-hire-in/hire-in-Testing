@@ -863,6 +863,12 @@ export function startScheduler() {
             status: "published",
             publishedAt: new Date(),
           } as any);
+          try {
+            const { notifyNewContentSubscribers } = await import("./newsletterService");
+            void notifyNewContentSubscribers(article.id);
+          } catch (e) {
+            console.error("[scheduler] newsletter notify failed:", e);
+          }
           await storage.createStudioAuditEvent({
             articleId: article.id,
             actorUserId: null,

@@ -2264,6 +2264,9 @@ export const studioArticles = pgTable("studio_articles", {
   riskFlags: jsonb("risk_flags"),
   riskFlagsResolvedAt: timestamp("risk_flags_resolved_at"),
   riskFlagsResolvedBy: varchar("risk_flags_resolved_by"),
+  // Set once when the per-publish new-content notification email has been sent
+  // to newsletter subscribers. Guards against re-sending on re-publish/edit.
+  notifiedAt: timestamp("notified_at"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2310,6 +2313,12 @@ export const studioNewsletterSubscribers = pgTable("studio_newsletter_subscriber
   projectId: varchar("project_id").references(() => studioProjects.id),
   confirmedAt: timestamp("confirmed_at"),
   unsubscribedAt: timestamp("unsubscribed_at"),
+  // Deliverability suppression (driven by the SendGrid event webhook).
+  // suppressedAt set => excluded from all future sends. bounceCount tracks
+  // consecutive soft-bounce/drop failures; reset to 0 on successful delivery.
+  suppressedAt: timestamp("suppressed_at"),
+  bounceCount: integer("bounce_count").default(0).notNull(),
+  lastBounceAt: timestamp("last_bounce_at"),
   preferences: jsonb("preferences"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

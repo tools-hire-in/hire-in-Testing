@@ -101,6 +101,9 @@ import {
   studioPromptTemplates,
   studioGenerations,
   studioReviewAssignments,
+  studioNewsletterSubscribers,
+  type StudioNewsletterSubscriber,
+  type InsertStudioNewsletterSubscriber,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -490,6 +493,15 @@ export interface IStorage {
     limit: number,
   ): Promise<PublicInsightArticle[]>;
   getPublishedInsightSlugs(): Promise<{ slug: string; publishedAt: Date | null; updatedAt: Date }[]>;
+
+  // Newsletter subscribers
+  getNewsletterSubscriberByEmail(email: string): Promise<StudioNewsletterSubscriber | undefined>;
+  getNewsletterSubscriber(id: string): Promise<StudioNewsletterSubscriber | undefined>;
+  createNewsletterSubscriber(data: InsertStudioNewsletterSubscriber): Promise<StudioNewsletterSubscriber>;
+  updateNewsletterSubscriber(id: string, updates: Partial<StudioNewsletterSubscriber>): Promise<StudioNewsletterSubscriber | undefined>;
+  getActiveNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]>;
+  getAllNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]>;
+  getNewsletterSubscriberCounts(): Promise<{ active: number; unsubscribed: number; suppressed: number }>;
 }
 
 export type PublicInsightArticle = StudioArticle & {
@@ -3736,6 +3748,75 @@ export class DatabaseStorage implements IStorage {
     return rows
       .filter((r) => !!r.slug)
       .map((r) => ({ slug: r.slug as string, publishedAt: r.publishedAt, updatedAt: r.updatedAt }));
+  }
+
+  // ---- Newsletter subscribers ----
+  async getNewsletterSubscriberByEmail(email: string): Promise<StudioNewsletterSubscriber | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioNewsletterSubscribers)
+      .where(eq(studioNewsletterSubscribers.email, email.toLowerCase()));
+    return row;
+  }
+
+  async getNewsletterSubscriber(id: string): Promise<StudioNewsletterSubscriber | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioNewsletterSubscribers)
+      .where(eq(studioNewsletterSubscribers.id, id));
+    return row;
+  }
+
+  async createNewsletterSubscriber(data: InsertStudioNewsletterSubscriber): Promise<StudioNewsletterSubscriber> {
+    const [row] = await db
+      .insert(studioNewsletterSubscribers)
+      .values({ ...data, email: data.email.toLowerCase() })
+      .returning();
+    return row;
+  }
+
+  async updateNewsletterSubscriber(
+    id: string,
+    updates: Partial<StudioNewsletterSubscriber>,
+  ): Promise<StudioNewsletterSubscriber | undefined> {
+    const [row] = await db
+      .update(studioNewsletterSubscribers)
+      .set(updates)
+      .where(eq(studioNewsletterSubscribers.id, id))
+      .returning();
+    return row;
+  }
+
+  async getActiveNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]> {
+    return db
+      .select()
+      .from(studioNewsletterSubscribers)
+      .where(
+        and(
+          isNull(studioNewsletterSubscribers.unsubscribedAt),
+          isNull(studioNewsletterSubscribers.suppressedAt),
+        ),
+      );
+  }
+
+  async getAllNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]> {
+    return db
+      .select()
+      .from(studioNewsletterSubscribers)
+      .orderBy(desc(studioNewsletterSubscribers.createdAt));
+  }
+
+  async getNewsletterSubscriberCounts(): Promise<{ active: number; unsubscribed: number; suppressed: number }> {
+    const rows = await db.select().from(studioNewsletterSubscribers);
+    let active = 0;
+    let unsubscribed = 0;
+    let suppressed = 0;
+    for (const r of rows) {
+      if (r.suppressedAt) suppressed++;
+      else if (r.unsubscribedAt) unsubscribed++;
+      else active++;
+    }
+    return { active, unsubscribed, suppressed };
   }
 
 }

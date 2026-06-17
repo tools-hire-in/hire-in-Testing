@@ -31,6 +31,7 @@ import type { StudioProject, StudioBrandSettings } from "@shared/schema";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
 import { RoutingSettings } from "./RoutingSettings";
+import { NewsletterSettings } from "./NewsletterSettings";
 import { usePermissions } from "@/hooks/use-permissions";
 
 const STORAGE_KEY = "studio.selectedProjectId";
@@ -512,6 +513,8 @@ export default function Studio() {
                     </Button>
                   </Link>
                 </div>
+
+                <NewsletterSettings />
               </div>
             )}
           </TabsContent>

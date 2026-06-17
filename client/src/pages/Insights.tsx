@@ -6,6 +6,7 @@ import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InsightCard } from "@/components/insights/InsightCard";
+import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
 import { INSIGHT_CATEGORIES } from "@shared/insights";
 import type { InsightListResponse } from "@/lib/insights";
 import { Newspaper, Loader2 } from "lucide-react";
@@ -169,6 +170,12 @@ export default function Insights() {
               )}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="px-4 pb-16 lg:px-6">
+        <div className="container mx-auto max-w-6xl">
+          <NewsletterSubscribe />
         </div>
       </section>
     </Layout>

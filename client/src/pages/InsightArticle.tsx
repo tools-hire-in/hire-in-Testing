@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { InsightCard } from "@/components/insights/InsightCard";
 import { ReactionBar } from "@/components/insights/ReactionBar";
 import { ShareBar } from "@/components/insights/ShareBar";
+import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
 import { insightCategoryLabel, ctaForCategory } from "@shared/insights";
 import { formatInsightDate, type InsightDetailResponse } from "@/lib/insights";
 import { Clock, ArrowLeft, ArrowRight, Linkedin, CheckCircle2, Lightbulb } from "lucide-react";
@@ -275,6 +276,12 @@ export default function InsightArticle() {
           <ShareBar title={article.title} />
         </div>
       </article>
+
+      <section className="px-4 pb-4 lg:px-6">
+        <div className="container mx-auto max-w-3xl">
+          <NewsletterSubscribe />
+        </div>
+      </section>
 
       {/* Related */}
       {related.length > 0 && (
