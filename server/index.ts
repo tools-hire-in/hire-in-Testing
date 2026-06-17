@@ -540,6 +540,8 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS social_cards_jsonb jsonb`);
     // Content category (used by analytics category breakdown + insights filtering).
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS category varchar`);
+    // Newsletter notify guard: set once when per-publish subscriber email sent.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS notified_at timestamp`);
     // Newsletter deliverability suppression columns (analytics subscriber counts).
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);
