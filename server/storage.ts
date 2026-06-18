@@ -443,6 +443,7 @@ export interface IStorage {
   getStudioAuthorProfile(id: string): Promise<StudioAuthorProfile | undefined>;
   createStudioAuthorProfile(data: InsertStudioAuthorProfile): Promise<StudioAuthorProfile>;
   updateStudioAuthorProfile(id: string, updates: Partial<InsertStudioAuthorProfile>): Promise<StudioAuthorProfile | undefined>;
+  deleteStudioAuthorProfile(id: string): Promise<void>;
   // Audit
   createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
   getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
@@ -3282,6 +3283,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(studioAuthorProfiles.id, id))
       .returning();
     return updated;
+  }
+
+  async deleteStudioAuthorProfile(id: string): Promise<void> {
+    await db.delete(studioAuthorProfiles).where(eq(studioAuthorProfiles.id, id));
   }
 
   // ---- Audit ----

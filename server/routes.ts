@@ -31,6 +31,7 @@ import {
 import {
   insertStudioArticleSchema,
   insertStudioAuthorProfileSchema,
+  studioArticles,
   type StudioArticle,
   type StudioRoutingRules,
 } from "@shared/schema";
@@ -12297,6 +12298,41 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Update studio author error:", error);
         res.status(400).json({ error: error?.message || "Failed to update author" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/admin/studio/authors/:id",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioAuthorProfile(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Author not found" });
+
+        const linkedArticles = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(studioArticles)
+          .where(eq(studioArticles.authorProfileId, req.params.id));
+        const articleCount = linkedArticles[0]?.count ?? 0;
+        if (articleCount > 0) {
+          return res.status(409).json({
+            error: `Author has ${articleCount} linked article${articleCount === 1 ? "" : "s"} — reassign them first.`,
+          });
+        }
+
+        await storage.deleteStudioAuthorProfile(req.params.id);
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "author_deleted",
+          metadata: { authorId: req.params.id, displayName: existing.displayName },
+        });
+        res.status(204).end();
+      } catch (error: any) {
+        console.error("Delete studio author error:", error);
+        res.status(500).json({ error: error?.message || "Failed to delete author" });
       }
     },
   );

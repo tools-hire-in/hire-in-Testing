@@ -20,13 +20,44 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Plus, UserCircle, Pencil, ShieldCheck, Users, Link, Camera, X } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  UserCircle,
+  Pencil,
+  ShieldCheck,
+  Users,
+  Link,
+  Camera,
+  X,
+  MoreHorizontal,
+  Trash2,
+  EyeOff,
+  Eye,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { StudioAuthorProfile } from "@shared/schema";
 
@@ -70,6 +101,9 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<StudioAuthorProfile | null>(null);
   const [form, setForm] = useState<AuthorForm>(EMPTY_FORM);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [showInactive, setShowInactive] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<StudioAuthorProfile | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: authors, isLoading } = useQuery<StudioAuthorProfile[]>({
     queryKey: ["/api/admin/studio/authors", { projectId }],
@@ -82,6 +116,14 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   });
 
   const selectedCandidate = candidates?.find((c) => c.id === selectedCandidateId) ?? null;
+
+  const visibleAuthors = authors
+    ? showInactive
+      ? authors
+      : authors.filter((a) => a.isActive)
+    : [];
+
+  const inactiveCount = authors ? authors.filter((a) => !a.isActive).length : 0;
 
   const openCreate = () => {
     setEditing(null);
@@ -167,18 +209,77 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/admin/studio/authors/${id}`, { isActive });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
+      toast({ title: variables.isActive ? "Author reactivated" : "Author deactivated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not update author", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/admin/studio/authors/${id}`);
+      if (res.status === 409) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Cannot delete author");
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to delete author");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
+      setDeleteTarget(null);
+      setDeleteError(null);
+      toast({ title: "Author deleted" });
+    },
+    onError: (err: Error) => {
+      setDeleteError(err.message);
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           Bylines available for articles in this project.
         </p>
-        {canManage && (
-          <Button onClick={openCreate} data-testid="button-new-author">
-            <Plus className="mr-2 h-4 w-4" />
-            New Author
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canManage && inactiveCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowInactive((v) => !v)}
+              data-testid="button-toggle-inactive"
+            >
+              {showInactive ? (
+                <>
+                  <EyeOff className="mr-1.5 h-3.5 w-3.5" />
+                  Hide inactive
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                  Show inactive ({inactiveCount})
+                </>
+              )}
+            </Button>
+          )}
+          {canManage && (
+            <Button onClick={openCreate} data-testid="button-new-author">
+              <Plus className="mr-2 h-4 w-4" />
+              New Author
+            </Button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -198,10 +299,23 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
             )}
           </CardContent>
         </Card>
+      ) : visibleAuthors.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <UserCircle className="h-8 w-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No active authors.</p>
+            {inactiveCount > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowInactive(true)} data-testid="button-show-inactive-empty">
+                <Eye className="mr-2 h-4 w-4" />
+                Show {inactiveCount} inactive
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {authors.map((a) => (
-            <Card key={a.id} data-testid={`card-author-${a.id}`}>
+          {visibleAuthors.map((a) => (
+            <Card key={a.id} data-testid={`card-author-${a.id}`} className={!a.isActive ? "opacity-60" : ""}>
               <CardContent className="space-y-3 p-4">
                 <div className="flex items-start gap-3">
                   <Avatar className="h-10 w-10">
@@ -213,21 +327,63 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 font-semibold">
                       <span className="truncate">{a.displayName}</span>
+                      {!a.isActive && (
+                        <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0" data-testid={`badge-inactive-${a.id}`}>
+                          Inactive
+                        </Badge>
+                      )}
                     </div>
                     {a.title && (
                       <div className="truncate text-xs text-muted-foreground">{a.title}</div>
                     )}
                   </div>
                   {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => openEdit(a)}
-                      data-testid={`button-edit-author-${a.id}`}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          data-testid={`button-actions-author-${a.id}`}
+                        >
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => openEdit(a)}
+                          data-testid={`menu-edit-author-${a.id}`}
+                        >
+                          <Pencil className="mr-2 h-3.5 w-3.5" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => toggleActiveMutation.mutate({ id: a.id, isActive: !a.isActive })}
+                          data-testid={`menu-toggle-active-author-${a.id}`}
+                        >
+                          {a.isActive ? (
+                            <>
+                              <EyeOff className="mr-2 h-3.5 w-3.5" />
+                              Deactivate
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="mr-2 h-3.5 w-3.5" />
+                              Reactivate
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => { setDeleteTarget(a); setDeleteError(null); }}
+                          data-testid={`menu-delete-author-${a.id}`}
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
                 {a.bio && <p className="line-clamp-3 text-sm text-muted-foreground">{a.bio}</p>}
@@ -401,6 +557,46 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) { setDeleteTarget(null); setDeleteError(null); }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete author profile?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteError ? (
+                <span className="text-destructive">{deleteError}</span>
+              ) : (
+                <>
+                  <strong>{deleteTarget?.displayName}</strong> will be permanently removed. This
+                  cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-author">Cancel</AlertDialogCancel>
+            {!deleteError && (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+                }}
+                disabled={deleteMutation.isPending}
+                data-testid="button-confirm-delete-author"
+              >
+                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
