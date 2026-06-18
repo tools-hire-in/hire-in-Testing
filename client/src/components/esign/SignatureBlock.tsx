@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ESIGN_FONTS } from "./EsignSetup";
 
 /**
  * SignatureBlock — the central, reusable e-signature form atom.
@@ -15,10 +16,9 @@ import { cn } from "@/lib/utils";
  * signing-date field, a live cursive signature preview, an optional extra gate
  * (e.g. policy annexures initialed), a submit button, and an audit notice.
  *
- * It is intentionally chrome-free: pages keep their own headers, detail cards
- * and success screens. The block only owns the consent + name state and exposes
- * the trimmed accepted name through onSubmit, so each page builds its own exact
- * request payload (no behavior change vs. the bespoke forms it replaces).
+ * When `presetName` + `presetFont` are provided (DocuSign flow ON), the name
+ * input is hidden and the signature preview renders with the pre-chosen style
+ * immediately, reducing the final step to just the consent checkbox + submit.
  */
 export interface SignatureBlockProps {
   /** Consent checkbox. Omit for flows that confirm purely via typed name. */
@@ -60,6 +60,16 @@ export interface SignatureBlockProps {
   error?: string | null;
   submitting: boolean;
   onSubmit: (data: { acceptedName: string }) => void;
+  /**
+   * DocuSign flow: pre-filled name from the setup step.
+   * When provided, the name input is hidden and the preset value is used directly.
+   */
+  presetName?: string;
+  /**
+   * DocuSign flow: font ID chosen in setup step (e.g. "dancing-script").
+   * When provided alongside presetName, signature preview uses this font.
+   */
+  presetFont?: string;
 }
 
 export function SignatureBlock({
@@ -80,19 +90,33 @@ export function SignatureBlock({
   error,
   submitting,
   onSubmit,
+  presetName,
+  presetFont,
 }: SignatureBlockProps) {
   const [agreed, setAgreed] = useState(false);
   const [typedName, setTypedName] = useState("");
 
+  const isDocuSignMode = !!presetName;
+  const effectiveName = isDocuSignMode ? presetName : typedName;
+
+  const fontFamily = (() => {
+    if (isDocuSignMode && presetFont) {
+      return ESIGN_FONTS.find((f) => f.id === presetFont)?.family ?? "'Dancing Script', cursive";
+    }
+    return "'Dancing Script', cursive";
+  })();
+
   const isNameMatch =
-    !nameConfirmation ||
-    typedName.trim().toLowerCase() === nameConfirmation.expectedName.trim().toLowerCase();
+    isDocuSignMode
+      ? true
+      : !nameConfirmation ||
+        typedName.trim().toLowerCase() === nameConfirmation.expectedName.trim().toLowerCase();
   const consentMet = !consent || agreed;
   const canSubmit = consentMet && isNameMatch && extraGateMet;
 
   function handleSubmit() {
     if (!canSubmit || submitting) return;
-    onSubmit({ acceptedName: typedName.trim() });
+    onSubmit({ acceptedName: effectiveName.trim() });
   }
 
   return (
@@ -100,6 +124,23 @@ export function SignatureBlock({
       {error && (
         <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>
       )}
+
+      {isDocuSignMode ? (
+        <div className="p-6 bg-white border border-dashed border-blue-200 rounded-lg text-center space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">
+            Your Signature
+          </p>
+          <p className="text-4xl text-blue-900" style={{ fontFamily }} data-testid="text-signature-preview">
+            {presetName}
+          </p>
+          {previewShowDate && signingDate && (
+            <p className="text-xs text-muted-foreground">{signingDate.value}</p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Using the style you chose during setup. This is your legally binding electronic signature.
+          </p>
+        </div>
+      ) : null}
 
       {consent && (
         <div
@@ -123,7 +164,7 @@ export function SignatureBlock({
         </div>
       )}
 
-      {(nameConfirmation || signingDate) && (
+      {!isDocuSignMode && (nameConfirmation || signingDate) && (
         <div className={cn(signingDate && "grid grid-cols-1 md:grid-cols-2 gap-4")}>
           {nameConfirmation && (
             <div className="space-y-2">
@@ -140,7 +181,7 @@ export function SignatureBlock({
               />
               {typedName && !isNameMatch && (
                 <p className="text-xs text-red-600">
-                  Name must match exactly: "{nameConfirmation.expectedName}"
+                  Name must match exactly: &ldquo;{nameConfirmation.expectedName}&rdquo;
                 </p>
               )}
             </div>
@@ -161,7 +202,21 @@ export function SignatureBlock({
         </div>
       )}
 
-      {showPreview && typedName.length > 1 && (
+      {isDocuSignMode && signingDate && (
+        <div className="space-y-2">
+          <Label htmlFor="signing-date">{signingDate.label || "Your signing date"}</Label>
+          <Input
+            id="signing-date"
+            type="date"
+            data-testid={signingDate.testId || "input-accept-date"}
+            value={signingDate.value}
+            onChange={(e) => signingDate.onChange(e.target.value)}
+            className="mt-1"
+          />
+        </div>
+      )}
+
+      {!isDocuSignMode && showPreview && typedName.length > 1 && (
         <div className="p-6 bg-white border border-dashed border-blue-200 rounded-lg text-center space-y-2">
           <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">
             Signature Preview

@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 interface FeatureFlags {
   notifications_enabled: boolean;
   document_reminder_email_enabled: boolean;
+  esign_docusign_flow: boolean;
   [key: string]: boolean;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
   notifications_enabled: false,
   document_reminder_email_enabled: false,
+  esign_docusign_flow: false,
 };
 
 export function useFeatureFlags() {

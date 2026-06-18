@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
+import { EsignConsent } from "@/components/esign/EsignConsent";
+import { EsignSetup, type EsignSetupData } from "@/components/esign/EsignSetup";
 import {
   FileText, CheckCircle, Calendar, DollarSign, Clock,
   Shield, AlertCircle, Loader2
@@ -24,12 +26,30 @@ interface ContractPublicData {
   authCode?: string;
 }
 
+type FlowStep = "consent" | "setup" | "sign";
+
 export default function ContractSign() {
   const [, params] = useRoute("/contracts/sign/:token");
   const token = params?.token;
   const { toast } = useToast();
   const [signed, setSigned] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
+
+  // DocuSign flow state
+  const [esignEnabled, setEsignEnabled] = useState(false);
+  const [flowStep, setFlowStep] = useState<FlowStep>("consent");
+  const [consentTimestamp, setConsentTimestamp] = useState<Date | null>(null);
+  const [esignSetup, setEsignSetup] = useState<EsignSetupData | null>(null);
+
+  const [esignConfigLoaded, setEsignConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/public/esign-config")
+      .then((res) => res.ok ? res.json() : { esignDocusignFlow: false })
+      .then((data) => setEsignEnabled(data.esignDocusignFlow === true))
+      .catch(() => {})
+      .finally(() => setEsignConfigLoaded(true));
+  }, []);
 
   const { data: contract, isLoading, error } = useQuery<ContractPublicData>({
     queryKey: [`/api/contracts/sign/${token}`],
@@ -41,7 +61,10 @@ export default function ContractSign() {
       const res = await fetch(`/api/contracts/sign/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          ...(consentTimestamp ? { consentAcceptedAt: consentTimestamp.toISOString() } : {}),
+          ...(esignSetup?.font ? { signatureFont: esignSetup.font } : {}),
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -62,7 +85,7 @@ export default function ContractSign() {
     return <ErrorPage message="Invalid signing link." />;
   }
 
-  if (isLoading) {
+  if (isLoading || !esignConfigLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -99,7 +122,7 @@ export default function ContractSign() {
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-sm text-muted-foreground mb-1">Your verification code:</p>
                 <p className="font-mono font-bold text-2xl text-green-800 tracking-widest">{authCode}</p>
-                <p className="text-xs text-muted-foreground mt-2">Save this code — it verifies your contract's authenticity.</p>
+                <p className="text-xs text-muted-foreground mt-2">Save this code — it verifies your contract&apos;s authenticity.</p>
               </div>
             )}
           </CardContent>
@@ -107,6 +130,32 @@ export default function ContractSign() {
       </div>
     );
   }
+
+  // ── DocuSign flow: consent step ─────────────────────────────────────────────
+  if (esignEnabled && flowStep === "consent") {
+    return (
+      <EsignConsent
+        onAccept={(ts) => {
+          setConsentTimestamp(ts);
+          setFlowStep("setup");
+        }}
+      />
+    );
+  }
+
+  // ── DocuSign flow: setup step ───────────────────────────────────────────────
+  if (esignEnabled && flowStep === "setup") {
+    return (
+      <EsignSetup
+        onComplete={(data) => {
+          setEsignSetup(data);
+          setFlowStep("sign");
+        }}
+      />
+    );
+  }
+
+  const isDocuSignMode = esignEnabled && !!esignSetup;
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -189,36 +238,40 @@ export default function ContractSign() {
           </CardContent>
         </Card>
 
-        {/* Legal notice */}
-        <Card className="shadow-sm border-amber-200 bg-amber-50">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <p className="font-semibold">Electronic Signature Notice</p>
-                <p className="mt-1">By signing electronically, you agree that your digital signature is legally binding and equivalent to a handwritten signature under applicable e-signature laws (including but not limited to the IT Act 2000 and the Electronic Signatures in Global and National Commerce Act).</p>
+        {/* Legal notice (shown in non-DocuSign mode only — covered by consent gate otherwise) */}
+        {!isDocuSignMode && (
+          <Card className="shadow-sm border-amber-200 bg-amber-50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-semibold">Electronic Signature Notice</p>
+                  <p className="mt-1">By signing electronically, you agree that your digital signature is legally binding and equivalent to a handwritten signature under applicable e-signature laws (including but not limited to the IT Act 2000 and the Electronic Signatures in Global and National Commerce Act).</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Agreement + Sign */}
         <SignatureBlock
-          consent={{
+          consent={!isDocuSignMode ? {
             boxed: true,
             label: (
               <>
                 I, <strong>{contract.clientName}</strong>, have read and understood the contract terms above and agree to enter into this staffing services agreement with Rayomind Solutions LLP. I confirm I have authority to sign on behalf of the company.
               </>
             ),
-          }}
-          submitLabel="Sign Contract Electronically"
+          } : undefined}
+          submitLabel={isDocuSignMode ? "Sign Contract Electronically" : "Sign Contract Electronically"}
           submittingLabel="Signing..."
           submitSize="default"
           submitClassName="h-12 text-base font-semibold bg-[#1F3A6E] hover:bg-[#162d56]"
           submitTestId="button-sign-contract"
           submitting={signMutation.isPending}
           onSubmit={() => signMutation.mutate()}
+          presetName={isDocuSignMode ? esignSetup!.name : undefined}
+          presetFont={isDocuSignMode ? esignSetup!.font : undefined}
           notice={
             <>
               Your IP address and timestamp will be recorded as part of this electronic signature.

@@ -273,6 +273,7 @@ export async function recordSignature(entry: {
   sectionInitials?: any;
   certificatePath?: string | null;
   metadata?: any;
+  consentAcceptedAt?: Date | null;
 }): Promise<{ id: string } | null> {
   try {
     const values: InsertSignatureRecord = {
@@ -290,6 +291,7 @@ export async function recordSignature(entry: {
       sectionInitials: entry.sectionInitials ?? null,
       certificatePath: entry.certificatePath ?? null,
       metadata: entry.metadata ?? null,
+      consentAcceptedAt: entry.consentAcceptedAt ?? null,
     };
     const [row] = await db.insert(signatureRecords).values(values).returning({ id: signatureRecords.id });
     return row ?? null;

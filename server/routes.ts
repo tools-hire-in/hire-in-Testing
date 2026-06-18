@@ -7507,10 +7507,11 @@ export async function registerRoutes(
         return res.status(410).json({ error: "This offer has expired", status: "expired" });
       }
 
-      const { acceptedName, acceptanceDate } = req.body;
+      const { acceptedName, acceptanceDate, consentAcceptedAt: consentAcceptedAtRaw, signatureFont } = req.body;
       if (!acceptedName || acceptedName.trim().toLowerCase() !== letter.candidateName.trim().toLowerCase()) {
         return res.status(400).json({ error: `Please type your full name exactly as it appears on the offer: "${letter.candidateName}"` });
       }
+      const consentAcceptedAt = consentAcceptedAtRaw ? new Date(consentAcceptedAtRaw) : null;
 
       if (!process.env.OFFER_SIGNING_KEY) {
         console.error("OFFER_SIGNING_KEY is not set in environment");
@@ -7575,6 +7576,8 @@ export async function registerRoutes(
         contentHash: documentHash,
         authCode,
         sectionInitials: annexureInitials ?? null,
+        consentAcceptedAt,
+        metadata: signatureFont ? { signatureFont } : null,
       });
 
       await storage.createAuditLog({
@@ -7983,10 +7986,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "This addendum is not yet available for signing" });
       }
 
-      const { acceptedName } = req.body;
+      const { acceptedName, consentAcceptedAt: consentAcceptedAtRaw, signatureFont } = req.body;
       if (!acceptedName || acceptedName.trim().toLowerCase() !== addendum.candidateName.trim().toLowerCase()) {
         return res.status(400).json({ error: `Please type your full name exactly as: "${addendum.candidateName}"` });
       }
+      const consentAcceptedAt = consentAcceptedAtRaw ? new Date(consentAcceptedAtRaw) : null;
 
       const clientIp = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.ip || "unknown";
       const serverTimestamp = new Date();
@@ -8013,6 +8017,8 @@ export async function registerRoutes(
         ipAddress: clientIp,
         contentHash: documentHash,
         authCode,
+        consentAcceptedAt,
+        metadata: signatureFont ? { signatureFont } : null,
       });
 
       // Audit trail — acceptance is audited via (a) row fields (acceptedAt/Name/Ip/authCode/documentHash)
@@ -9548,6 +9554,18 @@ export async function registerRoutes(
     }
   });
 
+  // Public endpoint — returns only the UX flags needed by the unauthenticated signing pages.
+  app.get("/api/public/esign-config", async (req: Request, res: Response) => {
+    try {
+      const setting = await storage.getSystemSetting("feature_flags");
+      const flags = (setting?.value as Record<string, boolean>) || {};
+      res.set("Cache-Control", "public, max-age=60");
+      res.json({ esignDocusignFlow: flags.esign_docusign_flow === true });
+    } catch {
+      res.json({ esignDocusignFlow: false });
+    }
+  });
+
   app.get("/api/system/feature-flags", requireAuth, async (req: Request, res: Response) => {
     try {
       const setting = await storage.getSystemSetting("feature_flags");
@@ -9564,7 +9582,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {

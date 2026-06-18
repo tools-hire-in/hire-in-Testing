@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
 import { AnnexureInitialing } from "@/components/esign/AnnexureInitialing";
+import { EsignConsent } from "@/components/esign/EsignConsent";
+import { EsignSetup, type EsignSetupData } from "@/components/esign/EsignSetup";
 
 interface OfferData {
   id: string;
@@ -39,6 +41,8 @@ interface OfferData {
   authCode?: string | null;
 }
 
+type FlowStep = "consent" | "setup" | "sign";
+
 export default function OnboardAccept() {
   const [, params] = useRoute("/onboard/:token");
   const token = params?.token;
@@ -55,6 +59,14 @@ export default function OnboardAccept() {
   const [annexureInitials, setAnnexureInitials] = useState<Record<string, string>>({});
   const [annexureInitialedAt, setAnnexureInitialedAt] = useState<Record<string, string>>({});
 
+  // DocuSign flow state
+  const [esignEnabled, setEsignEnabled] = useState(false);
+  const [flowStep, setFlowStep] = useState<FlowStep>("consent");
+  const [consentTimestamp, setConsentTimestamp] = useState<Date | null>(null);
+  const [esignSetup, setEsignSetup] = useState<EsignSetupData | null>(null);
+  const [showSignatureBlock, setShowSignatureBlock] = useState(false);
+  const signatureBlockRef = useRef<HTMLDivElement>(null);
+
   const handleAnnexureInitialChange = (key: string, value: string) => {
     setAnnexureInitials((prev) => ({ ...prev, [key]: value }));
     setAnnexureInitialedAt((prev) => ({ ...prev, [key]: new Date().toISOString() }));
@@ -64,6 +76,17 @@ export default function OnboardAccept() {
   const allAnnexuresInitialed = policyAnnexureKeys.every(
     (k) => (annexureInitials[k] ?? "").trim().length > 0
   );
+
+  const [esignConfigLoaded, setEsignConfigLoaded] = useState(false);
+
+  // Fetch esign config — gate document rendering until resolved
+  useEffect(() => {
+    fetch("/api/public/esign-config")
+      .then((res) => res.ok ? res.json() : { esignDocusignFlow: false })
+      .then((data) => setEsignEnabled(data.esignDocusignFlow === true))
+      .catch(() => {})
+      .finally(() => setEsignConfigLoaded(true));
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -81,7 +104,6 @@ export default function OnboardAccept() {
           const code = data.authCode ?? null;
           if (code) setAuthCode(code);
         }
-        // Pre-populate initials state from DB data so returning visitors see their initials
         if (Array.isArray(data.annexureInitials) && data.annexureInitials.length > 0) {
           const initRec: Record<string, string> = {};
           const atRec: Record<string, string> = {};
@@ -100,8 +122,23 @@ export default function OnboardAccept() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // Declare isDocuSignMode early — used by allAnnexuresReadyForSubmit and handleAccept
+  const isDocuSignMode = esignEnabled && !!esignSetup;
+
+  // When all annexures are confirmed in DocuSign mode, scroll to signature block
+  const handleAllAnnexuresConfirmed = () => {
+    setShowSignatureBlock(true);
+    setTimeout(() => {
+      signatureBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 200);
+  };
+
+  const allAnnexuresReadyForSubmit = isDocuSignMode
+    ? (policyAnnexureKeys.length === 0 || showSignatureBlock)
+    : allAnnexuresInitialed;
+
   const handleAccept = async (acceptedName: string) => {
-    if (!allAnnexuresInitialed) return;
+    if (!allAnnexuresReadyForSubmit) return;
     setSubmitting(true);
     try {
       const annexureInitialsPayload = policyAnnexureKeys.map((k) => ({
@@ -116,6 +153,8 @@ export default function OnboardAccept() {
           acceptedName,
           acceptanceDate: signingDate,
           annexureInitials: annexureInitialsPayload,
+          ...(consentTimestamp ? { consentAcceptedAt: consentTimestamp.toISOString() } : {}),
+          ...(esignSetup?.font ? { signatureFont: esignSetup.font } : {}),
         }),
       });
       if (!res.ok) {
@@ -132,7 +171,7 @@ export default function OnboardAccept() {
     }
   };
 
-  if (loading) {
+  if (loading || !esignConfigLoaded) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -207,6 +246,46 @@ export default function OnboardAccept() {
 
   if (!offer) return null;
 
+  // ── DocuSign flow: consent step ─────────────────────────────────────────────
+  if (esignEnabled && flowStep === "consent") {
+    return (
+      <EsignConsent
+        onAccept={(ts) => {
+          setConsentTimestamp(ts);
+          setFlowStep("setup");
+        }}
+      />
+    );
+  }
+
+  // ── DocuSign flow: setup step ───────────────────────────────────────────────
+  if (esignEnabled && flowStep === "setup") {
+    return (
+      <EsignSetup
+        onComplete={(data) => {
+          setEsignSetup(data);
+          // Pre-populate annexure initials with the user's initials
+          if (policyAnnexureKeys.length > 0) {
+            const initRec: Record<string, string> = {};
+            const atRec: Record<string, string> = {};
+            for (const key of policyAnnexureKeys) {
+              initRec[key] = data.initials;
+              atRec[key] = new Date().toISOString();
+            }
+            setAnnexureInitials(initRec);
+            setAnnexureInitialedAt(atRec);
+          }
+          setFlowStep("sign");
+          // If no annexures, show signature block immediately
+          if (!policyAnnexureKeys.length) {
+            setShowSignatureBlock(true);
+          }
+        }}
+      />
+    );
+  }
+
+  // ── Sign step (document + signature block) ─────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       <div className="bg-gradient-to-r from-blue-800 to-blue-600 text-white py-6 px-4 text-center shadow-lg">
@@ -256,32 +335,42 @@ export default function OnboardAccept() {
                     annexureKeys={policyAnnexureKeys}
                     initials={annexureInitials}
                     onInitialChange={handleAnnexureInitialChange}
+                    presetInitials={isDocuSignMode ? esignSetup!.initials : undefined}
+                    onAllConfirmed={isDocuSignMode ? handleAllAnnexuresConfirmed : undefined}
                   />
                 )}
-                <SignatureBlock
-                  consent={{
-                    label:
-                      "I have read and understood the terms and conditions of this offer letter, including all sections, the BYOD Annexure, and all attached policy annexures (if any). I agree to abide by the policies set out therein and accept this offer of employment.",
-                  }}
-                  nameConfirmation={{ expectedName: offer.candidateName }}
-                  signingDate={{ value: signingDate, onChange: setSigningDate }}
-                  showPreview
-                  previewShowDate
-                  extraGateMet={allAnnexuresInitialed}
-                  extraGateMessage="Please review and initial each attached policy annexure above before accepting."
-                  extraGateTestId="text-annexure-initials-required"
-                  submitLabel="Confirm Digital Signature & Accept"
-                  submitClassName="bg-blue-700 hover:bg-blue-800"
-                  submitTestId="button-accept-offer"
-                  error={error}
-                  submitting={submitting}
-                  onSubmit={({ acceptedName }) => handleAccept(acceptedName)}
-                  notice={
-                    <>
-                      This offer expires on {new Date(offer.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Your acceptance will be recorded with your IP address and browser details for audit purposes.
-                    </>
-                  }
-                />
+
+                {/* In DocuSign mode, signature block appears after all annexures confirmed (or immediately if no annexures) */}
+                {(!isDocuSignMode || showSignatureBlock) && (
+                  <div ref={signatureBlockRef}>
+                    <SignatureBlock
+                      consent={{
+                        label:
+                          "I have read and understood the terms and conditions of this offer letter, including all sections, the BYOD Annexure, and all attached policy annexures (if any). I agree to abide by the policies set out therein and accept this offer of employment.",
+                      }}
+                      nameConfirmation={isDocuSignMode ? undefined : { expectedName: offer.candidateName }}
+                      signingDate={{ value: signingDate, onChange: setSigningDate }}
+                      showPreview={!isDocuSignMode}
+                      previewShowDate={!isDocuSignMode}
+                      extraGateMet={allAnnexuresReadyForSubmit}
+                      extraGateMessage="Please review and initial each attached policy annexure above before accepting."
+                      extraGateTestId="text-annexure-initials-required"
+                      submitLabel="Confirm Digital Signature & Accept"
+                      submitClassName="bg-blue-700 hover:bg-blue-800"
+                      submitTestId="button-accept-offer"
+                      error={error}
+                      submitting={submitting}
+                      onSubmit={({ acceptedName }) => handleAccept(acceptedName)}
+                      presetName={isDocuSignMode ? esignSetup!.name : undefined}
+                      presetFont={isDocuSignMode ? esignSetup!.font : undefined}
+                      notice={
+                        <>
+                          This offer expires on {new Date(offer.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Your acceptance will be recorded with your IP address and browser details for audit purposes.
+                        </>
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </Card>

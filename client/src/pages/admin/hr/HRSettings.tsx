@@ -790,6 +790,11 @@ function FeatureFlagsSection() {
       label: "Document Reminder Emails",
       description: "When enabled, the Remind button on Document Compliance sends an email to employees with pending documents.",
     },
+    {
+      key: "esign_docusign_flow",
+      label: "DocuSign-Style E-Sign Flow",
+      description: "When enabled, candidates and clients are shown a professional guided signing experience: e-sign consent gate, signature style setup, auto-advance initialing, and pre-filled final signature. When disabled, the original single-step signing form is used.",
+    },
   ];
 
   return (

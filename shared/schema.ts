@@ -2218,6 +2218,7 @@ export const signatureRecords = pgTable("signature_records", {
   sectionInitials: jsonb("section_initials"),       // annexure / per-page initials when applicable
   certificatePath: varchar("certificate_path"),     // object-storage path to a generated certificate/PDF when applicable
   metadata: jsonb("metadata"),                      // any document-type-specific extras
+  consentAcceptedAt: timestamp("consent_accepted_at"), // timestamp when e-sign T&C consent was accepted (DocuSign flow)
   createdAt: timestamp("created_at").defaultNow(),
 });
 

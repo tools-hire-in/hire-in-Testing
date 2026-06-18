@@ -2295,6 +2295,7 @@ async function ensureHealthcarePlansTables() {
       CREATE INDEX IF NOT EXISTS idx_signature_records_doc ON signature_records(document_type, document_id);
       CREATE INDEX IF NOT EXISTS idx_signature_records_ref ON signature_records(reference_number);
     `);
+    await db.execute(sql`ALTER TABLE signature_records ADD COLUMN IF NOT EXISTS consent_accepted_at timestamp`);
     log("Signature ledger table ensured");
   } catch (err) {
     console.error("Signature ledger table migration error:", err);

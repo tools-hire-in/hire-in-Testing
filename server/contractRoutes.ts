@@ -374,6 +374,8 @@ export function registerContractRoutes(app: Express) {
       if (contract.status !== "sent") return res.status(400).json({ error: "Already signed or cancelled" });
 
       const signedAt = new Date();
+      const consentAcceptedAt = req.body?.consentAcceptedAt ? new Date(req.body.consentAcceptedAt) : null;
+      const signatureFont: string | undefined = req.body?.signatureFont || undefined;
 
       if (contract.authCode && contract.documentHash) {
         // Contract was pre-signed at dispatch time (presigned_pdf or both delivery method).
@@ -395,6 +397,8 @@ export function registerContractRoutes(app: Express) {
           ipAddress: req.ip || "",
           contentHash: contract.documentHash,
           authCode: contract.authCode,
+          consentAcceptedAt,
+          metadata: signatureFont ? { signatureFont } : null,
         });
         return res.json({ success: true, authCode: contract.authCode, referenceNumber: contract.referenceNumber });
       }
@@ -433,6 +437,8 @@ export function registerContractRoutes(app: Express) {
         ipAddress: req.ip || "",
         contentHash: sigResult.documentHash,
         authCode: sigResult.authCode,
+        consentAcceptedAt,
+        metadata: signatureFont ? { signatureFont } : null,
       });
 
       res.json({ success: true, authCode: sigResult.authCode, referenceNumber: sigResult.refNumber });

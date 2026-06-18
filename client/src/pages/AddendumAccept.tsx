@@ -3,6 +3,8 @@ import { useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, FileText, ArrowRight } from "lucide-react";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
+import { EsignConsent } from "@/components/esign/EsignConsent";
+import { EsignSetup, type EsignSetupData } from "@/components/esign/EsignSetup";
 
 interface AddendumData {
   id: string;
@@ -175,6 +177,8 @@ function ChangedTermsDisplay({ addendum }: { addendum: AddendumData }) {
   );
 }
 
+type FlowStep = "consent" | "setup" | "sign";
+
 export default function AddendumAccept() {
   const [, params] = useRoute("/addendum/:token");
   const token = params?.token;
@@ -186,6 +190,22 @@ export default function AddendumAccept() {
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
+
+  // DocuSign flow state
+  const [esignEnabled, setEsignEnabled] = useState(false);
+  const [flowStep, setFlowStep] = useState<FlowStep>("consent");
+  const [consentTimestamp, setConsentTimestamp] = useState<Date | null>(null);
+  const [esignSetup, setEsignSetup] = useState<EsignSetupData | null>(null);
+
+  const [esignConfigLoaded, setEsignConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/public/esign-config")
+      .then((res) => res.ok ? res.json() : { esignDocusignFlow: false })
+      .then((data) => setEsignEnabled(data.esignDocusignFlow === true))
+      .catch(() => {})
+      .finally(() => setEsignConfigLoaded(true));
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -213,7 +233,11 @@ export default function AddendumAccept() {
       const res = await fetch(`/api/addendum/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acceptedName }),
+        body: JSON.stringify({
+          acceptedName,
+          ...(consentTimestamp ? { consentAcceptedAt: consentTimestamp.toISOString() } : {}),
+          ...(esignSetup?.font ? { signatureFont: esignSetup.font } : {}),
+        }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -229,7 +253,7 @@ export default function AddendumAccept() {
     }
   };
 
-  if (loading) {
+  if (loading || !esignConfigLoaded) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -286,7 +310,32 @@ export default function AddendumAccept() {
 
   if (!addendum) return null;
 
+  // ── DocuSign flow: consent step ─────────────────────────────────────────────
+  if (esignEnabled && flowStep === "consent") {
+    return (
+      <EsignConsent
+        onAccept={(ts) => {
+          setConsentTimestamp(ts);
+          setFlowStep("setup");
+        }}
+      />
+    );
+  }
+
+  // ── DocuSign flow: setup step ───────────────────────────────────────────────
+  if (esignEnabled && flowStep === "setup") {
+    return (
+      <EsignSetup
+        onComplete={(data) => {
+          setEsignSetup(data);
+          setFlowStep("sign");
+        }}
+      />
+    );
+  }
+
   const typeLabel = ADDENDUM_TYPE_LABELS[addendum.addendumType] || "Amendment";
+  const isDocuSignMode = esignEnabled && !!esignSetup;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -381,17 +430,19 @@ export default function AddendumAccept() {
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Sign This Addendum</h3>
               <SignatureBlock
-                nameConfirmation={{
+                nameConfirmation={isDocuSignMode ? undefined : {
                   expectedName: addendum.candidateName,
                   testId: "input-addendum-name",
                 }}
-                showPreview
+                showPreview={!isDocuSignMode}
                 submitLabel="Confirm Digital Signature & Accept Addendum"
                 submitClassName="bg-blue-700 hover:bg-blue-800"
                 submitTestId="button-accept-addendum"
                 error={error}
                 submitting={submitting}
                 onSubmit={({ acceptedName }) => handleAccept(acceptedName)}
+                presetName={isDocuSignMode ? esignSetup!.name : undefined}
+                presetFont={isDocuSignMode ? esignSetup!.font : undefined}
                 notice="Your acceptance will be recorded with your IP address for audit purposes."
               />
             </CardContent>
