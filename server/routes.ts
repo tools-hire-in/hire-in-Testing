@@ -3680,24 +3680,35 @@ export async function registerRoutes(
                 year,
                 adjustedBy: actorId,
               });
-              // Mirror in leave_accruals as hr_adjustment (survives future recalculations)
-              await db.insert(leaveAccruals).values({
-                userId: ov.userId,
-                leaveTypeId: elTypeId,
-                year,
-                month: 0,
-                accruedDays: String(elDelta),
-                hoursWorked: "0",
-                qualified: true,
-                accrualType: "hr_adjustment",
-                skipReason: reason,
-              }).onConflictDoUpdate({
-                target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
-                set: {
-                  accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
-                  skipReason: sql`EXCLUDED.skip_reason`,
-                },
-              });
+              // Mirror in leave_accruals as hr_adjustment — manual upsert because
+              // leave_accruals has no unique constraint on (userId, leaveTypeId, year, month, accrualType)
+              const existingElAcc = await db.select().from(leaveAccruals).where(
+                and(
+                  eq(leaveAccruals.userId, ov.userId),
+                  eq(leaveAccruals.leaveTypeId, elTypeId),
+                  eq(leaveAccruals.year, year),
+                  eq(leaveAccruals.month, 0),
+                  sql`${leaveAccruals.accrualType} = 'hr_adjustment'`
+                )
+              ).limit(1);
+              if (existingElAcc.length > 0) {
+                const newAccrued = parseFloat(existingElAcc[0].accruedDays) + elDelta;
+                await db.update(leaveAccruals)
+                  .set({ accruedDays: String(newAccrued), skipReason: reason })
+                  .where(eq(leaveAccruals.id, existingElAcc[0].id));
+              } else {
+                await db.insert(leaveAccruals).values({
+                  userId: ov.userId,
+                  leaveTypeId: elTypeId,
+                  year,
+                  month: 0,
+                  accruedDays: String(elDelta),
+                  hoursWorked: "0",
+                  qualified: true,
+                  accrualType: "hr_adjustment",
+                  skipReason: reason,
+                });
+              }
               // Update leave_balances to reflect the delta
               const existingBal = await db.select().from(leaveBalances).where(
                 and(eq(leaveBalances.userId, ov.userId), eq(leaveBalances.leaveTypeId, elTypeId), eq(leaveBalances.year, year))
@@ -3722,23 +3733,34 @@ export async function registerRoutes(
                 year,
                 adjustedBy: actorId,
               });
-              await db.insert(leaveAccruals).values({
-                userId: ov.userId,
-                leaveTypeId: slTypeId,
-                year,
-                month: 0,
-                accruedDays: String(slDelta),
-                hoursWorked: "0",
-                qualified: true,
-                accrualType: "hr_adjustment",
-                skipReason: reason,
-              }).onConflictDoUpdate({
-                target: [leaveAccruals.userId, leaveAccruals.leaveTypeId, leaveAccruals.year, leaveAccruals.month, leaveAccruals.accrualType],
-                set: {
-                  accruedDays: sql`leave_accruals.accrued_days + EXCLUDED.accrued_days`,
-                  skipReason: sql`EXCLUDED.skip_reason`,
-                },
-              });
+              // Manual upsert for same reason as EL above
+              const existingSlAcc = await db.select().from(leaveAccruals).where(
+                and(
+                  eq(leaveAccruals.userId, ov.userId),
+                  eq(leaveAccruals.leaveTypeId, slTypeId),
+                  eq(leaveAccruals.year, year),
+                  eq(leaveAccruals.month, 0),
+                  sql`${leaveAccruals.accrualType} = 'hr_adjustment'`
+                )
+              ).limit(1);
+              if (existingSlAcc.length > 0) {
+                const newAccrued = parseFloat(existingSlAcc[0].accruedDays) + slDelta;
+                await db.update(leaveAccruals)
+                  .set({ accruedDays: String(newAccrued), skipReason: reason })
+                  .where(eq(leaveAccruals.id, existingSlAcc[0].id));
+              } else {
+                await db.insert(leaveAccruals).values({
+                  userId: ov.userId,
+                  leaveTypeId: slTypeId,
+                  year,
+                  month: 0,
+                  accruedDays: String(slDelta),
+                  hoursWorked: "0",
+                  qualified: true,
+                  accrualType: "hr_adjustment",
+                  skipReason: reason,
+                });
+              }
               const existingBal = await db.select().from(leaveBalances).where(
                 and(eq(leaveBalances.userId, ov.userId), eq(leaveBalances.leaveTypeId, slTypeId), eq(leaveBalances.year, year))
               ).limit(1);
