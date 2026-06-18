@@ -73,6 +73,7 @@ const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
 const Studio = lazy(() => import("@/pages/admin/studio/Studio"));
 const StudioArticles = lazy(() => import("@/pages/admin/studio/Articles"));
+const StudioLiveContent = lazy(() => import("@/pages/admin/studio/LiveContent"));
 const StudioAuthors = lazy(() => import("@/pages/admin/studio/Authors"));
 const StudioArticleEditor = lazy(() => import("@/pages/admin/studio/ArticleEditor"));
 const StudioInbox = lazy(() => import("@/pages/admin/studio/Inbox"));
@@ -209,6 +210,7 @@ function PublicRouter() {
       <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
       <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
+      <Route path="/admin/studio/live">{() => <Suspense fallback={<AdminFallback />}><StudioLiveContent /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
       <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>
@@ -308,6 +310,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
       <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
+      <Route path="/admin/studio/live">{() => <Suspense fallback={<AdminFallback />}><StudioLiveContent /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
       <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>

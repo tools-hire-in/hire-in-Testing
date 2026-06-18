@@ -35,6 +35,7 @@ import {
   ClipboardCheck,
   BarChart3,
   BookOpen,
+  Radio,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -152,6 +153,7 @@ function ContentStudioSection({
   const studioSubItems: NavItem[] = [
     { href: "/admin/studio", label: "Dashboard", icon: LayoutDashboard, roles: [] },
     { href: "/admin/studio/articles", label: "Articles", icon: Newspaper, roles: [] },
+    { href: "/admin/studio/live", label: "Live Content", icon: Radio, roles: [] },
     { href: "/admin/studio/inbox", label: "Reviewer Inbox", icon: Inbox, roles: [] },
     ...(hasCmReviewAccess ? [{ href: "/admin/studio/cm-review", label: "CM Review", icon: BookOpen, roles: [] }] : []),
     ...(hasMarketingApproveAccess ? [{ href: "/admin/studio/approvals", label: "Marketing Approvals", icon: Megaphone, roles: [] }] : []),
@@ -704,6 +706,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/studio") return location === "/admin/studio";
     if (href === "/admin/studio/articles") return (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));
+    if (href === "/admin/studio/live") return location.startsWith("/admin/studio/live");
     if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     if (href === "/admin/studio/cm-review") return location.startsWith("/admin/studio/cm-review");
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
