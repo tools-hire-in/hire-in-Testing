@@ -12195,7 +12195,7 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/cm-review/count",
     requireAuth,
-    requirePermission("studio.cm_review", "content_manager"),
+    requirePermission("studio.cm_review", "super_admin", "admin", "hr", "content_manager"),
     async (_req: Request, res: Response) => {
       try {
         const items = await storage.getStudioApprovalQueue(["pending_cm_review"]);
@@ -12211,7 +12211,7 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/cm-review",
     requireAuth,
-    requirePermission("studio.cm_review", "content_manager"),
+    requirePermission("studio.cm_review", "super_admin", "admin", "hr", "content_manager"),
     async (req: Request, res: Response) => {
       try {
         const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
@@ -12228,7 +12228,7 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/articles/:id/cm-decision",
     requireAuth,
-    requirePermission("studio.cm_review", "content_manager"),
+    requirePermission("studio.cm_review", "super_admin", "admin", "hr", "content_manager"),
     async (req: Request, res: Response) => {
       try {
         const { decision, reason, authorProfileId } = req.body ?? {};
