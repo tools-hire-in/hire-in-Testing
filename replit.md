@@ -1,7 +1,7 @@
-# Hire'in Solutions - AI-Powered Recruitment Platform
+# Hire'in Solutions - AI-Powered Staffing & Talent Acquisition Firm
 
 ## Overview
-Hire'in Solutions is an AI-powered recruitment platform designed to streamline recruitment, enhance candidate matching, and provide robust internal HR management for a professional staffing agency specializing in Healthcare, IT, Engineering, and Professional Services. It comprises a public-facing marketing website with job listings and a comprehensive admin portal. The platform aims to achieve efficient operations and significant market impact by leveraging AI.
+Hire'in Solutions is an AI-powered staffing & talent acquisition firm designed to streamline recruitment, enhance candidate matching, and provide robust internal HR management for a professional staffing agency specializing in Healthcare, IT, Engineering, and Professional Services. It comprises a public-facing marketing website with job listings and a comprehensive admin portal. The platform aims to achieve efficient operations and significant market impact by leveraging AI.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
