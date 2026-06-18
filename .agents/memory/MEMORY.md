@@ -3,6 +3,7 @@
 - [db:push interactive prompt](db-push-interactive-prompt.md) — `_key` vs `_unique` constraint names stall db:push (aborts later stmts); long FK names oscillate (benign). Publish diffs dev-DB↔prod-DB; repair dev DB, don't add startup DDL.
 - [E-sign foundation](esign-foundation.md) — central ledger + signing service + SignatureBlock; back-compat hr_letter/contract; ensure block needs server restart.
 - [Offer-letter verify scope](offer-letter-verify-scope.md) — /verify only covers hr_letter & contract; offer-letter acceptance hash can evolve without breaking verify.
+- [Object storage route auth](object-storage-auth.md) — /objects/* & upload routes are now requireAuth-gated; public author photos intentionally fall back to initials; needs separate public path + per-object ACL.
 - [tsc is not a build gate](tsc-not-a-build-gate.md) — repo has hundreds of pre-existing tsc errors; build uses tsx/esbuild, verify via tests not clean tsc.
 - [Attendance policy engine](attendance-policy-engine.md) — grace read per-shift (now 0), shiftless skipped by sweep, part-time short_day/half_day tiers from shift scheduled_hours.
 - [Centralized Access Control](centralized-access-control.md) — feature→roles registry + CENTRALIZED_ACCESS_CONTROL flag; parity invariant (registry==legacy fallback) keeps flag ON==OFF; auto-grant asymmetry per file.
