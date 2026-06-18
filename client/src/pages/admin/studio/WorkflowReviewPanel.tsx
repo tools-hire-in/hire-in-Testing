@@ -330,26 +330,6 @@ export function WorkflowReviewPanel({
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Author attribution</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="text-sm">
-                    Byline: <span className="font-medium">{data.authorName ?? "Unassigned"}</span>
-                  </p>
-                  <label className="flex items-center gap-2 text-sm" htmlFor="confirm-author">
-                    <Checkbox
-                      id="confirm-author"
-                      checked={authorConfirmed}
-                      onCheckedChange={(v) => setAuthorConfirmed(v === true)}
-                      data-testid="checkbox-confirm-author"
-                    />
-                    I confirm the author attribution is correct
-                  </label>
-                </CardContent>
-              </Card>
-
               <Button
                 variant="secondary"
                 onClick={() => marketingMutation.mutate("save")}
@@ -403,9 +383,23 @@ export function WorkflowReviewPanel({
 
             {isMarketing ? (
               <div className="grid gap-2">
+                <div className="space-y-1.5 rounded-md border p-3">
+                  <p className="text-sm">
+                    Byline: <span className="font-medium">{data.authorName ?? "Unassigned"}</span>
+                  </p>
+                  <label className="flex items-center gap-2 text-sm" htmlFor="confirm-author-panel">
+                    <Checkbox
+                      id="confirm-author-panel"
+                      checked={authorConfirmed}
+                      onCheckedChange={(v) => setAuthorConfirmed(v === true)}
+                      data-testid="checkbox-confirm-author"
+                    />
+                    I confirm the author attribution is correct
+                  </label>
+                </div>
                 {!authorConfirmed && (
                   <p className="text-xs text-muted-foreground" data-testid="text-confirm-hint">
-                    Confirm author attribution (Polish tab) to recommend.
+                    Confirm author attribution to recommend.
                   </p>
                 )}
                 <Button
