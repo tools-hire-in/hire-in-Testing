@@ -43,9 +43,11 @@ const CONTENT_TYPE_TO_LAYOUT: Record<string, CardLayout> = {
   listicle: "checklist",
   playbook: "checklist",
   checklist: "checklist",
+  checklist_card: "checklist",
   quote: "quote",
   pull_quote: "quote",
   quick_take: "quote",
+  quote_card: "quote",
 };
 
 export function resolveCardLayout(

@@ -10344,7 +10344,11 @@ export async function registerRoutes(
           typeof req.body?.contentType === "string" && req.body.contentType
             ? req.body.contentType
             : "master_social_kit";
-        const template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
+        // Two-level fallback: project/seed template for contentType → master_social_kit
+        let template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
+        if (!template && contentTypeKey !== "master_social_kit") {
+          template = await storage.getActiveStudioPromptTemplate("master_social_kit", article.projectId);
+        }
         if (!template) {
           return res.status(500).json({ error: `Prompt template '${contentTypeKey}' not found` });
         }
@@ -10353,6 +10357,9 @@ export async function registerRoutes(
         const params: AiGenerationParams = {
           industry: req.body?.industry,
           platform: req.body?.platform,
+          // Pass the resolved content type so generateSocialKit can infer the
+          // correct card layout (checklist_card → checklist, quote_card → quote, etc.)
+          content_type: contentTypeKey !== "master_social_kit" ? contentTypeKey : article.contentType ?? undefined,
           article_title: article.title,
           article_summary: article.excerpt ?? "",
           article_body: article.bodyMarkdown,
@@ -11753,6 +11760,38 @@ export async function registerRoutes(
   );
 
   // ---- Authors ----
+
+  // Returns active admin_users not yet linked as author profiles — used by the
+  // "Link Employee" picker in AuthorsPanel to create employee-backed authors.
+  app.get(
+    "/api/admin/studio/author-candidates",
+    requireAuth,
+    requirePermission("studio.manage_authors", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const allUsers = await storage.getAdminUsers();
+        const allAuthors = await storage.getStudioAuthorProfiles(undefined);
+        const linkedIds = new Set(
+          allAuthors
+            .filter((a) => a.linkedEmployeeId)
+            .map((a) => a.linkedEmployeeId as string),
+        );
+        const candidates = allUsers
+          .filter((u) => u.isActive && !linkedIds.has(u.id))
+          .map((u) => ({
+            id: u.id,
+            displayName: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
+            title: u.jobTitle ?? u.role ?? null,
+            photoUrl: u.profilePhoto ?? null,
+            email: u.email,
+          }));
+        res.json(candidates);
+      } catch (error) {
+        console.error("Get author candidates error:", error);
+        res.status(500).json({ error: "Failed to fetch author candidates" });
+      }
+    },
+  );
 
   app.get(
     "/api/admin/studio/authors",

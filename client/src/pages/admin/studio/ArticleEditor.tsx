@@ -14,11 +14,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -47,6 +55,7 @@ import {
   ShieldCheck,
   Download,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 import {
   Dialog,
@@ -128,6 +137,10 @@ function ArticleEditorInner({ id }: { id: string }) {
     queryKey: ["/api/admin/studio/articles", id],
     enabled: !!id,
   });
+
+  // If the article already has body content, lock the Generate Draft button so
+  // AI cannot silently overwrite an in-progress draft.
+  const hasDraft = !!(article?.bodyMarkdown?.trim());
 
   const { data: authors } = useQuery<StudioAuthorProfile[]>({
     queryKey: [
@@ -290,6 +303,16 @@ function ArticleEditorInner({ id }: { id: string }) {
         );
         setDirty(false);
       }
+      // in_review → approve must use the review-decision endpoint, not the generic
+      // /transition endpoint (which only allows in_review → draft on the backend).
+      if (article?.status === "in_review" && to === "approved") {
+        const res = await apiRequest(
+          "POST",
+          `/api/admin/studio/articles/${id}/review-decision`,
+          { decision: "approve" },
+        );
+        return res.json();
+      }
       const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/transition`, { to });
       return res.json();
     },
@@ -300,7 +323,7 @@ function ArticleEditorInner({ id }: { id: string }) {
       toast({ title: "Status updated" });
     },
     onError: (err: Error) => {
-      toast({ title: "Transition failed", description: err.message, variant: "destructive" });
+      toast({ title: "Action failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -556,20 +579,35 @@ function ArticleEditorInner({ id }: { id: string }) {
           </span>
           {canGenerate && (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setGenOpen(true)}
-                disabled={generateArticleMutation.isPending}
-                data-testid="button-open-generate"
-              >
-                {generateArticleMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
-                )}
-                Generate Draft
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setGenOpen(true)}
+                        disabled={generateArticleMutation.isPending || hasDraft}
+                        data-testid="button-open-generate"
+                      >
+                        {generateArticleMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : hasDraft ? (
+                          <Lock className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Sparkles className="mr-2 h-4 w-4" />
+                        )}
+                        Generate Draft
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {hasDraft && (
+                    <TooltipContent side="bottom" className="max-w-[240px] text-center">
+                      This article already has a draft. To use AI generation, start a new article instead.
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
               <Button
                 variant="outline"
                 size="sm"
@@ -954,11 +992,46 @@ function ArticleEditorInner({ id }: { id: string }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Unassigned</SelectItem>
-                    {authors?.filter((a) => a.isActive).map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.displayName}
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const active = authors?.filter((a) => a.isActive) ?? [];
+                      const articleCat = (form.category ?? "").toLowerCase();
+                      const employees = active.filter((a) => (a as any).authorType === "employee");
+                      const external = active.filter((a) => (a as any).authorType !== "employee");
+                      const catMatched = employees.filter((a) =>
+                        articleCat &&
+                        (a.title?.toLowerCase().includes(articleCat) ||
+                         a.bio?.toLowerCase().includes(articleCat)),
+                      );
+                      const otherEmployees = employees.filter(
+                        (a) => !catMatched.find((m) => m.id === a.id),
+                      );
+                      const teamGroup = [...catMatched, ...otherEmployees];
+                      return (
+                        <>
+                          {teamGroup.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Team</SelectLabel>
+                              {teamGroup.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.displayName}
+                                  {catMatched.find((m) => m.id === a.id) ? " ★" : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                          {external.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>External</SelectLabel>
+                              {external.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.displayName}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                        </>
+                      );
+                    })()}
                   </SelectContent>
                 </Select>
               </div>

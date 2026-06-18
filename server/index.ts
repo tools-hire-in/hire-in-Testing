@@ -559,6 +559,9 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS active_template_family varchar DEFAULT 'hirein-v1' NOT NULL`);
     // Category -> reviewer pool routing config (older DBs predate this column).
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS routing_rules jsonb`);
+    // Author-employee link: connect author profiles to real admin_users.
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS linked_employee_id varchar REFERENCES admin_users(id) ON DELETE SET NULL`);
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS author_type varchar DEFAULT 'external' NOT NULL`);
 
     // Seeded, versioned prompt library.
     await db.execute(sql`

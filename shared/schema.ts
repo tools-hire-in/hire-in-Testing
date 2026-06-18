@@ -2281,6 +2281,8 @@ export const studioAuthorProfiles = pgTable("studio_author_profiles", {
   consentedAt: timestamp("consented_at"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  linkedEmployeeId: varchar("linked_employee_id"),
+  authorType: varchar("author_type").default("external").notNull(),
 });
 
 // Core article record.

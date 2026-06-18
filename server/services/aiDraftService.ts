@@ -26,6 +26,7 @@ import {
   type CanonicalSocialKit,
   type QualityReview,
 } from "@shared/studioAi";
+import { resolveCardLayout } from "@shared/socialCards";
 import type { StudioPromptTemplate } from "@shared/schema";
 
 // ---------------------------------------------------------------------------
@@ -252,6 +253,18 @@ export async function generateSocialKit(
   } catch (e: any) {
     throw new AiGenerationError("validation", `Social kit output failed validation: ${e?.message}`, false);
   }
+
+  // If the caller supplied a content_type, resolve its canonical card layout and
+  // override what the model suggested. This ensures that e.g. a checklist_card
+  // article always gets suggested_card_layout="checklist" regardless of the
+  // model's free-form output.
+  if (params.content_type) {
+    const inferredLayout = resolveCardLayout(params.content_type);
+    if (inferredLayout !== "standard" || kit.suggested_card_layout === "standard") {
+      kit = { ...kit, suggested_card_layout: inferredLayout };
+    }
+  }
+
   const warnings = validateCaptionLengths(kit);
   return { kit, warnings, model, tokenEstimate, rawOutput: raw };
 }

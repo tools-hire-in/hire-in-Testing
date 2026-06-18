@@ -102,6 +102,120 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+function ContentStudioSection({
+  hasStudioAccess,
+  hasMarketingApproveAccess,
+  hasStudioAnalyticsAccess,
+  isSuperAdmin,
+  isNavActive,
+  isComplianceLocked,
+  location,
+}: {
+  hasStudioAccess: boolean;
+  hasMarketingApproveAccess: boolean;
+  hasStudioAnalyticsAccess: boolean;
+  isSuperAdmin: boolean;
+  isNavActive: (item: NavItem) => boolean;
+  isComplianceLocked: boolean;
+  location: string;
+}) {
+  const { open } = useSidebar();
+
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_studio_section_open");
+      if (stored === null) return location.startsWith("/admin/studio");
+      return stored !== "false";
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (location.startsWith("/admin/studio") && !expanded) {
+      setExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem("admin_studio_section_open", String(next)); } catch {}
+  };
+
+  if (!hasStudioAccess) return null;
+
+  const studioSubItems: NavItem[] = [
+    { href: "/admin/studio/articles", label: "Articles", icon: Newspaper, roles: [] },
+    { href: "/admin/studio/inbox", label: "Reviewer Inbox", icon: Inbox, roles: [] },
+    ...(hasMarketingApproveAccess ? [{ href: "/admin/studio/approvals", label: "Marketing Approvals", icon: Megaphone, roles: [] }] : []),
+    ...(isSuperAdmin ? [{ href: "/admin/studio/final-approval", label: "Final Sign-Off", icon: ShieldCheck, roles: [] }] : []),
+    { href: "/admin/studio/calendar", label: "Publishing Calendar", icon: CalendarDays, roles: [] },
+    ...(hasStudioAnalyticsAccess ? [{ href: "/admin/studio/analytics", label: "Content Analytics", icon: BarChart3, roles: [] }] : []),
+    { href: "/admin/studio/authors", label: "Authors", icon: Users, roles: [] },
+  ];
+
+  const isStudioActive = location.startsWith("/admin/studio");
+
+  if (!open) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={isStudioActive}
+                tooltip="Content Studio"
+                className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+              >
+                <Link href="/admin/studio/articles">
+                  <Newspaper className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase hover:text-muted-foreground transition-colors"
+        data-testid="button-studio-section-toggle"
+      >
+        <span>Content Studio</span>
+        <ChevronRight
+          className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
+      {expanded && (
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {studioSubItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isNavActive(item)}
+                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                  data-testid={`nav-item-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  <Link href={item.href} className="flex items-center gap-2 w-full">
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
+}
+
 function SidebarCollapseToggle() {
   const { open, toggleSidebar } = useSidebar();
   return (
@@ -540,47 +654,11 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: FileText,
       roles: ["super_admin", "admin"],
     }] : []),
-    ...(hasStudioAccess ? [{
-      href: "/admin/studio",
-      label: "Content Studio",
-      icon: Newspaper,
-      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
-    }] : []),
-    ...(hasStudioAccess ? [{
-      href: "/admin/studio/inbox",
-      label: "Reviewer Inbox",
-      icon: Inbox,
-      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
-    }] : []),
-    ...(hasMarketingApproveAccess ? [{
-      href: "/admin/studio/approvals",
-      label: "Marketing Approvals",
-      icon: Megaphone,
-      roles: ["super_admin", "admin", "marketing_manager"],
-    }] : []),
-    ...(isSuperAdmin ? [{
-      href: "/admin/studio/final-approval",
-      label: "Final Sign-Off",
-      icon: ShieldCheck,
-      roles: ["super_admin"],
-    }] : []),
     ...(isSuperAdmin ? [{
       href: "/admin/automated-changes",
       label: "Automated Changes",
       icon: ClipboardCheck,
       roles: ["super_admin"],
-    }] : []),
-    ...(hasStudioAccess ? [{
-      href: "/admin/studio/calendar",
-      label: "Publishing Calendar",
-      icon: CalendarDays,
-      roles: ["super_admin", "admin", "marketing_manager", "content_editor", "reviewer"],
-    }] : []),
-    ...(hasStudioAnalyticsAccess ? [{
-      href: "/admin/studio/analytics",
-      label: "Content Analytics",
-      icon: BarChart3,
-      roles: ["super_admin", "admin", "marketing_manager"],
     }] : []),
   ];
 
@@ -594,13 +672,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
+    if (href === "/admin/studio/articles") return location === "/admin/studio" || (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));
     if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
-    if (href === "/admin/studio") return location.startsWith("/admin/studio") && !location.startsWith("/admin/studio/inbox") && !location.startsWith("/admin/studio/approvals") && !location.startsWith("/admin/studio/final-approval") && !location.startsWith("/admin/studio/calendar") && !location.startsWith("/admin/studio/analytics") && !/\/admin\/studio\/articles\/[^/]+\/review/.test(location);
+    if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");
     return location.startsWith(href);
   };
 
@@ -717,6 +796,17 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   </SidebarGroupContent>
                 </SidebarGroup>
               )}
+
+              {/* CONTENT STUDIO — collapsible section with sub-pages */}
+              <ContentStudioSection
+                hasStudioAccess={hasStudioAccess}
+                hasMarketingApproveAccess={hasMarketingApproveAccess}
+                hasStudioAnalyticsAccess={hasStudioAnalyticsAccess}
+                isSuperAdmin={isSuperAdmin}
+                isNavActive={isNavActive}
+                isComplianceLocked={isComplianceLocked}
+                location={location}
+              />
 
               {/* Bottom actions */}
               <SidebarGroup className="mt-auto border-t pt-2">
