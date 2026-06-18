@@ -1,0 +1,526 @@
+Hire’in Internal Request Desk — Lightweight Ticketing System
+1. Product Name
+
+Hire’in Internal Request Desk
+Alternative internal name: HIRD — Hire’in Request Desk
+
+Purpose: One simple place for employees and managers to raise, track, approve, and close internal operational requests.
+
+This should cover:
+
+Access requests
+Tool issues
+New tool/license requests
+Role or permission changes
+System/portal issues
+Payroll/HR/attendance/regularization issues
+Policy/process questions
+Compliance-sensitive requests
+Operational support requests
+
+2. Core Principle
+
+Do not build a heavy ServiceNow clone.
+
+Build a simple, controlled workflow:
+
+Request Raised → Triage → Approval if needed → Assigned → Work in Progress → Resolved → User Confirms → Closed
+
+For Hire’in, the main value is not “ticket volume.” The value is:
+
+Clear ownership
+No WhatsApp dependency
+Audit trail
+Approval discipline
+Access control
+Evidence for compliance
+Reduced confusion between HR, Ops, IT, TA, Healthcare, and leadership
+
+3. Recommended Architecture
+
+Use the existing employee/regularization workflow as the base.
+
+Recommended Model
+
+Create one shared object:
+
+Internal Request
+
+Then use request_type to separate workflows.
+
+Request Type	Use Case
+regularization	Attendance correction, missing punch, late login reason
+issue	Something is broken or blocked
+service_request	Need access, setup, support, document, tool
+access_change	Role change, permission upgrade/downgrade
+new_tool_request	New paid tool, license, portal, subscription
+compliance_request	Sensitive access, audit evidence, data correction
+hr_request	HR, payroll, offer letter, policy, leave support
+ops_request	Internal process, reporting, client support, admin task
+
+This way, regularization stays where it is, but the same approval engine and ticket status engine can be reused.
+
+4. User Roles
+Role	Access
+Employee	Create requests, view own requests, comment, confirm resolution
+Team Lead / Manager	Approve team requests, view team tickets
+HR Admin	Handle HR, attendance, leave, employee requests
+Ops Admin	Handle process, documentation, onboarding, admin support
+IT/System Admin	Handle access, tools, login, permissions, tech issues
+Department Head	Approve paid tools, role changes, escalation requests
+Super Admin / CEO	Override, approve sensitive/high-cost requests, view all
+
+Your current system already supports role-based access and admin/user structures, plus audit logs and session tracking, so this module should reuse that foundation rather than creating a new permission model.
+
+5. Request Categories
+
+Keep categories simple. Too many categories will confuse the team.
+
+A. Access & Tools
+
+Examples:
+
+Ceipal access
+SignalHire access
+LinkedIn RPS access
+Dice access
+Zoom number/SMS access
+Email setup
+ProKred access
+Klerhire/Klerhire.ai access
+Password reset
+Permission change
+New user onboarding access
+Tool not working
+
+B. HR / Attendance / Regularization
+
+Examples:
+
+Forgot clock-in/clock-out
+Attendance correction
+Leave balance issue
+Payroll query
+Offer letter/document request
+Policy clarification
+Device/asset acknowledgement
+Resignation/handover request
+
+C. Recruiting Operations
+
+Examples:
+
+Candidate duplicate issue
+RTR conflict
+VMS access issue
+Job requirement issue
+Submission issue
+Client portal issue
+Margin/rate approval request
+Candidate documentation support
+
+D. Compliance / Sensitive Data
+
+Examples:
+
+Access to candidate documents
+PII/PHI access request
+Audit log request
+Credential document correction
+Background/compliance document issue
+Data deletion/correction request
+
+E. General Ops
+
+Examples:
+
+Report request
+Internal process issue
+Template request
+Training material request
+Account assignment change
+Escalation support
+
+6. Priority Matrix
+
+Use priority only to guide response time. Do not let everyone mark everything urgent.
+
+Priority	Meaning	SLA
+P1 Critical	Blocking business, client delivery, payroll, security, login for critical role	Acknowledge within 2 business hours
+P2 High	Blocking individual work or time-sensitive delivery	Acknowledge same business day
+P3 Normal	Standard support request	Acknowledge within 1 business day
+P4 Low	Improvement, template, nice-to-have	2–3 business days
+
+System should allow requester to select priority, but assignee/admin can adjust it.
+
+7. Status Workflow
+
+Use one common workflow across all request types.
+
+Status	Meaning
+Draft	Request started but not submitted
+Submitted	Request submitted by employee
+Triage	HR/Ops/IT reviewing category, priority, assignment
+Need More Info	Request sent back to requester
+Pending Manager Approval	Waiting for reporting manager
+Pending Department Approval	Waiting for department head
+Pending CEO Approval	Required for sensitive or paid requests
+Approved	Approval completed
+Rejected	Request rejected with reason
+Assigned	Owner assigned
+In Progress	Work started
+Pending User Validation	Assignee marked resolved; waiting for requester confirmation
+Resolved	Issue/request completed
+Closed	Final closed state
+Cancelled	Requester/admin cancelled
+8. Approval Rules
+
+This is where you bring ServiceNow-style control without complexity.
+
+Request	Approval Needed
+Password reset	No approval, IT/System Admin only
+Existing tool access for employee role	Manager approval
+Admin-level access	Manager + Super Admin approval
+Paid tool/license request	Department Head + CEO approval
+LinkedIn/Dice/Ceipal access	Manager + Ops/Admin approval
+Candidate PII/PHI access	Manager + Super Admin approval
+Attendance regularization	Manager or HR approval
+Payroll/HR correction	HR approval
+Client/VMS portal access	Department Head or Account Owner approval
+Role/permission change	Manager + Super Admin approval
+9. Required Form Fields
+Basic Fields
+Field	Required
+Request Title	Yes
+Request Type	Yes
+Category	Yes
+Subcategory	Yes
+Description	Yes
+Priority	Yes
+Requested For	Yes
+Department	Auto-filled
+Manager	Auto-filled
+Attachment	Optional
+Business Justification	Required for access/tool/change
+Needed By Date	Optional
+Contains Sensitive Data?	Yes/No
+Tool/System Name	Required for access/tool requests
+Access Request Fields
+
+For access requests, add:
+
+Tool name
+Access level requested
+Reason access is needed
+Client/program/project name
+Temporary or permanent access
+End date if temporary
+Manager approval required
+Admin approval required
+
+New Tool Request Fields
+
+For new tools, add:
+
+Tool name
+Website/vendor
+Monthly/annual cost
+Number of users
+Business problem solved
+Current workaround
+Expected benefit
+CEO approval required
+Renewal owner
+
+10. MVP Database Design
+
+Since your stack already uses PostgreSQL and Drizzle ORM in the existing architecture, keep the schema clean and expandable.
+
+internal_requests
+CREATE TABLE internal_requests (
+  id SERIAL PRIMARY KEY,
+  request_number VARCHAR(30) UNIQUE NOT NULL,
+
+  requester_user_id INTEGER NOT NULL REFERENCES users(id),
+  requester_employee_id INTEGER REFERENCES employees(id),
+  requested_for_employee_id INTEGER REFERENCES employees(id),
+
+  request_type VARCHAR(50) NOT NULL,
+  category VARCHAR(80) NOT NULL,
+  subcategory VARCHAR(80),
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+
+  priority VARCHAR(20) DEFAULT 'P3',
+  status VARCHAR(40) DEFAULT 'submitted',
+
+  department VARCHAR(100),
+  manager_user_id INTEGER REFERENCES users(id),
+
+  assignment_group VARCHAR(80),
+  assigned_to_user_id INTEGER REFERENCES users(id),
+
+  tool_name VARCHAR(120),
+  access_level VARCHAR(100),
+  business_justification TEXT,
+  needed_by DATE,
+  is_sensitive BOOLEAN DEFAULT FALSE,
+  risk_level VARCHAR(20) DEFAULT 'low',
+
+  approval_required BOOLEAN DEFAULT FALSE,
+  current_approval_step VARCHAR(80),
+
+  sla_due_at TIMESTAMP,
+  resolved_at TIMESTAMP,
+  closed_at TIMESTAMP,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+internal_request_comments
+CREATE TABLE internal_request_comments (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES internal_requests(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  comment_text TEXT NOT NULL,
+  is_internal BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+internal_request_approvals
+CREATE TABLE internal_request_approvals (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES internal_requests(id) ON DELETE CASCADE,
+  approver_user_id INTEGER NOT NULL REFERENCES users(id),
+  approval_level VARCHAR(50) NOT NULL,
+  status VARCHAR(30) DEFAULT 'pending',
+  decision_note TEXT,
+  decided_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+internal_request_audit_log
+CREATE TABLE internal_request_audit_log (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES internal_requests(id) ON DELETE CASCADE,
+  actor_user_id INTEGER REFERENCES users(id),
+  action VARCHAR(80) NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+Optional Later
+
+internal_request_attachments
+internal_request_templates
+internal_request_sla_policies
+internal_request_watchers
+
+Do not build these first unless needed.
+
+11. UI Design
+Employee View
+
+Simple dashboard:
+
+My Open Requests
+My Pending Approvals
+My Resolved Requests
+Create New Request
+Regularization Request
+Access Request
+Tool Issue
+HR Request
+Ops Request
+
+Admin / Resolver View
+
+Queue-based dashboard:
+
+Unassigned
+Assigned to Me
+Pending Approval
+Breached SLA
+Sensitive Requests
+Recently Resolved
+Closed This Week
+
+Manager View
+
+Approvals only:
+
+Pending My Approval
+Team Requests
+Rejected/Approved History
+
+Super Admin View
+
+System control:
+
+All Requests
+Sensitive Requests
+Admin Access Requests
+Paid Tool Requests
+Audit Logs
+Approval Rules
+Category Configuration
+
+12. Automation Rules
+
+Keep automation simple.
+
+Trigger	System Action
+New request submitted	Assign based on category
+Access request submitted	Send to manager approval
+Paid tool request submitted	Send to department head, then CEO
+Sensitive data request	Mark risk high and route to Super Admin
+Request pending user info for 3 business days	Reminder
+Resolved but not confirmed for 3 business days	Auto-close
+P1 created	Notify assignment group and manager
+Approval rejected	Close as rejected with reason
+SLA breached	Escalate to department owner
+13. Assignment Groups
+
+Use groups instead of assigning everything to one person.
+
+Assignment Group	Handles
+HR Support	Attendance, payroll, leave, policy, employee docs
+Ops Support	Process, reports, onboarding, internal admin
+IT/System Admin	Login, email, access, tools, permissions
+TA Operations	Ceipal, candidate workflow, VMS, submissions
+Healthcare Delivery Ops	Healthcare-specific tools, credentialing, portals
+Finance/Admin	Tool cost, subscriptions, invoices
+Super Admin	Sensitive access, role changes, escalations
+14. Compliance Controls
+
+For Hire’in, this should be strict but not complicated.
+
+Minimum controls:
+
+Every request has an owner
+Every access request has approval trail
+Every sensitive request has audit trail
+Admin access cannot be self-approved
+Closed requests cannot be edited, only reopened
+Attachments are access-controlled
+Sensitive comments can be marked internal only
+All status changes write to audit log
+All approvals capture approver, date, decision, and reason
+PII/PHI-related requests require Super Admin visibility
+
+This aligns with your broader operating model around process discipline, documentation, compliance, and structured delivery. Your capability material already emphasizes structured communication, submission readiness, compliance support, and clear handoff notes, and the internal desk should reflect the same discipline internally.
+
+15. MVP Scope — Build This First
+Phase 1: Core Ticketing
+
+Build:
+
+Create request
+My requests
+Admin queue
+Status changes
+Comments
+Assignment
+Basic priority
+Basic category routing
+Email notification
+Audit log
+
+Do not build:
+
+Complex SLA engine
+Chat-style live support
+Advanced analytics
+Knowledge base
+Mobile app
+Custom forms per category
+Vendor inventory
+Asset management
+
+Phase 2: Approval Workflow
+
+Build:
+
+Manager approval
+Department approval
+CEO/Super Admin approval
+Approval history
+Reject with reason
+Auto-routing based on request type
+
+Phase 3: Access Governance
+
+Build:
+
+Tool access request template
+Access change request
+Temporary access expiry date
+Sensitive access flag
+Admin access approval rule
+Access review report
+
+Phase 4: Reporting
+
+Build:
+
+Open tickets by group
+Average resolution time
+Pending approvals
+SLA breach report
+Top request categories
+Access requests by tool
+Monthly compliance export
+
+16. Suggested API Endpoints
+POST   /api/internal-requests
+GET    /api/internal-requests/my
+GET    /api/internal-requests/queue
+GET    /api/internal-requests/:id
+PATCH  /api/internal-requests/:id/status
+PATCH  /api/internal-requests/:id/assign
+POST   /api/internal-requests/:id/comments
+POST   /api/internal-requests/:id/approvals/:approvalId/approve
+POST   /api/internal-requests/:id/approvals/:approvalId/reject
+GET    /api/internal-requests/reports/summary
+GET    /api/internal-requests/audit/:id
+17. Replit Build Prompt
+
+You can give this directly to Replit:
+
+Build a lightweight internal request desk module inside the existing Hire’in HR/Employee portal.
+
+Do not create a separate app. Reuse the current authentication, employee records, RBAC, audit logging, PostgreSQL, Drizzle ORM, React, Express, and existing portal layout.
+
+Module name: Internal Request Desk.
+
+Core requirements:
+1. Employees can create internal requests.
+2. Request types: regularization, issue, service_request, access_change, new_tool_request, compliance_request, hr_request, ops_request.
+3. Categories: Access & Tools, HR/Attendance, Recruiting Operations, Compliance, General Ops.
+4. Each request must have request number, requester, requested for, type, category, title, description, priority, status, department, manager, assigned group, assigned user, sensitive flag, business justification, needed-by date, created/updated timestamps.
+5. Status flow: submitted, triage, need_more_info, pending_manager_approval, pending_department_approval, pending_ceo_approval, approved, rejected, assigned, in_progress, pending_user_validation, resolved, closed, cancelled.
+6. Build comments with internal-only option.
+7. Build approval table and approval actions.
+8. Build audit log for every status, assignment, approval, rejection, comment, and closure.
+9. Employees can see only their own requests.
+10. Managers can see team requests and approvals assigned to them.
+11. HR/Ops/IT admins can see requests assigned to their groups.
+12. Super Admin can see all requests.
+13. Route access requests to manager approval.
+14. Route paid tool requests to department head and CEO/Super Admin approval.
+15. Route sensitive data/admin access requests to Super Admin.
+16. Build dashboards:
+   - Employee: My Open Requests, Create Request, Recently Resolved
+   - Manager: Pending My Approval, Team Requests
+   - Admin: Unassigned, Assigned to Me, Pending Approval, SLA Risk
+   - Super Admin: All Requests, Sensitive Requests, Admin Access Requests, Audit Logs
+17. Keep UI simple using existing components.
+18. Add email notifications only for create, assignment, approval needed, rejected, resolved, and closed.
+19. Do not build chat, advanced analytics, or a full ServiceNow clone.
+20. Make the module lightweight, secure, auditable, and easy for a small internal team to use.
+18. Final Recommendation
+
+Build this as a Request Desk inside the Employee Portal, with admin queues for HR/Ops/IT and approval visibility for managers. The best structure is:
+
+One request table. One comments table. One approvals table. One audit log table.
+
+That gives Hire’in enough structure for compliance and process alignment without slowing the team down.

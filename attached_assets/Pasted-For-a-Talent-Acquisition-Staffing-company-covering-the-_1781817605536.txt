@@ -1,0 +1,88 @@
+For a Talent Acquisition / Staffing company covering the entire United States, I would not keep one single shift for everyone. I would design fixed core shifts in the system, but allow client/account-specific flexibility with manager approval.
+
+The main coverage goal should be:
+
+U.S. business coverage from 8:00 AM Eastern to 6:00 PM Pacific
+That means your company is effectively covering from 5:00 AM PT to 6:00 PM PT across the day.
+
+Recommended Core Shift Structure
+Shift	U.S. Coverage Purpose	Pacific Time	Eastern Time	Best For
+Shift A – East Coast Coverage	Early client and candidate coverage	5:00 AM – 2:00 PM PT	8:00 AM – 5:00 PM ET	Healthcare recruiters, state clients, East Coast accounts
+Shift B – National Core Coverage	Main overlap across U.S.	7:00 AM – 4:00 PM PT	10:00 AM – 7:00 PM ET	Account managers, delivery managers, IT recruiters, operations
+Shift C – West Coast Coverage	Late candidate/client coverage	9:00 AM – 6:00 PM PT	12:00 PM – 9:00 PM ET	West Coast clients, candidate follow-ups, sales support
+Shift D – Extended / Priority Coverage	Only for urgent accounts	10:00 AM – 7:00 PM PT	1:00 PM – 10:00 PM ET	Critical roles, hard-to-reach candidates, urgent healthcare coverage
+For India-Based Recruiting / Delivery Team
+
+Since your India team supports U.S. staffing, I would align India shifts like this:
+
+Shift	India Time	U.S. Coverage
+Healthcare Early U.S. Shift	5:30 PM – 2:30 AM IST	Covers East Coast fully
+National Delivery Shift	7:30 PM – 4:30 AM IST	Covers East, Central, and some Pacific
+West Coast / Late Candidate Shift	9:30 PM – 6:30 AM IST	Covers Pacific and late candidate calls
+
+For Hire’in, I would keep the default India recruiting shift as 8:00 PM – 5:00 AM IST or 8:00 PM – 6:00 AM IST, depending on whether you include a formal break window.
+
+Best Practical Model for Your Company
+
+I would assign shifts by function:
+
+Healthcare Recruiting Team
+
+Use East Coast + National Coverage because many healthcare/state roles operate early.
+
+Recommended:
+5:30 PM – 2:30 AM IST or 6:30 PM – 3:30 AM IST
+
+IT Recruiting Team
+
+Use National + West Coast Coverage because IT candidates are often available later.
+
+Recommended:
+8:00 PM – 5:00 AM IST
+
+Account Managers / Delivery Managers
+
+They should overlap with clients and internal recruiters.
+
+Recommended:
+7:00 AM – 4:00 PM PT for U.S.-based
+or
+8:00 PM – 5:00 AM IST for India-based
+
+Sales / Client Success
+
+They need stronger U.S. business-hour presence.
+
+Recommended:
+6:00 AM – 3:00 PM PT or 7:00 AM – 4:00 PM PT
+
+MIS / Operations / Compliance
+
+They do not need full late-night U.S. coverage daily unless supporting submissions.
+
+Recommended:
+6:30 PM – 3:30 AM IST or 7:30 PM – 4:30 AM IST
+
+Company Policy Language You Can Use
+
+Core Shift Policy
+
+Each employee will be assigned a fixed core working shift in the company attendance and HR system based on their role, department, client coverage responsibility, and business need. The core shift represents the employee’s official availability, attendance, collaboration, and productivity window.
+
+Client-facing work may require reasonable flexibility outside the assigned core shift based on time zone, candidate availability, urgent submissions, interviews, onboarding, compliance deadlines, or account-specific needs. Any regular shift adjustment must be approved by the reporting manager and updated in the employee profile.
+
+Failure to maintain an assigned core shift in the system may result in attendance, productivity, compliance, and payroll-related discrepancies. Employees are responsible for ensuring their availability, communication status, and attendance are aligned with their approved shift.
+
+My Recommendation
+
+For your company, I would use three official core shifts only to keep it clean:
+
+Early U.S. Shift: 5:30 PM – 2:30 AM IST
+Standard U.S. Shift: 8:00 PM – 5:00 AM IST
+Late U.S. Shift: 9:30 PM – 6:30 AM IST
+
+Do not create too many shift types. Too many shifts will create confusion in attendance, payroll, and performance tracking.
+
+For most recruiters, keep 8:00 PM – 5:00 AM IST as the standard.
+For healthcare/state accounts, assign early coverage.
+For West Coast clients and late candidate calls, assign late coverage.
