@@ -752,6 +752,13 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters seed_probation_plan column migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP`);
+    log("Ensured reminder_sent_at column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters reminder_sent_at column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {
@@ -786,6 +793,19 @@ async function ensureOfferLetterAddendumsTable() {
       `);
       await db.execute(sql`
         ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS cc_emails TEXT
+      `);
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+      `);
+      await db.execute(sql`
+        ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP
+      `);
+      // Add "expired" value to the offer_letter_addendum_status enum if not present
+      await db.execute(sql`
+        DO $$ BEGIN
+          ALTER TYPE offer_letter_addendum_status ADD VALUE IF NOT EXISTS 'expired';
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
       `);
       return;
     }

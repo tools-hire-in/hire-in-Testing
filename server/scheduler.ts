@@ -1,10 +1,10 @@
 import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
-import { sendSalaryReportApprovalReminder } from "./email";
+import { sendSalaryReportApprovalReminder, sendOfferLetterReminderEmail, sendAddendumReminderEmail } from "./email";
 import { storage } from "./storage";
 import { db } from "./db";
-import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns } from "@shared/schema";
-import { eq, and, lt, gt, isNull, sql } from "drizzle-orm";
+import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns, offerLetters, offerLetterAddendums } from "@shared/schema";
+import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
 import { generateAttendanceReportRun } from "./attendanceReport";
 
 function isLastDayOfMonth(): boolean {
@@ -966,6 +966,112 @@ export function startScheduler() {
     }
   });
 
+  // Offer letter & addendum signing reminder: daily at 9 AM IST
+  // Finds unsigned docs sent 2+ days ago, not yet reminded, not yet expired.
+  // Sends reminder email to signee (+ CC to HR issuer), marks reminderSentAt.
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      const now = new Date();
+      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+      // --- Offer letters ---
+      const pendingOffers = await db
+        .select()
+        .from(offerLetters)
+        .where(
+          and(
+            eq(offerLetters.status, "sent"),
+            lte(offerLetters.createdAt, twoDaysAgo),
+            isNull(offerLetters.reminderSentAt),
+            gt(offerLetters.expiresAt, now),
+          ),
+        );
+
+      let offerReminders = 0;
+      for (const letter of pendingOffers) {
+        try {
+          const baseUrl = process.env.REPL_SLUG
+            ? `https://${process.env.REPL_SLUG}.replit.app`
+            : "https://hire-in.com";
+          const acceptUrl = `${baseUrl}/onboard/${letter.token}`;
+          const expiresAt = new Date(letter.expiresAt);
+          const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const ccList = letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];
+
+          await sendOfferLetterReminderEmail({
+            to: letter.candidatePersonalEmail,
+            candidateName: letter.candidateName,
+            designation: letter.designation,
+            acceptUrl,
+            expiresAt,
+            daysLeft,
+            cc: ccList.length > 0 ? ccList : undefined,
+          });
+          await db.update(offerLetters).set({ reminderSentAt: now }).where(eq(offerLetters.id, letter.id));
+          offerReminders++;
+        } catch (err) {
+          console.error(`[scheduler] Offer reminder failed for ${letter.id}:`, err);
+        }
+      }
+
+      // --- Addendums ---
+      const pendingAddendums = await db
+        .select()
+        .from(offerLetterAddendums)
+        .where(
+          and(
+            eq(offerLetterAddendums.status, "sent"),
+            lte(offerLetterAddendums.issuedAt, twoDaysAgo),
+            isNull(offerLetterAddendums.reminderSentAt),
+            gt(offerLetterAddendums.expiresAt, now),
+          ),
+        );
+
+      let addendumReminders = 0;
+      for (const addendum of pendingAddendums) {
+        try {
+          const baseUrl = process.env.REPL_SLUG
+            ? `https://${process.env.REPL_SLUG}.replit.app`
+            : "https://hire-in.com";
+          const acceptUrl = `${baseUrl}/addendum/${addendum.token}`;
+          const expiresAt = new Date(addendum.expiresAt!);
+          const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const ccList = addendum.ccEmails ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];
+
+          // Find recipient email
+          let recipientEmail = "";
+          if (addendum.offerLetterId) {
+            const [offerRow] = await db.select().from(offerLetters).where(eq(offerLetters.id, addendum.offerLetterId));
+            recipientEmail = offerRow?.candidatePersonalEmail || "";
+          } else if (addendum.forEmployeeId) {
+            const emp = await storage.getAdminUser(addendum.forEmployeeId);
+            recipientEmail = emp?.email || "";
+          }
+
+          if (!recipientEmail) continue;
+
+          await sendAddendumReminderEmail({
+            to: recipientEmail,
+            candidateName: addendum.candidateName,
+            addendumType: addendum.addendumType,
+            acceptUrl,
+            expiresAt,
+            daysLeft,
+            cc: ccList.length > 0 ? ccList : undefined,
+          });
+          await db.update(offerLetterAddendums).set({ reminderSentAt: now }).where(eq(offerLetterAddendums.id, addendum.id));
+          addendumReminders++;
+        } catch (err) {
+          console.error(`[scheduler] Addendum reminder failed for ${addendum.id}:`, err);
+        }
+      }
+
+      console.log(`[scheduler] Signing reminders: ${offerReminders} offer letter(s), ${addendumReminders} addendum(s) reminded.`);
+    } catch (err) {
+      console.error("[scheduler] Signing reminder sweep failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -976,4 +1082,5 @@ export function startScheduler() {
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
   console.log("  - End-of-day absent sweep: daily at 23:59 IST");
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
+  console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
 }

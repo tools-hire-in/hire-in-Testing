@@ -1085,6 +1085,140 @@ export async function sendAddendumEmail(options: {
   }
 }
 
+export async function sendOfferLetterReminderEmail(options: {
+  to: string;
+  candidateName: string;
+  designation: string;
+  acceptUrl: string;
+  expiresAt: Date;
+  daysLeft: number;
+  cc?: string[];
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const expiryStr = options.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const msg = {
+      to: options.to,
+      cc: options.cc?.length ? options.cc : undefined,
+      from: { email: fromEmail, name: "Alina Carter" },
+      replyTo: { email: 'alina.carter@hire-in.com', name: 'Alina Carter' },
+      subject: `Reminder: Your Offer Letter is Awaiting Your Signature — ${options.designation}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Action Required — Offer Letter Signature</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.candidateName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              This is a friendly reminder that your offer letter for the position of <strong>${options.designation}</strong> at Rayomind Solutions LLP is still awaiting your signature.
+            </p>
+            <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 16px; margin: 0 0 24px;">
+              <p style="color: #854d0e; margin: 0; font-weight: 600;">
+                ⏰ You have <strong>${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining</strong> to accept — offer expires on ${expiryStr}.
+              </p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.acceptUrl}" style="display: inline-block; background-color: #1e40af; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                View & Accept Your Offer
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 16px 0 0;">
+              If the button doesn't work, copy and paste this link:<br/>
+              <a href="${options.acceptUrl}" style="color: #3b82f6; word-break: break-all;">${options.acceptUrl}</a>
+            </p>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.candidateName},\n\nThis is a reminder that your offer letter for ${options.designation} is awaiting your signature.\n\nYou have ${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining — offer expires on ${expiryStr}.\n\nSign here: ${options.acceptUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Offer letter reminder sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send offer letter reminder:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendAddendumReminderEmail(options: {
+  to: string;
+  candidateName: string;
+  addendumType: string;
+  acceptUrl: string;
+  expiresAt: Date;
+  daysLeft: number;
+  cc?: string[];
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const typeLabels: Record<string, string> = {
+      salary_revision: "Salary Revision",
+      role_change: "Role / Title Change",
+      probation_extension: "Probation Extension",
+      combined: "Combined Role & Salary Change",
+      custom: "Custom Amendment",
+    };
+    const typeLabel = typeLabels[options.addendumType] || "Amendment";
+    const expiryStr = options.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const msg = {
+      to: options.to,
+      cc: options.cc?.length ? options.cc : undefined,
+      from: { email: fromEmail, name: "Alina Carter" },
+      replyTo: { email: 'alina.carter@hire-in.com', name: 'Alina Carter' },
+      subject: `Reminder: Amendment Letter Awaiting Your Signature — ${typeLabel}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Action Required — Amendment Signature</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Dear ${options.candidateName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              This is a reminder that your <strong>${typeLabel}</strong> amendment letter is still awaiting your digital signature.
+            </p>
+            <div style="background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 16px; margin: 0 0 24px;">
+              <p style="color: #854d0e; margin: 0; font-weight: 600;">
+                ⏰ You have <strong>${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining</strong> to sign — expires on ${expiryStr}.
+              </p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.acceptUrl}" style="display: inline-block; background-color: #1e40af; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                Review & Sign Amendment
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; margin: 16px 0 0;">
+              If the button doesn't work, copy and paste this link:<br/>
+              <a href="${options.acceptUrl}" style="color: #3b82f6; word-break: break-all;">${options.acceptUrl}</a>
+            </p>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Dear ${options.candidateName},\n\nThis is a reminder that your ${typeLabel} amendment letter is awaiting your signature.\n\nYou have ${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining — expires on ${expiryStr}.\n\nSign here: ${options.acceptUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Addendum reminder sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send addendum reminder:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendAddendumAcceptedEmail(options: {
   to: string;
   candidateName: string;

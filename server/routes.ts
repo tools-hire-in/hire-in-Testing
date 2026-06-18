@@ -7831,7 +7831,9 @@ export async function registerRoutes(
         growthPlanClauseText: renderedGrowthPlanText,
       });
 
-      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
+      const addendumExpiresAt = new Date();
+      addendumExpiresAt.setDate(addendumExpiresAt.getDate() + 7);
+      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date(), expiresAt: addendumExpiresAt });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
@@ -7987,6 +7989,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Addendum not found" });
       }
 
+      if (addendum.expiresAt && new Date() > new Date(addendum.expiresAt) && addendum.status === "sent") {
+        await storage.updateAddendumStatus(addendum.id, { status: "expired" as any });
+        return res.status(410).json({ error: "This addendum has expired", status: "expired" });
+      }
+
       let originalOfferDate: string | null = null;
       let originalDesignation: string | null = null;
 
@@ -8053,6 +8060,12 @@ export async function registerRoutes(
       }
       if (addendum.status === "cancelled") {
         return res.status(400).json({ error: "This addendum has been cancelled and is no longer available for signing" });
+      }
+      if (addendum.expiresAt && (addendum.status === "expired" || new Date() > new Date(addendum.expiresAt))) {
+        if (addendum.status !== "expired") {
+          await storage.updateAddendumStatus(addendum.id, { status: "expired" as any });
+        }
+        return res.status(410).json({ error: "This addendum has expired", status: "expired" });
       }
       if (addendum.status !== "sent") {
         return res.status(400).json({ error: "This addendum is not yet available for signing" });
@@ -8256,7 +8269,9 @@ export async function registerRoutes(
         growthPlanClauseText: renderedStandaloneGrowthPlanText,
       } as any);
 
-      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date() });
+      const standaloneExpiresAt = new Date();
+      standaloneExpiresAt.setDate(standaloneExpiresAt.getDate() + 7);
+      await storage.updateAddendumStatus(addendum.id, { issuedAt: new Date(), expiresAt: standaloneExpiresAt });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
@@ -8805,6 +8820,94 @@ export async function registerRoutes(
   });
 
   // Cancel offer letter
+  // Admin: Reactivate expired/sent offer letter (reset expiry + resend email)
+  app.post("/api/hr/tools/offer-letters/:id/reactivate", requireAuth, requirePermission("hr.tools.offerLetters.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Offer letter not found" });
+      if (["accepted", "onboarded", "countersigned", "cancelled", "rejected"].includes(letter.status)) {
+        return res.status(400).json({ error: `Cannot reactivate — offer status is '${letter.status}'` });
+      }
+      const newExpiresAt = new Date();
+      newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+      await storage.updateOfferLetter(letter.id, { status: "sent", expiresAt: newExpiresAt, reminderSentAt: null });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/onboard/${letter.token}`;
+      const ccList = letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];
+      const { sendOfferLetterEmail } = await import("./email");
+      await sendOfferLetterEmail({
+        to: letter.candidatePersonalEmail,
+        candidateName: letter.candidateName,
+        designation: letter.designation,
+        acceptUrl,
+        expiresAt: newExpiresAt,
+        cc: ccList.length > 0 ? ccList : undefined,
+      });
+
+      await storage.createAuditLog({
+        action: "offer_letter_reactivated",
+        actorId: req.session.userId!,
+        changes: { offerId: letter.id, candidateName: letter.candidateName, newExpiresAt: newExpiresAt.toISOString() },
+      });
+      res.json({ success: true, expiresAt: newExpiresAt });
+    } catch (error) {
+      console.error("Reactivate offer letter error:", error);
+      res.status(500).json({ error: "Failed to reactivate offer letter" });
+    }
+  });
+
+  // Admin: Reactivate expired addendum (reset expiry + resend email)
+  app.post("/api/hr/tools/addendums/:id/reactivate", requireAuth, requirePermission("hr.tools.addendums.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const addendum = await storage.getAddendum(req.params.id);
+      if (!addendum) return res.status(404).json({ error: "Addendum not found" });
+      if (["accepted", "countersigned", "cancelled"].includes(addendum.status)) {
+        return res.status(400).json({ error: `Cannot reactivate — addendum status is '${addendum.status}'` });
+      }
+      const newExpiresAt = new Date();
+      newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+      await storage.updateAddendumStatus(addendum.id, { status: "sent", expiresAt: newExpiresAt, reminderSentAt: null } as any);
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/addendum/${addendum.token}`;
+      const ccList = addendum.ccEmails ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];
+
+      let recipientEmail = "";
+      let recipientName = addendum.candidateName;
+      if (addendum.offerLetterId) {
+        const offerLetter = await storage.getOfferLetter(addendum.offerLetterId);
+        recipientEmail = offerLetter?.candidatePersonalEmail || "";
+      } else if (addendum.forEmployeeId) {
+        const emp = await storage.getAdminUser(addendum.forEmployeeId);
+        recipientEmail = emp?.email || "";
+      }
+
+      if (recipientEmail) {
+        const { sendAddendumEmail } = await import("./email");
+        await sendAddendumEmail({
+          to: recipientEmail,
+          candidateName: recipientName,
+          addendumType: addendum.addendumType,
+          acceptUrl,
+          cc: ccList.length > 0 ? ccList : undefined,
+        });
+      }
+
+      await storage.createAuditLog({
+        action: "addendum_reactivated",
+        actorId: req.session.userId!,
+        changes: { addendumId: addendum.id, candidateName: addendum.candidateName, newExpiresAt: newExpiresAt.toISOString() },
+      });
+      res.json({ success: true, expiresAt: newExpiresAt });
+    } catch (error) {
+      console.error("Reactivate addendum error:", error);
+      res.status(500).json({ error: "Failed to reactivate addendum" });
+    }
+  });
+
   app.post("/api/hr/tools/offer-letters/:id/cancel", requireAuth, requirePermission("hr.tools.offerLetters.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetter(req.params.id);

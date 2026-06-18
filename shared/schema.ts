@@ -685,6 +685,7 @@ export const offerLetters = pgTable("offer_letters", {
   performanceClauseText: text("performance_clause_text"),
   policyAnnexures: text("policy_annexures").array(),
   seedProbationPlan: boolean("seed_probation_plan").notNull().default(false),
+  reminderSentAt: timestamp("reminder_sent_at"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
@@ -1217,6 +1218,7 @@ export const offerLetterAddendumStatusEnum = pgEnum("offer_letter_addendum_statu
   "accepted",
   "countersigned",
   "cancelled",
+  "expired",
 ]);
 
 export const offerLetterAddendums = pgTable("offer_letter_addendums", {
@@ -1268,6 +1270,9 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   counterSignedAt: timestamp("counter_signed_at"),
   counterAuthCode: varchar("counter_auth_code"),
   counterDocumentHash: varchar("counter_document_hash"),
+
+  expiresAt: timestamp("expires_at"),
+  reminderSentAt: timestamp("reminder_sent_at"),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
