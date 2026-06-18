@@ -10311,7 +10311,10 @@ export async function registerRoutes(
     requirePermission("studio.create_article", "marketing_manager", "content_editor"),
     async (req: Request, res: Response) => {
       try {
-        const parsed = insertStudioArticleSchema.partial().parse(req.body ?? {});
+        const coerced = coerceDateFields(req.body ?? {}, [
+          "scheduledAt", "approvedAt", "publishedAt", "notifiedAt", "riskFlagsResolvedAt",
+        ]);
+        const parsed = insertStudioArticleSchema.partial().parse(coerced);
         if (!parsed.projectId) return res.status(400).json({ error: "projectId is required" });
         if (!parsed.title || !parsed.title.trim()) {
           return res.status(400).json({ error: "title is required" });
@@ -10351,7 +10354,10 @@ export async function registerRoutes(
         const existing = await storage.getStudioArticle(req.params.id);
         if (!existing) return res.status(404).json({ error: "Article not found" });
 
-        const updates = insertStudioArticleSchema.partial().parse(req.body ?? {});
+        const coerced = coerceDateFields(req.body ?? {}, [
+          "scheduledAt", "approvedAt", "publishedAt", "notifiedAt", "riskFlagsResolvedAt",
+        ]);
+        const updates = insertStudioArticleSchema.partial().parse(coerced);
         // Status changes must go through the transition endpoint.
         delete (updates as any).status;
         delete (updates as any).createdBy;
@@ -10445,7 +10451,26 @@ export async function registerRoutes(
       return res.status(status).json({ error: error.message, code: error.code, retryable: error.retryable });
     }
     console.error("AI generation error:", error);
-    return res.status(500).json({ error: error?.message || "AI generation failed", code: "upstream" });
+    return res.status(500).json({
+      error: "AI generation failed — please try again. If the problem persists, contact support.",
+      code: "upstream",
+    });
+  }
+
+  /**
+   * Coerce named date fields from ISO strings to Date objects before Zod parsing.
+   * drizzle-zod maps timestamp() columns to z.date(), so raw ISO strings from
+   * the client would otherwise fail validation.
+   */
+  function coerceDateFields(body: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+    const result = { ...body };
+    for (const field of fields) {
+      if (typeof result[field] === "string" && result[field]) {
+        const d = new Date(result[field] as string);
+        result[field] = isNaN(d.getTime()) ? null : d;
+      }
+    }
+    return result;
   }
 
   // Generate a full article draft. Modes: "topic" (default) | "shape".
@@ -12210,7 +12235,8 @@ export async function registerRoutes(
     requirePermission("studio.manage_authors"),
     async (req: Request, res: Response) => {
       try {
-        const parsed = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
+        const coerced = coerceDateFields(req.body ?? {}, ["consentedAt"]);
+        const parsed = insertStudioAuthorProfileSchema.partial().parse(coerced);
         if (!parsed.displayName || !parsed.displayName.trim()) {
           return res.status(400).json({ error: "displayName is required" });
         }
@@ -12247,7 +12273,8 @@ export async function registerRoutes(
       try {
         const existing = await storage.getStudioAuthorProfile(req.params.id);
         if (!existing) return res.status(404).json({ error: "Author not found" });
-        const updates = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
+        const coerced = coerceDateFields(req.body ?? {}, ["consentedAt"]);
+        const updates = insertStudioAuthorProfileSchema.partial().parse(coerced);
         // Merge with existing to recompute profileComplete correctly.
         const merged = { ...existing, ...updates };
         const profileComplete = !!(

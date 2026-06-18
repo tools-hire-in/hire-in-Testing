@@ -139,22 +139,31 @@ async function callStructured(
 
   const run = async (): Promise<RawCallResult> => {
     try {
-      const completion = await openai.chat.completions.create({
-        model,
-        max_completion_tokens: template.maxTokens ?? 4000,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: schemaName,
-            strict: true,
-            schema: jsonSchema,
+      let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+      try {
+        completion = await openai.chat.completions.create({
+          model,
+          max_completion_tokens: template.maxTokens ?? 4000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: schemaName,
+              strict: true,
+              schema: jsonSchema,
+            },
           },
-        },
-      });
+        });
+      } catch (sdkErr: any) {
+        // Log the raw SDK error (which may contain minified identifiers) so
+        // engineers can see the real cause in server logs, then re-throw with
+        // a clean user-facing message.
+        console.error("OpenAI SDK raw error:", sdkErr?.message, sdkErr?.stack);
+        throw new AiGenerationError("upstream", "AI provider error — check server logs.");
+      }
 
       const choice = completion.choices?.[0];
       const content = choice?.message?.content;
@@ -183,9 +192,9 @@ async function callStructured(
         throw new AiGenerationError("rate_limit", "AI provider rate limit hit. Try again shortly.");
       }
       if (status === 400) {
-        throw new AbortError(new AiGenerationError("upstream", err?.message || "Bad request to AI provider.", false));
+        throw new AbortError(new AiGenerationError("upstream", "Bad request to AI provider.", false));
       }
-      throw new AiGenerationError("upstream", err?.message || "AI provider request failed.");
+      throw new AiGenerationError("upstream", "AI provider request failed.");
     }
   };
 
