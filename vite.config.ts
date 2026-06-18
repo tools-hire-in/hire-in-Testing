@@ -36,7 +36,11 @@ export default defineConfig({
           if (
             id.includes("node_modules/react/") ||
             id.includes("node_modules/react-dom/") ||
-            id.includes("node_modules/scheduler/")
+            id.includes("node_modules/scheduler/") ||
+            id.includes("node_modules/wouter/") ||
+            id.includes("node_modules/zod/") ||
+            id.includes("node_modules/react-hook-form/") ||
+            id.includes("node_modules/@hookform/")
           ) {
             return "vendor-react";
           }
@@ -48,14 +52,6 @@ export default defineConfig({
           }
           if (id.includes("node_modules/lucide-react/")) {
             return "vendor-icons";
-          }
-          if (
-            id.includes("node_modules/wouter/") ||
-            id.includes("node_modules/zod/") ||
-            id.includes("node_modules/react-hook-form/") ||
-            id.includes("node_modules/@hookform/")
-          ) {
-            return "vendor-forms";
           }
           if (
             id.includes("node_modules/docx/") ||

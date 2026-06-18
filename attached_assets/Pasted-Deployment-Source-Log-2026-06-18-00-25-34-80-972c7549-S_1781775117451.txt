@@ -1,0 +1,188 @@
+Deployment
+Source
+Log
+
+2026-06-18 00:25:34.80
+972c7549
+System
+starting up user application
+
+2026-06-18 02:26:49.90
+d61fbaf1
+User
+9:26:49 AM [express] Probation policy settings ensured (probation_months=3, probation_policy_date=2026-06-18)
+
+2026-06-18 02:26:49.93
+d61fbaf1
+User
+9:26:49 AM [express] Ensured is_active column on contract_clients
+
+2026-06-18 02:26:50.21
+d61fbaf1
+User
+9:26:50 AM [express] Contract dispatch schema columns ensured
+
+2026-06-18 02:26:50.28
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:50.41
+d61fbaf1
+User
+9:26:50 AM [express] Content Studio article_status enum values ensured
+
+2026-06-18 02:26:50.73
+d61fbaf1
+User
+9:26:50 AM [express] Attendance regularization tables ensured
+
+2026-06-18 02:26:50.76
+d61fbaf1
+User
+9:26:50 AM [express] App announcement system settings seeded
+
+2026-06-18 02:26:50.81
+d61fbaf1
+User
+9:26:50 AM [express] Addendum clause text patched: 'performance plan' → 'growth plan'
+
+2026-06-18 02:26:50.84
+d61fbaf1
+User
+9:26:50 AM [express] Policy signing tables ensured
+
+2026-06-18 02:26:50.91
+d61fbaf1
+User
+9:26:50 AM [express] Signature ledger table ensured
+
+2026-06-18 02:26:51.20
+d61fbaf1
+User
+9:26:51 AM [express] Attendance report approval tables ensured
+
+2026-06-18 02:26:51.30
+d61fbaf1
+User
+9:26:51 AM [express] Pending changes table ensured
+
+2026-06-18 02:26:51.37
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:52.09
+d61fbaf1
+User
+9:26:52 AM [express] Healthcare plan tables and columns ensured
+
+2026-06-18 02:26:52.62
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:52.72
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:53.95
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:55.16
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:55.57
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:56.52
+d61fbaf1
+System
+healthcheck failed error=healthcheck / returned status 500
+
+2026-06-18 02:26:56.57
+d61fbaf1
+User
+9:26:56 AM [express] Plan goal templates seed: 0 new rows inserted (102 already present)
+
+2026-06-18 02:26:57.00
+d61fbaf1
+User
+9:26:57 AM [express] Access control matrix hydrated
+
+2026-06-18 02:26:57.00
+d61fbaf1
+User
+9:26:57 AM [express] serving on port 23636
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Salary report hold: last day of month at 6 PM CST → saves as pending_approval
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+[scheduler] All cron jobs scheduled:
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- End-of-day absent sweep: daily at 23:59 IST
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Attendance T-2h reminder: every hour → emails pending managers approaching deadline
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Night shift consent expiry check: daily at 8 AM IST
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests
+
+2026-06-18 02:26:57.10
+d61fbaf1
+User
+- Attendance report auto-create: 1st of month at 00:05 IST → generates run + notifies managers
+
+2026-06-18 02:27:02.92
+972c7549
+System
+system: received signal terminated
+
+2026-06-18 02:27:02.93
+972c7549
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+
+2026-06-18 02:27:02.95
+972c7549
+System
+main done, exiting
