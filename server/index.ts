@@ -1982,10 +1982,14 @@ async function ensureHealthcarePlansTables() {
     console.error("Content Studio prompt library seed error:", err);
   }
   try {
-    const { runInsightsLaunchSetup } = await import("./insightsLaunch");
+    const { runInsightsLaunchSetup, resetLaunchRoutingIfPrematured } = await import("./insightsLaunch");
     const launch = await runInsightsLaunchSetup();
     if (launch.ok) {
-      log(`Hire'in Insights launch: ${launch.inserted} seeded, ${launch.skipped} existing`);
+      log(`Hire'in Insights launch: ${launch.inserted} seeded, ${launch.skipped} existing (drafts only — no routing on startup)`);
+    }
+    const resetResult = await resetLaunchRoutingIfPrematured();
+    if (resetResult.ok && "reset" in resetResult && resetResult.reset > 0) {
+      log(`Hire'in Insights: reset ${resetResult.reset} prematurely routed article(s) back to draft`);
     }
   } catch (err) {
     console.error("Hire'in Insights launch setup error:", err);

@@ -33,6 +33,9 @@ const INSIGHTS_PROJECT_SLUG = "hirein";
 const DEFAULT_BASE_URL = "https://hire-in.com";
 const REVIEW_SLA_MS = 2 * 60 * 60 * 1000; // 2 hours
 const ANNOUNCEMENT_FLAG_KEY = "hirein_insights_launch_announced";
+// Separate flag tracking routing completion — decoupled from article statuses
+// so articles progressing to approved/published do not re-open the routing gate.
+const ROUTING_DONE_FLAG_KEY = "hirein_insights_launch_routing_done";
 
 // Routing desk a category maps onto. Mirrors the launch routing spec.
 type RoutingTeam =
@@ -310,10 +313,7 @@ export async function seedInsightsLaunchArticles(opts: { dryRun?: boolean; actor
     const author = authorByName.get(displayName.trim().toLowerCase());
     const created = await storage.createStudioArticle({
       projectId: project.id,
-      // The article_status enum has no "reviewer_pending" value; "in_review"
-      // is its real-world equivalent and the only status that makes the
-      // reviewer inbox + review-decision workflow functional. Never published.
-      status: "in_review",
+      status: "draft",
       contentType: "article",
       category: a.category,
       title: a.title,
@@ -340,7 +340,7 @@ export async function seedInsightsLaunchArticles(opts: { dryRun?: boolean; actor
         slug: a.slug,
         category: a.category,
         routingTeam: a.routingTeam,
-        status: "in_review",
+        status: "draft",
       },
     } as any);
     inserted++;
@@ -392,6 +392,9 @@ export async function routeLaunchArticles(opts: {
   if (!project) return { ok: false as const, reason: "no_insights_project", assigned: 0, skipped: 0 };
   const actorId = opts.actorId ?? (await getSeedActorId());
 
+  // Only route seed articles currently in `draft` status — this enforces the
+  // `draft → in_review` transition and prevents regressing approved/published
+  // articles back into review if Step 2 were ever to be called again.
   const articles = await db
     .select()
     .from(studioArticles)
@@ -399,6 +402,7 @@ export async function routeLaunchArticles(opts: {
       and(
         eq(studioArticles.projectId, project.id),
         eq(studioArticles.seedBatchId, INSIGHTS_LAUNCH_SEED_BATCH_ID),
+        eq(studioArticles.status, "draft"),
       ),
     );
 
@@ -450,7 +454,7 @@ export async function routeLaunchArticles(opts: {
       assignedBy: actorId ?? null,
       comment: "Auto-assigned for Hire'in Insights pilot launch (2-hour review SLA).",
     } as any);
-    await storage.updateStudioArticle(article.id, { reviewerUserId } as any);
+    await storage.updateStudioArticle(article.id, { status: "in_review", reviewerUserId } as any);
 
     const dueLabel = dueAt.toLocaleString();
     try {
@@ -620,9 +624,10 @@ export async function generateLaunchSocialKitDrafts(opts: { dryRun?: boolean; ac
 }
 
 // ---------------------------------------------------------------------------
-// Orchestrator — runs the full idempotent launch setup at startup.
+// Orchestrator — safe startup path: seed drafts + routing rules ONLY.
+// No reviewer assignments, no emails, no notifications fire on startup.
 // ---------------------------------------------------------------------------
-export async function runInsightsLaunchSetup(opts: { dryRun?: boolean; baseUrl?: string } = {}) {
+export async function runInsightsLaunchSetup(opts: { dryRun?: boolean } = {}) {
   const dryRun = !!opts.dryRun;
   const actorId = await getSeedActorId();
   const seedResult = await seedInsightsLaunchArticles({ dryRun, actorId });
@@ -631,9 +636,241 @@ export async function runInsightsLaunchSetup(opts: { dryRun?: boolean; baseUrl?:
     return seedResult;
   }
   await applyLaunchRoutingGuardrail({ dryRun, actorId });
-  await routeLaunchArticles({ dryRun, baseUrl: opts.baseUrl, actorId });
-  await generateLaunchSocialKitDrafts({ dryRun, actorId });
   return seedResult;
+}
+
+// ---------------------------------------------------------------------------
+// Reset any prematurely auto-routed articles back to draft.
+// Idempotent — guarded by a system_settings flag so it only acts once.
+// ---------------------------------------------------------------------------
+const RESET_FLAG_KEY = "hirein_insights_premature_route_reset_v1";
+
+// The comment stamped on every assignment created by the premature auto-route.
+// Any assignment with a different comment was placed manually and must not be
+// touched by the reset routine.
+const PREMATURE_ASSIGN_COMMENT =
+  "Auto-assigned for Hire'in Insights pilot launch (2-hour review SLA).";
+
+export async function resetLaunchRoutingIfPrematured() {
+  const already = await storage.getSystemSetting(RESET_FLAG_KEY);
+  if (already?.value) {
+    return { ok: true as const, reset: 0, reason: "already_done" };
+  }
+
+  const project = await getInsightsProject();
+  if (!project) {
+    return { ok: false as const, reason: "no_insights_project", reset: 0 };
+  }
+  const actorId = await getSeedActorId();
+
+  // Find seed-batch articles currently in_review with an active assignment.
+  const articles = await db
+    .select()
+    .from(studioArticles)
+    .where(
+      and(
+        eq(studioArticles.projectId, project.id),
+        eq(studioArticles.seedBatchId, INSIGHTS_LAUNCH_SEED_BATCH_ID),
+        eq(studioArticles.status, "in_review"),
+      ),
+    );
+
+  let reset = 0;
+  let skippedManual = 0;
+  for (const article of articles as StudioArticle[]) {
+    const assignment = await storage.getActiveStudioReviewAssignment(article.id);
+    if (!assignment) continue;
+
+    // Skip any article whose assignment was placed manually (different comment
+    // means a human deliberately routed it — do not disturb that workflow).
+    if ((assignment as any).comment !== PREMATURE_ASSIGN_COMMENT) {
+      console.log(
+        `[insights-reset] Skipping article ${article.id} — assignment comment indicates manual routing`,
+      );
+      skippedManual++;
+      continue;
+    }
+
+    // Cancel the assignment row.
+    let cancelOk = false;
+    try {
+      await storage.updateStudioReviewAssignment(assignment.id, {
+        status: "cancelled",
+        decisionAt: new Date(),
+      } as any);
+      cancelOk = true;
+    } catch (cancelErr) {
+      console.error(`[insights-reset] Failed to cancel assignment ${assignment.id} for article ${article.id}:`, cancelErr);
+    }
+
+    if (!cancelOk) continue;
+
+    // Reset article back to draft, clear reviewer.
+    await storage.updateStudioArticle(article.id, {
+      status: "draft",
+      reviewerUserId: null,
+    } as any);
+
+    await storage.createStudioAuditEvent({
+      articleId: article.id,
+      actorUserId: actorId,
+      eventType: "review_assignment_reset",
+      metadata: {
+        reason: "premature_auto_route",
+        assignmentId: assignment.id,
+        resetBy: "startup_cleanup",
+      },
+    } as any);
+    reset++;
+  }
+
+  await storage.upsertSystemSetting(
+    RESET_FLAG_KEY,
+    { resetAt: new Date().toISOString(), count: reset, skippedManual },
+    actorId,
+  );
+
+  if (reset > 0 || skippedManual > 0) {
+    console.log(
+      `[insights-reset] Reset ${reset} prematurely routed article(s) back to draft` +
+        (skippedManual > 0 ? `; skipped ${skippedManual} manually-routed article(s)` : ""),
+    );
+  }
+  return { ok: true as const, reset, skippedManual };
+}
+
+// ---------------------------------------------------------------------------
+// Status helper for the SA Launch Control panel.
+// ---------------------------------------------------------------------------
+export async function getLaunchStatus() {
+  const project = await getInsightsProject();
+  const announced = await isLaunchAnnouncementSent();
+
+  if (!project) {
+    return { articlesLoaded: 0, articlesRouted: 0, announced, routingPoolSummary: [] };
+  }
+
+  const allSeedArticles = await db
+    .select({ id: studioArticles.id, status: studioArticles.status, category: studioArticles.category })
+    .from(studioArticles)
+    .where(
+      and(
+        eq(studioArticles.projectId, project.id),
+        eq(studioArticles.seedBatchId, INSIGHTS_LAUNCH_SEED_BATCH_ID),
+      ),
+    );
+
+  const articlesLoaded = allSeedArticles.length;
+  const articlesRouted = allSeedArticles.filter((a) => a.status === "in_review").length;
+
+  let routingPoolSummary: { category: string; team: string; pool: number; fellBack: boolean }[] = [];
+  try {
+    const { summary } = await computeLaunchRoutingRules();
+    routingPoolSummary = summary;
+  } catch (_) {}
+
+  return { articlesLoaded, articlesRouted, announced, routingPoolSummary };
+}
+
+// ---------------------------------------------------------------------------
+// SA-initiated announce + route (Step 2). Sends announcement first, then
+// routes articles and generates social kit drafts. Gated by one-time flag.
+// ---------------------------------------------------------------------------
+export async function announceAndRouteLaunch(opts: { actorId: string; baseUrl?: string }) {
+  const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
+
+  const project = await getInsightsProject();
+  if (!project) {
+    return { ok: false as const, reason: "no_insights_project" };
+  }
+
+  // Gate: Step 1 must be done (articles must exist).
+  const seedArticles = await db
+    .select({ id: studioArticles.id, status: studioArticles.status })
+    .from(studioArticles)
+    .where(
+      and(
+        eq(studioArticles.projectId, project.id),
+        eq(studioArticles.seedBatchId, INSIGHTS_LAUNCH_SEED_BATCH_ID),
+      ),
+    );
+  if (seedArticles.length === 0) {
+    return { ok: false as const, reason: "step1_not_done" };
+  }
+
+  // Hard one-time gate — checked via a dedicated flag decoupled from article
+  // statuses. This prevents double-routing even if articles later progress to
+  // approved/published (which would reduce the in_review count to 0).
+  const routingDoneFlag = await storage.getSystemSetting(ROUTING_DONE_FLAG_KEY);
+  if (routingDoneFlag?.value) {
+    return { ok: false as const, reason: "already_complete" };
+  }
+
+  // (a) Send announcement email first, then in-app notifications.
+  // `already_sent` means a previous attempt succeeded for email+notifications —
+  // routing may still be needed so we fall through to (b) rather than blocking.
+  // `email_failed` means the flag was NOT set (retriable) — abort routing.
+  const announceResult = await sendLaunchAnnouncement({ actorId: opts.actorId, baseUrl, force: false });
+
+  if (!announceResult.ok) {
+    if (announceResult.reason === "email_failed") {
+      await storage.createStudioAuditEvent({
+        articleId: null,
+        actorUserId: opts.actorId,
+        eventType: "launch_announce_email_failed",
+        metadata: {
+          notified: 0,
+          emailed: false,
+          reason: "announcement_email_failed_routing_aborted",
+          source: "sa_launch_control",
+        },
+      } as any);
+      return {
+        ok: false as const,
+        reason: "announcement_email_failed",
+        notified: 0,
+        message:
+          "Team announcement email could not be delivered. Routing has been held. " +
+          "Fix the email configuration and re-trigger Step 2.",
+      };
+    }
+    // `already_sent` — announcement went out on a prior attempt; proceed to route.
+    // Any other unexpected failure falls through and continues (routing is guarded
+    // by the alreadyRouted check above).
+  }
+
+  // (b) Route articles to reviewers + generate social kit drafts.
+  const routeResult = await routeLaunchArticles({ actorId: opts.actorId, baseUrl });
+  const socialResult = await generateLaunchSocialKitDrafts({ actorId: opts.actorId });
+
+  // Persist routing-done flag immediately after routing so double-fire is
+  // impossible regardless of future article status changes.
+  await storage.upsertSystemSetting(
+    ROUTING_DONE_FLAG_KEY,
+    { routedAt: new Date().toISOString(), routedBy: opts.actorId, assigned: routeResult.assigned },
+    opts.actorId,
+  );
+
+  await storage.createStudioAuditEvent({
+    articleId: null,
+    actorUserId: opts.actorId,
+    eventType: "launch_announce_and_route",
+    metadata: {
+      notified: (announceResult as any).notified ?? 0,
+      emailed: (announceResult as any).emailed ?? false,
+      assigned: routeResult.assigned,
+      socialKitsCreated: socialResult.created,
+      source: "sa_launch_control",
+    },
+  } as any);
+
+  return {
+    ok: true as const,
+    notified: (announceResult as any).notified ?? 0,
+    emailed: (announceResult as any).emailed ?? false,
+    assigned: routeResult.assigned,
+    socialKitsCreated: socialResult.created,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -652,7 +889,28 @@ export async function sendLaunchAnnouncement(opts: { actorId: string; baseUrl?: 
 
   const activeUsers = (await storage.getAdminUsers()).filter((u) => u.isActive !== false);
 
-  // (a) In-app notification for every active user (drives the unread badge).
+  // (a) Send announcement email FIRST. Required sequencing: team email must be
+  // delivered before in-app notifications and before reviewer assignment emails.
+  // If email fails, abort without setting the flag so the SA can retry.
+  let emailed = false;
+  try {
+    const { sendInsightsLaunchAnnouncementEmail } = await import("./email");
+    const recipients = activeUsers.map((u) => u.email).filter(Boolean);
+    const result = await sendInsightsLaunchAnnouncementEmail({
+      to: recipients,
+      portalUrl: `${baseUrl}/admin/studio`,
+    });
+    emailed = result.success;
+  } catch (err) {
+    console.error("[insights-announce] email error:", err);
+  }
+
+  if (!emailed) {
+    console.error("[insights-announce] email send failed — aborting; flag NOT set so SA can retry");
+    return { ok: false as const, reason: "email_failed", notified: 0, recipients: activeUsers.length };
+  }
+
+  // (b) Email confirmed delivered — now send in-app notifications.
   let notified = 0;
   for (const u of activeUsers) {
     try {
@@ -672,26 +930,13 @@ export async function sendLaunchAnnouncement(opts: { actorId: string; baseUrl?: 
     }
   }
 
-  // (b) Team-wide email via the existing service, founder CC'd by convention.
-  let emailed = false;
-  try {
-    const { sendInsightsLaunchAnnouncementEmail } = await import("./email");
-    const recipients = activeUsers.map((u) => u.email).filter(Boolean);
-    const result = await sendInsightsLaunchAnnouncementEmail({
-      to: recipients,
-      portalUrl: `${baseUrl}/admin/studio`,
-    });
-    emailed = result.success;
-  } catch (err) {
-    console.error("[insights-announce] email error:", err);
-  }
-
+  // (c) Persist the one-time flag only after successful email delivery.
   await storage.upsertSystemSetting(
     ANNOUNCEMENT_FLAG_KEY,
-    { sentAt: new Date().toISOString(), sentBy: opts.actorId, notified, emailed },
+    { sentAt: new Date().toISOString(), sentBy: opts.actorId, notified, emailed: true },
     opts.actorId,
   );
 
-  console.log(`[insights-announce] notified=${notified} emailed=${emailed} recipients=${activeUsers.length}`);
+  console.log(`[insights-announce] emailed=${emailed} notified=${notified} recipients=${activeUsers.length}`);
   return { ok: true as const, notified, emailed, recipients: activeUsers.length };
 }

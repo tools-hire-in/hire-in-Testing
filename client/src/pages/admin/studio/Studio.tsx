@@ -32,7 +32,7 @@ import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
 import { RoutingSettings } from "./RoutingSettings";
 import { NewsletterSettings } from "./NewsletterSettings";
-import { LaunchAnnouncement } from "./LaunchAnnouncement";
+import { LaunchControlPanel } from "./LaunchControlPanel";
 import { usePermissions } from "@/hooks/use-permissions";
 
 const STORAGE_KEY = "studio.selectedProjectId";
@@ -525,7 +525,7 @@ export default function Studio() {
 
                 <NewsletterSettings />
 
-                <LaunchAnnouncement />
+                <LaunchControlPanel />
               </div>
             )}
           </TabsContent>

@@ -11559,7 +11559,7 @@ export async function registerRoutes(
     },
   );
 
-  // ---- Hire'in Insights launch announcement (Super Admin, one-time) ----
+  // ---- Hire'in Insights Launch Control (Super Admin) ----
 
   app.get(
     "/api/admin/studio/insights-launch/status",
@@ -11567,12 +11567,73 @@ export async function registerRoutes(
     requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
     async (req: Request, res: Response) => {
       try {
-        const { isLaunchAnnouncementSent } = await import("./insightsLaunch");
-        const announced = await isLaunchAnnouncementSent();
-        res.json({ announced, canSend: req.session.role === "super_admin" });
+        const { getLaunchStatus } = await import("./insightsLaunch");
+        const status = await getLaunchStatus();
+        res.json({ ...status, canControl: req.session.role === "super_admin" });
       } catch (error: any) {
         console.error("Insights launch status error:", error);
         res.status(500).json({ error: "Failed to fetch launch status" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/studio/insights-launch/load",
+    requireAuth,
+    requireRole("super_admin"),
+    async (req: Request, res: Response) => {
+      try {
+        const { seedInsightsLaunchArticles, applyLaunchRoutingGuardrail, getLaunchStatus } = await import("./insightsLaunch");
+        const actorId = req.session.userId!;
+        const seedResult = await seedInsightsLaunchArticles({ actorId });
+        const guardResult = await applyLaunchRoutingGuardrail({ actorId });
+        const status = await getLaunchStatus();
+        res.json({
+          ok: true,
+          inserted: seedResult.ok ? seedResult.inserted : 0,
+          skipped: seedResult.ok ? seedResult.skipped : 0,
+          articlesLoaded: status.articlesLoaded,
+          routingPoolSummary: guardResult.ok ? (guardResult as any).summary : [],
+        });
+      } catch (error: any) {
+        console.error("Insights launch load error:", error);
+        res.status(500).json({ error: error?.message || "Failed to load pilot articles" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/studio/insights-launch/announce-and-route",
+    requireAuth,
+    requireRole("super_admin"),
+    async (req: Request, res: Response) => {
+      try {
+        const { announceAndRouteLaunch } = await import("./insightsLaunch");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const result = await announceAndRouteLaunch({
+          actorId: req.session.userId!,
+          baseUrl,
+        });
+        if (!result.ok) {
+          if ((result as any).reason === "already_complete") {
+            return res.status(409).json({ error: "Launch announcement already sent and articles are routed." });
+          }
+          if ((result as any).reason === "step1_not_done") {
+            return res.status(400).json({ error: "Load pilot articles first (Step 1 not complete)." });
+          }
+          if ((result as any).reason === "announcement_email_failed") {
+            return res.status(503).json({
+              error: (result as any).message,
+              notified: (result as any).notified ?? 0,
+              retriable: true,
+            });
+          }
+          return res.status(400).json({ error: "Could not complete announce-and-route." });
+        }
+        res.json(result);
+      } catch (error: any) {
+        console.error("Insights launch announce-and-route error:", error);
+        res.status(500).json({ error: error?.message || "Failed to send launch announcement" });
       }
     },
   );
