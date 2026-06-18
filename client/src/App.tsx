@@ -79,6 +79,8 @@ const StudioInbox = lazy(() => import("@/pages/admin/studio/Inbox"));
 const StudioReviewArticle = lazy(() => import("@/pages/admin/studio/ReviewArticle"));
 const StudioApprovals = lazy(() => import("@/pages/admin/studio/Approvals"));
 const StudioFinalApproval = lazy(() => import("@/pages/admin/studio/FinalApproval"));
+const StudioCMReview = lazy(() => import("@/pages/admin/studio/CMReview"));
+const StudioAuthorSignOff = lazy(() => import("@/pages/admin/studio/AuthorSignOff"));
 const AutomatedChanges = lazy(() => import("@/pages/admin/AutomatedChanges"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
@@ -124,6 +126,8 @@ function PublicRouter() {
       <Route path="/jobs" component={Jobs} />
       <Route path="/jobs/:id" component={JobDetail} />
       <Route path="/insights" component={Insights} />
+      <Route path="/insights/authors/:slug" component={lazy(() => import("@/pages/InsightAuthor"))} />
+      <Route path="/insights/authors" component={lazy(() => import("@/pages/InsightAuthors"))} />
       <Route path="/insights/:slug" component={InsightArticle} />
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={Terms} />
@@ -202,10 +206,12 @@ function PublicRouter() {
 
       {/* Content Studio */}
       <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>
+      <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
       <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
+      <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>
       <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
       <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
       <Route path="/admin/automated-changes">{() => <Suspense fallback={<AdminFallback />}><AutomatedChanges /></Suspense>}</Route>
@@ -299,10 +305,12 @@ function EmployeeRouter() {
 
       {/* Content Studio */}
       <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>
+      <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
       <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
       <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
       <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
       <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
+      <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>
       <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
       <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
       <Route path="/admin/automated-changes">{() => <Suspense fallback={<AdminFallback />}><AutomatedChanges /></Suspense>}</Route>

@@ -48,7 +48,7 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
 import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -394,13 +394,17 @@ export async function registerRoutes(
       publishedAt: a.publishedAt,
       updatedAt: a.updatedAt,
       checklistItems,
-      author: a.authorName
+      // Only expose the author card when the profile is marked complete; this prevents
+      // incomplete placeholder profiles from showing on public articles.
+      author: (a.authorName && a.authorProfileComplete)
         ? {
             name: a.authorName,
             title: a.authorTitle ?? null,
             bio: a.authorBio ?? null,
             photoUrl: a.authorPhotoUrl ?? null,
             linkedinUrl: a.authorLinkedinUrl ?? null,
+            slug: a.authorSlug ?? null,
+            profileComplete: true,
           }
         : null,
     };
@@ -658,6 +662,74 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to record CTA click:", error);
       res.status(500).json({ message: "Failed to record CTA click" });
+    }
+  });
+
+  // ==========================================
+  // PUBLIC AUTHOR DIRECTORY
+  // ==========================================
+
+  // All active authors with profileComplete = true for the public directory.
+  app.get("/api/public/authors", async (_req, res) => {
+    try {
+      const authors = await storage.getStudioAuthorProfiles(undefined);
+      const active = authors.filter((a) => a.isActive && (a as any).profileComplete);
+      // Attach published article count per author.
+      const publishedAll = await storage.getPublishedInsights({ page: 1, pageSize: 1000 });
+      const countByAuthorId: Record<string, number> = {};
+      for (const art of publishedAll.items) {
+        if ((art as any).authorProfileId) {
+          countByAuthorId[(art as any).authorProfileId] =
+            (countByAuthorId[(art as any).authorProfileId] ?? 0) + 1;
+        }
+      }
+      res.set("Cache-Control", "public, max-age=300");
+      res.json(active.map((a) => ({
+        id: a.id,
+        displayName: a.displayName,
+        publicTitle: (a as any).publicTitle ?? a.title ?? null,
+        bio: a.bio ?? null,
+        photoUrl: a.photoUrl ?? null,
+        linkedinUrl: a.linkedinUrl ?? null,
+        specialties: (a as any).specialties ?? [],
+        slug: (a as any).slug ?? a.id,
+        articleCount: countByAuthorId[a.id] ?? 0,
+      })));
+    } catch (error) {
+      console.error("Public authors error:", error);
+      res.status(500).json({ message: "Failed to load authors" });
+    }
+  });
+
+  // Individual author page: profile + their published articles.
+  app.get("/api/public/authors/:slug", async (req, res) => {
+    try {
+      const authors = await storage.getStudioAuthorProfiles(undefined);
+      const author = authors.find((a) => (a as any).slug === req.params.slug || a.id === req.params.slug);
+      if (!author || !author.isActive || !(author as any).profileComplete) {
+        return res.status(404).json({ message: "Author not found" });
+      }
+      const publishedArticles = await storage.getPublishedInsights({ page: 1, pageSize: 100 });
+      const authorArticles = publishedArticles.items.filter(
+        (a: any) => a.authorProfileId === author.id,
+      );
+      res.set("Cache-Control", "public, max-age=300");
+      res.json({
+        author: {
+          id: author.id,
+          displayName: author.displayName,
+          publicTitle: (author as any).publicTitle ?? author.title ?? null,
+          bio: author.bio ?? null,
+          photoUrl: author.photoUrl ?? null,
+          linkedinUrl: author.linkedinUrl ?? null,
+          specialties: (author as any).specialties ?? [],
+          slug: (author as any).slug ?? author.id,
+        },
+        articles: authorArticles,
+      });
+    } catch (error) {
+      console.error("Public author detail error:", error);
+      res.status(500).json({ message: "Failed to load author" });
     }
   });
 
@@ -9894,6 +9966,34 @@ export async function registerRoutes(
     },
   );
 
+  // Create a new studio project (admin/hr/super_admin only).
+  app.post(
+    "/api/admin/studio/projects",
+    requireAuth,
+    requirePermission("studio.manage_settings"),
+    async (req: Request, res: Response) => {
+      try {
+        const { name, slug, description, brandColor, publishesToInsights } = req.body ?? {};
+        if (!name?.trim()) return res.status(400).json({ error: "Project name is required" });
+        if (!slug?.trim()) return res.status(400).json({ error: "Project slug is required" });
+        const created = await storage.createStudioProject({
+          name: name.trim(),
+          slug: slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+          description: description?.trim() || null,
+          brandColor: brandColor || null,
+          publishesToInsights: !!publishesToInsights,
+          isActive: true,
+          isPrimary: false,
+          createdBy: req.session.userId,
+        } as any);
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create studio project error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create project" });
+      }
+    },
+  );
+
   // Dashboard stats (counts by status for the selected project, or all).
   app.get(
     "/api/admin/studio/stats",
@@ -9945,7 +10045,7 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/newsletter-flag",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (_req: Request, res: Response) => {
       try {
         const setting = await storage.getSystemSetting(NEWSLETTER_FLAG_KEY);
@@ -9962,7 +10062,7 @@ export async function registerRoutes(
   app.patch(
     "/api/admin/studio/newsletter-flag",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (req: Request, res: Response) => {
       try {
         const enabled = !!req.body?.enabled;
@@ -9979,7 +10079,7 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/subscribers",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (_req: Request, res: Response) => {
       try {
         const [subscribers, counts] = await Promise.all([
@@ -10007,7 +10107,7 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/subscribers/export",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (_req: Request, res: Response) => {
       try {
         const subscribers = await storage.getAllNewsletterSubscribers();
@@ -10496,18 +10596,24 @@ export async function registerRoutes(
     string,
     { to: string; permission: string; roles: string[] }[]
   > = {
-    // Generic editor transition only. Approval-gate moves (review approve,
-    // marketing recommend, final sign-off, publish/schedule/reschedule/
-    // unpublish/archive) all flow through dedicated endpoints below so the
-    // "Super Admin is the only role that can publish" rule cannot be bypassed
-    // through the generic transition matrix.
+    // Generic editor transitions only. States that require dedicated endpoint
+    // logic (CM decision, author sign-off, marketing/final approval, publish)
+    // are listed here with empty arrays so the generic endpoint rejects them
+    // cleanly — their transitions are enforced by dedicated routes below.
     draft: [
       { to: "in_review", permission: "studio.edit_article", roles: ["marketing_manager", "content_editor"] },
     ],
     in_review: [
+      // Reviewer submits to CM queue — the new workflow step replacing direct approval.
+      { to: "pending_cm_review", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
+      // Reviewer sends back for edits.
       { to: "draft", permission: "studio.review_article", roles: ["marketing_manager", "reviewer"] },
     ],
-    pending_marketing: [],
+    // All states below are advanced exclusively through dedicated endpoints:
+    pending_cm_review: [],    // → pending_author or draft via /cm-decision
+    pending_author: [],       // → author_approved via /author-decision
+    author_approved: [],      // → pending_marketing via dedicated marketing flow
+    pending_marketing: [],    // → pending_final_approval via dedicated endpoint
     pending_final_approval: [],
     approved: [],
     scheduled: [],
@@ -10661,18 +10767,93 @@ export async function registerRoutes(
     },
   );
 
-  // Reviewer's own inbox: pending assignments addressed to them.
+  // Reviewer's own inbox: pending review assignments + pending_author sign-off tasks.
   app.get(
     "/api/admin/studio/inbox",
     requireAuth,
     async (req, res) => {
       try {
         const userId = req.session.userId!;
+        // Standard reviewer assignments (in_review queue).
         const inbox = await storage.getStudioInboxForReviewer(userId);
-        res.json(inbox);
+
+        // Author sign-off tasks: articles in pending_author status where the
+        // current user is the linked author on the assigned author profile.
+        const authorSignOffItems: any[] = [];
+        try {
+          const allProfiles = await storage.getStudioAuthorProfiles(undefined);
+          const linkedProfile = allProfiles.find(
+            (p) => (p as any).linkedUserId === userId || (p as any).linked_user_id === userId,
+          );
+          if (linkedProfile) {
+            const queue = await storage.getStudioApprovalQueue(["pending_author"], undefined);
+            for (const article of queue) {
+              if ((article as any).authorProfileId === linkedProfile.id) {
+                authorSignOffItems.push({
+                  // Synthesise an inbox-compatible shape for the UI.
+                  id: `author-signoff-${article.id}`,
+                  articleId: article.id,
+                  reviewerUserId: userId,
+                  status: "pending",
+                  type: "author_signoff",
+                  dueAt: null,
+                  createdAt: article.updatedAt ?? article.createdAt,
+                  updatedAt: article.updatedAt ?? article.createdAt,
+                  decisionAt: null,
+                  article,
+                  projectName: (article as any).projectName ?? null,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          // Non-fatal: author sign-off lookup failure shouldn't block reviewer inbox.
+        }
+
+        res.json([...inbox, ...authorSignOffItems]);
       } catch (error: any) {
         console.error("Studio inbox error:", error);
         res.status(500).json({ error: "Failed to fetch inbox" });
+      }
+    },
+  );
+
+  // Author sign-off view: allows the linked author (or admin proxy) to read
+  // the article so they can approve or request changes via /author-decision.
+  app.get(
+    "/api/admin/studio/articles/:id/author-signoff",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const role = req.session.role!;
+        const userId = req.session.userId!;
+        const isAdminProxy = ["super_admin", "admin", "hr"].includes(role);
+
+        if (!isAdminProxy) {
+          // Only expose when the article is actually awaiting author sign-off.
+          if (article.status !== "pending_author") {
+            return res.status(403).json({ error: "Article is not currently awaiting author sign-off" });
+          }
+          // Verify the requester is the linked author for this article.
+          const apid = (article as any).authorProfileId;
+          if (!apid) return res.status(403).json({ error: "No author profile assigned" });
+          const authorProfile = await storage.getStudioAuthorProfile(apid);
+          const linkedUserId =
+            (authorProfile as any)?.linkedUserId ??
+            (authorProfile as any)?.linked_user_id ??
+            (authorProfile as any)?.linkedEmployeeId;
+          if (!linkedUserId || linkedUserId !== userId) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+        }
+
+        res.json(article);
+      } catch (error: any) {
+        console.error("Author sign-off view error:", error);
+        res.status(500).json({ error: "Failed to fetch article" });
       }
     },
   );
@@ -10737,7 +10918,7 @@ export async function registerRoutes(
         }
 
         const decisionMap: Record<string, { assignmentStatus: string; articleStatus: string; eventType: string }> = {
-          approve: { assignmentStatus: "approved", articleStatus: "pending_marketing", eventType: "review_approved" },
+          approve: { assignmentStatus: "approved", articleStatus: "pending_cm_review", eventType: "review_approved" },
           request_changes: { assignmentStatus: "changes_requested", articleStatus: "draft", eventType: "review_changes_requested" },
           decline: { assignmentStatus: "declined", articleStatus: "draft", eventType: "review_declined" },
         };
@@ -10790,28 +10971,27 @@ export async function registerRoutes(
           }
         }
 
-        // On approval, the article enters the marketing polish queue. Notify
-        // marketing managers so they can pick it up.
+        // On approval, the article enters the CM review queue. Notify content managers.
         if (decision === "approve") {
           try {
             const admins = await storage.getAdminUsers();
-            const marketers = admins.filter(
-              (u) => u.isActive !== false && u.role === "marketing_manager",
+            const cms = admins.filter(
+              (u) => u.isActive !== false && u.role === "content_manager",
             );
             await Promise.all(
-              marketers.map((m) =>
+              cms.map((m) =>
                 storage.createNotification({
                   userId: m.id,
-                  type: "studio_marketing_queue",
-                  title: "New article ready for marketing",
-                  message: `"${article.title}" passed review and is ready for marketing polish.`,
+                  type: "studio_cm_review_queue",
+                  title: "Article ready for CM review",
+                  message: `"${article.title}" passed peer review and is ready for content manager review.`,
                   isRead: false,
-                  metadata: { articleId: article.id, status: "pending_marketing" },
+                  metadata: { articleId: article.id, status: "pending_cm_review" },
                 }),
               ),
             );
           } catch (notifyErr) {
-            console.error("Studio marketing queue notification error:", notifyErr);
+            console.error("Studio CM queue notification error:", notifyErr);
           }
         }
 
@@ -10884,7 +11064,9 @@ export async function registerRoutes(
     if (!apid) return null;
     try {
       const profile = await storage.getStudioAuthorProfile(apid);
-      return profile?.userId ?? null;
+      if (!profile) return null;
+      // Prefer the explicit HR-system link; fall back to the legacy userId field.
+      return (profile as any).linkedUserId ?? (profile as any).linked_user_id ?? profile.userId ?? null;
     } catch {
       return null;
     }
@@ -10908,7 +11090,7 @@ export async function registerRoutes(
     async (req, res) => {
       try {
         const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
-        const items = await storage.getStudioApprovalQueue(["pending_marketing"], projectId);
+        const items = await storage.getStudioApprovalQueue(["author_approved", "pending_marketing"], projectId);
         res.json(items);
       } catch (error: any) {
         console.error("Studio approvals queue error:", error);
@@ -10993,7 +11175,7 @@ export async function registerRoutes(
         }
         const article = await storage.getStudioArticle(req.params.id);
         if (!article) return res.status(404).json({ error: "Article not found" });
-        if (article.status !== "pending_marketing") {
+        if (!["author_approved", "pending_marketing"].includes(article.status)) {
           return res.status(409).json({ error: "Article is not awaiting marketing review" });
         }
 
@@ -11132,8 +11314,9 @@ export async function registerRoutes(
     return { updated, scheduled: isFuture };
   };
 
-  // Notify author, editor, and the marketing recommender that an article went
-  // live (or was scheduled). In-app + email.
+  // Notify author, editor, marketing recommender, and all content_manager/
+  // marketing_manager users that an article went live (or was scheduled).
+  // In-app notification + transactional email.
   const notifyPublished = async (
     req: Request,
     article: StudioArticle,
@@ -11146,15 +11329,28 @@ export async function registerRoutes(
       const signerName = userDisplayName(signer);
       const recommenderId = await findMarketingRecommender(article.id);
       const authorUserId = await resolveAuthorUserId(article);
-      const recipientIds = Array.from(
-        new Set([article.createdBy, authorUserId, recommenderId].filter((x): x is string => !!x)),
+
+      // Core direct recipients: article creator, linked author, marketing recommender.
+      const directIds = new Set<string>(
+        [article.createdBy, authorUserId, recommenderId].filter((x): x is string => !!x),
       );
+
+      // Broadcast recipients: all active content_manager + marketing_manager users
+      // get a social-sharing notification so they can promote the article.
+      const allAdmins = await storage.getAdminUsers();
+      const broadcastRoles = new Set(["content_manager", "marketing_manager"]);
+      const broadcastIds = allAdmins
+        .filter((u) => u.isActive !== false && broadcastRoles.has(u.role))
+        .map((u) => u.id);
+
+      const allRecipientIds = Array.from(new Set([...directIds, ...broadcastIds]));
+
       const title = scheduled ? "Article scheduled" : "Article published";
       const msg = scheduled
-        ? `"${article.title}" was signed off and scheduled${scheduledAt ? ` for ${scheduledAt.toLocaleString()}` : ""}.`
-        : `"${article.title}" was signed off and is now live.`;
+        ? `"${article.title}" was signed off and scheduled${scheduledAt ? ` for ${scheduledAt.toLocaleString()}` : ""}. Time to prep social posts!`
+        : `"${article.title}" is now live. Share it on social media to maximise reach!`;
       await Promise.all(
-        recipientIds.map(async (rid) => {
+        allRecipientIds.map(async (rid) => {
           await storage.createNotification({
             userId: rid,
             type: "studio_published",
@@ -11163,16 +11359,20 @@ export async function registerRoutes(
             isRead: false,
             metadata: { articleId: article.id, scheduled },
           });
-          const u = await storage.getAdminUser(rid);
-          if (u?.email) {
-            await sendStudioPublishedEmail({
-              to: u.email,
-              recipientName: userDisplayName(u) || "there",
-              articleTitle: article.title,
-              scheduledFor: scheduled && scheduledAt ? scheduledAt.toLocaleString() : null,
-              publishedAt: !scheduled && publishedAt ? publishedAt.toLocaleString() : null,
-              publishedByName: signerName,
-            });
+          // Email all recipients: direct (creator/author/recommender) and broadcast
+          // (content_manager/marketing_manager) — publish is a high-value social moment.
+          if (directIds.has(rid) || broadcastIds.includes(rid)) {
+            const u = await storage.getAdminUser(rid);
+            if (u?.email) {
+              await sendStudioPublishedEmail({
+                to: u.email,
+                recipientName: userDisplayName(u) || "there",
+                articleTitle: article.title,
+                scheduledFor: scheduled && scheduledAt ? scheduledAt.toLocaleString() : null,
+                publishedAt: !scheduled && publishedAt ? publishedAt.toLocaleString() : null,
+                publishedByName: signerName,
+              });
+            }
           }
         }),
       );
@@ -11410,6 +11610,51 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Studio reschedule error:", error);
         res.status(400).json({ error: error?.message || "Failed to reschedule article" });
+      }
+    },
+  );
+
+  // Schedule a draft directly to the "scheduled" state from the calendar.
+  // Requires studio.schedule_publish (super_admin). The article must be in draft status.
+  app.post(
+    "/api/admin/studio/articles/:id/schedule-draft",
+    requireAuth,
+    requirePermission("studio.schedule_publish"),
+    async (req: Request, res: Response) => {
+      try {
+        const { scheduledAt } = req.body ?? {};
+        const when = scheduledAt ? new Date(scheduledAt) : null;
+        if (!when || isNaN(when.getTime())) {
+          return res.status(400).json({ error: "A valid scheduledAt is required" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "draft") {
+          return res
+            .status(409)
+            .json({ error: `Only draft articles can be scheduled this way. Current status: ${article.status}` });
+        }
+        const userId = req.session.userId!;
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "scheduled",
+          scheduledAt: when,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "article_scheduled",
+          metadata: { from: "draft", scheduledAt: when.toISOString(), via: "calendar" },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: "draft", to: "scheduled", via: "calendar" },
+        } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio schedule-draft error:", error);
+        res.status(400).json({ error: error?.message || "Failed to schedule article" });
       }
     },
   );
@@ -11784,15 +12029,19 @@ export async function registerRoutes(
   app.get(
     "/api/admin/studio/author-candidates",
     requireAuth,
-    requirePermission("studio.manage_authors", "marketing_manager"),
+    requirePermission("studio.manage_authors"),
     async (req: Request, res: Response) => {
       try {
         const allUsers = await storage.getAdminUsers();
         const allAuthors = await storage.getStudioAuthorProfiles(undefined);
         const linkedIds = new Set(
           allAuthors
-            .filter((a) => a.linkedEmployeeId)
-            .map((a) => a.linkedEmployeeId as string),
+            .flatMap((a) => [
+              (a as any).linkedUserId,
+              (a as any).linked_user_id,
+              a.linkedEmployeeId,
+            ])
+            .filter(Boolean) as string[],
         );
         const candidates = allUsers
           .filter((u) => u.isActive && !linkedIds.has(u.id))
@@ -11833,16 +12082,23 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/authors",
     requireAuth,
-    requirePermission("studio.manage_authors", "marketing_manager"),
+    requirePermission("studio.manage_authors"),
     async (req: Request, res: Response) => {
       try {
         const parsed = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
         if (!parsed.displayName || !parsed.displayName.trim()) {
           return res.status(400).json({ error: "displayName is required" });
         }
+        const body = { ...parsed, displayName: parsed.displayName.trim() };
+        const profileComplete = !!(
+          body.displayName?.trim() &&
+          (body as any).publicTitle?.trim() &&
+          (body as any).bio?.trim() &&
+          (body as any).photoUrl?.trim()
+        );
         const created = await storage.createStudioAuthorProfile({
-          ...parsed,
-          displayName: parsed.displayName.trim(),
+          ...body,
+          profileComplete,
         } as any);
         await storage.createStudioAuditEvent({
           articleId: null,
@@ -11861,13 +12117,24 @@ export async function registerRoutes(
   app.patch(
     "/api/admin/studio/authors/:id",
     requireAuth,
-    requirePermission("studio.manage_authors", "marketing_manager"),
+    requirePermission("studio.manage_authors"),
     async (req: Request, res: Response) => {
       try {
         const existing = await storage.getStudioAuthorProfile(req.params.id);
         if (!existing) return res.status(404).json({ error: "Author not found" });
         const updates = insertStudioAuthorProfileSchema.partial().parse(req.body ?? {});
-        const updated = await storage.updateStudioAuthorProfile(req.params.id, updates);
+        // Merge with existing to recompute profileComplete correctly.
+        const merged = { ...existing, ...updates };
+        const profileComplete = !!(
+          merged.displayName?.trim() &&
+          (merged as any).publicTitle?.trim() &&
+          merged.bio?.trim() &&
+          (merged as any).photoUrl?.trim()
+        );
+        const updated = await storage.updateStudioAuthorProfile(req.params.id, {
+          ...updates,
+          profileComplete,
+        } as any);
         await storage.createStudioAuditEvent({
           articleId: null,
           actorUserId: req.session.userId,
@@ -11878,6 +12145,411 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Update studio author error:", error);
         res.status(400).json({ error: error?.message || "Failed to update author" });
+      }
+    },
+  );
+
+  // Author profile completion status: computes which required fields are filled
+  // and syncs the profileComplete flag. Called by the Authors panel to show progress.
+  app.get(
+    "/api/admin/studio/authors/:id/profile-status",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const profile = await storage.getStudioAuthorProfile(req.params.id);
+        if (!profile) return res.status(404).json({ error: "Author not found" });
+
+        const requiredFields = [
+          { key: "displayName", label: "Byline name", filled: !!(profile as any).displayName?.trim() },
+          { key: "publicTitle", label: "Public title / role", filled: !!(profile as any).publicTitle?.trim() },
+          { key: "bio", label: "Short bio", filled: !!(profile as any).bio?.trim() },
+          { key: "photoUrl", label: "Photo / headshot", filled: !!(profile as any).photoUrl?.trim() },
+        ];
+        const filledCount = requiredFields.filter((f) => f.filled).length;
+        const isComplete = filledCount === requiredFields.length;
+
+        // Sync profileComplete flag in DB if it has drifted.
+        if (!!(profile as any).profileComplete !== isComplete) {
+          await storage.updateStudioAuthorProfile(req.params.id, { profileComplete: isComplete } as any);
+        }
+
+        res.json({
+          profileId: profile.id,
+          isComplete,
+          filledCount,
+          totalRequired: requiredFields.length,
+          fields: requiredFields,
+          linkedUserId: (profile as any).linkedUserId ?? (profile as any).linkedEmployeeId ?? null,
+        });
+      } catch (error: any) {
+        console.error("Author profile-status error:", error);
+        res.status(500).json({ error: "Failed to compute profile status" });
+      }
+    },
+  );
+
+  // ---- CM Review queue ----
+
+  // Count of articles pending CM review (for sidebar badge).
+  app.get(
+    "/api/admin/studio/cm-review/count",
+    requireAuth,
+    requirePermission("studio.cm_review", "content_manager"),
+    async (_req: Request, res: Response) => {
+      try {
+        const items = await storage.getStudioApprovalQueue(["pending_cm_review"]);
+        res.json({ count: items.length });
+      } catch (error) {
+        console.error("CM review count error:", error);
+        res.status(500).json({ error: "Failed to fetch CM review count" });
+      }
+    },
+  );
+
+  // CM Review queue: articles that a reviewer has approved, now awaiting CM polish.
+  app.get(
+    "/api/admin/studio/cm-review",
+    requireAuth,
+    requirePermission("studio.cm_review", "content_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const items = await storage.getStudioApprovalQueue(["pending_cm_review"], projectId);
+        res.json(items);
+      } catch (error: any) {
+        console.error("CM review queue error:", error);
+        res.status(500).json({ error: "Failed to fetch CM review queue" });
+      }
+    },
+  );
+
+  // CM decision: approve → pending_author (with optional author assignment), or reject → draft.
+  app.post(
+    "/api/admin/studio/articles/:id/cm-decision",
+    requireAuth,
+    requirePermission("studio.cm_review", "content_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { decision, reason, authorProfileId } = req.body ?? {};
+        if (!["approve", "reject"].includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "pending_cm_review") {
+          return res.status(409).json({ error: "Article is not in CM review" });
+        }
+        const userId = req.session.userId!;
+
+        if (decision === "reject") {
+          if (!reason?.trim()) return res.status(400).json({ error: "A reason is required to reject" });
+          const updated = await storage.updateStudioArticle(req.params.id, { status: "draft" } as any);
+          await storage.createStudioAuditEvent({
+            articleId: req.params.id, actorUserId: userId,
+            eventType: "status_changed",
+            metadata: { from: article.status, to: "draft", reason: reason.trim(), via: "cm_decision" },
+          } as any);
+          return res.json(updated);
+        }
+
+        // Approve → pending_author. Assign author if provided; auto-pick if none.
+        let resolvedAuthorId: string | null = authorProfileId ?? (article as any).authorProfileId ?? null;
+        if (!resolvedAuthorId) {
+          const authors = await storage.getStudioAuthorProfiles(undefined);
+          const withLinkedUser = authors.filter((a) => a.isActive && (a as any).linkedUserId);
+          if (withLinkedUser.length > 0) {
+            withLinkedUser.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            resolvedAuthorId = withLinkedUser[0].id;
+            await storage.createStudioAuditEvent({
+              articleId: req.params.id, actorUserId: userId,
+              eventType: "author_auto_assigned",
+              metadata: { authorProfileId: resolvedAuthorId, reason: "no_author_set" },
+            } as any);
+          }
+        }
+
+        // Gate: author profile must be complete before requesting sign-off.
+        // Compute freshly from actual fields rather than relying on stale column.
+        if (resolvedAuthorId) {
+          const authorProfile = await storage.getStudioAuthorProfile(resolvedAuthorId);
+          const isComplete = !!(
+            authorProfile &&
+            (authorProfile as any).displayName?.trim() &&
+            (authorProfile as any).publicTitle?.trim() &&
+            (authorProfile as any).bio?.trim() &&
+            (authorProfile as any).photoUrl?.trim()
+          );
+          if (!isComplete) {
+            return res.status(422).json({
+              error: "Author profile is incomplete. Ensure byline name, public title, bio, and photo are filled in before sending for sign-off.",
+              code: "author_profile_incomplete",
+            });
+          }
+        }
+
+        const updates: any = { status: "pending_author" };
+        if (resolvedAuthorId) updates.authorProfileId = resolvedAuthorId;
+        const updated = await storage.updateStudioArticle(req.params.id, updates);
+
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id, actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: "pending_author", via: "cm_decision" },
+        } as any);
+
+        // Notify linked author user if present (in-app + email).
+        try {
+          if (resolvedAuthorId) {
+            const authorProfile = await storage.getStudioAuthorProfile(resolvedAuthorId);
+            const linkedUserId = (authorProfile as any)?.linkedUserId ?? (authorProfile as any)?.linkedEmployeeId;
+            if (linkedUserId) {
+              await storage.createNotification({
+                userId: linkedUserId,
+                type: "studio_author_sign_off",
+                title: "Article awaiting your approval",
+                message: `"${article.title}" has been assigned to you for author sign-off.`,
+                isRead: false,
+                metadata: { articleId: article.id, status: "pending_author" },
+              });
+              // SendGrid email to the linked admin user.
+              const authorUser = await storage.getAdminUser(linkedUserId);
+              if (authorUser?.email) {
+                const cmUser = await storage.getAdminUser(userId);
+                await sendStudioAuthorSignOffEmail({
+                  to: authorUser.email,
+                  recipientName: userDisplayName(authorUser) || "there",
+                  articleTitle: article.title,
+                  sentByName: userDisplayName(cmUser) || "the content team",
+                });
+              }
+            }
+          }
+        } catch (notifyErr) {
+          console.error("CM decision author notification error:", notifyErr);
+        }
+
+        res.json(updated);
+      } catch (error: any) {
+        console.error("CM decision error:", error);
+        res.status(400).json({ error: error?.message || "Failed to record CM decision" });
+      }
+    },
+  );
+
+  // Author sign-off decision: approve → author_approved, or request_changes → draft.
+  // Only the linked author (via authorProfile.linkedUserId) may take this action.
+  // super_admin / admin / hr may override on the author's behalf.
+  app.post(
+    "/api/admin/studio/articles/:id/author-decision",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { decision, reason } = req.body ?? {};
+        if (!["approve", "request_changes"].includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "pending_author") {
+          return res.status(409).json({ error: "Article is not awaiting author sign-off" });
+        }
+
+        // Authorization: requester must be the linked author OR an admin/super_admin/hr proxy.
+        const role = req.session.role!;
+        const userId = req.session.userId!;
+        const isAdminProxy = ["super_admin", "admin", "hr"].includes(role);
+        if (!isAdminProxy) {
+          // Look up the article's author profile and verify linked user.
+          const apid = (article as any).authorProfileId;
+          if (!apid) {
+            return res.status(403).json({ error: "No author profile assigned to this article" });
+          }
+          const authorProfile = await storage.getStudioAuthorProfile(apid);
+          const linkedUserId =
+            (authorProfile as any)?.linkedUserId ??
+            (authorProfile as any)?.linked_user_id ??
+            (authorProfile as any)?.linkedEmployeeId;
+          if (!linkedUserId || linkedUserId !== userId) {
+            return res.status(403).json({ error: "You are not the assigned author for this article" });
+          }
+        }
+
+        const toStatus = decision === "approve" ? "author_approved" : "draft";
+        const updated = await storage.updateStudioArticle(req.params.id, { status: toStatus } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id, actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: toStatus, reason: reason?.trim() || null, via: "author_decision" },
+        } as any);
+
+        // If approved, notify content managers that the article is ready for marketing.
+        if (decision === "approve") {
+          try {
+            const admins = await storage.getAdminUsers();
+            const marketers = admins.filter(
+              (u) => u.isActive !== false && (u.role === "marketing_manager" || u.role === "content_manager"),
+            );
+            await Promise.all(
+              marketers.map((m) =>
+                storage.createNotification({
+                  userId: m.id,
+                  type: "studio_author_approved",
+                  title: "Author approved article",
+                  message: `"${article.title}" has been approved by the author and is ready for marketing.`,
+                  isRead: false,
+                  metadata: { articleId: article.id, status: "author_approved" },
+                }),
+              ),
+            );
+          } catch (notifyErr) {
+            console.error("Author-approved notification error:", notifyErr);
+          }
+        }
+
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Author decision error:", error);
+        res.status(400).json({ error: error?.message || "Failed to record author decision" });
+      }
+    },
+  );
+
+  // Bulk approve: move selected articles one step forward in the pipeline.
+  app.post(
+    "/api/admin/studio/articles/bulk-approve",
+    requireAuth,
+    requirePermission("studio.marketing_approve"),
+    async (req: Request, res: Response) => {
+      try {
+        const { articleIds } = req.body ?? {};
+        if (!Array.isArray(articleIds) || articleIds.length === 0) {
+          return res.status(400).json({ error: "articleIds must be a non-empty array" });
+        }
+        // Only transitions that carry no mandatory side-effects are allowed here.
+        // Transitions that require individual decision endpoints are intentionally
+        // excluded to preserve workflow integrity:
+        //   pending_cm_review → pending_author  requires CM decision + author profile completeness gate
+        //   pending_author    → author_approved  requires actual author sign-off & auth check
+        const BULK_STATUS_MAP: Record<string, string> = {
+          draft: "in_review",
+          in_review: "pending_cm_review",
+          approved: "pending_cm_review",         // legacy articles already at "approved"
+          author_approved: "pending_marketing",
+          pending_marketing: "pending_final_approval",
+        };
+        const GATED_TRANSITIONS: Record<string, string> = {
+          pending_cm_review: "Use the CM Review interface to advance individual articles.",
+          pending_author: "Use the author sign-off interface — author must personally approve.",
+        };
+        const userId = req.session.userId!;
+        const results: { id: string; status: string; error?: string }[] = [];
+        for (const id of articleIds) {
+          try {
+            const article = await storage.getStudioArticle(id);
+            if (!article) { results.push({ id, status: "error", error: "not found" }); continue; }
+            const gateMsg = GATED_TRANSITIONS[article.status];
+            if (gateMsg) { results.push({ id, status: "skipped", error: gateMsg }); continue; }
+            const nextStatus = BULK_STATUS_MAP[article.status];
+            if (!nextStatus) { results.push({ id, status: "skipped", error: `no next status for ${article.status}` }); continue; }
+            await storage.updateStudioArticle(id, { status: nextStatus } as any);
+            await storage.createStudioAuditEvent({
+              articleId: id, actorUserId: userId,
+              eventType: "status_changed",
+              metadata: { from: article.status, to: nextStatus, via: "bulk_approve" },
+            } as any);
+            results.push({ id, status: nextStatus });
+          } catch (err: any) {
+            results.push({ id, status: "error", error: err?.message });
+          }
+        }
+        res.json({ results });
+      } catch (error: any) {
+        console.error("Bulk approve error:", error);
+        res.status(400).json({ error: error?.message || "Failed to bulk approve" });
+      }
+    },
+  );
+
+  // Assign or reassign an author on an article.
+  app.patch(
+    "/api/admin/studio/articles/:id/assign-author",
+    requireAuth,
+    requirePermission("studio.marketing_approve", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { authorProfileId } = req.body ?? {};
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const updated = await storage.updateStudioArticle(req.params.id, { authorProfileId: authorProfileId ?? null } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id, actorUserId: req.session.userId,
+          eventType: "author_reassigned",
+          metadata: { authorProfileId: authorProfileId ?? null },
+        } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Assign author error:", error);
+        res.status(400).json({ error: error?.message || "Failed to assign author" });
+      }
+    },
+  );
+
+  // AI Schedule panel: create article stubs spread across a date range.
+  app.post(
+    "/api/admin/studio/calendar/ai-plan",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, fromDate, toDate, articlesPerWeek, topicFocus } = req.body ?? {};
+        if (!projectId) return res.status(400).json({ error: "projectId is required" });
+        if (!fromDate || !toDate) return res.status(400).json({ error: "fromDate and toDate are required" });
+        const from = new Date(fromDate);
+        const to = new Date(toDate);
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) return res.status(400).json({ error: "Invalid dates" });
+        const perWeek = Math.max(1, Math.min(7, Number(articlesPerWeek) || 3));
+        const daysBetween = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const totalSlots = Math.ceil(daysBetween / 7 * perWeek);
+        const slots: Date[] = [];
+        const stepDays = Math.max(1, Math.floor(7 / perWeek));
+        let cursor = new Date(from);
+        while (slots.length < totalSlots && cursor <= to) {
+          slots.push(new Date(cursor));
+          cursor = new Date(cursor.getTime() + stepDays * 24 * 60 * 60 * 1000);
+        }
+        const topics = Array.isArray(topicFocus) ? topicFocus : [];
+        const stubs = await Promise.all(slots.map(async (date, i) => {
+          const topic = topics[i % Math.max(1, topics.length)] || "Hiring & Recruitment";
+          return storage.createStudioArticle({
+            projectId,
+            title: `[Planned] ${topic} — ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+            contentType: "article",
+            // Keep stubs as drafts — they appear on calendar as "Planned Draft" chips.
+            status: "draft",
+            scheduledAt: date,
+            createdBy: req.session.userId,
+          } as any);
+        }));
+        await Promise.all(stubs.map((stub) =>
+          storage.createStudioAuditEvent({
+            articleId: stub.id, actorUserId: req.session.userId,
+            eventType: "ai_stub_created",
+            metadata: { scheduledAt: stub.scheduledAt, topicFocus: topicFocus ?? null },
+          } as any),
+        ));
+        // Return a `plan` array matching what the AIPlanDialog UI expects,
+        // plus raw `stubs` for any integrations that need the full article objects.
+        const plan = stubs.map((s) => ({
+          id: s.id,
+          title: s.title,
+          scheduledDate: s.scheduledAt,
+          contentType: s.contentType,
+        }));
+        res.status(201).json({ plan, stubs, count: stubs.length });
+      } catch (error: any) {
+        console.error("AI plan error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create AI plan" });
       }
     },
   );
@@ -11980,7 +12652,7 @@ export async function registerRoutes(
   app.patch(
     "/api/admin/studio/card-templates/:id",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (req: Request, res: Response) => {
       try {
         const { isActive } = req.body ?? {};
@@ -12002,7 +12674,7 @@ export async function registerRoutes(
   app.patch(
     "/api/admin/studio/projects/:id/template-family",
     requireAuth,
-    requirePermission("studio.manage_settings", "marketing_manager"),
+    requirePermission("studio.manage_settings"),
     async (req: Request, res: Response) => {
       try {
         const { family } = req.body ?? {};

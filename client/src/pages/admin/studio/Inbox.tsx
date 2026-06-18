@@ -4,14 +4,31 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Inbox as InboxIcon, Clock3, AlertTriangle, ChevronRight } from "lucide-react";
+import { Loader2, Inbox as InboxIcon, Clock3, AlertTriangle, ChevronRight, PenLine } from "lucide-react";
 import type { StudioArticle, StudioReviewAssignment } from "@shared/schema";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 
-type InboxItem = StudioReviewAssignment & {
+type ReviewItem = StudioReviewAssignment & {
+  type?: undefined;
   article: StudioArticle | null;
   projectName: string | null;
 };
+
+type AuthorSignOffItem = {
+  id: string;
+  articleId: string;
+  reviewerUserId: string;
+  status: "pending";
+  type: "author_signoff";
+  dueAt: null;
+  createdAt: string;
+  updatedAt: string;
+  decisionAt: null;
+  article: StudioArticle | null;
+  projectName: string | null;
+};
+
+type InboxItem = ReviewItem | AuthorSignOffItem;
 
 function dueMeta(dueAt: string | Date | null) {
   if (!dueAt) return { label: "No due date", overdue: false };
@@ -38,7 +55,7 @@ export default function StudioInbox() {
               Reviewer Inbox
             </h1>
             <p className="text-sm text-muted-foreground">
-              Articles awaiting your review, oldest due date first.
+              Articles awaiting your review or sign-off, oldest first.
             </p>
           </div>
         </div>
@@ -53,15 +70,55 @@ export default function StudioInbox() {
               <InboxIcon className="h-8 w-8 text-muted-foreground" />
               <h3 className="text-lg font-semibold">You're all caught up</h3>
               <p className="max-w-md text-sm text-muted-foreground">
-                No articles are currently assigned to you for review.
+                No articles are currently assigned to you for review or sign-off.
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
             {items.map((item) => {
-              const { label, overdue } = dueMeta(item.dueAt);
+              const isAuthorSignOff = item.type === "author_signoff";
               const article = item.article;
+              if (isAuthorSignOff) {
+                return (
+                  <Card
+                    key={item.id}
+                    className="border-indigo-200 dark:border-indigo-800"
+                    data-testid={`card-inbox-${item.id}`}
+                  >
+                    <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
+                          >
+                            <PenLine className="mr-1 h-3 w-3" />
+                            Author Sign-Off
+                          </Badge>
+                          <span className="truncate font-semibold" data-testid={`text-inbox-title-${item.id}`}>
+                            {article?.title ?? "Untitled article"}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          {item.projectName && <span>{item.projectName}</span>}
+                          <span>Your article is ready for your approval.</span>
+                        </div>
+                      </div>
+                      {article && (
+                        <Link href={`/admin/studio/articles/${article.id}/author-signoff`}>
+                          <Button size="sm" data-testid={`button-review-${item.id}`}>
+                            Review & Sign Off
+                            <ChevronRight className="ml-1 h-4 w-4" />
+                          </Button>
+                        </Link>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              const { label, overdue } = dueMeta((item as ReviewItem).dueAt);
               return (
                 <Card key={item.id} data-testid={`card-inbox-${item.id}`}>
                   <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">

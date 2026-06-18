@@ -7,6 +7,7 @@ export interface PublicInsightAuthor {
   bio: string | null;
   photoUrl: string | null;
   linkedinUrl: string | null;
+  slug: string | null;
 }
 
 export interface PublicInsight {

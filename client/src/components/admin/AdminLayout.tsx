@@ -34,6 +34,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   BarChart3,
+  BookOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,18 +107,22 @@ function ContentStudioSection({
   hasStudioAccess,
   hasMarketingApproveAccess,
   hasStudioAnalyticsAccess,
+  hasCmReviewAccess,
   isSuperAdmin,
   isNavActive,
   isComplianceLocked,
   location,
+  cmReviewCount,
 }: {
   hasStudioAccess: boolean;
   hasMarketingApproveAccess: boolean;
   hasStudioAnalyticsAccess: boolean;
+  hasCmReviewAccess: boolean;
   isSuperAdmin: boolean;
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
   location: string;
+  cmReviewCount: number;
 }) {
   const { open } = useSidebar();
 
@@ -145,8 +150,10 @@ function ContentStudioSection({
   if (!hasStudioAccess) return null;
 
   const studioSubItems: NavItem[] = [
+    { href: "/admin/studio", label: "Dashboard", icon: LayoutDashboard, roles: [] },
     { href: "/admin/studio/articles", label: "Articles", icon: Newspaper, roles: [] },
     { href: "/admin/studio/inbox", label: "Reviewer Inbox", icon: Inbox, roles: [] },
+    ...(hasCmReviewAccess ? [{ href: "/admin/studio/cm-review", label: "CM Review", icon: BookOpen, roles: [] }] : []),
     ...(hasMarketingApproveAccess ? [{ href: "/admin/studio/approvals", label: "Marketing Approvals", icon: Megaphone, roles: [] }] : []),
     ...(isSuperAdmin ? [{ href: "/admin/studio/final-approval", label: "Final Sign-Off", icon: ShieldCheck, roles: [] }] : []),
     { href: "/admin/studio/calendar", label: "Publishing Calendar", icon: CalendarDays, roles: [] },
@@ -194,21 +201,29 @@ function ContentStudioSection({
       {expanded && (
         <SidebarGroupContent>
           <SidebarMenu>
-            {studioSubItems.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isNavActive(item)}
-                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
-                  data-testid={`nav-item-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                >
-                  <Link href={item.href} className="flex items-center gap-2 w-full">
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    <span>{item.label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
+            {studioSubItems.map((item) => {
+              const isCmReview = item.href === "/admin/studio/cm-review";
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isNavActive(item)}
+                    className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                    data-testid={`nav-item-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <Link href={item.href} className="flex items-center gap-2 w-full">
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="flex-1">{item.label}</span>
+                      {isCmReview && cmReviewCount > 0 && (
+                        <Badge variant="destructive" className="h-5 min-w-5 rounded-full px-1 text-[10px]">
+                          {cmReviewCount}
+                        </Badge>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
         </SidebarGroupContent>
       )}
@@ -538,7 +553,22 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasStudioAccess = can("studio.view");
   const hasMarketingApproveAccess = can("studio.marketing_approve");
   const hasStudioAnalyticsAccess = can("studio.view_analytics");
+  const hasCmReviewAccess = ["super_admin", "admin", "hr", "content_manager"].includes(userRole) && hasStudioAccess;
   const isSuperAdmin = userRole === "super_admin";
+
+  const { data: cmReviewCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/studio/cm-review/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/studio/cm-review/count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    enabled: hasCmReviewAccess,
+    refetchInterval: 60000,
+  });
+  const cmReviewCount = cmReviewCountData?.count ?? 0;
   const hasGrowthAccess = trainingEnabled || perfEnabled || isComplianceLocked;
 
   // Training + perf badge total for My Growth
@@ -672,8 +702,10 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
-    if (href === "/admin/studio/articles") return location === "/admin/studio" || (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));
+    if (href === "/admin/studio") return location === "/admin/studio";
+    if (href === "/admin/studio/articles") return (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));
     if (href === "/admin/studio/inbox") return location.startsWith("/admin/studio/inbox") || /\/admin\/studio\/articles\/[^/]+\/review/.test(location);
+    if (href === "/admin/studio/cm-review") return location.startsWith("/admin/studio/cm-review");
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
@@ -802,10 +834,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 hasStudioAccess={hasStudioAccess}
                 hasMarketingApproveAccess={hasMarketingApproveAccess}
                 hasStudioAnalyticsAccess={hasStudioAnalyticsAccess}
+                hasCmReviewAccess={hasCmReviewAccess}
                 isSuperAdmin={isSuperAdmin}
                 isNavActive={isNavActive}
                 isComplianceLocked={isComplianceLocked}
                 location={location}
+                cmReviewCount={cmReviewCount}
               />
 
               {/* Bottom actions */}

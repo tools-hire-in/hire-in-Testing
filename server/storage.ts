@@ -551,6 +551,8 @@ export type PublicInsightArticle = StudioArticle & {
   authorBio: string | null;
   authorPhotoUrl: string | null;
   authorLinkedinUrl: string | null;
+  authorSlug: string | null;
+  authorProfileComplete: boolean;
 };
 
 export class DatabaseStorage implements IStorage {
@@ -4067,6 +4069,13 @@ export class DatabaseStorage implements IStorage {
         gte(studioArticles.publishedAt, from),
         lte(studioArticles.publishedAt, to),
       ),
+      // Draft stubs with a scheduled date (e.g. from AI plan) appear as "Planned Draft" chips.
+      and(
+        eq(studioArticles.status, "draft" as any),
+        isNotNull(studioArticles.scheduledAt),
+        gte(studioArticles.scheduledAt, from),
+        lte(studioArticles.scheduledAt, to),
+      ),
     );
     const conditions = [dateInRange];
     if (projectId) conditions.push(eq(studioArticles.projectId, projectId));
@@ -4112,6 +4121,8 @@ export class DatabaseStorage implements IStorage {
       authorBio: studioAuthorProfiles.bio,
       authorPhotoUrl: studioAuthorProfiles.photoUrl,
       authorLinkedinUrl: studioAuthorProfiles.linkedinUrl,
+      authorSlug: studioAuthorProfiles.slug,
+      authorProfileComplete: studioAuthorProfiles.profileComplete,
     };
   }
 
@@ -4123,6 +4134,8 @@ export class DatabaseStorage implements IStorage {
       authorBio: r.authorBio ?? null,
       authorPhotoUrl: r.authorPhotoUrl ?? null,
       authorLinkedinUrl: r.authorLinkedinUrl ?? null,
+      authorSlug: r.authorSlug ?? null,
+      authorProfileComplete: r.authorProfileComplete ?? false,
     };
   }
 

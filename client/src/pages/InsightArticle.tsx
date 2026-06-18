@@ -182,9 +182,19 @@ export default function InsightArticle() {
             )}
             <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {article.author?.name && (
-                <span className="font-medium text-foreground" data-testid="text-article-author">
-                  {article.author.name}
-                </span>
+                article.author.slug ? (
+                  <a
+                    href={`/insights/authors/${article.author.slug}`}
+                    className="font-medium text-foreground hover:underline"
+                    data-testid="text-article-author"
+                  >
+                    {article.author.name}
+                  </a>
+                ) : (
+                  <span className="font-medium text-foreground" data-testid="text-article-author">
+                    {article.author.name}
+                  </span>
+                )
               )}
               {date && <span data-testid="text-article-date">{date}</span>}
               {article.readTimeMinutes ? (
@@ -276,7 +286,13 @@ export default function InsightArticle() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <div className="font-semibold" data-testid="text-author-name">{article.author.name}</div>
+                  <div className="font-semibold" data-testid="text-author-name">
+                    {article.author.slug ? (
+                      <a href={`/insights/authors/${article.author.slug}`} className="hover:underline">
+                        {article.author.name}
+                      </a>
+                    ) : article.author.name}
+                  </div>
                   {article.author.title && (
                     <div className="text-sm text-muted-foreground">{article.author.title}</div>
                   )}

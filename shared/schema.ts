@@ -2241,6 +2241,9 @@ export const articleStatusEnum = pgEnum("article_status", [
   "pending_marketing",
   "pending_final_approval",
   "archived",
+  "pending_cm_review",
+  "pending_author",
+  "author_approved",
 ]);
 
 // Projects / brands the studio publishes for.
@@ -2283,7 +2286,12 @@ export const studioAuthorProfiles = pgTable("studio_author_profiles", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   linkedEmployeeId: varchar("linked_employee_id"),
+  linkedUserId: varchar("linked_user_id"),
   authorType: varchar("author_type").default("external").notNull(),
+  publicTitle: varchar("public_title"),
+  specialties: text("specialties").array(),
+  profileComplete: boolean("profile_complete").default(false).notNull(),
+  slug: varchar("slug"),
 });
 
 // Core article record.

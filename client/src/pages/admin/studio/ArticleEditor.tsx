@@ -76,17 +76,23 @@ import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
 import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
 
-// Client mirror of the server transition map (permission key per target).
+// Client mirror of the server generic transition map.
+// States managed by dedicated endpoints (CM decision, author sign-off,
+// marketing approve, publish) show no generic transition buttons here —
+// their own UI surfaces handle those actions.
 const TRANSITIONS: Record<string, { to: string; label: string; permission: string }[]> = {
   draft: [{ to: "in_review", label: "Submit for Review", permission: "studio.edit_article" }],
   in_review: [
-    { to: "approved", label: "Approve", permission: "studio.review_article" },
+    { to: "pending_cm_review", label: "Submit to CM Review", permission: "studio.review_article" },
     { to: "draft", label: "Send back to Draft", permission: "studio.review_article" },
   ],
-  approved: [
-    { to: "published", label: "Publish", permission: "studio.publish_article" },
-    { to: "draft", label: "Reopen as Draft", permission: "studio.edit_article" },
-  ],
+  // New gated states — advanced through their own dedicated pages/dialogs.
+  pending_cm_review: [],
+  pending_author: [],
+  author_approved: [],
+  pending_marketing: [],
+  pending_final_approval: [],
+  approved: [],
   scheduled: [{ to: "published", label: "Publish now", permission: "studio.publish_article" }],
   published: [],
   ready_to_export: [],
@@ -386,6 +392,8 @@ function ArticleEditorInner({ id }: { id: string }) {
     },
   });
 
+  const [socialKitSlowWarning, setSocialKitSlowWarning] = useState(false);
+
   const generateSocialKitMutation = useMutation({
     mutationFn: async () => {
       // Persist current edits so the kit derives from saved content.
@@ -417,6 +425,16 @@ function ArticleEditorInner({ id }: { id: string }) {
       toast({ title: "Social Kit failed", description: err.message, variant: "destructive" });
     },
   });
+
+  // 15-second slow-generation warning for Social Kit (declared after the mutation to avoid TDZ).
+  useEffect(() => {
+    if (!generateSocialKitMutation.isPending) {
+      setSocialKitSlowWarning(false);
+      return;
+    }
+    const t = setTimeout(() => setSocialKitSlowWarning(true), 15000);
+    return () => clearTimeout(t);
+  }, [generateSocialKitMutation.isPending]);
 
   const resolveRiskFlagsMutation = useMutation({
     mutationFn: async () => {
@@ -608,20 +626,27 @@ function ArticleEditorInner({ id }: { id: string }) {
                   )}
                 </Tooltip>
               </TooltipProvider>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => generateSocialKitMutation.mutate()}
-                disabled={generateSocialKitMutation.isPending || !form.bodyMarkdown.trim()}
-                data-testid="button-generate-social-kit"
-              >
-                {generateSocialKitMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Share2 className="mr-2 h-4 w-4" />
+              <div className="flex flex-col items-start gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generateSocialKitMutation.mutate()}
+                  disabled={generateSocialKitMutation.isPending || !form.bodyMarkdown.trim()}
+                  data-testid="button-generate-social-kit"
+                >
+                  {generateSocialKitMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Share2 className="mr-2 h-4 w-4" />
+                  )}
+                  Social Kit
+                </Button>
+                {socialKitSlowWarning && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400" data-testid="text-social-kit-slow-warning">
+                    Still generating — AI can take up to a minute for long articles…
+                  </span>
                 )}
-                Social Kit
-              </Button>
+              </div>
             </>
           )}
           {canEdit && (
@@ -1034,6 +1059,27 @@ function ArticleEditorInner({ id }: { id: string }) {
                     })()}
                   </SelectContent>
                 </Select>
+                {/* Profile-incomplete warning: shown when the selected author's profile
+                    is not yet complete, blocking progression to author sign-off. */}
+                {form.authorProfileId &&
+                  (() => {
+                    const ap = authors?.find((a) => a.id === form.authorProfileId);
+                    const incomplete = ap && !(ap as any).profileComplete;
+                    const relevantStatus = ["in_review", "pending_cm_review"].includes(article.status);
+                    if (!incomplete || !relevantStatus) return null;
+                    return (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm" data-testid="alert-author-profile-incomplete">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                        <div>
+                          <p className="font-medium text-amber-800 dark:text-amber-300">Author profile incomplete</p>
+                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                            {ap?.displayName ?? "This author"} must fill in their public title, bio, and photo before the article can be sent for author sign-off. Ask them to complete their profile in the Authors panel.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()
+                }
               </div>
 
               <div className="space-y-2">

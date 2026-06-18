@@ -562,6 +562,12 @@ async function ensureContentStudioTables() {
     // Author-employee link: connect author profiles to real admin_users.
     await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS linked_employee_id varchar REFERENCES admin_users(id) ON DELETE SET NULL`);
     await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS author_type varchar DEFAULT 'external' NOT NULL`);
+    // New author profile columns for public directory & workflow linkage.
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS linked_user_id varchar REFERENCES admin_users(id) ON DELETE SET NULL`);
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS public_title varchar`);
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS specialties text[] DEFAULT '{}'`);
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS profile_complete boolean DEFAULT false NOT NULL`);
+    await db.execute(sql`ALTER TABLE studio_author_profiles ADD COLUMN IF NOT EXISTS slug varchar`);
 
     // Seeded, versioned prompt library.
     await db.execute(sql`
@@ -2101,6 +2107,22 @@ async function ensureHealthcarePlansTables() {
     await db.execute(sql`
       DO $$ BEGIN
         ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'archived';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    // New statuses for CM → author workflow gate (idempotent).
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'pending_cm_review';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'pending_author';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'author_approved';
       EXCEPTION WHEN others THEN NULL; END $$;
     `);
     log("Content Studio article_status enum values ensured");

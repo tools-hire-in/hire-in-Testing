@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   Newspaper,
@@ -26,7 +37,9 @@ import {
   Palette,
   Type,
   LayoutTemplate,
+  Plus,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings } from "@shared/schema";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
@@ -90,6 +103,97 @@ function StatCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function NewProjectDialog({ onCreated }: { onCreated?: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
+  const [publishesToInsights, setPublishesToInsights] = useState(false);
+  const [brandColor, setBrandColor] = useState("#1F3A6E");
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/studio/projects", {
+        name, slug, description, publishesToInsights, brandColor,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to create project");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Project created" });
+      setOpen(false);
+      setName(""); setSlug(""); setDescription(""); setPublishesToInsights(false); setBrandColor("#1F3A6E");
+      onCreated?.();
+    },
+    onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" data-testid="button-new-project">
+          <Plus className="mr-2 h-4 w-4" />
+          New Project
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create New Project</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="proj-name">Name</Label>
+            <Input id="proj-name" value={name} onChange={(e) => {
+              setName(e.target.value);
+              if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+            }} placeholder="Hire'in Insights" data-testid="input-project-name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="proj-slug">URL slug</Label>
+            <Input id="proj-slug" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="hirein-insights" data-testid="input-project-slug" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="proj-desc">Description (optional)</Label>
+            <Textarea id="proj-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} data-testid="input-project-desc" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="proj-brand-color">Brand color</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                id="proj-brand-color"
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                className="h-9 w-12 cursor-pointer rounded border border-input p-0.5"
+                data-testid="input-project-brand-color"
+              />
+              <Input
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                placeholder="#1F3A6E"
+                className="font-mono text-sm"
+                data-testid="input-project-brand-color-text"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input type="checkbox" checked={publishesToInsights} onChange={(e) => setPublishesToInsights(e.target.checked)} data-testid="check-publishes-insights" />
+            Publishes to public Insights page
+          </label>
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !name.trim() || !slug.trim()} className="w-full" data-testid="button-create-project">
+            {mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Create Project
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -425,6 +529,11 @@ export default function Studio() {
 
           {/* Projects */}
           <TabsContent value="projects" className="mt-6">
+            {canManageSettings && (
+              <div className="mb-4 flex justify-end">
+                <NewProjectDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/projects"] })} />
+              </div>
+            )}
             {projectsLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

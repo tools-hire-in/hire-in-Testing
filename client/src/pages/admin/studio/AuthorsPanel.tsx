@@ -32,6 +32,7 @@ import type { StudioAuthorProfile } from "@shared/schema";
 
 interface AuthorForm {
   displayName: string;
+  publicTitle: string;
   title: string;
   bio: string;
   linkedinUrl: string;
@@ -42,6 +43,7 @@ interface AuthorForm {
 
 const EMPTY_FORM: AuthorForm = {
   displayName: "",
+  publicTitle: "",
   title: "",
   bio: "",
   linkedinUrl: "",
@@ -93,6 +95,7 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     setEditing(a);
     setForm({
       displayName: a.displayName ?? "",
+      publicTitle: (a as any).publicTitle ?? "",
       title: a.title ?? "",
       bio: a.bio ?? "",
       linkedinUrl: a.linkedinUrl ?? "",
@@ -108,6 +111,7 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     mutationFn: async () => {
       const payload: Record<string, unknown> = {
         displayName: form.displayName.trim(),
+        publicTitle: form.publicTitle.trim() || null,
         title: form.title.trim() || null,
         bio: form.bio.trim() || null,
         linkedinUrl: form.linkedinUrl.trim() || null,
@@ -144,7 +148,7 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
         title: selectedCandidate.title || null,
         photoUrl: selectedCandidate.photoUrl || null,
         isActive: true,
-        linkedEmployeeId: selectedCandidate.id,
+        linkedUserId: selectedCandidate.id,
         authorType: "employee",
         consentedAt: new Date().toISOString(),
       };
@@ -227,6 +231,38 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
                   )}
                 </div>
                 {a.bio && <p className="line-clamp-3 text-sm text-muted-foreground">{a.bio}</p>}
+                {(() => {
+                  const fields = [
+                    { label: "Byline name", filled: !!a.displayName?.trim() },
+                    { label: "Public title", filled: !!(a as any).publicTitle?.trim() },
+                    { label: "Short bio", filled: !!a.bio?.trim() },
+                    { label: "Photo", filled: !!(a as any).photoUrl?.trim() },
+                  ];
+                  const filledCount = fields.filter((f) => f.filled).length;
+                  const total = fields.length;
+                  const isComplete = filledCount === total;
+                  const missing = fields.filter((f) => !f.filled).map((f) => f.label);
+                  return (
+                    <div className="space-y-1.5" data-testid={`profile-completion-${a.id}`}>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+                          {isComplete ? "Profile complete" : `${filledCount}/${total} fields filled`}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full transition-all ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`}
+                          style={{ width: `${(filledCount / total) * 100}%` }}
+                        />
+                      </div>
+                      {!isComplete && canManage && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Missing: {missing.join(", ")} — complete profile before assigning articles.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="flex flex-wrap gap-1.5">
                   <Badge variant={a.isActive ? "default" : "secondary"}>
                     {a.isActive ? "Active" : "Inactive"}
@@ -388,7 +424,20 @@ function ExternalAuthorForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="author-title">Title / role</Label>
+        <Label htmlFor="author-public-title">
+          Public title / role <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="author-public-title"
+          value={form.publicTitle}
+          onChange={(e) => setForm((f) => ({ ...f, publicTitle: e.target.value }))}
+          placeholder="e.g. Senior Talent Partner · Healthcare Staffing"
+          data-testid="input-author-public-title"
+        />
+        <p className="text-xs text-muted-foreground">Shown on public author cards. Required for profile completion.</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="author-title">Internal title / role</Label>
         <Input
           id="author-title"
           value={form.title}

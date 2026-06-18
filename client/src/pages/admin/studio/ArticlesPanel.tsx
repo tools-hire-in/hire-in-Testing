@@ -32,7 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Plus, Search, FileEdit, Clock3 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Plus, Search, FileEdit, Clock3, FastForward } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import type { StudioArticle } from "@shared/schema";
@@ -58,6 +59,47 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("quick_take");
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const canBulkApprove = can("studio.marketing_approve");
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((a) => a.id)));
+    }
+  };
+
+  const bulkApproveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/studio/articles/bulk-approve", {
+        articleIds: Array.from(selectedIds),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Bulk approve failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const succeeded = data.results.filter((r: any) => r.status !== "error" && r.status !== "skipped").length;
+      toast({ title: `${succeeded} article(s) advanced in workflow` });
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
+    },
+    onError: (err: Error) => toast({ title: "Bulk approve failed", description: err.message, variant: "destructive" }),
+  });
 
   const queryKey = [
     "/api/admin/studio/articles",
@@ -150,12 +192,30 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
             </SelectContent>
           </Select>
         </div>
-        {canCreate && (
-          <Button onClick={() => setCreateOpen(true)} data-testid="button-new-article">
-            <Plus className="mr-2 h-4 w-4" />
-            New Article
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canBulkApprove && selectedIds.size > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => bulkApproveMutation.mutate()}
+              disabled={bulkApproveMutation.isPending}
+              data-testid="button-bulk-approve"
+            >
+              {bulkApproveMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FastForward className="mr-2 h-4 w-4" />
+              )}
+              Advance {selectedIds.size} article{selectedIds.size !== 1 ? "s" : ""}
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={() => setCreateOpen(true)} data-testid="button-new-article">
+              <Plus className="mr-2 h-4 w-4" />
+              New Article
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -180,6 +240,16 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canBulkApprove && (
+                    <TableHead className="w-8">
+                      <Checkbox
+                        checked={items.length > 0 && selectedIds.size === items.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Select all"
+                        data-testid="checkbox-select-all"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Title</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
@@ -193,16 +263,25 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
                   <TableRow
                     key={a.id}
                     className="cursor-pointer"
-                    onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}
                     data-testid={`row-article-${a.id}`}
                   >
-                    <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`}>
+                    {canBulkApprove && (
+                      <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(a.id); }}>
+                        <Checkbox
+                          checked={selectedIds.has(a.id)}
+                          onCheckedChange={() => toggleSelect(a.id)}
+                          aria-label={`Select ${a.title}`}
+                          data-testid={`checkbox-article-${a.id}`}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`} onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.title}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {getStudioContentType(a.contentType)?.label ?? a.contentType}
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       <Badge
                         variant="secondary"
                         className={STATUS_BADGE_CLASS[a.status] ?? ""}
@@ -211,16 +290,16 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
                         {STATUS_LABELS[a.status] ?? a.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.authorName ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="h-3 w-3" />
                         {a.readTimeMinutes ?? "—"}m
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : "—"}
                     </TableCell>
                   </TableRow>
