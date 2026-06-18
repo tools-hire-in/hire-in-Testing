@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -1031,16 +1032,26 @@ function ArticleEditorInner({ id }: { id: string }) {
                         (a) => !catMatched.find((m) => m.id === a.id),
                       );
                       const teamGroup = [...catMatched, ...otherEmployees];
+                      const AuthorOption = ({ a, suffix }: { a: StudioAuthorProfile; suffix?: string }) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          <span className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5 shrink-0">
+                              {a.photoUrl && <AvatarImage src={a.photoUrl} alt={a.displayName} />}
+                              <AvatarFallback className="text-[10px]">
+                                {a.displayName.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{a.displayName}{suffix ?? ""}</span>
+                          </span>
+                        </SelectItem>
+                      );
                       return (
                         <>
                           {teamGroup.length > 0 && (
                             <SelectGroup>
                               <SelectLabel>Team</SelectLabel>
                               {teamGroup.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  {a.displayName}
-                                  {catMatched.find((m) => m.id === a.id) ? " ★" : ""}
-                                </SelectItem>
+                                <AuthorOption key={a.id} a={a} suffix={catMatched.find((m) => m.id === a.id) ? " ★" : ""} />
                               ))}
                             </SelectGroup>
                           )}
@@ -1048,9 +1059,7 @@ function ArticleEditorInner({ id }: { id: string }) {
                             <SelectGroup>
                               <SelectLabel>External</SelectLabel>
                               {external.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  {a.displayName}
-                                </SelectItem>
+                                <AuthorOption key={a.id} a={a} />
                               ))}
                             </SelectGroup>
                           )}

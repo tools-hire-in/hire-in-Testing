@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Plus, UserCircle, Pencil, ShieldCheck, Users, Link } from "lucide-react";
+import { Loader2, Plus, UserCircle, Pencil, ShieldCheck, Users, Link, Camera, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { StudioAuthorProfile } from "@shared/schema";
 
@@ -405,6 +405,9 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   );
 }
 
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
+
 function ExternalAuthorForm({
   form,
   setForm,
@@ -412,6 +415,55 @@ function ExternalAuthorForm({
   form: AuthorForm;
   setForm: React.Dispatch<React.SetStateAction<AuthorForm>>;
 }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const initials = form.displayName.trim()
+    ? form.displayName.trim().slice(0, 2).toUpperCase()
+    : "AU";
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      toast({ title: "Unsupported file type", description: "Please choose a JPG, PNG, or WebP image.", variant: "destructive" });
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      toast({ title: "File too large", description: "Photo must be 5 MB or smaller.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Could not get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!putRes.ok) throw new Error("Upload failed");
+
+      setForm((f) => ({ ...f, photoUrl: objectPath }));
+      toast({ title: "Photo uploaded" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -466,16 +518,56 @@ function ExternalAuthorForm({
           data-testid="input-author-linkedin"
         />
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="author-photo">Photo URL</Label>
-        <Input
-          id="author-photo"
-          value={form.photoUrl}
-          onChange={(e) => setForm((f) => ({ ...f, photoUrl: e.target.value }))}
-          placeholder="https://…"
-          data-testid="input-author-photo"
-        />
+        <Label>Headshot</Label>
+        <div className="flex items-center gap-4">
+          <Avatar className="h-16 w-16 shrink-0" data-testid="avatar-author-preview">
+            {form.photoUrl && <AvatarImage src={form.photoUrl} alt="Author headshot" />}
+            <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_IMAGE_TYPES.join(",")}
+              className="hidden"
+              onChange={handleFileChange}
+              data-testid="input-author-photo-file"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="button-upload-photo"
+            >
+              {uploading ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Camera className="mr-2 h-3.5 w-3.5" />
+              )}
+              {uploading ? "Uploading…" : form.photoUrl ? "Change photo" : "Upload photo"}
+            </Button>
+            {form.photoUrl && !uploading && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-7 px-2 text-xs"
+                onClick={() => setForm((f) => ({ ...f, photoUrl: "" }))}
+                data-testid="button-remove-photo"
+              >
+                <X className="mr-1 h-3 w-3" />
+                Remove photo
+              </Button>
+            )}
+            <p className="text-xs text-muted-foreground">JPG, PNG or WebP · max 5 MB</p>
+          </div>
+        </div>
       </div>
+
       <div className="flex items-center justify-between rounded-md border p-3">
         <div>
           <Label htmlFor="author-consent">Consent to publish</Label>
