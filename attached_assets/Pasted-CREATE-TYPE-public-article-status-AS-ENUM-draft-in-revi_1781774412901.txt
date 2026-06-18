@@ -1,0 +1,462 @@
+CREATE TYPE "public"."article_status" AS ENUM('draft', 'in_review', 'approved', 'scheduled', 'published', 'ready_to_export', 'pending_marketing', 'pending_final_approval', 'archived', 'pending_cm_review', 'pending_author', 'author_approved');
+CREATE TYPE "public"."pending_change_status" AS ENUM('pending', 'approved', 'rejected');
+CREATE TABLE "studio_brand_settings" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"brand_name" varchar DEFAULT 'Hire''in Solutions' NOT NULL,
+	"tagline" varchar,
+	"navy" varchar DEFAULT '#1F3A6E' NOT NULL,
+	"orange_primary" varchar DEFAULT '#F47C20' NOT NULL,
+	"orange_accent" varchar DEFAULT '#F96D3E' NOT NULL,
+	"white" varchar DEFAULT '#FFFFFF' NOT NULL,
+	"soft_gray" varchar DEFAULT '#F2F4F7' NOT NULL,
+	"heading_font" varchar DEFAULT 'Playfair Display' NOT NULL,
+	"body_font" varchar DEFAULT 'Inter' NOT NULL,
+	"logo_url" varchar,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "card_templates" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar,
+	"family" varchar NOT NULL,
+	"layout" varchar NOT NULL,
+	"platform" varchar NOT NULL,
+	"label" varchar,
+	"width" integer NOT NULL,
+	"height" integer NOT NULL,
+	"max_tips" integer,
+	"html" text NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"thumbnail_url" varchar
+);
+CREATE TABLE "studio_projects" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar NOT NULL,
+	"slug" varchar NOT NULL,
+	"description" text,
+	"brand_color" varchar,
+	"logo_url" varchar,
+	"is_primary" boolean DEFAULT false NOT NULL,
+	"publishes_to_insights" boolean DEFAULT false NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"font_url" varchar,
+	"footer_url" varchar,
+	"active_template_family" varchar DEFAULT 'hirein-v1' NOT NULL,
+	"routing_rules" jsonb,
+	CONSTRAINT "studio_projects_slug_unique" UNIQUE("slug")
+);
+CREATE TABLE "studio_article_versions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"article_id" varchar NOT NULL,
+	"version_no" integer NOT NULL,
+	"title" varchar,
+	"body_markdown" text,
+	"body_json" jsonb,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_review_assignments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"article_id" varchar NOT NULL,
+	"reviewer_user_id" varchar NOT NULL,
+	"status" varchar DEFAULT 'pending' NOT NULL,
+	"due_at" timestamp,
+	"decision_at" timestamp,
+	"comment" text,
+	"assigned_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_generations" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar,
+	"article_id" varchar,
+	"prompt_template_id" varchar,
+	"prompt_version" integer,
+	"kind" varchar NOT NULL,
+	"content_type" varchar,
+	"model_name" varchar,
+	"input_json" jsonb,
+	"output_json" jsonb,
+	"quality_review_json" jsonb,
+	"token_estimate" integer,
+	"generated_by_user_id" varchar,
+	"status" varchar DEFAULT 'draft' NOT NULL,
+	"reviewed_by_user_id" varchar,
+	"reviewed_at" timestamp,
+	"approval_notes" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_article_reactions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"article_id" varchar NOT NULL,
+	"reaction_type" varchar NOT NULL,
+	"session_hash" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_prompt_templates" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar,
+	"content_type" varchar NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"system_prompt" text NOT NULL,
+	"user_prompt_template" text NOT NULL,
+	"model_name" varchar NOT NULL,
+	"model_tier" varchar DEFAULT 'standard' NOT NULL,
+	"max_tokens" integer DEFAULT 4000 NOT NULL,
+	"output_schema_ref" varchar NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_newsletter_subscribers" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"email" varchar NOT NULL,
+	"project_id" varchar,
+	"confirmed_at" timestamp,
+	"unsubscribed_at" timestamp,
+	"preferences" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"suppressed_at" timestamp,
+	"bounce_count" integer DEFAULT 0 NOT NULL,
+	"last_bounce_at" timestamp,
+	CONSTRAINT "studio_newsletter_subscribers_email_unique" UNIQUE("email")
+);
+CREATE TABLE "studio_author_profiles" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar,
+	"project_id" varchar,
+	"display_name" varchar NOT NULL,
+	"title" varchar,
+	"bio" text,
+	"photo_url" varchar,
+	"linkedin_url" varchar,
+	"consented_at" timestamp,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"linked_employee_id" varchar,
+	"author_type" varchar DEFAULT 'external' NOT NULL,
+	"linked_user_id" varchar,
+	"public_title" varchar,
+	"specialties" text[],
+	"profile_complete" boolean DEFAULT false NOT NULL,
+	"slug" varchar
+);
+CREATE TABLE "studio_articles" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar NOT NULL,
+	"status" "article_status" DEFAULT 'draft' NOT NULL,
+	"content_type" varchar DEFAULT 'article' NOT NULL,
+	"title" varchar NOT NULL,
+	"slug" varchar,
+	"excerpt" text,
+	"body_markdown" text,
+	"body_json" jsonb,
+	"cover_image_url" varchar,
+	"seo_title" varchar,
+	"seo_description" text,
+	"og_image_url" varchar,
+	"tags" text[],
+	"read_time_minutes" integer,
+	"author_profile_id" varchar,
+	"reviewer_user_id" varchar,
+	"approved_by" varchar,
+	"approved_at" timestamp,
+	"scheduled_at" timestamp,
+	"published_at" timestamp,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"social_kit_jsonb" jsonb,
+	"compliance_mode" varchar DEFAULT 'normal' NOT NULL,
+	"risk_flags" jsonb,
+	"risk_flags_resolved_at" timestamp,
+	"risk_flags_resolved_by" varchar,
+	"card_layout" varchar,
+	"social_cards_jsonb" jsonb,
+	"category" varchar,
+	"notified_at" timestamp,
+	"seed_batch_id" varchar,
+	"requires_author_approval" boolean DEFAULT false NOT NULL,
+	"requires_marketing_approval" boolean DEFAULT false NOT NULL,
+	"suggested_author_role" varchar,
+	"audience" text[]
+);
+CREATE TABLE "studio_audit_events" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"article_id" varchar,
+	"actor_user_id" varchar,
+	"event_type" varchar NOT NULL,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "pending_changes" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source_job" varchar NOT NULL,
+	"run_date" varchar NOT NULL,
+	"target_user_id" varchar,
+	"target_table" varchar NOT NULL,
+	"target_record_id" varchar,
+	"change_type" varchar NOT NULL,
+	"field" varchar,
+	"current_value" text,
+	"proposed_value" text,
+	"reason" text,
+	"payload" jsonb,
+	"status" "pending_change_status" DEFAULT 'pending' NOT NULL,
+	"reviewed_by" varchar,
+	"reviewed_at" timestamp,
+	"review_note" text,
+	"created_at" timestamp DEFAULT now()
+);
+ALTER TABLE "admin_users" DROP CONSTRAINT "admin_users_employee_id_key";
+ALTER TABLE "employee_bank_details" DROP CONSTRAINT "employee_bank_details_user_id_key";
+ALTER TABLE "section_quiz_questions" DROP CONSTRAINT "section_quiz_questions_section_id_key";
+ALTER TABLE "track_completions" DROP CONSTRAINT "track_completions_assignment_id_key";
+ALTER TABLE "letter_template_sentences" DROP CONSTRAINT "uq_letter_template_key_category";
+ALTER TABLE "dst_config" DROP CONSTRAINT "dst_config_year_key";
+ALTER TABLE "role_summary_templates" DROP CONSTRAINT "role_summary_templates_role_key_key";
+ALTER TABLE "hr_letters" DROP CONSTRAINT "hr_letters_reference_number_key";
+ALTER TABLE "praise_badge_types" DROP CONSTRAINT "praise_badge_types_name_key";
+ALTER TABLE "contracts" DROP CONSTRAINT "contracts_reference_number_key";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_token_key";
+ALTER TABLE "attendance_report_runs" DROP CONSTRAINT "attendance_report_runs_month_year_key";
+ALTER TABLE "attendance_report_manager_approvals" DROP CONSTRAINT "attendance_report_manager_approvals_run_id_manager_id_key";
+ALTER TABLE "offer_letters" DROP CONSTRAINT "offer_letters_token_key";
+ALTER TABLE "admin_users" DROP CONSTRAINT "admin_users_shift_id_fkey";
+ALTER TABLE "attendance" DROP CONSTRAINT "attendance_corrected_by_id_fkey";
+ALTER TABLE "employee_emergency_contacts" DROP CONSTRAINT "employee_emergency_contacts_user_id_fkey";
+ALTER TABLE "employee_bank_details" DROP CONSTRAINT "employee_bank_details_user_id_fkey";
+ALTER TABLE "employee_documents" DROP CONSTRAINT "employee_documents_user_id_fkey";
+ALTER TABLE "employee_documents" DROP CONSTRAINT "employee_documents_verified_by_fkey";
+ALTER TABLE "section_quiz_questions" DROP CONSTRAINT "section_quiz_questions_section_id_fkey";
+ALTER TABLE "track_sections" DROP CONSTRAINT "track_sections_track_id_fkey";
+ALTER TABLE "section_acknowledgements" DROP CONSTRAINT "section_acknowledgements_assignment_id_fkey";
+ALTER TABLE "section_acknowledgements" DROP CONSTRAINT "section_acknowledgements_section_id_fkey";
+ALTER TABLE "section_acknowledgements" DROP CONSTRAINT "section_acknowledgements_user_id_fkey";
+ALTER TABLE "section_quiz_options" DROP CONSTRAINT "section_quiz_options_question_id_fkey";
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_employee_id_fkey";
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_manager_id_fkey";
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_goal_id_fkey";
+ALTER TABLE "onboarding_audit_events" DROP CONSTRAINT "onboarding_audit_events_user_id_fkey";
+ALTER TABLE "section_progress" DROP CONSTRAINT "section_progress_assignment_id_fkey";
+ALTER TABLE "section_progress" DROP CONSTRAINT "section_progress_section_id_fkey";
+ALTER TABLE "section_progress" DROP CONSTRAINT "section_progress_user_id_fkey";
+ALTER TABLE "performance_goals" DROP CONSTRAINT "performance_goals_employee_id_fkey";
+ALTER TABLE "performance_goals" DROP CONSTRAINT "performance_goals_manager_id_fkey";
+ALTER TABLE "review_cycles" DROP CONSTRAINT "review_cycles_created_by_fkey";
+ALTER TABLE "track_assignments" DROP CONSTRAINT "track_assignments_assigned_by_fkey";
+ALTER TABLE "track_assignments" DROP CONSTRAINT "track_assignments_track_id_fkey";
+ALTER TABLE "track_assignments" DROP CONSTRAINT "track_assignments_user_id_fkey";
+ALTER TABLE "track_assignments" DROP CONSTRAINT "track_assignments_exception_granted_by_id_fkey";
+ALTER TABLE "reviews" DROP CONSTRAINT "reviews_cycle_id_fkey";
+ALTER TABLE "reviews" DROP CONSTRAINT "reviews_employee_id_fkey";
+ALTER TABLE "reviews" DROP CONSTRAINT "reviews_reviewer_id_fkey";
+ALTER TABLE "track_completions" DROP CONSTRAINT "track_completions_assignment_id_fkey";
+ALTER TABLE "track_completions" DROP CONSTRAINT "track_completions_user_id_fkey";
+ALTER TABLE "performance_feedback" DROP CONSTRAINT "performance_feedback_from_employee_id_fkey";
+ALTER TABLE "performance_feedback" DROP CONSTRAINT "performance_feedback_to_employee_id_fkey";
+ALTER TABLE "performance_feedback" DROP CONSTRAINT "performance_feedback_goal_id_fkey";
+ALTER TABLE "shift_assignment_log" DROP CONSTRAINT "shift_assignment_log_user_id_fkey";
+ALTER TABLE "shift_assignment_log" DROP CONSTRAINT "shift_assignment_log_changed_by_id_fkey";
+ALTER TABLE "shift_assignment_log" DROP CONSTRAINT "shift_assignment_log_old_shift_id_fkey";
+ALTER TABLE "shift_assignment_log" DROP CONSTRAINT "shift_assignment_log_new_shift_id_fkey";
+ALTER TABLE "learning_tracks" DROP CONSTRAINT "learning_tracks_created_by_fkey";
+ALTER TABLE "learning_tracks" DROP CONSTRAINT "learning_tracks_target_department_id_fkey";
+ALTER TABLE "break_records" DROP CONSTRAINT "break_records_attendance_id_fkey";
+ALTER TABLE "break_records" DROP CONSTRAINT "break_records_user_id_fkey";
+ALTER TABLE "training_extension_requests" DROP CONSTRAINT "training_extension_requests_assignment_id_fkey";
+ALTER TABLE "training_extension_requests" DROP CONSTRAINT "training_extension_requests_user_id_fkey";
+ALTER TABLE "training_extension_requests" DROP CONSTRAINT "training_extension_requests_requested_by_id_fkey";
+ALTER TABLE "training_extension_requests" DROP CONSTRAINT "training_extension_requests_endorsed_by_id_fkey";
+ALTER TABLE "training_extension_requests" DROP CONSTRAINT "training_extension_requests_resolved_by_id_fkey";
+ALTER TABLE "night_shift_consents" DROP CONSTRAINT "night_shift_consents_user_id_fkey";
+ALTER TABLE "policy_acknowledgements" DROP CONSTRAINT "policy_acknowledgements_user_id_fkey";
+ALTER TABLE "attendance_regularizations" DROP CONSTRAINT "attendance_regularizations_employee_id_fkey";
+ALTER TABLE "attendance_regularizations" DROP CONSTRAINT "attendance_regularizations_reviewed_by_fkey";
+ALTER TABLE "goal_milestones" DROP CONSTRAINT "goal_milestones_goal_id_fkey";
+ALTER TABLE "contract_templates" DROP CONSTRAINT "contract_templates_client_id_fkey";
+ALTER TABLE "salary_report_runs" DROP CONSTRAINT "salary_report_runs_approved_by_fkey";
+ALTER TABLE "policy_signing_requests" DROP CONSTRAINT "policy_signing_requests_employee_id_fkey";
+ALTER TABLE "policy_signing_requests" DROP CONSTRAINT "policy_signing_requests_policy_document_id_fkey";
+ALTER TABLE "policy_signing_requests" DROP CONSTRAINT "policy_signing_requests_sent_by_user_id_fkey";
+ALTER TABLE "policy_signatures" DROP CONSTRAINT "policy_signatures_employee_id_fkey";
+ALTER TABLE "policy_signatures" DROP CONSTRAINT "policy_signatures_signing_request_id_fkey";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_counter_signed_by_fkey";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_issued_by_fkey";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_offer_letter_id_fkey";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_for_employee_id_fkey";
+ALTER TABLE "attendance_report_runs" DROP CONSTRAINT "attendance_report_runs_created_by_fkey";
+ALTER TABLE "attendance_report_runs" DROP CONSTRAINT "attendance_report_runs_override_by_fkey";
+ALTER TABLE "attendance_report_entries" DROP CONSTRAINT "attendance_report_entries_manager_id_fkey";
+ALTER TABLE "attendance_report_entries" DROP CONSTRAINT "attendance_report_entries_run_id_fkey";
+ALTER TABLE "attendance_report_entries" DROP CONSTRAINT "attendance_report_entries_user_id_fkey";
+ALTER TABLE "attendance_report_manager_approvals" DROP CONSTRAINT "attendance_report_manager_approvals_manager_id_fkey";
+ALTER TABLE "attendance_report_manager_approvals" DROP CONSTRAINT "attendance_report_manager_approvals_override_by_fkey";
+ALTER TABLE "attendance_report_manager_approvals" DROP CONSTRAINT "attendance_report_manager_approvals_run_id_fkey";
+ALTER TABLE "attendance_report_edits" DROP CONSTRAINT "attendance_report_edits_entry_id_fkey";
+ALTER TABLE "attendance_report_edits" DROP CONSTRAINT "attendance_report_edits_manager_id_fkey";
+ALTER TABLE "attendance_report_edits" DROP CONSTRAINT "attendance_report_edits_reviewed_by_fkey";
+ALTER TABLE "attendance_report_edits" DROP CONSTRAINT "attendance_report_edits_run_id_fkey";
+ALTER TABLE "plan_acknowledgements" DROP CONSTRAINT "plan_acknowledgements_user_id_fkey";
+ALTER TABLE "employee_plans" DROP CONSTRAINT "employee_plans_employee_id_fkey";
+ALTER TABLE "employee_plans" DROP CONSTRAINT "employee_plans_manager_id_fkey";
+ALTER TABLE "employee_plans" DROP CONSTRAINT "employee_plans_acknowledged_by_fkey";
+ALTER TABLE "employee_plans" DROP CONSTRAINT "employee_plans_created_by_fkey";
+ALTER TABLE "offer_letters" DROP CONSTRAINT "offer_letters_counter_signed_by_fkey";
+ALTER TABLE "offer_letters" DROP CONSTRAINT "offer_letters_approved_by_fkey";
+ALTER TABLE "attendance" ALTER COLUMN "status" SET DATA TYPE text;
+ALTER TABLE "attendance" ALTER COLUMN "status" SET DEFAULT 'present'::text;
+DROP TYPE "public"."attendance_status";
+CREATE TYPE "public"."attendance_status" AS ENUM('present', 'absent', 'half_day', 'short_day', 'late', 'on_leave', 'holiday', 'weekend');
+ALTER TABLE "attendance" ALTER COLUMN "status" SET DEFAULT 'present'::"public"."attendance_status";
+ALTER TABLE "attendance" ALTER COLUMN "status" SET DATA TYPE "public"."attendance_status" USING "status"::"public"."attendance_status";
+ALTER TABLE "contracts" ALTER COLUMN "status" SET DATA TYPE text;
+ALTER TABLE "contracts" ALTER COLUMN "status" SET DEFAULT 'draft'::text;
+DROP TYPE "public"."contract_status";
+CREATE TYPE "public"."contract_status" AS ENUM('draft', 'pending_dispatch_approval', 'sent', 'client_signed', 'countersigned', 'cancelled');
+ALTER TABLE "contracts" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."contract_status";
+ALTER TABLE "contracts" ALTER COLUMN "status" SET DATA TYPE "public"."contract_status" USING "status"::"public"."contract_status";
+DROP INDEX "uq_salary_run_year_month";
+ALTER TABLE "leave_requests" ALTER COLUMN "half_day_part" SET DATA TYPE varchar;
+ALTER TABLE "leave_accruals" ALTER COLUMN "accrual_type" SET DATA TYPE varchar;
+ALTER TABLE "leave_accruals" ALTER COLUMN "accrual_type" SET DEFAULT 'monthly';
+ALTER TABLE "leave_accruals" ALTER COLUMN "accrual_type" SET NOT NULL;
+ALTER TABLE "shifts" ALTER COLUMN "grace_period_minutes" SET DEFAULT 15;
+ALTER TABLE "hr_letters" ALTER COLUMN "closing_line" DROP DEFAULT;
+ALTER TABLE "hr_letters" ALTER COLUMN "created_at" DROP NOT NULL;
+ALTER TABLE "offer_letter_addendums" ALTER COLUMN "addendum_type" SET DATA TYPE "public"."offer_letter_addendum_type" USING "addendum_type"::"public"."offer_letter_addendum_type";
+ALTER TABLE "offer_letter_addendums" ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."offer_letter_addendum_status";
+ALTER TABLE "offer_letter_addendums" ALTER COLUMN "status" SET DATA TYPE "public"."offer_letter_addendum_status" USING "status"::"public"."offer_letter_addendum_status";
+ALTER TABLE "attendance_report_runs" ALTER COLUMN "deadline_at" DROP NOT NULL;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_present_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_absent_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_lop_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_leave_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_holiday_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "orig_total_hours" SET DATA TYPE real;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_present_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_absent_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_lop_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_leave_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_holiday_days" SET DATA TYPE integer;
+ALTER TABLE "attendance_report_entries" ALTER COLUMN "cur_total_hours" SET DATA TYPE real;
+ALTER TABLE "attendance_report_edits" ALTER COLUMN "original_value" SET DATA TYPE varchar;
+ALTER TABLE "attendance_report_edits" ALTER COLUMN "original_value" DROP NOT NULL;
+ALTER TABLE "attendance_report_edits" ALTER COLUMN "proposed_value" SET DATA TYPE varchar;
+ALTER TABLE "attendance_report_edits" ALTER COLUMN "proposed_value" DROP NOT NULL;
+ALTER TABLE "attendance_report_edits" ALTER COLUMN "reason" DROP NOT NULL;
+ALTER TABLE "signature_records" ADD COLUMN "consent_accepted_at" timestamp;
+ALTER TABLE "card_templates" ADD CONSTRAINT "card_templates_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_article_versions" ADD CONSTRAINT "studio_article_versions_article_id_studio_articles_id_fk" FOREIGN KEY ("article_id") REFERENCES "public"."studio_articles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_review_assignments" ADD CONSTRAINT "studio_review_assignments_article_id_studio_articles_id_fk" FOREIGN KEY ("article_id") REFERENCES "public"."studio_articles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_article_reactions" ADD CONSTRAINT "studio_article_reactions_article_id_studio_articles_id_fk" FOREIGN KEY ("article_id") REFERENCES "public"."studio_articles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_prompt_templates" ADD CONSTRAINT "studio_prompt_templates_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_newsletter_subscribers" ADD CONSTRAINT "studio_newsletter_subscribers_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_author_profiles" ADD CONSTRAINT "studio_author_profiles_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_articles" ADD CONSTRAINT "studio_articles_author_profile_id_studio_author_profiles_id_fk" FOREIGN KEY ("author_profile_id") REFERENCES "public"."studio_author_profiles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_articles" ADD CONSTRAINT "studio_articles_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "pending_changes" ADD CONSTRAINT "pending_changes_reviewed_by_admin_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "pending_changes" ADD CONSTRAINT "pending_changes_target_user_id_admin_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE UNIQUE INDEX "card_templates_default_idx" ON "card_templates" USING btree ("family","layout","platform") WHERE (project_id IS NULL);
+CREATE INDEX "studio_article_versions_article_idx" ON "studio_article_versions" USING btree ("article_id");
+CREATE INDEX "studio_review_assignments_article_idx" ON "studio_review_assignments" USING btree ("article_id");
+CREATE INDEX "studio_generations_article_idx" ON "studio_generations" USING btree ("article_id");
+CREATE INDEX "studio_generations_user_idx" ON "studio_generations" USING btree ("generated_by_user_id");
+CREATE UNIQUE INDEX "studio_prompt_templates_global_key" ON "studio_prompt_templates" USING btree ("content_type","version") WHERE (project_id IS NULL);
+CREATE INDEX "studio_articles_project_idx" ON "studio_articles" USING btree ("project_id");
+CREATE INDEX "studio_articles_status_idx" ON "studio_articles" USING btree ("status");
+CREATE INDEX "studio_audit_events_event_type_created_at_idx" ON "studio_audit_events" USING btree ("event_type","created_at");
+CREATE INDEX "idx_pending_change_status_date" ON "pending_changes" USING btree ("status","run_date");
+CREATE UNIQUE INDEX "uq_pending_change_dedupe" ON "pending_changes" USING btree ("source_job","target_user_id","target_table","run_date","field");
+ALTER TABLE "employee_emergency_contacts" ADD CONSTRAINT "employee_emergency_contacts_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_bank_details" ADD CONSTRAINT "employee_bank_details_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_documents" ADD CONSTRAINT "employee_documents_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_documents" ADD CONSTRAINT "employee_documents_verified_by_admin_users_id_fk" FOREIGN KEY ("verified_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_quiz_questions" ADD CONSTRAINT "section_quiz_questions_section_id_track_sections_id_fk" FOREIGN KEY ("section_id") REFERENCES "public"."track_sections"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "track_sections" ADD CONSTRAINT "track_sections_track_id_learning_tracks_id_fk" FOREIGN KEY ("track_id") REFERENCES "public"."learning_tracks"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "section_acknowledgements" ADD CONSTRAINT "section_acknowledgements_assignment_id_track_assignments_id_fk" FOREIGN KEY ("assignment_id") REFERENCES "public"."track_assignments"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_acknowledgements" ADD CONSTRAINT "section_acknowledgements_section_id_track_sections_id_fk" FOREIGN KEY ("section_id") REFERENCES "public"."track_sections"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_acknowledgements" ADD CONSTRAINT "section_acknowledgements_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_quiz_options" ADD CONSTRAINT "section_quiz_options_question_id_section_quiz_questions_id_fk" FOREIGN KEY ("question_id") REFERENCES "public"."section_quiz_questions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "check_ins" ADD CONSTRAINT "check_ins_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "check_ins" ADD CONSTRAINT "check_ins_goal_id_performance_goals_id_fk" FOREIGN KEY ("goal_id") REFERENCES "public"."performance_goals"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "check_ins" ADD CONSTRAINT "check_ins_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "onboarding_audit_events" ADD CONSTRAINT "onboarding_audit_events_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_progress" ADD CONSTRAINT "section_progress_assignment_id_track_assignments_id_fk" FOREIGN KEY ("assignment_id") REFERENCES "public"."track_assignments"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "section_progress" ADD CONSTRAINT "section_progress_section_id_track_sections_id_fk" FOREIGN KEY ("section_id") REFERENCES "public"."track_sections"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "section_progress" ADD CONSTRAINT "section_progress_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "performance_goals" ADD CONSTRAINT "performance_goals_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "performance_goals" ADD CONSTRAINT "performance_goals_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "review_cycles" ADD CONSTRAINT "review_cycles_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_assignments" ADD CONSTRAINT "track_assignments_assigned_by_admin_users_id_fk" FOREIGN KEY ("assigned_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_assignments" ADD CONSTRAINT "track_assignments_track_id_learning_tracks_id_fk" FOREIGN KEY ("track_id") REFERENCES "public"."learning_tracks"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_assignments" ADD CONSTRAINT "track_assignments_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_cycle_id_review_cycles_id_fk" FOREIGN KEY ("cycle_id") REFERENCES "public"."review_cycles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_reviewer_id_admin_users_id_fk" FOREIGN KEY ("reviewer_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_completions" ADD CONSTRAINT "track_completions_assignment_id_track_assignments_id_fk" FOREIGN KEY ("assignment_id") REFERENCES "public"."track_assignments"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "track_completions" ADD CONSTRAINT "track_completions_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "performance_feedback" ADD CONSTRAINT "performance_feedback_from_employee_id_admin_users_id_fk" FOREIGN KEY ("from_employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "performance_feedback" ADD CONSTRAINT "performance_feedback_goal_id_performance_goals_id_fk" FOREIGN KEY ("goal_id") REFERENCES "public"."performance_goals"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "performance_feedback" ADD CONSTRAINT "performance_feedback_to_employee_id_admin_users_id_fk" FOREIGN KEY ("to_employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "learning_tracks" ADD CONSTRAINT "learning_tracks_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "learning_tracks" ADD CONSTRAINT "learning_tracks_target_department_id_departments_id_fk" FOREIGN KEY ("target_department_id") REFERENCES "public"."departments"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "training_extension_requests" ADD CONSTRAINT "training_extension_requests_assignment_id_track_assignments_id_" FOREIGN KEY ("assignment_id") REFERENCES "public"."track_assignments"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "training_extension_requests" ADD CONSTRAINT "training_extension_requests_endorsed_by_id_admin_users_id_fk" FOREIGN KEY ("endorsed_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "training_extension_requests" ADD CONSTRAINT "training_extension_requests_requested_by_id_admin_users_id_fk" FOREIGN KEY ("requested_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "training_extension_requests" ADD CONSTRAINT "training_extension_requests_resolved_by_id_admin_users_id_fk" FOREIGN KEY ("resolved_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "training_extension_requests" ADD CONSTRAINT "training_extension_requests_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_acknowledgements" ADD CONSTRAINT "policy_acknowledgements_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_posts" ADD CONSTRAINT "praise_posts_badge_type_id_praise_badge_types_id_fk" FOREIGN KEY ("badge_type_id") REFERENCES "public"."praise_badge_types"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_posts" ADD CONSTRAINT "praise_posts_giver_id_admin_users_id_fk" FOREIGN KEY ("giver_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_posts" ADD CONSTRAINT "praise_posts_recipient_id_admin_users_id_fk" FOREIGN KEY ("recipient_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_reactions" ADD CONSTRAINT "praise_reactions_post_id_praise_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."praise_posts"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "praise_reactions" ADD CONSTRAINT "praise_reactions_reactor_id_admin_users_id_fk" FOREIGN KEY ("reactor_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "pinned_praise_posts" ADD CONSTRAINT "pinned_praise_posts_post_id_praise_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."praise_posts"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "pinned_praise_posts" ADD CONSTRAINT "pinned_praise_posts_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_comments" ADD CONSTRAINT "praise_comments_author_id_admin_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "praise_comments" ADD CONSTRAINT "praise_comments_post_id_praise_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."praise_posts"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "attendance_regularizations" ADD CONSTRAINT "attendance_regularizations_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_regularizations" ADD CONSTRAINT "attendance_regularizations_reviewed_by_admin_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "goal_milestones" ADD CONSTRAINT "goal_milestones_goal_id_performance_goals_id_fk" FOREIGN KEY ("goal_id") REFERENCES "public"."performance_goals"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "contract_templates" ADD CONSTRAINT "contract_templates_client_id_contract_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."contract_clients"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_report_runs" ADD CONSTRAINT "salary_report_runs_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_signing_requests" ADD CONSTRAINT "policy_signing_requests_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_signing_requests" ADD CONSTRAINT "policy_signing_requests_policy_document_id_policy_documents_id_" FOREIGN KEY ("policy_document_id") REFERENCES "public"."policy_documents"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_signing_requests" ADD CONSTRAINT "policy_signing_requests_sent_by_user_id_admin_users_id_fk" FOREIGN KEY ("sent_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_signatures" ADD CONSTRAINT "policy_signatures_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "policy_signatures" ADD CONSTRAINT "policy_signatures_signing_request_id_policy_signing_requests_id" FOREIGN KEY ("signing_request_id") REFERENCES "public"."policy_signing_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_for_employee_id_admin_users_id_fk" FOREIGN KEY ("for_employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_runs" ADD CONSTRAINT "attendance_report_runs_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_runs" ADD CONSTRAINT "attendance_report_runs_override_by_admin_users_id_fk" FOREIGN KEY ("override_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_entries" ADD CONSTRAINT "attendance_report_entries_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_entries" ADD CONSTRAINT "attendance_report_entries_run_id_attendance_report_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."attendance_report_runs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "attendance_report_entries" ADD CONSTRAINT "attendance_report_entries_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_manager_approvals" ADD CONSTRAINT "attendance_report_manager_approvals_manager_id_admin_users_id_f" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_manager_approvals" ADD CONSTRAINT "attendance_report_manager_approvals_override_by_admin_users_id_" FOREIGN KEY ("override_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_manager_approvals" ADD CONSTRAINT "attendance_report_manager_approvals_run_id_attendance_report_ru" FOREIGN KEY ("run_id") REFERENCES "public"."attendance_report_runs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "attendance_report_edits" ADD CONSTRAINT "attendance_report_edits_entry_id_attendance_report_entries_id_f" FOREIGN KEY ("entry_id") REFERENCES "public"."attendance_report_entries"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "attendance_report_edits" ADD CONSTRAINT "attendance_report_edits_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_edits" ADD CONSTRAINT "attendance_report_edits_reviewed_by_admin_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_report_edits" ADD CONSTRAINT "attendance_report_edits_run_id_attendance_report_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."attendance_report_runs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plan_acknowledgements" ADD CONSTRAINT "plan_acknowledgements_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" ADD CONSTRAINT "employee_plans_acknowledged_by_admin_users_id_fk" FOREIGN KEY ("acknowledged_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" ADD CONSTRAINT "employee_plans_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" ADD CONSTRAINT "employee_plans_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" ADD CONSTRAINT "employee_plans_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "offer_letters" ADD CONSTRAINT "offer_letters_counter_signed_by_admin_users_id_fk" FOREIGN KEY ("counter_signed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE UNIQUE INDEX "uq_letter_template_key_category" ON "letter_template_sentences" USING btree ("key","category");
+ALTER TABLE "attendance_report_runs" DROP COLUMN "locked_at";
+ALTER TABLE "attendance_report_entries" DROP COLUMN "manager_approved_at";
+ALTER TABLE "employee_bank_details" ADD CONSTRAINT "employee_bank_details_user_id_unique" UNIQUE("user_id");
+ALTER TABLE "section_quiz_questions" ADD CONSTRAINT "section_quiz_questions_section_id_unique" UNIQUE("section_id");
+ALTER TABLE "track_completions" ADD CONSTRAINT "track_completions_assignment_id_unique" UNIQUE("assignment_id");
+ALTER TABLE "dst_config" ADD CONSTRAINT "dst_config_year_unique" UNIQUE("year");
+ALTER TABLE "role_summary_templates" ADD CONSTRAINT "role_summary_templates_role_key_unique" UNIQUE("role_key");
+ALTER TABLE "hr_letters" ADD CONSTRAINT "hr_letters_reference_number_unique" UNIQUE("reference_number");
+ALTER TABLE "praise_badge_types" ADD CONSTRAINT "praise_badge_types_name_unique" UNIQUE("name");
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_reference_number_unique" UNIQUE("reference_number");
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_token_unique" UNIQUE("token");
+ALTER TABLE "offer_letters" ADD CONSTRAINT "offer_letters_token_unique" UNIQUE("token");
