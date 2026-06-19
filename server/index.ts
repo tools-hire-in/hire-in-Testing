@@ -2595,6 +2595,26 @@ async function ensureHealthcarePlansTables() {
     console.error("Pending changes table migration error:", err);
   }
 
+  // Release Notes table
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS release_notes (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        version VARCHAR,
+        title VARCHAR,
+        body TEXT,
+        changelog_input TEXT,
+        sent_channels TEXT[] DEFAULT '{}',
+        sent_at TIMESTAMP,
+        sent_by_user_id VARCHAR REFERENCES admin_users(id),
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
+    log("Release notes table ensured");
+  } catch (err) {
+    console.error("Release notes table migration error:", err);
+  }
+
   // Auto-create attendance report run for current month on server start if none exists
   checkAndAutoCreateRun().catch(err =>
     console.error("[index] Attendance auto-create on startup failed:", err)

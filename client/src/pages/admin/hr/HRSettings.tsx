@@ -17,6 +17,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
+import { ReleaseNotesSection } from "./settings/ReleaseNotesSection";
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
 import { OFFER_CLAUSE_CATEGORY, ADDENDUM_CLAUSE_CATEGORY, PERFORMANCE_CLAUSE_CATEGORY_LABELS } from "@shared/performanceClauses";
 
@@ -1405,6 +1407,7 @@ function AbsentCorrectionSection() {
   );
 
   return (
+    <>
     <div className="pt-4 mt-4 border-t space-y-4">
       <div>
         <p className="font-medium text-sm mb-1">Absent Record Correction</p>
@@ -1655,7 +1658,7 @@ function AbsentCorrectionSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 
@@ -2780,6 +2783,7 @@ export default function HRSettings() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [adjForm, setAdjForm] = useState({ userId: "", leaveTypeId: "", adjustmentDays: "", reason: "", year: String(new Date().getFullYear()) });
   const [adjHistoryYear, setAdjHistoryYear] = useState(String(new Date().getFullYear()));
+  const [activeSection, setActiveSection] = useState("leave-types");
 
   const { data: leaveTypes, isLoading: ltLoading } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
@@ -3077,267 +3081,43 @@ export default function HRSettings() {
     setShowDepartment(true);
   };
 
+const NAV_GROUPS = [
+  { group: "Leave & Attendance", items: [
+    { id: "leave-types", label: "Leave Types" },
+    { id: "holidays", label: "Holidays" },
+    { id: "balance-adjustments", label: "Balance Adjustments", hrOnly: true },
+    { id: "attendance-policy", label: "Attendance Policy" },
+    { id: "shifts", label: "Shifts" },
+  ]},
+  { group: "People & Access", items: [
+    { id: "departments", label: "Departments" },
+    { id: "access-control", label: "Access Control" },
+  ]},
+  { group: "Company", items: [
+    { id: "company-profile", label: "Company Profile" },
+  ]},
+  { group: "Features", items: [
+    { id: "feature-flags", label: "Feature Flags" },
+    { id: "training", label: "Training & Onboarding" },
+    { id: "performance", label: "Performance Management" },
+    { id: "rayo-academy", label: "Rayo Academy" },
+  ]},
+  { group: "Communications", items: [
+    { id: "whats-new", label: "What's New" },
+    { id: "release-notes", label: "Release Notes" },
+  ]},
+  { group: "Templates", items: [
+    { id: "letter-templates", label: "Letter Templates" },
+    { id: "goal-templates", label: "Goal Templates" },
+  ]},
+  { group: "Data", items: [
+    { id: "data-maintenance", label: "Data Maintenance" },
+  ]},
+] as const;
+
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-hr-settings-title">HR Settings</h1>
-          <p className="text-muted-foreground">Manage leave types, holidays, and company policies</p>
-        </div>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Leave Types</CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => accrualMutation.mutate({})}
-                disabled={accrualMutation.isPending}
-                data-testid="button-run-accrual"
-              >
-                {accrualMutation.isPending ? "Running..." : "Run Monthly Accrual"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => yearEndMutation.mutate({ year: new Date().getFullYear() - 1 })}
-                disabled={yearEndMutation.isPending}
-                data-testid="button-run-year-end"
-              >
-                {yearEndMutation.isPending ? "Running..." : "Run Year-End Batch"}
-              </Button>
-              <Button size="sm" onClick={() => openLeaveTypeForm()} data-testid="button-add-leave-type">
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {ltLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : leaveTypes && leaveTypes.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Type</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Carry Fwd Cap</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leaveTypes.filter(lt => lt.isActive).map((lt) => (
-                      <tr key={lt.id} className="border-b last:border-0" data-testid={`leave-type-row-${lt.id}`}>
-                        <td className="py-2 px-2 font-medium">{lt.name}</td>
-                        <td className="py-2 px-2">{lt.defaultDays}</td>
-                        <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
-                        <td className="py-2 px-2">
-                          <Badge variant={lt.isConditional ? "default" : "secondary"} className="text-xs">
-                            {lt.isConditional ? "Conditional (EL)" : "Unconditional (SL)"}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-2 text-muted-foreground">
-                          {(lt.carryForwardCap ?? 0) > 0 ? `${lt.carryForwardCap} days` : "None"}
-                        </td>
-                        <td className="py-2 px-2">
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openLeaveTypeForm(lt)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteLeaveTypeMutation.mutate(lt.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No leave types configured</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {isHrOrAbove && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Accrual Run Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {accrualLogLoading ? (
-                <Skeleton className="h-32 w-full" />
-              ) : accrualLog ? (
-                <div className="space-y-4">
-                  {accrualLog.latest && (
-                    <div className="p-3 rounded-md border bg-muted/30">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Latest Accrual Run</p>
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <span><strong>{accrualLog.latest.month}/{accrualLog.latest.year}</strong></span>
-                        <span className="text-green-700 dark:text-green-400">{accrualLog.latest.accrualsMade} accruals made</span>
-                        <span>{accrualLog.latest.usersProcessed} users processed</span>
-                        {accrualLog.latest.skippedCount > 0 && (
-                          <span className="text-red-600 dark:text-red-400">{accrualLog.latest.skippedCount} skipped</span>
-                        )}
-                        <span className="text-muted-foreground">{new Date(accrualLog.latest.runAt).toLocaleString()}</span>
-                      </div>
-                      {accrualLog.latest.skippedUsers && accrualLog.latest.skippedUsers.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-xs text-muted-foreground font-medium mb-1">Skipped employees:</p>
-                          <div className="max-h-32 overflow-y-auto space-y-0.5">
-                            {accrualLog.latest.skippedUsers.map((s: { name: string; leaveTypeName: string; reason: string }, i: number) => (
-                              <div key={i} className="text-xs text-muted-foreground flex gap-2" data-testid={`skipped-user-${i}`}>
-                                <span className="font-medium text-foreground">{s.name}</span>
-                                <span>— {s.leaveTypeName}: {s.reason}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {accrualLog.history && accrualLog.history.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Run History</p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Period</th>
-                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Processed</th>
-                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Accruals</th>
-                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Skipped</th>
-                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Run At</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {accrualLog.history.map((h: { month: number; year: number; usersProcessed: number; accrualsMade: number; skippedCount: number; runAt: string }, i: number) => (
-                              <tr key={i} className="border-b last:border-0" data-testid={`accrual-history-row-${i}`}>
-                                <td className="py-1.5 px-2">{h.month}/{h.year}</td>
-                                <td className="py-1.5 px-2">{h.usersProcessed}</td>
-                                <td className="py-1.5 px-2 text-green-700 dark:text-green-400">{h.accrualsMade}</td>
-                                <td className="py-1.5 px-2 text-red-600 dark:text-red-400">{h.skippedCount}</td>
-                                <td className="py-1.5 px-2 text-muted-foreground">{new Date(h.runAt).toLocaleDateString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                  {/* Year-end cap events: EL carry-forward truncations where excess was forfeited */}
-                  {accrualLog.yearEndLog && accrualLog.yearEndLog.length > 0 && accrualLog.yearEndLog.some((ye: any) => ye.capEvents && ye.capEvents.length > 0) && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">EL Cap Events (Year-End)</p>
-                      <div className="space-y-2">
-                        {accrualLog.yearEndLog.filter((ye: any) => ye.capEvents && ye.capEvents.length > 0).map((ye: { year: number; runAt: string; capEvents: Array<{ name: string; leaveTypeName: string; remaining: number; cap: number; forfeited: number }> }, yi: number) => (
-                          <div key={yi} className="p-2 rounded border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-                            <p className="text-xs font-medium text-amber-800 dark:text-amber-400 mb-1">
-                              Year-end {ye.year} — {ye.capEvents.length} employee(s) had EL capped at carry-forward limit
-                            </p>
-                            <div className="max-h-28 overflow-y-auto space-y-0.5">
-                              {ye.capEvents.map((ev, ei: number) => (
-                                <div key={ei} className="text-xs text-amber-700 dark:text-amber-300 flex gap-2" data-testid={`cap-event-${yi}-${ei}`}>
-                                  <span className="font-medium">{ev.name}</span>
-                                  <span>— {ev.leaveTypeName}: had {ev.remaining.toFixed(1)} days, capped at {ev.cap}, forfeited {ev.forfeited.toFixed(1)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {!accrualLog.latest && (!accrualLog.history || accrualLog.history.length === 0) && (
-                    <p className="text-sm text-muted-foreground text-center py-4">No accrual runs recorded yet. Click "Run Monthly Accrual" to start.</p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No accrual log available.</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Holidays ({new Date().getFullYear()})</CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" onClick={() => setShowUploadHoliday(true)} data-testid="button-upload-holidays">
-                <Upload className="h-4 w-4 mr-1" />
-                Upload CSV
-              </Button>
-              <Button size="sm" onClick={() => openHolidayForm()} data-testid="button-add-holiday">
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {hLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : holidays && holidays.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Holiday Name</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Regional Holiday</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {holidays.map((h) => (
-                      <tr key={h.id} className="border-b last:border-0" data-testid={`holiday-row-${h.id}`}>
-                        <td className="py-2 px-2">{h.date}</td>
-                        <td className="py-2 px-2 font-medium">{h.type !== "regional" ? h.name : ""}</td>
-                        <td className="py-2 px-2">{h.type === "regional" || h.isOptional ? h.name : ""}</td>
-                        <td className="py-2 px-2">
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openHolidayForm(h)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteHolidayMutation.mutate(h.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <CalendarDays className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No holidays configured</p>
-              </div>
-            )}
-            <div className="mt-4 p-3 rounded-md border border-dashed flex items-start gap-2" data-testid="text-holiday-note">
-              <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-muted-foreground font-medium">
-                Note : Employee's can apply any two regional holidays without any loss of pay for india office. US Holidays are mandatory for US Client Team.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <ShiftsSection />
-
+      {/* Dialogs — always in DOM, controlled by open prop */}
         <Dialog open={showLeaveType} onOpenChange={setShowLeaveType}>
           <DialogContent>
             <DialogHeader>
@@ -3454,69 +3234,6 @@ export default function HRSettings() {
           </DialogContent>
         </Dialog>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Departments</CardTitle>
-            <Button size="sm" onClick={() => openDeptForm()} data-testid="button-add-department">
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {deptLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : deptList && deptList.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Description</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
-                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deptList.map((d) => (
-                      <tr key={d.id} className="border-b last:border-0" data-testid={`dept-row-${d.id}`}>
-                        <td className="py-2 px-2 font-medium">{d.name}</td>
-                        <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{d.description || "-"}</td>
-                        <td className="py-2 px-2">
-                          <Badge variant={d.isActive ? "default" : "secondary"}>
-                            {d.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-2">
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openDeptForm(d)} data-testid={`button-edit-dept-${d.id}`}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {user?.role === "super_admin" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => deleteDeptMutation.mutate(d.id)}
-                                data-testid={`button-delete-dept-${d.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No departments configured</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         <Dialog open={showDepartment} onOpenChange={setShowDepartment}>
           <DialogContent>
             <DialogHeader>
@@ -3565,93 +3282,6 @@ export default function HRSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        {isHrOrAbove && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-base">Balance Adjustments</CardTitle>
-              <Button size="sm" onClick={() => { setShowAdjustment(true); setIsBulkMode(false); setSelectedUserIds([]); }} data-testid="button-add-adjustment">
-                <Plus className="h-4 w-4 mr-1" />
-                Adjust Balance
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Filter Year</Label>
-                  <Select value={adjHistoryYear} onValueChange={setAdjHistoryYear}>
-                    <SelectTrigger className="w-[120px]" data-testid="select-adj-history-year">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[0, 1, 2].map(offset => {
-                        const y = new Date().getFullYear() - offset;
-                        return <SelectItem key={y} value={String(y)}>{y}</SelectItem>;
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {adjHistLoading ? (
-                <Skeleton className="h-32 w-full" />
-              ) : adjustmentHistory && adjustmentHistory.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Employee</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Leave Type</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Days</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Reason</th>
-                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Adjusted By</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adjustmentHistory.map((adj) => (
-                        <tr key={adj.id} className="border-b last:border-0" data-testid={`adj-row-${adj.id}`}>
-                          <td className="py-2 px-2 text-muted-foreground">{adj.createdAt ? new Date(adj.createdAt).toLocaleDateString() : "-"}</td>
-                          <td className="py-2 px-2 font-medium">{adj.userName}</td>
-                          <td className="py-2 px-2">{adj.leaveTypeName}</td>
-                          <td className="py-2 px-2">
-                            <Badge variant="secondary" className={parseFloat(adj.adjustmentDays) >= 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}>
-                              {parseFloat(adj.adjustmentDays) >= 0 ? "+" : ""}{adj.adjustmentDays}
-                            </Badge>
-                          </td>
-                          <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{adj.reason}</td>
-                          <td className="py-2 px-2 text-muted-foreground">{adj.adjustedByName}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <Scale className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No balance adjustments found for {adjHistoryYear}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <FeatureFlagsSection />
-
-        <AccessControlSection />
-
-        <CompanyProfileSection />
-
-        <TrainingSettingsSection />
-
-        <RegularizationPolicySection />
-
-        <PerformanceSettingsSection />
-        <RayoAcademySettingsSection />
-        <CommunicationsSection />
-        <LetterTemplatesSection />
-        <GoalTemplatesSection />
-        <DataMaintenanceSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>
           <DialogContent className="sm:max-w-lg">
@@ -3958,6 +3588,597 @@ export default function HRSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+      {/* Two-column settings layout */}
+      <div className="flex -mx-6 -mt-6 min-h-screen">
+        {/* Left nav sidebar */}
+        <nav className="w-52 shrink-0 border-r bg-muted/30 overflow-y-auto sticky top-0 self-start" style={{minHeight: "calc(100vh - 64px)"}}>
+          <div className="p-3 border-b">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Settings className="h-3.5 w-3.5" />
+              Settings
+            </p>
+          </div>
+          {NAV_GROUPS.map(group => (
+            <div key={group.group} className="px-2 pt-4 pb-1">
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.group}</p>
+              {group.items
+                .filter((item: any) => !(item as any).hrOnly || isHrOrAbove)
+                .map((item: any) => (
+                <button
+                  key={item.id}
+                  data-testid={`nav-${item.id}`}
+                  onClick={() => setActiveSection(item.id)}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-sm rounded-md mb-0.5 transition-colors",
+                    activeSection === item.id
+                      ? "bg-primary text-primary-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        {/* Right content panel */}
+        <div className="flex-1 p-6 space-y-6 min-w-0">
+
+          {/* Leave Types */}
+          {activeSection === "leave-types" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-leave-types">Leave Types</h1>
+            <p className="text-muted-foreground text-sm">Configure leave types and run monthly accrual batches</p>
+          </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Leave Types</CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => accrualMutation.mutate({})}
+                disabled={accrualMutation.isPending}
+                data-testid="button-run-accrual"
+              >
+                {accrualMutation.isPending ? "Running..." : "Run Monthly Accrual"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => yearEndMutation.mutate({ year: new Date().getFullYear() - 1 })}
+                disabled={yearEndMutation.isPending}
+                data-testid="button-run-year-end"
+              >
+                {yearEndMutation.isPending ? "Running..." : "Run Year-End Batch"}
+              </Button>
+              <Button size="sm" onClick={() => openLeaveTypeForm()} data-testid="button-add-leave-type">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {ltLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : leaveTypes && leaveTypes.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Annual Days</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Monthly Accrual</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Type</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Carry Fwd Cap</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaveTypes.filter(lt => lt.isActive).map((lt) => (
+                      <tr key={lt.id} className="border-b last:border-0" data-testid={`leave-type-row-${lt.id}`}>
+                        <td className="py-2 px-2 font-medium">{lt.name}</td>
+                        <td className="py-2 px-2">{lt.defaultDays}</td>
+                        <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
+                        <td className="py-2 px-2">
+                          <Badge variant={lt.isConditional ? "default" : "secondary"} className="text-xs">
+                            {lt.isConditional ? "Conditional (EL)" : "Unconditional (SL)"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2 text-muted-foreground">
+                          {(lt.carryForwardCap ?? 0) > 0 ? `${lt.carryForwardCap} days` : "None"}
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openLeaveTypeForm(lt)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteLeaveTypeMutation.mutate(lt.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No leave types configured</p>
+            )}
+          </CardContent>
+        </Card>
+        {isHrOrAbove && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Accrual Run Log</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {accrualLogLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : accrualLog ? (
+                <div className="space-y-4">
+                  {accrualLog.latest && (
+                    <div className="p-3 rounded-md border bg-muted/30">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Latest Accrual Run</p>
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <span><strong>{accrualLog.latest.month}/{accrualLog.latest.year}</strong></span>
+                        <span className="text-green-700 dark:text-green-400">{accrualLog.latest.accrualsMade} accruals made</span>
+                        <span>{accrualLog.latest.usersProcessed} users processed</span>
+                        {accrualLog.latest.skippedCount > 0 && (
+                          <span className="text-red-600 dark:text-red-400">{accrualLog.latest.skippedCount} skipped</span>
+                        )}
+                        <span className="text-muted-foreground">{new Date(accrualLog.latest.runAt).toLocaleString()}</span>
+                      </div>
+                      {accrualLog.latest.skippedUsers && accrualLog.latest.skippedUsers.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs text-muted-foreground font-medium mb-1">Skipped employees:</p>
+                          <div className="max-h-32 overflow-y-auto space-y-0.5">
+                            {accrualLog.latest.skippedUsers.map((s: { name: string; leaveTypeName: string; reason: string }, i: number) => (
+                              <div key={i} className="text-xs text-muted-foreground flex gap-2" data-testid={`skipped-user-${i}`}>
+                                <span className="font-medium text-foreground">{s.name}</span>
+                                <span>— {s.leaveTypeName}: {s.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {accrualLog.history && accrualLog.history.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Run History</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Period</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Processed</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Accruals</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Skipped</th>
+                              <th className="text-left py-2 px-2 font-medium text-muted-foreground">Run At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {accrualLog.history.map((h: { month: number; year: number; usersProcessed: number; accrualsMade: number; skippedCount: number; runAt: string }, i: number) => (
+                              <tr key={i} className="border-b last:border-0" data-testid={`accrual-history-row-${i}`}>
+                                <td className="py-1.5 px-2">{h.month}/{h.year}</td>
+                                <td className="py-1.5 px-2">{h.usersProcessed}</td>
+                                <td className="py-1.5 px-2 text-green-700 dark:text-green-400">{h.accrualsMade}</td>
+                                <td className="py-1.5 px-2 text-red-600 dark:text-red-400">{h.skippedCount}</td>
+                                <td className="py-1.5 px-2 text-muted-foreground">{new Date(h.runAt).toLocaleDateString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {/* Year-end cap events: EL carry-forward truncations where excess was forfeited */}
+                  {accrualLog.yearEndLog && accrualLog.yearEndLog.length > 0 && accrualLog.yearEndLog.some((ye: any) => ye.capEvents && ye.capEvents.length > 0) && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">EL Cap Events (Year-End)</p>
+                      <div className="space-y-2">
+                        {accrualLog.yearEndLog.filter((ye: any) => ye.capEvents && ye.capEvents.length > 0).map((ye: { year: number; runAt: string; capEvents: Array<{ name: string; leaveTypeName: string; remaining: number; cap: number; forfeited: number }> }, yi: number) => (
+                          <div key={yi} className="p-2 rounded border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+                            <p className="text-xs font-medium text-amber-800 dark:text-amber-400 mb-1">
+                              Year-end {ye.year} — {ye.capEvents.length} employee(s) had EL capped at carry-forward limit
+                            </p>
+                            <div className="max-h-28 overflow-y-auto space-y-0.5">
+                              {ye.capEvents.map((ev, ei: number) => (
+                                <div key={ei} className="text-xs text-amber-700 dark:text-amber-300 flex gap-2" data-testid={`cap-event-${yi}-${ei}`}>
+                                  <span className="font-medium">{ev.name}</span>
+                                  <span>— {ev.leaveTypeName}: had {ev.remaining.toFixed(1)} days, capped at {ev.cap}, forfeited {ev.forfeited.toFixed(1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!accrualLog.latest && (!accrualLog.history || accrualLog.history.length === 0) && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No accrual runs recorded yet. Click "Run Monthly Accrual" to start.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No accrual log available.</p>
+              )}
+            </CardContent>
+          </Card>
+          )}
+          </>
+          )}
+
+          {/* Holidays */}
+          {activeSection === "holidays" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-holidays">Holidays</h1>
+            <p className="text-muted-foreground text-sm">Manage the company holiday calendar</p>
+          </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Holidays ({new Date().getFullYear()})</CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" onClick={() => setShowUploadHoliday(true)} data-testid="button-upload-holidays">
+                <Upload className="h-4 w-4 mr-1" />
+                Upload CSV
+              </Button>
+              <Button size="sm" onClick={() => openHolidayForm()} data-testid="button-add-holiday">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {hLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : holidays && holidays.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Holiday Name</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Regional Holiday</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holidays.map((h) => (
+                      <tr key={h.id} className="border-b last:border-0" data-testid={`holiday-row-${h.id}`}>
+                        <td className="py-2 px-2">{h.date}</td>
+                        <td className="py-2 px-2 font-medium">{h.type !== "regional" ? h.name : ""}</td>
+                        <td className="py-2 px-2">{h.type === "regional" || h.isOptional ? h.name : ""}</td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openHolidayForm(h)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteHolidayMutation.mutate(h.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <CalendarDays className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No holidays configured</p>
+              </div>
+            )}
+            <div className="mt-4 p-3 rounded-md border border-dashed flex items-start gap-2" data-testid="text-holiday-note">
+              <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground font-medium">
+                Note : Employee's can apply any two regional holidays without any loss of pay for india office. US Holidays are mandatory for US Client Team.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+            </>
+          )}
+
+          {/* Balance Adjustments */}
+          {activeSection === "balance-adjustments" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-balance-adjustments">Balance Adjustments</h1>
+            <p className="text-muted-foreground text-sm">Manually adjust employee leave balances</p>
+          </div>
+        {isHrOrAbove && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">Balance Adjustments</CardTitle>
+              <Button size="sm" onClick={() => { setShowAdjustment(true); setIsBulkMode(false); setSelectedUserIds([]); }} data-testid="button-add-adjustment">
+                <Plus className="h-4 w-4 mr-1" />
+                Adjust Balance
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Filter Year</Label>
+                  <Select value={adjHistoryYear} onValueChange={setAdjHistoryYear}>
+                    <SelectTrigger className="w-[120px]" data-testid="select-adj-history-year">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2].map(offset => {
+                        const y = new Date().getFullYear() - offset;
+                        return <SelectItem key={y} value={String(y)}>{y}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {adjHistLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : adjustmentHistory && adjustmentHistory.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Employee</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Leave Type</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Days</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Reason</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Adjusted By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adjustmentHistory.map((adj) => (
+                        <tr key={adj.id} className="border-b last:border-0" data-testid={`adj-row-${adj.id}`}>
+                          <td className="py-2 px-2 text-muted-foreground">{adj.createdAt ? new Date(adj.createdAt).toLocaleDateString() : "-"}</td>
+                          <td className="py-2 px-2 font-medium">{adj.userName}</td>
+                          <td className="py-2 px-2">{adj.leaveTypeName}</td>
+                          <td className="py-2 px-2">
+                            <Badge variant="secondary" className={parseFloat(adj.adjustmentDays) >= 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}>
+                              {parseFloat(adj.adjustmentDays) >= 0 ? "+" : ""}{adj.adjustmentDays}
+                            </Badge>
+                          </td>
+                          <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{adj.reason}</td>
+                          <td className="py-2 px-2 text-muted-foreground">{adj.adjustedByName}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Scale className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">No balance adjustments found for {adjHistoryYear}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+            </>
+          )}
+
+          {/* Attendance Policy */}
+          {activeSection === "attendance-policy" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-attendance-policy">Attendance Policy</h1>
+            <p className="text-muted-foreground text-sm">Configure regularisation and attendance rules</p>
+          </div>
+              <RegularizationPolicySection />
+            </>
+          )}
+
+          {/* Shifts */}
+          {activeSection === "shifts" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-shifts">Shifts</h1>
+            <p className="text-muted-foreground text-sm">Manage work shifts and schedules</p>
+          </div>
+              <ShiftsSection />
+            </>
+          )}
+
+          {/* Departments */}
+          {activeSection === "departments" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-departments">Departments</h1>
+            <p className="text-muted-foreground text-sm">Manage company departments</p>
+          </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Departments</CardTitle>
+            <Button size="sm" onClick={() => openDeptForm()} data-testid="button-add-department">
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {deptLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : deptList && deptList.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Name</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Description</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
+                      <th className="text-left py-3 px-2 font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deptList.map((d) => (
+                      <tr key={d.id} className="border-b last:border-0" data-testid={`dept-row-${d.id}`}>
+                        <td className="py-2 px-2 font-medium">{d.name}</td>
+                        <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{d.description || "-"}</td>
+                        <td className="py-2 px-2">
+                          <Badge variant={d.isActive ? "default" : "secondary"}>
+                            {d.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openDeptForm(d)} data-testid={`button-edit-dept-${d.id}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {user?.role === "super_admin" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteDeptMutation.mutate(d.id)}
+                                data-testid={`button-delete-dept-${d.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No departments configured</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+            </>
+          )}
+
+          {activeSection === "access-control" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-access-control">Access Control</h1>
+            <p className="text-muted-foreground text-sm">Configure role-based permissions</p>
+          </div>
+              <AccessControlSection />
+            </>
+          )}
+
+          {activeSection === "company-profile" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-company-profile">Company Profile</h1>
+            <p className="text-muted-foreground text-sm">Manage company identity and branding</p>
+          </div>
+              <CompanyProfileSection />
+            </>
+          )}
+
+          {activeSection === "feature-flags" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-feature-flags">Feature Flags</h1>
+            <p className="text-muted-foreground text-sm">Toggle platform features on or off</p>
+          </div>
+              <FeatureFlagsSection />
+            </>
+          )}
+
+          {activeSection === "training" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-training">Training & Onboarding</h1>
+            <p className="text-muted-foreground text-sm">Configure onboarding tracks and SOPs</p>
+          </div>
+              <TrainingSettingsSection />
+            </>
+          )}
+
+          {activeSection === "performance" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-performance">Performance Management</h1>
+            <p className="text-muted-foreground text-sm">Configure performance reviews and goals</p>
+          </div>
+              <PerformanceSettingsSection />
+            </>
+          )}
+
+          {activeSection === "rayo-academy" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-rayo-academy">Rayo Academy</h1>
+            <p className="text-muted-foreground text-sm">Connect the external training platform</p>
+          </div>
+              <RayoAcademySettingsSection />
+            </>
+          )}
+
+          {activeSection === "whats-new" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-whats-new">What's New</h1>
+            <p className="text-muted-foreground text-sm">Broadcast platform updates to employees</p>
+          </div>
+              <CommunicationsSection />
+            </>
+          )}
+
+          {activeSection === "release-notes" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-release-notes">Release Notes</h1>
+            <p className="text-muted-foreground text-sm">Generate and publish AI-powered release notes</p>
+          </div>
+              <ReleaseNotesSection />
+            </>
+          )}
+
+          {activeSection === "letter-templates" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-letter-templates">Letter Templates</h1>
+            <p className="text-muted-foreground text-sm">Manage HR letter and amendment templates</p>
+          </div>
+              <LetterTemplatesSection />
+            </>
+          )}
+
+          {activeSection === "goal-templates" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-goal-templates">Goal Templates</h1>
+            <p className="text-muted-foreground text-sm">Configure goal and OKR templates</p>
+          </div>
+              <GoalTemplatesSection />
+            </>
+          )}
+
+          {activeSection === "data-maintenance" && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-data-maintenance">Data Maintenance</h1>
+            <p className="text-muted-foreground text-sm">Cleanup tools and data correction utilities</p>
+          </div>
+              <DataMaintenanceSection />
+              <AbsentCorrectionSection />
+            </>
+          )}
+
+        </div>
       </div>
     </AdminLayout>
   );

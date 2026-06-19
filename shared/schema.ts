@@ -2515,6 +2515,23 @@ export const studioGenerations = pgTable("studio_generations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Release Notes — AI-generated deployment changelog broadcaster
+export const releaseNotes = pgTable("release_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  version: varchar("version"),
+  title: varchar("title"),
+  body: text("body"),
+  changelogInput: text("changelog_input"),
+  sentChannels: text("sent_channels").array().default(sql`'{}'`),
+  sentAt: timestamp("sent_at"),
+  sentByUserId: varchar("sent_by_user_id").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertReleaseNoteSchema = createInsertSchema(releaseNotes).omit({ id: true, createdAt: true });
+export type ReleaseNote = typeof releaseNotes.$inferSelect;
+export type InsertReleaseNote = z.infer<typeof insertReleaseNoteSchema>;
+
 export const insertStudioProjectSchema = createInsertSchema(studioProjects).omit({ id: true, createdAt: true });
 export const insertStudioAuthorProfileSchema = createInsertSchema(studioAuthorProfiles).omit({ id: true, createdAt: true });
 export const insertStudioArticleSchema = createInsertSchema(studioArticles).omit({ id: true, createdAt: true, updatedAt: true });

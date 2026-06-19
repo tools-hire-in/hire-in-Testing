@@ -2820,3 +2820,68 @@ export async function sendNewsletterNotificationEmail(options: {
     return { success: false, error: error.message };
   }
 }
+
+export async function sendReleaseNotesEmail(options: {
+  employees: Array<{ email: string; firstName: string }>;
+  version: string;
+  title: string;
+  body: string;
+  portalUrl?: string;
+}): Promise<{ sent: number; failed: number }> {
+  const { client, fromEmail } = await getUncachableSendGridClient();
+  const portalUrl = options.portalUrl || "https://hire-in.com/admin/hr/settings";
+  let sent = 0;
+  let failed = 0;
+
+  const bodyHtml = options.body
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => line.startsWith("•") || line.startsWith("-") || line.startsWith("*")
+      ? `<li style="color:#475569;font-size:14px;line-height:1.8;margin:0;">${line.replace(/^[•\-*]\s*/, "")}</li>`
+      : `<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 12px;">${line}</p>`)
+    .join("");
+
+  const bodyWrapped = options.body.match(/^[•\-*]/m)
+    ? `<ul style="margin:0 0 20px;padding-left:20px;">${bodyHtml}</ul>`
+    : bodyHtml;
+
+  for (const emp of options.employees) {
+    try {
+      const msg = {
+        to: emp.email,
+        from: { email: fromEmail, name: "Alina Carter" },
+        subject: `Platform Update ${options.version}: ${options.title} — Hire'in Solutions`,
+        html: `
+          <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+            <div style="background:linear-gradient(135deg,#1F3A6E 0%,#F47C20 100%);padding:32px;text-align:center;">
+              <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Hire'in Solutions</h1>
+              <p style="color:#e2e8f0;margin:8px 0 0;font-size:13px;">Platform Release ${options.version}</p>
+            </div>
+            <div style="padding:32px;">
+              <h2 style="color:#1e293b;margin:0 0 4px;font-size:22px;font-weight:700;">${options.title}</h2>
+              <p style="color:#64748b;margin:0 0 20px;font-size:15px;">Hi ${emp.firstName}, here's what's new in the latest release.</p>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin:0 0 24px;">
+                ${bodyWrapped}
+              </div>
+              <div style="text-align:center;margin:24px 0 8px;">
+                <a href="${portalUrl}" style="display:inline-block;background:#1F3A6E;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:14px;">Open My Portal</a>
+              </div>
+              ${SIGNOFF_HTML}
+            </div>
+            <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.</p>
+            </div>
+          </div>`,
+        text: `Hi ${emp.firstName},\n\nPlatform Release ${options.version}: ${options.title}\n\n${options.body}\n\nOpen your portal: ${portalUrl}${SIGNOFF_TEXT}`,
+      };
+      await client.send(msg);
+      sent++;
+    } catch (error: any) {
+      console.error(`sendReleaseNotesEmail failed for ${emp.email}:`, error?.response?.body || error.message);
+      failed++;
+    }
+  }
+
+  return { sent, failed };
+}

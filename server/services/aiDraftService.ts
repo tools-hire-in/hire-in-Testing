@@ -298,6 +298,84 @@ export async function runQualityReview(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Release Notes generator — turns raw git commit messages into polished,
+// user-friendly release notes in JSON format.
+// ---------------------------------------------------------------------------
+const RELEASE_NOTES_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    version: { type: "string" },
+    title: { type: "string" },
+    body: { type: "string" },
+  },
+  required: ["version", "title", "body"],
+  additionalProperties: false,
+};
+
+export interface ReleaseNotesResult {
+  version: string;
+  title: string;
+  body: string;
+}
+
+export async function generateReleaseNotes(changelogInput: string): Promise<ReleaseNotesResult> {
+  const today = new Date();
+  const dateStr = `v${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+  const systemPrompt = `You are a warm, professional communications writer for Hire'in Solutions, an AI-powered staffing and talent acquisition firm. 
+Your job is to turn raw git commit messages into polished, user-friendly release notes.
+- Write in a clear, warm, and professional tone — accessible to non-technical HR staff.
+- Group related changes together where sensible.
+- Translate technical commit messages into plain-English benefits ("Fixed the attendance punch-in bug" → "Attendance is now more reliable — punch-ins save correctly every time").
+- Skip purely internal or trivial commits (dependency bumps, typos, etc.).
+- Infer a version string like "${dateStr}" from today's date if commits don't suggest one.
+- Keep the title punchy (max 8 words).
+- Body should be 2–5 short paragraphs or a short bulleted list.
+- Never mention file names, PR numbers, or technical jargon.`;
+
+  const userPrompt = `Here are the recent git commits since the last release:\n\n${changelogInput || "(no commits found)"}\n\nPlease generate polished release notes from these.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: TIER_MODELS.standard,
+      max_completion_tokens: 1200,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "release_notes",
+          strict: true,
+          schema: RELEASE_NOTES_JSON_SCHEMA,
+        },
+      },
+    });
+
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) throw new AiGenerationError("malformed", "Model returned no content.");
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new AiGenerationError("malformed", "Model returned invalid JSON.", false);
+    }
+
+    return {
+      version: String(parsed.version || dateStr),
+      title: String(parsed.title || "Platform Update"),
+      body: String(parsed.body || ""),
+    };
+  } catch (err: any) {
+    if (err instanceof AiGenerationError) throw err;
+    console.error("[generateReleaseNotes] AI error:", err?.message);
+    throw new AiGenerationError("upstream", "AI provider error generating release notes.");
+  }
+}
+
 export function isAiConfigured(): boolean {
   return Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
 }
