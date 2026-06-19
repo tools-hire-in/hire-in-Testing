@@ -47,6 +47,8 @@ interface RegularizationRequest {
   reason: string;
   status: string;
   reviewerComment: string | null;
+  returnComment: string | null;
+  attachmentUrl: string | null;
   reviewerName: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -69,7 +71,16 @@ const STATUS_CFG: Record<string, { label: string; cls: string; icon: any }> = {
   pending:  { label: "Pending",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300", icon: Clock },
   approved: { label: "Approved", cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",   icon: CheckCircle2 },
   rejected: { label: "Rejected", cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",           icon: XCircle },
+  returned: { label: "Needs Clarification", cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", icon: RefreshCw },
 };
+
+// Extract a HH:mm value (browser-local) from a stored ISO timestamp for time inputs.
+function toTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 function ReviewModal({
   request,
@@ -79,24 +90,44 @@ function ReviewModal({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [status, setStatus] = useState<"approved" | "rejected">("approved");
+  const [status, setStatus] = useState<"approved" | "returned" | "rejected">("approved");
   const [comment, setComment] = useState("");
+  const [returnComment, setReturnComment] = useState("");
+  const [adjustedPunchIn, setAdjustedPunchIn] = useState(toTimeInput(request.requestedPunchIn));
+  const [adjustedPunchOut, setAdjustedPunchOut] = useState(toTimeInput(request.requestedPunchOut));
 
   const reviewMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("PATCH", `/api/hr/attendance/regularization/${request.id}/review`, {
-        status,
-        reviewerComment: comment,
-      }),
+    mutationFn: () => {
+      const payload: Record<string, unknown> = { status };
+      if (status === "returned") {
+        payload.returnComment = returnComment;
+      } else {
+        payload.reviewerComment = comment;
+      }
+      if (status === "approved") {
+        payload.managerAdjustedPunchIn = adjustedPunchIn || undefined;
+        payload.managerAdjustedPunchOut = adjustedPunchOut || undefined;
+      }
+      return apiRequest("PATCH", `/api/hr/attendance/regularization/${request.id}/review`, payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/all"] });
-      toast({ title: status === "approved" ? "Request Approved" : "Request Rejected" });
+      toast({
+        title:
+          status === "approved" ? "Request Approved" :
+          status === "returned" ? "Returned for Clarification" :
+          "Request Rejected",
+      });
       onClose();
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to review", variant: "destructive" });
     },
   });
+
+  const submitDisabled =
+    reviewMutation.isPending ||
+    (status === "returned" ? !returnComment.trim() : !comment.trim());
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -126,6 +157,20 @@ function ReviewModal({
             <span className="text-muted-foreground text-xs">Employee Reason</span>
             <p className="mt-1 text-sm">{request.reason}</p>
           </div>
+          {request.attachmentUrl && (
+            <div>
+              <span className="text-muted-foreground text-xs">Evidence</span>
+              <a
+                href={request.attachmentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 flex items-center gap-1.5 text-sm text-primary hover:underline"
+                data-testid="link-review-attachment"
+              >
+                <Eye className="h-3.5 w-3.5" /> View attached evidence
+              </a>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Decision</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as any)}>
@@ -134,25 +179,60 @@ function ReviewModal({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="approved">Approve</SelectItem>
+                <SelectItem value="returned">Return for Clarification</SelectItem>
                 <SelectItem value="rejected">Reject</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Reviewer Comment <span className="text-destructive">*</span></Label>
-            <Textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Provide a reason or note for your decision..."
-              data-testid="input-review-comment"
-            />
-          </div>
+          {status === "approved" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Punch In (editable)</Label>
+                <Input
+                  type="time"
+                  value={adjustedPunchIn}
+                  onChange={(e) => setAdjustedPunchIn(e.target.value)}
+                  data-testid="input-adjusted-punch-in"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Punch Out (editable)</Label>
+                <Input
+                  type="time"
+                  value={adjustedPunchOut}
+                  onChange={(e) => setAdjustedPunchOut(e.target.value)}
+                  data-testid="input-adjusted-punch-out"
+                />
+              </div>
+            </div>
+          )}
+          {status === "returned" ? (
+            <div className="space-y-2">
+              <Label>Clarification Note <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={returnComment}
+                onChange={(e) => setReturnComment(e.target.value)}
+                placeholder="Explain what the employee needs to clarify or add..."
+                data-testid="input-return-comment"
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Reviewer Comment <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Provide a reason or note for your decision..."
+                data-testid="input-review-comment"
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => reviewMutation.mutate()}
-            disabled={!comment.trim() || reviewMutation.isPending}
+            disabled={submitDisabled}
             data-testid="button-submit-review"
           >
             {reviewMutation.isPending ? "Submitting..." : "Submit Decision"}
@@ -1031,6 +1111,7 @@ export default function RegularizationsPanel() {
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="returned">Needs Clarification</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>

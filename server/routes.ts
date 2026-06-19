@@ -4726,7 +4726,7 @@ export async function registerRoutes(
   app.post("/api/hr/attendance/regularization", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const { attendanceDate, requestType, requestedPunchIn, requestedPunchOut, reason } = req.body;
+      const { attendanceDate, requestType, requestedPunchIn, requestedPunchOut, reason, attachmentUrl } = req.body;
 
       if (!attendanceDate || !requestType || !reason) {
         return res.status(400).json({ error: "attendanceDate, requestType, and reason are required" });
@@ -4800,6 +4800,7 @@ export async function registerRoutes(
         requestedPunchIn: punchIn,
         requestedPunchOut: punchOut,
         reason,
+        ...(attachmentUrl ? { attachmentUrl } : {}),
       });
 
       await storage.createAuditLog({
@@ -4997,12 +4998,17 @@ export async function registerRoutes(
     try {
       const actorId = req.session.userId!;
       const actorRole = req.session.role!;
-      const { status, reviewerComment } = req.body;
+      const { status, reviewerComment, returnComment, managerAdjustedPunchIn, managerAdjustedPunchOut } = req.body;
 
-      if (!["approved", "rejected"].includes(status)) {
-        return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+      if (!["approved", "rejected", "returned"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'approved', 'rejected', or 'returned'" });
       }
-      if (!reviewerComment || !reviewerComment.trim()) {
+      // For approve/reject a reviewer comment is required; for return a returnComment is required.
+      if (status === "returned") {
+        if (!returnComment || !returnComment.trim()) {
+          return res.status(400).json({ error: "A clarification note is required when returning a request" });
+        }
+      } else if (!reviewerComment || !reviewerComment.trim()) {
         return res.status(400).json({ error: "Reviewer comment is required" });
       }
 
@@ -5037,17 +5043,33 @@ export async function registerRoutes(
         });
       }
 
+      // Parse optional manager-adjusted punch times (HH:mm strings combined with the attendance date,
+      // or full ISO strings from older callers). These override the employee's requested times on approval.
+      const HH_MM_RE = /^\d{2}:\d{2}$/;
+      const parseAdjusted = (val: string | undefined | null): Date | undefined => {
+        if (!val) return undefined;
+        const iso = HH_MM_RE.test(val) ? `${request.attendanceDate}T${val}:00` : val;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? undefined : d;
+      };
+      const adjustedPunchIn = parseAdjusted(managerAdjustedPunchIn);
+      const adjustedPunchOut = parseAdjusted(managerAdjustedPunchOut);
+
       const updated = await storage.updateRegularizationRequest(req.params.id, {
         status,
         reviewedBy: actorId,
-        reviewerComment,
+        reviewerComment: status === "returned" ? null : reviewerComment,
+        returnComment: status === "returned" ? returnComment : null,
+        managerAdjustedPunchIn: status === "approved" ? (adjustedPunchIn ?? null) : null,
+        managerAdjustedPunchOut: status === "approved" ? (adjustedPunchOut ?? null) : null,
         reviewedAt: new Date(),
       });
 
-      // On approval: apply attendance correction with fully recomputed derived fields
+      // On approval: apply attendance correction with fully recomputed derived fields.
+      // Manager-adjusted times (if provided) take precedence over the employee's requested times.
       if (status === "approved") {
-        const punchIn = request.requestedPunchIn;
-        const punchOut = request.requestedPunchOut;
+        const punchIn = adjustedPunchIn ?? request.requestedPunchIn;
+        const punchOut = adjustedPunchOut ?? request.requestedPunchOut;
 
         const existing = await storage.getAttendanceByUser(request.employeeId, request.attendanceDate, request.attendanceDate);
 
@@ -5110,33 +5132,55 @@ export async function registerRoutes(
         }
       }
 
-      // Create in-app notification for employee
+      // Notify the employee — in-app always, email best-effort. Respects the notifications feature flag.
       const actorUser = await storage.getAdminUser(actorId);
-      await storage.createNotification({
-        userId: request.employeeId,
-        type: "regularization_decision",
-        title: status === "approved" ? "Regularization Approved" : "Regularization Rejected",
-        message: `Your regularization request for ${request.attendanceDate} was ${status}. ${reviewerComment ? `Comment: ${reviewerComment}` : ""}`,
-        isRead: false,
-        metadata: { requestId: request.id, attendanceDate: request.attendanceDate, status, reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : null },
-      });
+      const actorName = actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "HR";
+      const decisionComment = status === "returned" ? returnComment : reviewerComment;
+      const titleByStatus: Record<string, string> = {
+        approved: "Regularization Approved",
+        rejected: "Regularization Rejected",
+        returned: "Regularization Needs Clarification",
+      };
+      const messageByStatus: Record<string, string> = {
+        approved: `Your regularization request for ${request.attendanceDate} was approved.${reviewerComment ? ` Comment: ${reviewerComment}` : ""}`,
+        rejected: `Your regularization request for ${request.attendanceDate} was rejected.${reviewerComment ? ` Comment: ${reviewerComment}` : ""}`,
+        returned: `Your regularization request for ${request.attendanceDate} was returned for clarification.${returnComment ? ` Note: ${returnComment}` : ""}`,
+      };
 
-      // Send email notification to employee (fire-and-forget)
+      let notificationsEnabled = true;
       try {
-        const empUser = await storage.getAdminUser(request.employeeId);
-        if (empUser?.email) {
-          const { sendRegularizationDecisionEmail } = await import("./email");
-          sendRegularizationDecisionEmail({
-            to: empUser.email,
-            employeeName: `${empUser.firstName} ${empUser.lastName}`,
-            attendanceDate: request.attendanceDate,
-            requestType: request.requestType,
-            status: status as "approved" | "rejected",
-            reviewerName: actorUser ? `${actorUser.firstName} ${actorUser.lastName}` : "HR",
-            reviewerComment,
-          }).catch(console.error);
-        }
-      } catch { /* non-critical */ }
+        const setting = await storage.getSystemSetting("feature_flags");
+        const flags = (setting?.value as Record<string, boolean>) || {};
+        notificationsEnabled = flags.notifications_enabled !== false;
+      } catch { /* default to enabled */ }
+
+      if (notificationsEnabled) {
+        await storage.createNotification({
+          userId: request.employeeId,
+          type: "regularization_decision",
+          title: titleByStatus[status],
+          message: messageByStatus[status],
+          isRead: false,
+          metadata: { requestId: request.id, attendanceDate: request.attendanceDate, status, reviewerName: actorName },
+        });
+
+        // Send email notification to employee (fire-and-forget)
+        try {
+          const empUser = await storage.getAdminUser(request.employeeId);
+          if (empUser?.email) {
+            const { sendRegularizationDecisionEmail } = await import("./email");
+            sendRegularizationDecisionEmail({
+              to: empUser.email,
+              employeeName: `${empUser.firstName} ${empUser.lastName}`,
+              attendanceDate: request.attendanceDate,
+              requestType: request.requestType,
+              status: status as "approved" | "rejected" | "returned",
+              reviewerName: actorName,
+              reviewerComment: decisionComment,
+            }).catch(console.error);
+          }
+        } catch { /* non-critical */ }
+      }
 
       await storage.createAuditLog({
         actorId,
@@ -5148,9 +5192,11 @@ export async function registerRoutes(
           requestType: request.requestType,
           oldStatus: "pending",
           newStatus: status,
-          reviewerComment,
+          reviewerComment: decisionComment,
           requestedPunchIn: request.requestedPunchIn ?? null,
           requestedPunchOut: request.requestedPunchOut ?? null,
+          managerAdjustedPunchIn: adjustedPunchIn?.toISOString() ?? null,
+          managerAdjustedPunchOut: adjustedPunchOut?.toISOString() ?? null,
         },
       });
 
@@ -5158,6 +5204,78 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Regularization review error:", error);
       res.status(500).json({ error: "Failed to review request" });
+    }
+  });
+
+  // Employee resubmits a returned request after addressing the reviewer's clarification note.
+  // Owner-only; allowed only when the request is currently in the "returned" state.
+  app.patch("/api/hr/attendance/regularization/:id/resubmit", requireAuth, async (req, res) => {
+    try {
+      const actorId = req.session.userId!;
+      const request = await storage.getRegularizationRequest(req.params.id);
+      if (!request) return res.status(404).json({ error: "Request not found" });
+      if (request.employeeId !== actorId) {
+        return res.status(403).json({ error: "You can only resubmit your own requests" });
+      }
+      if (request.status !== "returned") {
+        return res.status(400).json({ error: "Only returned requests can be resubmitted" });
+      }
+
+      const { reason, requestedPunchIn, requestedPunchOut, attachmentUrl } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: "Reason is required" });
+      }
+
+      // Convert optional HH:mm time strings to full datetimes combined with the attendance date.
+      const HH_MM_RE = /^\d{2}:\d{2}$/;
+      const buildDatetime = (time: string | undefined | null): Date | null | undefined => {
+        if (time === undefined) return undefined; // leave unchanged
+        if (time === null || time === "") return null; // explicitly clear
+        const iso = HH_MM_RE.test(time) ? `${request.attendanceDate}T${time}:00` : time;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) throw new Error("invalid_time");
+        return d;
+      };
+
+      let newPunchIn: Date | null | undefined;
+      let newPunchOut: Date | null | undefined;
+      try {
+        newPunchIn = buildDatetime(requestedPunchIn);
+        newPunchOut = buildDatetime(requestedPunchOut);
+      } catch {
+        return res.status(400).json({ error: "Invalid punch time format" });
+      }
+
+      const updated = await storage.updateRegularizationRequest(req.params.id, {
+        status: "pending",
+        reason,
+        ...(newPunchIn !== undefined ? { requestedPunchIn: newPunchIn } : {}),
+        ...(newPunchOut !== undefined ? { requestedPunchOut: newPunchOut } : {}),
+        ...(attachmentUrl !== undefined ? { attachmentUrl: attachmentUrl || null } : {}),
+        // Clear the prior review trail so the request re-enters the queue cleanly.
+        reviewedBy: null,
+        reviewerComment: null,
+        reviewedAt: null,
+        returnComment: null,
+      });
+
+      await storage.createAuditLog({
+        actorId,
+        targetId: request.employeeId,
+        action: "regularization_resubmitted",
+        changes: {
+          requestId: request.id,
+          attendanceDate: request.attendanceDate,
+          requestType: request.requestType,
+          oldStatus: "returned",
+          newStatus: "pending",
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Regularization resubmit error:", error);
+      res.status(500).json({ error: "Failed to resubmit request" });
     }
   });
 

@@ -2396,7 +2396,7 @@ export async function sendRegularizationDecisionEmail(options: {
   employeeName: string;
   attendanceDate: string;
   requestType: string;
-  status: "approved" | "rejected";
+  status: "approved" | "rejected" | "returned";
   reviewerName: string;
   reviewerComment: string;
 }) {
@@ -2404,16 +2404,24 @@ export async function sendRegularizationDecisionEmail(options: {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const typeLabel = REQUEST_TYPE_DISPLAY[options.requestType] ?? options.requestType.replace(/_/g, " ");
     const isApproved = options.status === "approved";
+    const isReturned = options.status === "returned";
     const headerBg = isApproved
       ? "linear-gradient(135deg, #166534 0%, #16a34a 100%)"
+      : isReturned
+      ? "linear-gradient(135deg, #92400e 0%, #d97706 100%)"
       : "linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)";
-    const headerSub = isApproved ? "Attendance Correction Approved" : "Attendance Correction Rejected";
-    const statusLabel = isApproved ? "✅ Approved" : "❌ Rejected";
+    const headerSub = isApproved
+      ? "Attendance Correction Approved"
+      : isReturned
+      ? "Attendance Correction Needs Clarification"
+      : "Attendance Correction Rejected";
+    const statusLabel = isApproved ? "✅ Approved" : isReturned ? "↩️ Needs Clarification" : "❌ Rejected";
+    const subjectVerb = isApproved ? "Approved" : isReturned ? "Needs Clarification" : "Rejected";
 
     const msg: any = {
       to: options.to,
       from: { email: fromEmail, name: "Hire'in HR" },
-      subject: `Regularization ${isApproved ? "Approved" : "Rejected"} — ${options.attendanceDate}`,
+      subject: `Regularization ${subjectVerb} — ${options.attendanceDate}`,
       html: `
         <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:580px;margin:0 auto;background:#fff;">
           <div style="background:${headerBg};padding:28px 32px;text-align:center;">
@@ -2426,18 +2434,20 @@ export async function sendRegularizationDecisionEmail(options: {
               <table style="width:100%;font-size:14px;border-collapse:collapse;">
                 <tr><td style="color:#64748b;padding:4px 0;width:40%;">Date</td><td style="color:#1e293b;font-weight:500;">${options.attendanceDate}</td></tr>
                 <tr><td style="color:#64748b;padding:4px 0;">Type</td><td style="color:#1e293b;font-weight:500;">${typeLabel}</td></tr>
-                <tr><td style="color:#64748b;padding:4px 0;">Decision</td><td style="font-weight:600;color:${isApproved ? "#166534" : "#7f1d1d"};">${statusLabel}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Decision</td><td style="font-weight:600;color:${isApproved ? "#166534" : isReturned ? "#92400e" : "#7f1d1d"};">${statusLabel}</td></tr>
                 <tr><td style="color:#64748b;padding:4px 0;">Reviewed by</td><td style="color:#1e293b;">${options.reviewerName}</td></tr>
               </table>
             </div>
             ${options.reviewerComment ? `
-            <div style="background:${isApproved ? "#f0fdf4" : "#fef2f2"};border:1px solid ${isApproved ? "#bbf7d0" : "#fecaca"};border-radius:8px;padding:14px;margin-bottom:20px;">
-              <p style="color:${isApproved ? "#166534" : "#7f1d1d"};font-size:13px;font-weight:600;margin:0 0 6px;">Reviewer Note</p>
+            <div style="background:${isApproved ? "#f0fdf4" : isReturned ? "#fffbeb" : "#fef2f2"};border:1px solid ${isApproved ? "#bbf7d0" : isReturned ? "#fde68a" : "#fecaca"};border-radius:8px;padding:14px;margin-bottom:20px;">
+              <p style="color:${isApproved ? "#166534" : isReturned ? "#92400e" : "#7f1d1d"};font-size:13px;font-weight:600;margin:0 0 6px;">${isReturned ? "Clarification Requested" : "Reviewer Note"}</p>
               <p style="color:#374151;font-size:14px;margin:0;">${options.reviewerComment}</p>
             </div>` : ""}
             <p style="color:#64748b;font-size:13px;">
               ${isApproved
                 ? "Your attendance record has been updated to reflect this correction."
+                : isReturned
+                ? "Please review the clarification note above, update your request in the portal, and resubmit it for review."
                 : "Your original attendance record remains unchanged. If you believe this was incorrect, please contact HR."}
             </p>
             ${SIGNOFF_HTML}

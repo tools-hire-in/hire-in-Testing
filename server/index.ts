@@ -2303,9 +2303,13 @@ async function ensureHealthcarePlansTables() {
     `);
     await db.execute(sql`
       DO $$ BEGIN
-        CREATE TYPE regularization_status AS ENUM('pending','approved','rejected');
+        CREATE TYPE regularization_status AS ENUM('pending','approved','rejected','returned');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     `);
+    // Existing installs created the enum before 'returned' existed. The status
+    // column may be enum-typed (via migration 0008), so extend the enum or the
+    // return-for-clarification write will fail at the DB layer.
+    await db.execute(sql`ALTER TYPE regularization_status ADD VALUE IF NOT EXISTS 'returned'`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS attendance_regularizations (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2326,6 +2330,11 @@ async function ensureHealthcarePlansTables() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_employee_id ON attendance_regularizations(employee_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_status ON attendance_regularizations(status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_reg_date ON attendance_regularizations(attendance_date)`);
+    // Patch columns added after the table's initial release (return-for-clarification flow + evidence).
+    await db.execute(sql`ALTER TABLE attendance_regularizations ADD COLUMN IF NOT EXISTS manager_adjusted_punch_in TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE attendance_regularizations ADD COLUMN IF NOT EXISTS manager_adjusted_punch_out TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE attendance_regularizations ADD COLUMN IF NOT EXISTS return_comment TEXT`);
+    await db.execute(sql`ALTER TABLE attendance_regularizations ADD COLUMN IF NOT EXISTS attachment_url TEXT`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS policy_acknowledgements (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

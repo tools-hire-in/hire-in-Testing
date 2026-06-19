@@ -16,6 +16,8 @@ import {
   Check,
   Info,
   Lock,
+  Paperclip,
+  Eye,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +35,7 @@ import { BreakWidget } from "@/components/admin/BreakWidget";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
 import { PillTabs, PillTabsContent, PillTabsList, PillTabsTrigger } from "@/components/ui/pill-tabs";
 
 interface DashboardStats {
@@ -78,6 +81,8 @@ interface RegularizationRequest {
   reason: string;
   status: string;
   reviewerComment: string | null;
+  returnComment: string | null;
+  attachmentUrl: string | null;
   reviewerName: string | null;
   createdAt: string;
 }
@@ -123,9 +128,28 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 
 const REG_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   pending:  { label: "Pending",  cls: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  returned: { label: "Needs Clarification", cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
   approved: { label: "Approved", cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
   rejected: { label: "Rejected", cls: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
 };
+
+const NEEDS_PUNCH_TYPES = ["missed_punch_in", "missed_punch_out", "correction", "wrong_absent"];
+
+// Extract a HH:mm value (browser-local) from a stored ISO timestamp for time inputs.
+function toTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Whether the chosen issue type requires the corresponding punch time(s).
+function punchValid(requestType: string, punchIn: string, punchOut: string): boolean {
+  if (requestType === "missed_punch_in") return !!punchIn;
+  if (requestType === "missed_punch_out") return !!punchOut;
+  if (requestType === "correction" || requestType === "wrong_absent") return !!punchIn && !!punchOut;
+  return true;
+}
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   missed_punch_in:  "Missed Punch In",
@@ -189,12 +213,51 @@ const WINDOW_CLOSED_MESSAGES: Record<string, string> = {
   month_attendance_run_locked: "The attendance report for this month has been approved and locked. Self-service filing is no longer available. Please contact HR to request a correction directly.",
 };
 
+function AttachmentField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const { toast } = useToast();
+  const { uploadFile, isUploading } = useUpload({
+    onError: (e) => toast({ title: "Upload failed", description: e.message, variant: "destructive" }),
+  });
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const res = await uploadFile(file);
+    if (res) onChange(res.objectPath);
+    e.target.value = "";
+  };
+  return (
+    <div className="space-y-2">
+      <Label>Evidence (optional)</Label>
+      {value ? (
+        <div className="flex items-center gap-2 text-sm">
+          <a href={value} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline" data-testid="link-attachment">
+            <Eye className="h-3.5 w-3.5" /> View attached file
+          </a>
+          <button type="button" onClick={() => onChange(null)} className="text-muted-foreground hover:text-foreground" data-testid="button-remove-attachment">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <label className="flex items-center gap-2 text-sm cursor-pointer text-muted-foreground hover:text-foreground">
+          <Paperclip className="h-3.5 w-3.5" />
+          <span>{isUploading ? "Uploading..." : "Attach a screenshot or PDF"}</span>
+          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} disabled={isUploading} data-testid="input-attachment" />
+        </label>
+      )}
+    </div>
+  );
+}
+
 function ReportIssueModal({
   date,
+  currentPunchIn,
+  currentPunchOut,
   pendingDates,
   onClose,
 }: {
   date?: string;
+  currentPunchIn?: string | null;
+  currentPunchOut?: string | null;
   pendingDates?: Set<string>;
   onClose: () => void;
 }) {
@@ -202,15 +265,37 @@ function ReportIssueModal({
   const isStandalone = !date;
   const [selectedDate, setSelectedDate] = useState(date ?? "");
   const [requestType, setRequestType] = useState("");
-  const [requestedPunchIn, setRequestedPunchIn] = useState("");
-  const [requestedPunchOut, setRequestedPunchOut] = useState("");
+  const [requestedPunchIn, setRequestedPunchIn] = useState(toTimeInput(currentPunchIn ?? null));
+  const [requestedPunchOut, setRequestedPunchOut] = useState(toTimeInput(currentPunchOut ?? null));
   const [reason, setReason] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [windowClosedMsg, setWindowClosedMsg] = useState<string | null>(null);
 
   const effectiveDate = date ?? selectedDate;
 
   // Standalone flow: offer the last 7 calendar days, excluding any with a pending request.
   const dateOptions = getLast7Days().filter((d) => !(pendingDates?.has(d)));
+
+  // Standalone mode: fetch the employee's recent records so we can show the
+  // recorded punch times for whichever date they pick (parity with the row flow).
+  const { data: standaloneRecords } = useQuery<AttendanceRecord[]>({
+    queryKey: ["/api/hr/attendance/my", { startDate: getLast7Days()[getLast7Days().length - 1], endDate: getLast7Days()[0] }],
+    enabled: isStandalone,
+  });
+  const standaloneRecord = isStandalone
+    ? (standaloneRecords || []).find((r) => r.date === selectedDate)
+    : undefined;
+  const resolvedPunchIn = isStandalone ? standaloneRecord?.punchIn ?? null : currentPunchIn ?? null;
+  const resolvedPunchOut = isStandalone ? standaloneRecord?.punchOut ?? null : currentPunchOut ?? null;
+
+  // When a date is chosen in standalone mode, prefill the editable time inputs
+  // with whatever was recorded for that date.
+  useEffect(() => {
+    if (isStandalone && selectedDate) {
+      setRequestedPunchIn(toTimeInput(standaloneRecord?.punchIn ?? null));
+      setRequestedPunchOut(toTimeInput(standaloneRecord?.punchOut ?? null));
+    }
+  }, [isStandalone, selectedDate, standaloneRecord?.punchIn, standaloneRecord?.punchOut]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -224,6 +309,7 @@ function ReportIssueModal({
           requestedPunchIn: requestedPunchIn || undefined,
           requestedPunchOut: requestedPunchOut || undefined,
           reason,
+          attachmentUrl: attachmentUrl || undefined,
         }),
       });
       if (!res.ok) {
@@ -253,9 +339,11 @@ function ReportIssueModal({
     },
   });
 
-  const needsPunchFields = ["missed_punch_in", "missed_punch_out", "correction"].includes(requestType);
+  const needsPunchFields = NEEDS_PUNCH_TYPES.includes(requestType);
   const reasonLen = reason.trim().length;
   const reasonValid = reasonLen >= MIN_REASON_CHARS;
+  const punchOk = punchValid(requestType, requestedPunchIn, requestedPunchOut);
+  const hasCurrentTimes = !!effectiveDate && (resolvedPunchIn || resolvedPunchOut);
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -298,6 +386,19 @@ function ReportIssueModal({
             </div>
           ) : null}
 
+          {hasCurrentTimes && (
+            <div className="flex items-center gap-6 p-3 rounded-lg bg-muted/40 border" data-testid="text-current-times">
+              <div>
+                <p className="text-xs text-muted-foreground">Recorded Punch In</p>
+                <p className="text-sm font-mono font-medium">{formatTime(resolvedPunchIn)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Recorded Punch Out</p>
+                <p className="text-sm font-mono font-medium">{formatTime(resolvedPunchOut)}</p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Issue Type</Label>
             <Select value={requestType} onValueChange={setRequestType}>
@@ -315,7 +416,7 @@ function ReportIssueModal({
           {needsPunchFields && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Correct Punch In Time</Label>
+                <Label>Correct Punch In Time {(requestType === "missed_punch_in" || requestType === "correction" || requestType === "wrong_absent") && <span className="text-destructive">*</span>}</Label>
                 <Input
                   type="time"
                   value={requestedPunchIn}
@@ -324,7 +425,7 @@ function ReportIssueModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Correct Punch Out Time</Label>
+                <Label>Correct Punch Out Time {(requestType === "missed_punch_out" || requestType === "correction" || requestType === "wrong_absent") && <span className="text-destructive">*</span>}</Label>
                 <Input
                   type="time"
                   value={requestedPunchOut}
@@ -354,6 +455,7 @@ function ReportIssueModal({
               </p>
             )}
           </div>
+          <AttachmentField value={attachmentUrl} onChange={setAttachmentUrl} />
           <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
             <span>
@@ -365,7 +467,7 @@ function ReportIssueModal({
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={!effectiveDate || !requestType || !reasonValid || submitMutation.isPending}
+            disabled={!effectiveDate || !requestType || !reasonValid || !punchOk || submitMutation.isPending}
             data-testid="button-submit-regularization"
           >
             {submitMutation.isPending ? "Submitting..." : "Submit Request"}
@@ -407,29 +509,125 @@ function MyRegularizationsSection() {
           </tr>
         </thead>
         <tbody>
-          {requests.map((r) => {
-            const cfg = REG_STATUS_STYLE[r.status] || { label: r.status, cls: "" };
-            return (
-              <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
-                <td className="py-2.5 px-4 font-mono whitespace-nowrap">{r.attendanceDate}</td>
-                <td className="py-2.5 px-4 whitespace-nowrap">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
-                <td className="py-2.5 px-4 text-muted-foreground max-w-[180px]">
-                  <span className="text-xs">{r.reason}</span>
-                </td>
-                <td className="py-2.5 px-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${cfg.cls}`}>
-                    {cfg.label}
-                  </span>
-                </td>
-                <td className="py-2.5 px-4 text-muted-foreground text-xs">
-                  {r.reviewerComment || "—"}
-                  {r.reviewerName && <span className="ml-1 text-xs opacity-70">({r.reviewerName})</span>}
-                </td>
-              </tr>
-            );
-          })}
+          {requests.map((r) => <RegSectionRow key={r.id} req={r} />)}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function RegSectionRow({ req: r }: { req: RegularizationRequest }) {
+  const [editing, setEditing] = useState(false);
+  const cfg = REG_STATUS_STYLE[r.status] || { label: r.status, cls: "" };
+  const isReturned = r.status === "returned";
+  const note = isReturned ? r.returnComment : r.reviewerComment;
+
+  return (
+    <>
+      <tr className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
+        <td className="py-2.5 px-4 font-mono whitespace-nowrap">{r.attendanceDate}</td>
+        <td className="py-2.5 px-4 whitespace-nowrap">{REQUEST_TYPE_LABELS[r.requestType] || r.requestType}</td>
+        <td className="py-2.5 px-4 text-muted-foreground max-w-[180px]">
+          <span className="text-xs">{r.reason}</span>
+        </td>
+        <td className="py-2.5 px-4">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${cfg.cls}`}>
+            {cfg.label}
+          </span>
+        </td>
+        <td className="py-2.5 px-4 text-muted-foreground text-xs">
+          <div className="flex items-center gap-2">
+            <span>
+              {note || "—"}
+              {r.reviewerName && <span className="ml-1 text-xs opacity-70">({r.reviewerName})</span>}
+            </span>
+            {r.attachmentUrl && (
+              <a href={r.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline shrink-0" data-testid={`link-attachment-${r.id}`} title="View attachment">
+                <Eye className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {isReturned && !editing && (
+              <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs shrink-0" onClick={() => setEditing(true)} data-testid={`button-edit-resubmit-${r.id}`}>
+                Update & Resubmit
+              </Button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {isReturned && editing && (
+        <tr className="border-b last:border-0 bg-muted/20">
+          <td colSpan={5} className="px-4 py-3">
+            <ResubmitForm req={r} onDone={() => setEditing(false)} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function ResubmitForm({ req, onDone }: { req: RegularizationRequest; onDone: () => void }) {
+  const { toast } = useToast();
+  const [reason, setReason] = useState(req.reason);
+  const [requestedPunchIn, setRequestedPunchIn] = useState(toTimeInput(req.requestedPunchIn));
+  const [requestedPunchOut, setRequestedPunchOut] = useState(toTimeInput(req.requestedPunchOut));
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(req.attachmentUrl);
+
+  const needsPunchFields = NEEDS_PUNCH_TYPES.includes(req.requestType);
+  const reasonLen = reason.trim().length;
+  const reasonValid = reasonLen >= MIN_REASON_CHARS;
+  const punchOk = punchValid(req.requestType, requestedPunchIn, requestedPunchOut);
+
+  const resubmitMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/hr/attendance/regularization/${req.id}/resubmit`, {
+        reason,
+        requestedPunchIn: needsPunchFields ? (requestedPunchIn || null) : undefined,
+        requestedPunchOut: needsPunchFields ? (requestedPunchOut || null) : undefined,
+        attachmentUrl: attachmentUrl || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/regularization/my"] });
+      toast({ title: "Resubmitted", description: "Your request has been sent back for review." });
+      onDone();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to resubmit", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="space-y-3" data-testid={`resubmit-form-${req.id}`}>
+      {needsPunchFields && (
+        <div className="grid grid-cols-2 gap-3 max-w-md">
+          <div className="space-y-1">
+            <Label className="text-xs">Correct Punch In</Label>
+            <Input type="time" value={requestedPunchIn} onChange={e => setRequestedPunchIn(e.target.value)} data-testid={`input-resubmit-punch-in-${req.id}`} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Correct Punch Out</Label>
+            <Input type="time" value={requestedPunchOut} onChange={e => setRequestedPunchOut(e.target.value)} data-testid={`input-resubmit-punch-out-${req.id}`} />
+          </div>
+        </div>
+      )}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between max-w-md">
+          <Label className="text-xs">Reason</Label>
+          <span className={`text-xs font-mono ${reasonValid ? "text-green-600" : "text-muted-foreground"}`}>{reasonLen}/{MIN_REASON_CHARS} min</span>
+        </div>
+        <Textarea value={reason} onChange={e => setReason(e.target.value)} className="max-w-md" data-testid={`input-resubmit-reason-${req.id}`} />
+      </div>
+      <AttachmentField value={attachmentUrl} onChange={setAttachmentUrl} />
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={onDone}>Cancel</Button>
+        <Button
+          size="sm"
+          onClick={() => resubmitMutation.mutate()}
+          disabled={!reasonValid || !punchOk || resubmitMutation.isPending}
+          data-testid={`button-resubmit-${req.id}`}
+        >
+          {resubmitMutation.isPending ? "Resubmitting..." : "Resubmit"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -545,7 +743,8 @@ export default function Attendance() {
   const { toast } = useToast();
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [reportIssueDate, setReportIssueDate] = useState<string | null>(null);
+  const [reportIssueRecord, setReportIssueRecord] = useState<{ date: string; punchIn: string | null; punchOut: string | null } | null>(null);
+  const [showStandaloneRaise, setShowStandaloneRaise] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   // Use a dedicated param ("att") for this page's internal sub-tab so it does not
@@ -966,7 +1165,7 @@ export default function Attendance() {
                                     size="sm"
                                     variant="outline"
                                     className="h-7 px-2.5 text-xs border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
-                                    onClick={() => setReportIssueDate(r.date)}
+                                    onClick={() => setReportIssueRecord({ date: r.date, punchIn: r.punchIn, punchOut: r.punchOut })}
                                     data-testid={`button-report-issue-${r.date}`}
                                   >
                                     <Plus className="h-3.5 w-3.5 mr-1" />
@@ -992,6 +1191,31 @@ export default function Attendance() {
                 </CardContent>
               </Card>
 
+              {/* ── ATTENDANCE REGULARIZATION HISTORY ── */}
+              <Card>
+                <CardContent className="p-0">
+                  <div className="px-5 py-3.5 border-b flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Attendance Regularization</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Your correction requests and their status. Use "Fix" on a record above, or raise one for another date.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => setShowStandaloneRaise(true)}
+                      data-testid="button-raise-correction"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Raise a Correction
+                    </Button>
+                  </div>
+                  <MyRegularizationsSection />
+                </CardContent>
+              </Card>
+
             </div>
           </PillTabsContent>
 
@@ -1004,11 +1228,21 @@ export default function Attendance() {
       </div>
 
       {/* Report Issue Modal — opened by "Fix Record" in the time card */}
-      {reportIssueDate && (
+      {reportIssueRecord && (
         <ReportIssueModal
-          date={reportIssueDate}
+          date={reportIssueRecord.date}
+          currentPunchIn={reportIssueRecord.punchIn}
+          currentPunchOut={reportIssueRecord.punchOut}
           pendingDates={pendingDates}
-          onClose={() => setReportIssueDate(null)}
+          onClose={() => setReportIssueRecord(null)}
+        />
+      )}
+
+      {/* Standalone "Raise a Correction" — fallback for dates not in the row list */}
+      {showStandaloneRaise && (
+        <ReportIssueModal
+          pendingDates={pendingDates}
+          onClose={() => setShowStandaloneRaise(false)}
         />
       )}
     </AdminLayout>

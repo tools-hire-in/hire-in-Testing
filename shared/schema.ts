@@ -1737,6 +1737,7 @@ export const regularizationStatusEnum = pgEnum("regularization_status", [
   "pending",
   "approved",
   "rejected",
+  "returned",
 ]);
 
 export const attendanceRegularizations = pgTable("attendance_regularizations", {
@@ -1747,10 +1748,18 @@ export const attendanceRegularizations = pgTable("attendance_regularizations", {
   requestedPunchOut: timestamp("requested_punch_out"),
   requestType: varchar("request_type").notNull(),
   reason: text("reason").notNull(),
+  // status values: "pending" | "approved" | "rejected" | "returned"
   status: varchar("status").notNull().default("pending"),
   reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
   reviewerComment: text("reviewer_comment"),
   reviewedAt: timestamp("reviewed_at"),
+  // Manager-adjusted punch times: set when a reviewer edits the requested times before approving.
+  managerAdjustedPunchIn: timestamp("manager_adjusted_punch_in"),
+  managerAdjustedPunchOut: timestamp("manager_adjusted_punch_out"),
+  // Separate from reviewerComment — used only for the return-for-clarification note.
+  returnComment: text("return_comment"),
+  // Optional employee evidence file (object storage path).
+  attachmentUrl: text("attachment_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1791,6 +1800,9 @@ export const insertAttendanceRegularizationSchema = createInsertSchema(attendanc
   reviewedBy: true,
   reviewerComment: true,
   reviewedAt: true,
+  managerAdjustedPunchIn: true,
+  managerAdjustedPunchOut: true,
+  returnComment: true,
 });
 
 export const insertPolicyAcknowledgementSchema = createInsertSchema(policyAcknowledgements).omit({
