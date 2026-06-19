@@ -16,7 +16,7 @@ const SIGNOFF_TEXT = `\n\nBest regards,\nAlina Carter\nHR Manager · Hire'in Sol
 export async function sendHelpDeskEmail(options: {
   to: string;
   firstName: string;
-  event: "submitted" | "approved" | "rejected" | "assigned" | "resolved" | "comment" | "closed" | "reopened";
+  event: "submitted" | "approved" | "rejected" | "assigned" | "resolved" | "comment" | "closed" | "reopened" | "needs_info" | "responded";
   requestNumber: string;
   requestTitle: string;
   requestType: string;
@@ -35,6 +35,8 @@ export async function sendHelpDeskEmail(options: {
       comment: { subject: "New update on your request", heading: "An update was added to your request", color: "#0891b2" },
       closed: { subject: "Request closed", heading: "Your request has been closed", color: "#475569" },
       reopened: { subject: "Request reopened", heading: "A request has been reopened", color: "#b45309" },
+      needs_info: { subject: "Action needed — more information required", heading: "We need more information to continue", color: "#e11d48" },
+      responded: { subject: "Requester responded", heading: "The requester has provided more information", color: "#0891b2" },
     };
 
     const ev = eventLabels[options.event] || eventLabels.comment;

@@ -4510,7 +4510,7 @@ export class DatabaseStorage implements IStorage {
     } else {
       rows = await db.select().from(internalRequests).where(eq(internalRequests.requesterId, userId));
     }
-    const open = rows.filter(r => ["pending_approval", "assigned", "in_progress"].includes(r.status)).length;
+    const open = rows.filter(r => ["pending_approval", "assigned", "in_progress", "needs_info"].includes(r.status)).length;
     const pendingApproval = rows.filter(r => r.status === "pending_approval").length;
     const resolved = rows.filter(r => ["resolved", "closed"].includes(r.status)).length;
     return { open, pendingApproval, resolved, total: rows.length };

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Plus, Inbox, Clock, CheckCircle2, XCircle, Loader2, ChevronRight, AlertCircle } from "lucide-react";
+import { Plus, Inbox, Clock, CheckCircle2, XCircle, Loader2, ChevronRight, AlertCircle, HelpCircle } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 
@@ -41,6 +41,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: any }>
   pending_approval: { label: "Pending Approval", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
   assigned: { label: "Assigned", color: "bg-blue-100 text-blue-700 border-blue-200", icon: AlertCircle },
   in_progress: { label: "In Progress", color: "bg-purple-100 text-purple-700 border-purple-200", icon: Loader2 },
+  needs_info: { label: "Needs Info", color: "bg-rose-100 text-rose-700 border-rose-200", icon: HelpCircle },
   resolved: { label: "Resolved", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
   closed: { label: "Closed", color: "bg-slate-100 text-slate-600 border-slate-200", icon: CheckCircle2 },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
@@ -550,6 +551,7 @@ export default function RequestsTab() {
         {[
           { value: "all", label: "All" },
           { value: "pending_approval", label: "Pending" },
+          { value: "needs_info", label: "Needs Info" },
           { value: "in_progress", label: "In Progress" },
           { value: "resolved", label: "Resolved" },
           { value: "closed", label: "Closed" },

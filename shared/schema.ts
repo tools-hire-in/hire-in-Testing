@@ -2598,6 +2598,7 @@ export const internalRequestStatusEnum = pgEnum("internal_request_status", [
   "pending_approval",
   "assigned",
   "in_progress",
+  "needs_info",
   "resolved",
   "closed",
   "rejected",

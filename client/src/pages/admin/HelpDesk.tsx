@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Inbox, Loader2, Clock, Search, ChevronRight, Users, CheckCircle2, AlertCircle, XCircle, UserCheck } from "lucide-react";
+import { Inbox, Loader2, Clock, Search, ChevronRight, Users, CheckCircle2, AlertCircle, XCircle, UserCheck, HelpCircle } from "lucide-react";
 import { format } from "date-fns";
 
 interface HirdRequest {
@@ -48,6 +48,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   pending_approval: { label: "Pending Approval", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
   assigned: { label: "Assigned", color: "bg-blue-100 text-blue-700 border-blue-200", icon: AlertCircle },
   in_progress: { label: "In Progress", color: "bg-purple-100 text-purple-700 border-purple-200", icon: Loader2 },
+  needs_info: { label: "Needs Info", color: "bg-rose-100 text-rose-700 border-rose-200", icon: HelpCircle },
   resolved: { label: "Resolved", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
   closed: { label: "Closed", color: "bg-slate-100 text-slate-600 border-slate-200", icon: CheckCircle2 },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },

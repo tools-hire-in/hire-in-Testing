@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Send, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, Tag, Paperclip, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, Tag, Paperclip, ThumbsUp, ThumbsDown, HelpCircle, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface HirdUser { id: string; firstName: string; lastName: string; role: string; }
@@ -145,6 +145,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   pending_approval: { label: "Pending Approval", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
   assigned: { label: "Assigned", color: "bg-blue-100 text-blue-700 border-blue-200", icon: AlertCircle },
   in_progress: { label: "In Progress", color: "bg-purple-100 text-purple-700 border-purple-200", icon: Loader2 },
+  needs_info: { label: "Needs Info", color: "bg-rose-100 text-rose-700 border-rose-200", icon: HelpCircle },
   resolved: { label: "Resolved", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
   closed: { label: "Closed", color: "bg-slate-100 text-slate-600 border-slate-200", icon: CheckCircle2 },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
@@ -163,6 +164,9 @@ function actionLabel(action: string): string {
     status_changed_to_closed: "closed this request",
     status_changed_to_assigned: "marked as Assigned",
     status_changed_to_rejected: "rejected this request",
+    status_changed_to_needs_info: "returned this request for more information",
+    returned_for_info: "returned this request for more information",
+    responded_to_info: "responded with more information",
   };
   return map[action] || action.replace(/_/g, " ");
 }
@@ -178,6 +182,10 @@ export default function HelpDeskTicket() {
   const [newStatus, setNewStatus] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
+  const [showReturnInput, setShowReturnInput] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [replyAttachment, setReplyAttachment] = useState("");
 
   const { data: ticket, isLoading } = useQuery<HirdTicket>({
     queryKey: ["/api/help-desk/requests", params.id],
@@ -228,6 +236,32 @@ export default function HelpDeskTicket() {
       toast({ title: vars.action === "approve" ? "Request approved" : "Request rejected" });
     },
     onError: () => toast({ title: "Action failed", variant: "destructive" }),
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: (comment: string) => apiRequest("POST", `/api/help-desk/requests/${params.id}/return-for-info`, { comment }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests/stats"] });
+      setShowReturnInput(false);
+      setReturnComment("");
+      toast({ title: "Returned to requester", description: "They have been notified that more information is needed." });
+    },
+    onError: (err: any) => toast({ title: "Failed to return request", description: err?.message, variant: "destructive" }),
+  });
+
+  const respondMutation = useMutation({
+    mutationFn: (data: { body: string; attachmentUrl?: string }) => apiRequest("POST", `/api/help-desk/requests/${params.id}/respond`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests/stats"] });
+      setReplyBody("");
+      setReplyAttachment("");
+      toast({ title: "Response submitted", description: "Your request is back with the team." });
+    },
+    onError: (err: any) => toast({ title: "Failed to submit response", description: err?.message, variant: "destructive" }),
   });
 
   if (authLoading || isLoading) {
@@ -492,6 +526,57 @@ export default function HelpDeskTicket() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {["assigned", "in_progress"].includes(ticket.status) && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Need more from the requester?</p>
+                        {!showReturnInput ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-8 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
+                            onClick={() => setShowReturnInput(true)}
+                            data-testid="button-return-for-info"
+                          >
+                            <Undo2 className="h-3.5 w-3.5 mr-2" />Return for Info
+                          </Button>
+                        ) : (
+                          <div className="space-y-2">
+                            <Textarea
+                              className="resize-none text-sm"
+                              rows={3}
+                              placeholder="Explain what information or change is needed before this can proceed…"
+                              value={returnComment}
+                              onChange={(e) => setReturnComment(e.target.value)}
+                              data-testid="input-return-comment"
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 h-8 text-xs"
+                                onClick={() => { setShowReturnInput(false); setReturnComment(""); }}
+                                disabled={returnMutation.isPending}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="flex-1 h-8 text-xs"
+                                onClick={() => returnMutation.mutate(returnComment.trim())}
+                                disabled={returnMutation.isPending || returnComment.trim().length === 0}
+                                data-testid="button-confirm-return"
+                              >
+                                {returnMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                                Return to Requester
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -521,6 +606,48 @@ export default function HelpDeskTicket() {
                       >
                         <XCircle className="h-3.5 w-3.5 mr-2" />Reject…
                       </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full h-8 text-sm border-rose-200 text-rose-700 hover:bg-rose-50"
+                        onClick={() => setShowReturnInput(true)}
+                        disabled={approveMutation.isPending}
+                        data-testid="button-return-for-info"
+                      >
+                        <Undo2 className="h-3.5 w-3.5 mr-2" />Return for Info…
+                      </Button>
+                    </>
+                  ) : showReturnInput ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">What information do you need before approving?</p>
+                      <Textarea
+                        className="resize-none text-sm"
+                        rows={3}
+                        placeholder="Explain what the requester must clarify or provide…"
+                        value={returnComment}
+                        onChange={(e) => setReturnComment(e.target.value)}
+                        data-testid="input-return-comment"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-8 text-xs"
+                          onClick={() => { setShowReturnInput(false); setReturnComment(""); }}
+                          disabled={returnMutation.isPending}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 h-8 text-xs"
+                          onClick={() => returnMutation.mutate(returnComment.trim())}
+                          disabled={returnMutation.isPending || returnComment.trim().length === 0}
+                          data-testid="button-confirm-return"
+                        >
+                          {returnMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                          Return to Requester
+                        </Button>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -560,6 +687,62 @@ export default function HelpDeskTicket() {
                 </CardContent>
               </Card>
             )}
+
+            {isOwner && ticket.status === "needs_info" && (() => {
+              const lastReturn = [...(ticket.auditLog || [])].reverse().find(a => a.action === "returned_for_info");
+              const returnedComment = lastReturn?.metadata?.commentId
+                ? ticket.comments.find(c => c.id === lastReturn.metadata.commentId)
+                : null;
+              return (
+                <Card className="border-rose-200 bg-rose-50/40">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2 text-rose-700">
+                      <HelpCircle className="h-4 w-4" />Action Needed
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      The team needs more information before they can continue. Please reply below to send it back to the queue.
+                    </p>
+                    {returnedComment && (
+                      <div className="rounded-md border border-rose-200 bg-background p-3 text-sm">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          What's needed{returnedComment.author ? ` — from ${returnedComment.author.firstName} ${returnedComment.author.lastName}` : ""}
+                        </p>
+                        <p className="whitespace-pre-wrap leading-relaxed" data-testid="text-needs-info-comment">{returnedComment.body}</p>
+                      </div>
+                    )}
+                    <Textarea
+                      className="resize-none text-sm"
+                      rows={4}
+                      placeholder="Provide the requested information…"
+                      value={replyBody}
+                      onChange={(e) => setReplyBody(e.target.value)}
+                      data-testid="input-respond-body"
+                    />
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Attachment URL (optional)</p>
+                      <input
+                        className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm"
+                        placeholder="https://… link to a document or screenshot"
+                        value={replyAttachment}
+                        onChange={(e) => setReplyAttachment(e.target.value)}
+                        data-testid="input-respond-attachment"
+                      />
+                    </div>
+                    <Button
+                      className="w-full h-8 text-sm"
+                      onClick={() => respondMutation.mutate({ body: replyBody.trim(), attachmentUrl: replyAttachment.trim() || undefined })}
+                      disabled={respondMutation.isPending || replyBody.trim().length === 0}
+                      data-testid="button-submit-response"
+                    >
+                      {respondMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <Send className="h-3.5 w-3.5 mr-2" />}
+                      Send & Resubmit
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {isOwner && ticket.status === "resolved" && (
               <Card>

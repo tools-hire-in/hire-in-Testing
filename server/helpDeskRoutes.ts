@@ -19,9 +19,10 @@ function baseUrl(req: Request): string {
 
 // Strict server-side state machine
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  pending_approval: [], // only approve/reject endpoints change this
+  pending_approval: [], // only approve/reject/return-for-info endpoints change this
   assigned: ["in_progress", "rejected"],
   in_progress: ["resolved", "rejected", "assigned"],
+  needs_info: ["in_progress", "assigned", "rejected"], // resolver may manually pull a returned ticket back
   resolved: ["closed", "in_progress"], // in_progress = reopen by owner or resolver
   closed: [],
   rejected: [],
@@ -656,6 +657,147 @@ export function registerHelpDeskRoutes(app: Express) {
       });
     } catch (err: any) {
       console.error("HIRD comment error:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── POST /api/help-desk/requests/:id/return-for-info — bounce a ticket back to the requester
+  // Allowed for the approving manager (while pending_approval) or any resolver (assigned/in_progress).
+  // A comment is REQUIRED so the requester knows what is needed.
+  app.post("/api/help-desk/requests/:id/return-for-info", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+
+      const request = await storage.getInternalRequest(req.params.id);
+      if (!request) return res.status(404).json({ message: "Not found" });
+
+      const isResolver = RESOLVER_ROLES.includes(role);
+      const isApprover = APPROVAL_ALLOWED(role, request.managerId, userId);
+
+      // Who can return, and from which states
+      const canReturnFromApproval = request.status === "pending_approval" && isApprover;
+      const canReturnFromWork = (request.status === "assigned" || request.status === "in_progress") && isResolver;
+      if (!canReturnFromApproval && !canReturnFromWork) {
+        return res.status(403).json({ message: "You cannot return this request for more information at its current stage" });
+      }
+
+      const { comment } = req.body;
+      if (!comment || typeof comment !== "string" || comment.trim().length === 0) {
+        return res.status(400).json({ message: "A comment explaining what is needed is required" });
+      }
+
+      const priorStatus = request.status;
+      const updated = await storage.updateInternalRequest(request.id, { status: "needs_info" as any });
+
+      const savedComment = await storage.addInternalRequestComment({ requestId: request.id, authorId: userId, body: comment.trim() });
+      await storage.addInternalRequestAuditEntry({
+        requestId: request.id,
+        actorId: userId,
+        action: "returned_for_info",
+        oldStatus: priorStatus,
+        newStatus: "needs_info",
+        metadata: { priorStatus, commentId: savedComment.id },
+      } as any);
+
+      // Notify the requester — action needed
+      const requester = await storage.getAdminUser(request.requesterId);
+      notifyUser({
+        userId: request.requesterId,
+        type: "hird_needs_info",
+        title: "Action needed on your request",
+        message: `${request.requestNumber} was returned — more information is needed`,
+        link: `/admin/help-desk/${request.id}`,
+        email: requester?.email ? {
+          to: requester.email,
+          firstName: requester.firstName || "there",
+          event: "needs_info",
+          requestNumber: request.requestNumber,
+          requestTitle: request.title,
+          requestType: request.type,
+          emailMessage: `More information is needed before we can continue: "${comment.trim().substring(0, 200)}${comment.trim().length > 200 ? "..." : ""}"`,
+          portalUrl: `${baseUrl(req)}/admin/help-desk/${request.id}`,
+        } : undefined,
+      });
+
+      return res.json(updated);
+    } catch (err: any) {
+      console.error("HIRD return-for-info error:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── POST /api/help-desk/requests/:id/respond — requester replies to a needs_info ticket
+  // Adds the reply (+ optional attachment) and moves the ticket back to its prior active state.
+  app.post("/api/help-desk/requests/:id/respond", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+
+      const request = await storage.getInternalRequest(req.params.id);
+      if (!request) return res.status(404).json({ message: "Not found" });
+
+      if (request.requesterId !== userId) return res.status(403).json({ message: "Only the requester can respond" });
+      if (request.status !== "needs_info") return res.status(400).json({ message: "This request is not awaiting your response" });
+
+      const { body, attachmentUrl } = req.body;
+      if (!body || typeof body !== "string" || body.trim().length === 0) {
+        return res.status(400).json({ message: "A reply is required" });
+      }
+
+      // Determine where to send the ticket back — recorded when it was returned
+      const auditLog = await storage.getInternalRequestAuditLog(request.id);
+      const lastReturn = [...auditLog].reverse().find((a: any) => a.action === "returned_for_info");
+      const priorStatus = ((lastReturn?.metadata as any)?.priorStatus as string) || "in_progress";
+
+      const updates: any = { status: priorStatus };
+      if (attachmentUrl && typeof attachmentUrl === "string" && attachmentUrl.trim()) {
+        updates.attachmentUrl = attachmentUrl.trim();
+      }
+      const updated = await storage.updateInternalRequest(request.id, updates);
+
+      const savedComment = await storage.addInternalRequestComment({ requestId: request.id, authorId: userId, body: body.trim() });
+      await storage.addInternalRequestAuditEntry({
+        requestId: request.id,
+        actorId: userId,
+        action: "responded_to_info",
+        oldStatus: "needs_info",
+        newStatus: priorStatus,
+        metadata: { commentId: savedComment.id, attachmentUrl: updates.attachmentUrl },
+      } as any);
+
+      const actor = await storage.getAdminUser(userId);
+      const actorName = actor ? `${actor.firstName || ""} ${actor.lastName || ""}`.trim() : "The requester";
+
+      // Notify resolver/owner(s) — the assignee and/or the manager
+      const notifyIds = new Set<string>();
+      if ((request as any).assignedToId) notifyIds.add((request as any).assignedToId);
+      if (request.managerId) notifyIds.add(request.managerId);
+      notifyIds.delete(userId);
+
+      for (const uid of notifyIds) {
+        const u = await storage.getAdminUser(uid);
+        notifyUser({
+          userId: uid,
+          type: "hird_responded",
+          title: "Requester responded",
+          message: `${actorName} responded to ${request.requestNumber}`,
+          link: `/admin/help-desk/${request.id}`,
+          email: u?.email ? {
+            to: u.email,
+            firstName: u.firstName || "there",
+            event: "responded",
+            requestNumber: request.requestNumber,
+            requestTitle: request.title,
+            requestType: request.type,
+            emailMessage: `${actorName} replied: "${body.trim().substring(0, 200)}${body.trim().length > 200 ? "..." : ""}"`,
+            portalUrl: `${baseUrl(req)}/admin/help-desk/${request.id}`,
+          } : undefined,
+        });
+      }
+
+      return res.json(updated);
+    } catch (err: any) {
+      console.error("HIRD respond error:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
