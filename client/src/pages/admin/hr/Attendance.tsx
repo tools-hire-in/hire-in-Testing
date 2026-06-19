@@ -548,7 +548,10 @@ export default function Attendance() {
   const [reportIssueDate, setReportIssueDate] = useState<string | null>(null);
 
   const params = new URLSearchParams(window.location.search);
-  const requestedTab = params.get("tab");
+  // Use a dedicated param ("att") for this page's internal sub-tab so it does not
+  // collide with the parent My Desk router's shared "tab" param (which would otherwise
+  // bounce the user back to the Dashboard when switching to Grace Period Usage).
+  const requestedTab = params.get("att");
   const canSeeGrace = ["hr", "admin", "super_admin", "manager"].includes(user?.role || "");
   const validTabs = ["attendance", ...(canSeeGrace ? ["grace"] : [])];
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
@@ -638,8 +641,8 @@ export default function Attendance() {
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     const url = new URL(window.location.href);
-    if (value === "attendance") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", value);
+    if (value === "attendance") url.searchParams.delete("att");
+    else url.searchParams.set("att", value);
     window.history.replaceState({}, "", url.toString());
   };
 

@@ -81,11 +81,13 @@ export default function MyDesk() {
   return (
     <AdminLayout>
       <div className="space-y-4">
-        {/* Page header */}
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-mydesk-title">My Desk</h1>
-          <p className="text-sm text-muted-foreground">Your personal workspace — time, leave, and corrections</p>
-        </div>
+        {/* Page header — only on the default Dashboard view; sub-tabs render their own headers */}
+        {activeTab === null && (
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-mydesk-title">My Desk</h1>
+            <p className="text-sm text-muted-foreground">Your personal workspace — time, leave, and corrections</p>
+          </div>
+        )}
 
         {/* Content driven by sidebar sub-nav */}
         <div>

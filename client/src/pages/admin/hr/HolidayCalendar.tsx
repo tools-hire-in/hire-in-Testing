@@ -100,7 +100,7 @@ export default function HolidayCalendar() {
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-holidays-title">Holiday Calendar {year}</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-holidays-title">Leave Calendar {year}</h1>
           <p className="text-muted-foreground">Company holidays and observances</p>
         </div>
 
@@ -140,12 +140,12 @@ export default function HolidayCalendar() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {regionalHolidays.map(h => {
                   const isSelected = selectedIds.has(h.id);
                   const existingSelection = getSelectionForHoliday(h.id);
                   const hDate = new Date(h.date + "T00:00:00");
-                  const dayName = hDate.toLocaleString("en-US", { weekday: "long" });
+                  const dayName = hDate.toLocaleString("en-US", { weekday: "short" });
                   const dateLabel = hDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                   const canSelect = !isSelected && selectionCount < 2;
                   const isPast = h.date < today;
@@ -153,49 +153,51 @@ export default function HolidayCalendar() {
                   return (
                     <div
                       key={h.id}
-                      className={`flex items-center justify-between py-3 px-4 rounded-md border ${isSelected ? "border-primary/50 bg-primary/5" : ""} ${isPast ? "opacity-60" : ""}`}
+                      className={`flex items-center gap-3 py-1.5 pl-2 pr-2.5 rounded-md border-l-2 transition-colors ${
+                        isSelected
+                          ? "border-l-primary bg-primary/5"
+                          : "border-l-transparent bg-muted/40 hover:bg-muted/70"
+                      } ${isPast ? "opacity-60" : ""}`}
                       data-testid={`regional-holiday-${h.id}`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-bold">{hDate.getDate()}</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{h.name}</p>
-                          <p className="text-xs text-muted-foreground">{dateLabel} - {dayName}</p>
-                        </div>
+                      <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${isSelected ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground"}`}>
+                        <span className="text-sm font-bold leading-none">{hDate.getDate()}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isSelected ? (
-                          canDeselect ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => existingSelection && deselectMutation.mutate(existingSelection.id)}
-                              disabled={deselectMutation.isPending}
-                              data-testid={`button-deselect-${h.id}`}
-                            >
-                              <Check className="h-4 w-4 mr-1" />
-                              Deselect
-                            </Button>
-                          ) : (
-                            <Badge variant="default" data-testid={`badge-locked-${h.id}`}>
-                              <Lock className="h-3 w-3 mr-1" />
-                              Selected
-                            </Badge>
-                          )
-                        ) : (
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm truncate ${isSelected ? "font-semibold text-foreground" : "font-medium text-foreground/90"}`}>{h.name}</p>
+                        <p className="text-xs text-muted-foreground">{dateLabel} · {dayName}</p>
+                      </div>
+                      {isSelected ? (
+                        canDeselect ? (
                           <Button
                             size="sm"
-                            variant="default"
-                            onClick={() => selectMutation.mutate(h.id)}
-                            disabled={!canSelect || selectMutation.isPending}
-                            data-testid={`button-select-${h.id}`}
+                            variant="ghost"
+                            className="h-7 px-2 text-xs shrink-0"
+                            onClick={() => existingSelection && deselectMutation.mutate(existingSelection.id)}
+                            disabled={deselectMutation.isPending}
+                            data-testid={`button-deselect-${h.id}`}
                           >
-                            Select
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                            Deselect
                           </Button>
-                        )}
-                      </div>
+                        ) : (
+                          <Badge variant="default" className="shrink-0 text-xs" data-testid={`badge-locked-${h.id}`}>
+                            <Lock className="h-3 w-3 mr-1" />
+                            Selected
+                          </Badge>
+                        )
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-3 text-xs shrink-0"
+                          onClick={() => selectMutation.mutate(h.id)}
+                          disabled={!canSelect || selectMutation.isPending}
+                          data-testid={`button-select-${h.id}`}
+                        >
+                          Select
+                        </Button>
+                      )}
                     </div>
                   );
                 })}

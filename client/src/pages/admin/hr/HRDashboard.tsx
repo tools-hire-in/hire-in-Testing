@@ -552,7 +552,7 @@ export default function HRDashboard() {
                   </div>
 
                   {/* Break widget — only visible when punched in */}
-                  {(punchedIn || dayComplete) && (
+                  {punchedIn && (
                     <>
                       <Separator />
                       <BreakWidget punchedIn={punchedIn} />

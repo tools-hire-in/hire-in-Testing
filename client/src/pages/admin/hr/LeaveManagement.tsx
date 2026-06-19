@@ -410,27 +410,28 @@ export default function LeaveManagement() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 max-w-4xl">
-        <div className="flex items-start justify-between gap-4" data-testid="text-leave-management-title">
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold leading-tight">
-              {user ? `${user.firstName} ${user.lastName}` : "Leave Management"}
-            </h1>
-            {headerSubtitle && (
-              <p className="text-sm text-muted-foreground mt-0.5">{headerSubtitle}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {formattedCTC && (
-              <span
-                className="inline-flex items-center px-3 py-1 rounded-full border border-border bg-muted text-xs font-semibold tracking-wide"
-                data-testid="badge-monthly-ctc"
-              >
-                MONTHLY CTC {formattedCTC}
-              </span>
-            )}
+      <div className="space-y-5 max-w-4xl">
+        {/* Custom tab bar — year selector kept inline (name/CTC header removed; parent provides page context) */}
+        <div>
+          <div className="flex items-center justify-between border-b border-border" data-testid="tabs-leave-management">
+            <div className="flex">
+              {(["balance", "apply", "history", "accrual"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  data-testid={`tab-${tab}`}
+                  className={
+                    activeTab === tab
+                      ? "px-4 py-2.5 text-sm font-semibold border border-b-0 border-border rounded-t-md -mb-px bg-background text-foreground"
+                      : "px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  }
+                >
+                  {TAB_LABELS[tab]}
+                </button>
+              ))}
+            </div>
             <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-              <SelectTrigger className="w-[110px]" data-testid="select-leave-year">
+              <SelectTrigger className="w-[100px] h-8 mb-1.5" data-testid="select-leave-year">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -439,26 +440,6 @@ export default function LeaveManagement() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-        </div>
-
-        {/* Custom tab bar */}
-        <div>
-          <div className="flex border-b border-border" data-testid="tabs-leave-management">
-            {(["balance", "apply", "history", "accrual"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                data-testid={`tab-${tab}`}
-                className={
-                  activeTab === tab
-                    ? "px-4 py-2.5 text-sm font-semibold border border-b-0 border-border rounded-t-md -mb-px bg-background text-foreground"
-                    : "px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                }
-              >
-                {TAB_LABELS[tab]}
-              </button>
-            ))}
           </div>
 
           <div className="pt-5">
