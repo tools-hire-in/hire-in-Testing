@@ -326,34 +326,36 @@ export default function CommandCenter() {
                   )}
                 </div>
 
-                {/* Punch action */}
-                <div>
+                {/* Punch action — compact, not full-width */}
+                <div className="flex items-center gap-3">
                   {stats?.todayStatus === "not_punched" && (
                     <Button
-                      className="w-full h-11 text-base font-semibold"
+                      size="sm"
+                      className="h-8 px-5 text-sm font-semibold"
                       onClick={() => punchInMutation.mutate()}
                       disabled={punchInMutation.isPending}
                       data-testid="cc-button-punch-in"
                     >
-                      <LogIn className="h-5 w-5 mr-2" />
-                      {punchInMutation.isPending ? "Punching In..." : "Punch In"}
+                      <LogIn className="h-4 w-4 mr-1.5" />
+                      {punchInMutation.isPending ? "Punching In…" : "Punch In"}
                     </Button>
                   )}
                   {stats?.todayStatus === "punched_in" && (
                     <Button
-                      className="w-full h-11 text-base font-semibold"
+                      size="sm"
+                      className="h-8 px-5 text-sm font-semibold"
                       variant="secondary"
                       onClick={() => punchOutMutation.mutate()}
                       disabled={punchOutMutation.isPending}
                       data-testid="cc-button-punch-out"
                     >
-                      <LogOutIcon className="h-5 w-5 mr-2" />
-                      {punchOutMutation.isPending ? "Punching Out..." : "Punch Out"}
+                      <LogOutIcon className="h-4 w-4 mr-1.5" />
+                      {punchOutMutation.isPending ? "Punching Out…" : "Punch Out"}
                     </Button>
                   )}
                   {stats?.todayStatus === "completed" && (
-                    <p className="text-center text-sm text-muted-foreground py-2">
-                      ✓ Attendance recorded for today
+                    <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                      ✓ Attendance recorded
                     </p>
                   )}
                 </div>
@@ -411,7 +413,7 @@ export default function CommandCenter() {
                 onClick={() => setLocation("/admin/my-desk?tab=time-off")}
                 data-testid="cc-link-view-leaves"
               >
-                View all leaves →
+                Time Off →
               </Button>
             </CardContent>
           </Card>

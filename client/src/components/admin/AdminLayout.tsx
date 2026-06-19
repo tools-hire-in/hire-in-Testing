@@ -107,6 +107,14 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+const MY_DESK_SUB_ITEMS = [
+  { label: "Dashboard", tab: null, icon: LayoutDashboard },
+  { label: "Time Card", tab: "time-card", icon: Clock },
+  { label: "Time Off", tab: "time-off", icon: CalendarOff },
+  { label: "Leave Calendar", tab: "leave-calendar", icon: CalendarDays },
+  { label: "Regularizations", tab: "regularizations", icon: ClipboardList },
+] as const;
+
 function CommandCenterSection({
   isNavActive,
   isComplianceLocked,
@@ -143,10 +151,21 @@ function CommandCenterSection({
     try { localStorage.setItem("admin_cc_section_open", String(next)); } catch {}
   };
 
-  const myDeskItem: NavItem = { href: "/admin/my-desk", label: "My Desk", icon: LayoutDashboard, roles: [], badge: myDeskBadge > 0 ? myDeskBadge : undefined, badgeColor: "bg-amber-500" };
   const serviceDeskItem: NavItem = { href: "/admin/service-desk", label: "Service Desk", icon: Headphones, roles: [], badge: serviceDeskBadge > 0 ? serviceDeskBadge : undefined, badgeColor: "bg-blue-500" };
 
   const isCCActive = location.startsWith("/admin/my-desk") || location.startsWith("/admin/service-desk");
+  const isMyDeskActive = location.startsWith("/admin/my-desk");
+
+  // Determine active sub-item
+  const activeTab = (() => {
+    try { return new URLSearchParams(window.location.search).get("tab"); } catch { return null; }
+  })();
+
+  const isSubItemActive = (tab: string | null) => {
+    if (!isMyDeskActive) return false;
+    if (tab === null) return !activeTab;
+    return activeTab === tab;
+  };
 
   if (!open) {
     return (
@@ -154,9 +173,16 @@ function CommandCenterSection({
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isCCActive} tooltip="Command Center">
+              <SidebarMenuButton asChild isActive={isCCActive} tooltip="My Desk">
                 <Link href="/admin/my-desk">
                   <Monitor className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isNavActive(serviceDeskItem)} tooltip="Service Desk" className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}>
+                <Link href="/admin/service-desk">
+                  <Headphones className="h-4 w-4 shrink-0" />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -182,12 +208,64 @@ function CommandCenterSection({
       {expanded && (
         <SidebarGroupContent>
           <SidebarMenu>
-            {/* My Desk */}
-            <NavItemButton
-              item={myDeskItem}
-              isActive={isNavActive(myDeskItem)}
-              isLocked={false}
-            />
+            {/* My Desk parent link + sub-items */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={isMyDeskActive && !activeTab}
+                data-testid="nav-item-my-desk"
+              >
+                <Link href="/admin/my-desk" className="flex items-center gap-2 w-full">
+                  <LayoutDashboard className="h-4 w-4 shrink-0" />
+                  <span className="flex-1">My Desk</span>
+                  {myDeskBadge > 0 && (
+                    <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-white bg-amber-500">
+                      {myDeskBadge > 9 ? "9+" : myDeskBadge}
+                    </span>
+                  )}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* My Desk sub-nav — always visible */}
+            <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
+              {MY_DESK_SUB_ITEMS.map(({ label, tab, icon: Icon }) => {
+                const href = tab ? `/admin/my-desk?tab=${tab}` : "/admin/my-desk";
+                const isActive = isSubItemActive(tab as string | null);
+                const locked = isComplianceLocked && tab !== null;
+
+                if (locked) {
+                  return (
+                    <button
+                      key={label}
+                      disabled
+                      className="flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs text-muted-foreground/40 cursor-not-allowed"
+                      data-testid={`nav-mydesk-sub-${tab}`}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{label}</span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={label}
+                    href={href}
+                    className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                      isActive
+                        ? "bg-accent text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                    }`}
+                    data-testid={`nav-mydesk-sub-${tab ?? "dashboard"}`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
             {/* Service Desk */}
             <NavItemButton
               item={serviceDeskItem}
