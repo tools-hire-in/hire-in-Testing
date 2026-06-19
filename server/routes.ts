@@ -74,6 +74,7 @@ import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
+import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -2919,29 +2920,35 @@ export async function registerRoutes(
       const totalHoursNum = diffMs / (1000 * 60 * 60);
       const totalHours = totalHoursNum.toFixed(2);
 
-      // Status is determined purely by hours worked (fixed 9 h benchmark).
-      // Shift timing note is collected and stored for HR visibility only —
-      // no exception notifications or automatic actions are triggered.
-      const STANDARD_HOURS = 9;
+      // Determine completion status using configurable standard shift hours.
+      // Shift users go through computeDayCompletionStatus (reads standard_shift_hours setting).
+      // Shiftless users fall back to the same setting with >= 50% / < 100% thresholds.
       const currentStatus = existing.status as string;
       let updatedStatus: string | undefined;
-      if (currentStatus !== "absent") {
-        if (totalHoursNum < STANDARD_HOURS / 2) {
-          updatedStatus = "half_day";
-        } else if (totalHoursNum < STANDARD_HOURS * 0.75) {
-          updatedStatus = "short_day";
-        }
-      }
-
-      // Collect informational shift-timing note (early / on-time / overtime).
       const noteSegments: string[] = [];
       const typedUserOut = currentUser as AdminUser & { shiftId?: string | null };
-      if (typedUserOut?.shiftId) {
-        try {
-          const { computeLogoutStatus } = await import("./attendancePolicy");
-          const logout = await computeLogoutStatus(typedUserOut.shiftId, punchOut);
-          if (logout?.notes) noteSegments.push(logout.notes);
-        } catch { /* non-fatal */ }
+
+      if (currentStatus !== "absent") {
+        if (typedUserOut?.shiftId) {
+          try {
+            const { computeDayCompletionStatus, computeLogoutStatus } = await import("./attendancePolicy");
+            const completionResult = await computeDayCompletionStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
+            if (completionResult.status !== currentStatus) updatedStatus = completionResult.status;
+            if (completionResult.notes) noteSegments.push(completionResult.notes);
+            // Logout timing note (early / on-time / overtime)
+            const logout = await computeLogoutStatus(typedUserOut.shiftId, punchOut);
+            if (logout?.notes) noteSegments.push(logout.notes);
+          } catch { /* non-fatal — status stays as-is */ }
+        } else {
+          // No shift assigned: use configurable standard_shift_hours (≥50% → short_day, <50% → half_day)
+          let stdHours = 9.0;
+          try {
+            const setting = await storage.getSystemSetting("standard_shift_hours");
+            if (setting?.value && typeof setting.value === "number" && setting.value > 0) stdHours = setting.value;
+          } catch { /* use default 9h */ }
+          if (totalHoursNum < stdHours / 2) updatedStatus = "half_day";
+          else if (totalHoursNum < stdHours) updatedStatus = "short_day";
+        }
       }
 
       const updatePayload: Partial<typeof existing> & { punchOut: Date; totalHours: string; status?: string; notes?: string } = { punchOut, totalHours };
@@ -2952,6 +2959,40 @@ export async function registerRoutes(
       }
 
       const record = await storage.updateAttendance(existing.id, updatePayload);
+
+      if (logoutException) {
+        await recordAttendanceException({
+          employeeId: userId,
+          managerId: currentUser?.managerId ?? null,
+          action: logoutException.action,
+          changes: { date: existing.date, punchOut: punchOut.toISOString(), totalHours },
+          title: logoutException.title,
+          message: logoutException.message,
+        });
+      }
+
+      // Auto-create attendance exception row when punch-out produces a short_day
+      if (updatedStatus === "short_day") {
+        const stdHoursSetting = await storage.getSystemSetting("standard_shift_hours").catch(() => null);
+        const standardHours = (stdHoursSetting?.value && typeof stdHoursSetting.value === "number")
+          ? stdHoursSetting.value
+          : 9.0;
+        createExceptionForShortDay(
+          existing.id,
+          userId,
+          currentUser?.managerId ?? null,
+          totalHoursNum,
+          standardHours,
+        ).catch((err: any) => console.error("[punch-out] createExceptionForShortDay failed:", err));
+      }
+
+      // Fire escalation tier check for short_day or late final status
+      if (updatedStatus === "short_day" || updatedStatus === "late" || (!updatedStatus && currentStatus === "late")) {
+        checkEscalationTiers(userId).catch((err: any) =>
+          console.error("[punch-out] checkEscalationTiers failed:", err)
+        );
+      }
+
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch out" });
@@ -15133,6 +15174,7 @@ export async function registerRoutes(
   registerAttendanceReportRoutes(app);
   registerReleaseNotesRoutes(app);
   registerHelpDeskRoutes(app);
+  registerAttendanceExceptionRoutes(app);
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);

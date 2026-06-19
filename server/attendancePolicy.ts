@@ -125,7 +125,14 @@ export async function computeDayCompletionStatus(
   const timing = await getCurrentShiftTiming(shiftId);
   if (!timing) return { status: currentStatus, notes: undefined };
 
-  const fullThreshold = timing.scheduledHours;
+  // Use global standard_shift_hours setting when set, fall back to per-shift value
+  let fullThreshold = timing.scheduledHours;
+  try {
+    const setting = await storage.getSystemSetting("standard_shift_hours");
+    if (setting?.value && typeof setting.value === "number" && setting.value > 0) {
+      fullThreshold = setting.value;
+    }
+  } catch { /* non-fatal: use shift default */ }
   const halfThreshold = fullThreshold / 2;
 
   if (totalHoursNum < halfThreshold) {

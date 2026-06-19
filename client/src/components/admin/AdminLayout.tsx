@@ -727,10 +727,26 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "")
   );
 
-  // Combined My Team badge: leave approvals + training requests.
+  // Pending attendance exceptions for manager/hr/admin
+  const isExceptionRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(userRole);
+  const { data: exceptionCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/attendance/exceptions/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/attendance/exceptions/count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && isExceptionRole,
+  });
+  const exceptionCount = exceptionCountData?.count ?? 0;
+
+  // Combined My Team badge: leave approvals + training requests + pending exceptions.
   // Pending regularizations get their own distinct indicator (see teamNavItems regCount)
   // so they appear/disappear independently of leave/training signals.
-  const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge;
+  const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge + exceptionCount;
 
   // People & HR badge: endorsements + training requests actionable by HR/admin/super_admin
   // (HR/admin/super_admin access training request management from People & HR → Training)

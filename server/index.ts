@@ -2615,6 +2615,35 @@ async function ensureHealthcarePlansTables() {
     console.error("Release notes table migration error:", err);
   }
 
+  // Attendance exception columns on attendance table + escalation dedup log
+  try {
+    // Exception review fields stored directly on the attendance row (1:1 relationship)
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_status VARCHAR`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_standard_hours NUMERIC(5,2)`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_comment TEXT`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_resolved_by VARCHAR REFERENCES admin_users(id)`);
+    await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_resolved_at TIMESTAMP`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_exception_status ON attendance(exception_status) WHERE exception_status IS NOT NULL`);
+    // Escalation dedup log — one row per (employee, month, tier); not tied to a single attendance record
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_escalation_log (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        employee_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        month VARCHAR(7) NOT NULL,
+        tier INTEGER NOT NULL,
+        count_at_trigger INTEGER NOT NULL,
+        notified_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_att_escalation_tier
+        ON attendance_escalation_log(employee_id, month, tier)
+    `);
+    log("Attendance exception columns and escalation log ensured");
+  } catch (err) {
+    console.error("Attendance exception tables migration error:", err);
+  }
+
   // Auto-create attendance report run for current month on server start if none exists
   checkAndAutoCreateRun().catch(err =>
     console.error("[index] Attendance auto-create on startup failed:", err)

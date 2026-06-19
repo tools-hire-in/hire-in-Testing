@@ -9,8 +9,9 @@ import TrainingManagement from "./hr/TrainingManagement";
 import HRSettings from "./hr/HRSettings";
 import RegularizationsPanel from "./hr/RegularizationsPanel";
 import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
+import AttendanceExceptions from "./hr/AttendanceExceptions";
 
-const TABS = ["users", "reports", "training", "regularizations", "plans", "settings"] as const;
+const TABS = ["users", "reports", "training", "regularizations", "plans", "exceptions", "settings"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -65,6 +66,9 @@ export default function PeopleHR() {
             {["super_admin", "admin", "hr"].includes(user?.role || "") && (
               <TabsTrigger value="plans" data-testid="tab-plans">Plans Overview</TabsTrigger>
             )}
+            {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+              <TabsTrigger value="exceptions" data-testid="tab-exceptions">Att. Exceptions</TabsTrigger>
+            )}
             <TabsTrigger value="settings" data-testid="tab-hr-settings">Settings</TabsTrigger>
           </TabsList>
           <TabsContent value="users" className="mt-4">
@@ -82,6 +86,15 @@ export default function PeopleHR() {
           {["super_admin", "admin", "hr"].includes(user?.role || "") && (
             <TabsContent value="plans" className="mt-4">
               <HRPlansOverview />
+            </TabsContent>
+          )}
+          {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+            <TabsContent value="exceptions" className="mt-4">
+              <div>
+                <h2 className="text-lg font-semibold mb-1">Attendance Exceptions</h2>
+                <p className="text-sm text-muted-foreground mb-4">Review short-day exceptions and monitor attendance risk across all teams.</p>
+                <AttendanceExceptions />
+              </div>
             </TabsContent>
           )}
           <TabsContent value="settings" className="mt-4">

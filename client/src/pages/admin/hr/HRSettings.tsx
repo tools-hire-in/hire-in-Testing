@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2755,6 +2755,142 @@ function AccessControlSection() {
   );
 }
 
+function AttendanceExceptionThresholdsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+
+  const { data: settings, isLoading } = useQuery<{
+    standardShiftHours: number;
+    tier1: number;
+    tier2: number;
+    tier3: number;
+  }>({
+    queryKey: ["/api/attendance/settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/attendance/settings", { credentials: "include" });
+      if (!res.ok) return { standardShiftHours: 9, tier1: 2, tier2: 5, tier3: 10 };
+      return res.json();
+    },
+    enabled: isHrOrAbove,
+  });
+
+  const [form, setForm] = useState({ standardShiftHours: "9", tier1: "2", tier2: "5", tier3: "10" });
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        standardShiftHours: String(settings.standardShiftHours ?? 9),
+        tier1: String(settings.tier1 ?? 2),
+        tier2: String(settings.tier2 ?? 5),
+        tier3: String(settings.tier3 ?? 10),
+      });
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/attendance/settings", {
+        standardShiftHours: parseFloat(form.standardShiftHours),
+        tier1: parseInt(form.tier1),
+        tier2: parseInt(form.tier2),
+        tier3: parseInt(form.tier3),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/settings"] });
+      setEditing(false);
+      toast({ title: "Saved", description: "Attendance exception thresholds updated." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save settings", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Attendance Exception Thresholds
+          </CardTitle>
+          {!editing ? (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)} data-testid="button-edit-att-thresholds">
+              <Pencil className="h-4 w-4 mr-1" />Edit
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-att-thresholds">
+                {saveMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-2">{[1, 2, 3, 4].map(i => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="att-standard-hours">Standard Shift Hours</Label>
+                <p className="text-xs text-muted-foreground">Threshold for a full day. Short day = ≥50% but &lt;100% of this value.</p>
+                {editing ? (
+                  <Input
+                    id="att-standard-hours"
+                    type="number"
+                    min="1"
+                    max="24"
+                    step="0.5"
+                    value={form.standardShiftHours}
+                    onChange={(e) => setForm(f => ({ ...f, standardShiftHours: e.target.value }))}
+                    data-testid="input-standard-shift-hours"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{settings?.standardShiftHours ?? 9} hours</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-3">Escalation Alert Tiers (monthly short/late day count)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  { key: "tier1", label: "Tier 1 — Manager notified", color: "bg-yellow-50 border-yellow-200", textColor: "text-yellow-700" },
+                  { key: "tier2", label: "Tier 2 — Admin notified", color: "bg-orange-50 border-orange-200", textColor: "text-orange-700" },
+                  { key: "tier3", label: "Tier 3 — HR + Super Admin", color: "bg-red-50 border-red-200", textColor: "text-red-700" },
+                ].map(({ key, label, color, textColor }) => (
+                  <div key={key} className={`p-3 rounded-lg border ${color}`}>
+                    <p className={`text-xs font-medium mb-1 ${textColor}`}>{label}</p>
+                    {editing ? (
+                      <Input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={form[key as keyof typeof form]}
+                        onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
+                        className="h-8 text-sm"
+                        data-testid={`input-${key}`}
+                      />
+                    ) : (
+                      <p className={`text-2xl font-bold ${textColor}`}>{settings?.[key as keyof typeof settings] ?? (key === "tier1" ? 2 : key === "tier2" ? 5 : 10)}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">occurrences/month</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -3282,6 +3418,95 @@ const NAV_GROUPS = [
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {isHrOrAbove && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">Balance Adjustments</CardTitle>
+              <Button size="sm" onClick={() => { setShowAdjustment(true); setIsBulkMode(false); setSelectedUserIds([]); }} data-testid="button-add-adjustment">
+                <Plus className="h-4 w-4 mr-1" />
+                Adjust Balance
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Filter Year</Label>
+                  <Select value={adjHistoryYear} onValueChange={setAdjHistoryYear}>
+                    <SelectTrigger className="w-[120px]" data-testid="select-adj-history-year">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2].map(offset => {
+                        const y = new Date().getFullYear() - offset;
+                        return <SelectItem key={y} value={String(y)}>{y}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {adjHistLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : adjustmentHistory && adjustmentHistory.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Date</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Employee</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Leave Type</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Days</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Reason</th>
+                        <th className="text-left py-3 px-2 font-medium text-muted-foreground">Adjusted By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adjustmentHistory.map((adj) => (
+                        <tr key={adj.id} className="border-b last:border-0" data-testid={`adj-row-${adj.id}`}>
+                          <td className="py-2 px-2 text-muted-foreground">{adj.createdAt ? new Date(adj.createdAt).toLocaleDateString() : "-"}</td>
+                          <td className="py-2 px-2 font-medium">{adj.userName}</td>
+                          <td className="py-2 px-2">{adj.leaveTypeName}</td>
+                          <td className="py-2 px-2">
+                            <Badge variant="secondary" className={parseFloat(adj.adjustmentDays) >= 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}>
+                              {parseFloat(adj.adjustmentDays) >= 0 ? "+" : ""}{adj.adjustmentDays}
+                            </Badge>
+                          </td>
+                          <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{adj.reason}</td>
+                          <td className="py-2 px-2 text-muted-foreground">{adj.adjustedByName}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Scale className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">No balance adjustments found for {adjHistoryYear}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <FeatureFlagsSection />
+
+        <AccessControlSection />
+
+        <CompanyProfileSection />
+
+        <TrainingSettingsSection />
+
+        <RegularizationPolicySection />
+
+        <AttendanceExceptionThresholdsSection />
+
+        <PerformanceSettingsSection />
+        <RayoAcademySettingsSection />
+        <CommunicationsSection />
+        <LetterTemplatesSection />
+        <GoalTemplatesSection />
+        <DataMaintenanceSection />
 
         <Dialog open={showAdjustment} onOpenChange={setShowAdjustment}>
           <DialogContent className="sm:max-w-lg">

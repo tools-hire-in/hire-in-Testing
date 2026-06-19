@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil, AlertTriangle, CheckCircle, ThumbsUp } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -105,9 +107,27 @@ const statusLabels: Record<string, string> = {
   corrected: "Corrected",
 };
 
+interface AttendanceException {
+  id: string;
+  attendanceDate: string;
+  employeeName: string;
+  employeeCode: string;
+  departmentName: string;
+  exceptionType: string;
+  status: string;
+  workedHours: number;
+  standardHours: number;
+  shortfall: number;
+  managerComment: string | null;
+  resolverName: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 export default function TeamAttendance() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState("overview");
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [memberMonth, setMemberMonth] = useState(() => {
@@ -119,6 +139,9 @@ export default function TeamAttendance() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const [showDownload, setShowDownload] = useState(false);
+  const [excStatusFilter, setExcStatusFilter] = useState("all");
+  const [resolvingExc, setResolvingExc] = useState<AttendanceException | null>(null);
+  const [resolveForm, setResolveForm] = useState({ disposition: "approved_exception", comment: "" });
 
   const { data, isLoading } = useQuery<TeamAttendanceResponse>({
     queryKey: ["/api/hr/attendance/my-team", { date: selectedDate }],
@@ -147,6 +170,80 @@ export default function TeamAttendance() {
     },
     enabled: isAuthenticated && !!selectedMember,
   });
+
+  const { data: excCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/attendance/exceptions/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/attendance/exceptions/count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: isAuthenticated,
+  });
+  const pendingExcCount = excCountData?.count ?? 0;
+
+  const excQueryParams = new URLSearchParams();
+  if (excStatusFilter !== "all") excQueryParams.set("status", excStatusFilter);
+  const { data: exceptions, isLoading: excLoading } = useQuery<AttendanceException[]>({
+    queryKey: ["/api/attendance/exceptions", excStatusFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/attendance/exceptions?${excQueryParams}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated && activeTab === "exceptions",
+  });
+
+  const { data: overtimeAlerts } = useQuery<Array<{ id: string; message: string; metadata: any; createdAt: string; isRead: boolean }>>({
+    queryKey: ["/api/attendance/overtime-alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/attendance/overtime-alerts", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 60000,
+    enabled: isAuthenticated && activeTab === "overtime",
+  });
+
+  const [praisingAlert, setPraisingAlert] = useState<{ id: string; employeeId: string; employeeName: string } | null>(null);
+  const [praiseNote, setPraiseNote] = useState("");
+
+  const resolveMutation = useMutation({
+    mutationFn: async ({ id, disposition, comment }: { id: string; disposition: string; comment: string }) => {
+      const res = await apiRequest("POST", `/api/attendance/exceptions/${id}/resolve`, { disposition, comment });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as any).error || "Failed to resolve");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/exceptions/count"] });
+      setResolvingExc(null);
+      setResolveForm({ disposition: "approved_exception", comment: "" });
+      toast({ title: "Resolved", description: "Exception resolved." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const praiseMutation = useMutation({
+    mutationFn: async ({ employeeId, praiseNote, notificationId }: { employeeId: string; praiseNote: string; notificationId: string }) => {
+      const res = await apiRequest("POST", "/api/attendance/overtime-alerts/praise", { employeeId, praiseNote, notificationId });
+      if (!res.ok) throw new Error("Failed to send praise");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/overtime-alerts"] });
+      setPraisingAlert(null);
+      setPraiseNote("");
+      toast({ title: "Praise Sent!", description: "Your message has been sent to the employee." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to send praise", variant: "destructive" }),
+  });
+
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -317,6 +414,24 @@ export default function TeamAttendance() {
           )}
         </div>
 
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="h-auto flex flex-wrap gap-1 mb-4">
+            <TabsTrigger value="overview" data-testid="tab-team-overview">Team Attendance</TabsTrigger>
+            <TabsTrigger value="exceptions" data-testid="tab-exception-review">
+              Exception Review
+              {pendingExcCount > 0 && (
+                <span className="ml-1.5 bg-amber-500 text-white text-xs rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">
+                  {pendingExcCount > 99 ? "99+" : pendingExcCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="overtime" data-testid="tab-overtime-alerts">
+              Overtime Alerts
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab 1: Today's Attendance */}
+          <TabsContent value="overview">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
@@ -473,6 +588,142 @@ export default function TeamAttendance() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          {/* Tab 2: Exception Review */}
+          <TabsContent value="exceptions" className="space-y-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Status:</span>
+              <Select value={excStatusFilter} onValueChange={setExcStatusFilter}>
+                <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-exc-status-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved_exception">Exception Approved</SelectItem>
+                  <SelectItem value="marked_half_day">Marked Half Day</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Card>
+              <CardContent className="p-0">
+                {excLoading ? (
+                  <div className="p-4 space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+                ) : !exceptions || exceptions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CheckCircle className="h-10 w-10 mx-auto text-green-400 mb-3" />
+                    <p className="text-muted-foreground font-medium">No exceptions in your team</p>
+                    <p className="text-xs text-muted-foreground mt-1">Short-day exceptions will appear here for review</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left py-3 px-3 font-medium text-muted-foreground">Employee</th>
+                          <th className="text-left py-3 px-3 font-medium text-muted-foreground">Date</th>
+                          <th className="text-left py-3 px-3 font-medium text-muted-foreground">Hours / Shortfall</th>
+                          <th className="text-left py-3 px-3 font-medium text-muted-foreground">Status</th>
+                          <th className="text-left py-3 px-3 font-medium text-muted-foreground">Comment</th>
+                          <th className="text-right py-3 px-3 font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {exceptions.map(exc => (
+                          <tr key={exc.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`exc-row-${exc.id}`}>
+                            <td className="py-2.5 px-3">
+                              <p className="font-medium">{exc.employeeName}</p>
+                              <p className="text-xs text-muted-foreground">{exc.departmentName || "—"}</p>
+                            </td>
+                            <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">{exc.attendanceDate}</td>
+                            <td className="py-2.5 px-3">
+                              <p className="font-medium">{exc.workedHours.toFixed(1)}h</p>
+                              <p className="text-xs text-red-600">−{exc.shortfall.toFixed(1)}h short</p>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {exc.status === "pending" && <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">Pending</Badge>}
+                              {exc.status === "approved_exception" && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">Approved</Badge>}
+                              {exc.status === "marked_half_day" && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">Half Day</Badge>}
+                            </td>
+                            <td className="py-2.5 px-3 text-xs text-muted-foreground">
+                              <div className="max-w-44">
+                                <p className="truncate">{exc.managerComment || (exc.resolverName ? `Resolved by ${exc.resolverName}` : "—")}</p>
+                                {exc.resolvedAt && (
+                                  <p className="text-muted-foreground/60">{new Date(exc.resolvedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {exc.status === "pending" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => { setResolvingExc(exc); setResolveForm({ disposition: "approved_exception", comment: "" }); }}
+                                  data-testid={`button-resolve-${exc.id}`}
+                                >
+                                  Resolve
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab 3: Overtime Alerts & Praise */}
+          <TabsContent value="overtime">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ThumbsUp className="h-4 w-4 text-blue-500" />
+                  Overtime Recognition Alerts
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {!overtimeAlerts || overtimeAlerts.length === 0 ? (
+                  <div className="text-center py-12 px-6">
+                    <ThumbsUp className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground font-medium">No overtime alerts this week</p>
+                    <p className="text-xs text-muted-foreground mt-1">When a team member works {`>`}standard hours on 3+ days in a week, you'll see an alert here to recognise their effort.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {overtimeAlerts.map(alert => (
+                      <div key={alert.id} className={`p-4 flex items-start justify-between gap-3 ${alert.isRead ? "opacity-60" : ""}`} data-testid={`overtime-alert-${alert.id}`}>
+                        <div className="space-y-1 flex-1">
+                          <p className="text-sm font-medium">{alert.message}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(alert.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        {!alert.isRead && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
+                            onClick={() => {
+                              const meta = alert.metadata;
+                              setPraisingAlert({ id: alert.id, employeeId: meta?.employeeId, employeeName: meta?.employeeName });
+                              setPraiseNote("");
+                            }}
+                            data-testid={`button-praise-${alert.id}`}
+                          >
+                            <ThumbsUp className="h-3.5 w-3.5 mr-1" />
+                            Send Praise
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={!!selectedMember} onOpenChange={(open) => !open && setSelectedMember(null)}>
@@ -517,6 +768,107 @@ export default function TeamAttendance() {
               Download Excel
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve Exception Dialog */}
+      <Dialog open={!!resolvingExc} onOpenChange={(open) => { if (!open) setResolvingExc(null); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-resolve-exception">
+          <DialogHeader>
+            <DialogTitle>Resolve Short-Day Exception</DialogTitle>
+          </DialogHeader>
+          {resolvingExc && (
+            <div className="space-y-4">
+              <div className="rounded-md border p-3 bg-muted/30 text-sm space-y-1">
+                <p><span className="font-medium">Employee:</span> {resolvingExc.employeeName}</p>
+                <p><span className="font-medium">Date:</span> {resolvingExc.attendanceDate}</p>
+                <p><span className="font-medium">Hours worked:</span> {resolvingExc.workedHours.toFixed(2)}h (shortfall: {resolvingExc.shortfall.toFixed(2)}h)</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Resolution</Label>
+                <Select value={resolveForm.disposition} onValueChange={(v) => setResolveForm(f => ({ ...f, disposition: v }))}>
+                  <SelectTrigger data-testid="select-resolve-disposition">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="approved_exception">Approve as Exception (no leave deduction)</SelectItem>
+                    <SelectItem value="marked_half_day">Mark as Half Day (deduct 0.5 leave day)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  Manager Comment{resolveForm.disposition === "approved_exception" ? " *" : ""}
+                </Label>
+                <Textarea
+                  rows={3}
+                  value={resolveForm.comment}
+                  onChange={(e) => setResolveForm(f => ({ ...f, comment: e.target.value }))}
+                  placeholder={resolveForm.disposition === "approved_exception" ? "Reason for exception (required)" : "Optional note"}
+                  data-testid="textarea-resolve-comment"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResolvingExc(null)} data-testid="button-cancel-resolve">Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!resolvingExc) return;
+                if (resolveForm.disposition === "approved_exception" && !resolveForm.comment.trim()) {
+                  toast({ title: "Comment required", description: "Please provide a reason for the exception.", variant: "destructive" });
+                  return;
+                }
+                resolveMutation.mutate({ id: resolvingExc.id, disposition: resolveForm.disposition, comment: resolveForm.comment });
+              }}
+              disabled={resolveMutation.isPending}
+              data-testid="button-confirm-resolve"
+            >
+              {resolveMutation.isPending ? "Saving..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Praise Modal */}
+      <Dialog open={!!praisingAlert} onOpenChange={(open) => { if (!open) setPraisingAlert(null); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-praise">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ThumbsUp className="h-5 w-5 text-blue-500" />
+              Send Overtime Praise
+            </DialogTitle>
+          </DialogHeader>
+          {praisingAlert && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Recognise <span className="font-semibold text-foreground">{praisingAlert.employeeName}</span>'s extra effort this week with a personal note.
+              </p>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Praise Note</Label>
+                <Textarea
+                  rows={3}
+                  value={praiseNote}
+                  onChange={(e) => setPraiseNote(e.target.value)}
+                  placeholder="e.g. Great effort this week — your dedication made a difference!"
+                  data-testid="textarea-praise-note"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPraisingAlert(null)} data-testid="button-cancel-praise">Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!praisingAlert) return;
+                praiseMutation.mutate({ employeeId: praisingAlert.employeeId, praiseNote, notificationId: praisingAlert.id });
+              }}
+              disabled={praiseMutation.isPending}
+              data-testid="button-send-praise"
+            >
+              {praiseMutation.isPending ? "Sending..." : "Send Praise"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AdminLayout>

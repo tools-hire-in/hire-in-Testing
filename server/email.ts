@@ -2968,3 +2968,93 @@ export async function sendReleaseNotesEmail(options: {
 
   return { sent, failed };
 }
+
+export async function sendOvertimePraiseEmail(options: {
+  to: string;
+  employeeFirstName: string;
+  managerName: string;
+  praiseNote: string;
+}): Promise<void> {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `You've been recognised by ${options.managerName} — Hire'in Solutions`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#F47C20 100%);padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#fde68a;margin:8px 0 0;font-size:14px;">You've been recognised!</p>
+          </div>
+          <div style="padding:32px;">
+            <p style="font-size:16px;color:#1e293b;">Hi ${options.employeeFirstName},</p>
+            <p style="color:#475569;">Your manager <strong>${options.managerName}</strong> wanted to recognise your hard work:</p>
+            <blockquote style="border-left:4px solid #F47C20;margin:20px 0;padding:12px 20px;background:#fff7ed;color:#92400e;font-style:italic;border-radius:0 8px 8px 0;">
+              "${options.praiseNote}"
+            </blockquote>
+            <p style="color:#475569;">Keep up the great work — it makes a real difference to the team!</p>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>`,
+      text: `Hi ${options.employeeFirstName},\n\nYour manager ${options.managerName} wanted to recognise your hard work:\n\n"${options.praiseNote}"\n\nKeep up the great work!${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`[praise-email] Overtime praise email sent to ${options.to}`);
+  } catch (err: any) {
+    console.error("[praise-email] Failed to send overtime praise email:", err?.response?.body || err.message);
+  }
+}
+
+export async function sendEscalationEmail(options: {
+  to: string;
+  recipientName: string;
+  employeeName: string;
+  tier: number;
+  count: number;
+  month: string;
+}): Promise<void> {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const tierLabels: Record<number, string> = {
+      1: "Heads-up",
+      2: "Attention",
+      3: "Escalation",
+    };
+    const tierColors: Record<number, string> = {
+      1: "#d97706",
+      2: "#ea580c",
+      3: "#dc2626",
+    };
+    const label = tierLabels[options.tier] || "Alert";
+    const color = tierColors[options.tier] || "#1F3A6E";
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `Attendance ${label} — ${options.employeeName} (${options.count} occurrences in ${options.month})`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+          <div style="background:${color};padding:32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">Attendance ${label} — Tier ${options.tier}</h1>
+          </div>
+          <div style="padding:32px;">
+            <p style="font-size:16px;color:#1e293b;">Hi ${options.recipientName},</p>
+            <p style="color:#475569;">This is an automated attendance alert from the HR system.</p>
+            <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+              <tr style="background:#f8fafc;"><td style="padding:10px 14px;color:#64748b;width:160px;">Employee</td><td style="padding:10px 14px;color:#1e293b;font-weight:600;">${options.employeeName}</td></tr>
+              <tr><td style="padding:10px 14px;color:#64748b;">Month</td><td style="padding:10px 14px;color:#1e293b;">${options.month}</td></tr>
+              <tr style="background:#f8fafc;"><td style="padding:10px 14px;color:#64748b;">Short/Late Days</td><td style="padding:10px 14px;color:${color};font-weight:700;">${options.count} occurrence(s)</td></tr>
+              <tr><td style="padding:10px 14px;color:#64748b;">Tier</td><td style="padding:10px 14px;color:${color};font-weight:700;">Tier ${options.tier} ${label}</td></tr>
+            </table>
+            <p style="color:#475569;">Please log in to the HR portal to view the full attendance history and take any necessary action.</p>
+            ${SIGNOFF_HTML}
+          </div>
+        </div>`,
+      text: `Hi ${options.recipientName},\n\nAttendance ${label} for ${options.employeeName} in ${options.month}.\n\nShort/Late Days: ${options.count}\nTier: ${options.tier}\n\nPlease log in to review.${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`[escalation-email] Tier ${options.tier} email sent to ${options.to}`);
+  } catch (err: any) {
+    console.error("[escalation-email] Failed to send escalation email:", err?.response?.body || err.message);
+  }
+}
