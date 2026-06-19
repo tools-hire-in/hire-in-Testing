@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -50,16 +50,20 @@ import {
   Pencil,
   ShieldCheck,
   Users,
-  Link,
   Camera,
   X,
   MoreHorizontal,
   Trash2,
   EyeOff,
   Eye,
+  Building2,
+  HandHeart,
+  UserCheck,
 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { StudioAuthorProfile } from "@shared/schema";
+
+type AuthorMode = "internal" | "external";
+type ExternalType = "consulting" | "volunteer" | "guest";
 
 interface AuthorForm {
   displayName: string;
@@ -89,6 +93,18 @@ interface EmployeeCandidate {
   title: string | null;
   photoUrl: string | null;
   email: string;
+  linkedinUrl: string | null;
+}
+
+function authorModeFromType(authorType: string | null | undefined): AuthorMode {
+  return authorType === "employee" ? "internal" : "external";
+}
+
+function externalTypeFromAuthorType(authorType: string | null | undefined): ExternalType {
+  if (authorType === "consulting" || authorType === "volunteer" || authorType === "guest") {
+    return authorType;
+  }
+  return "consulting";
 }
 
 export function AuthorsPanel({ projectId }: { projectId: string }) {
@@ -97,9 +113,10 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   const canManage = can("studio.manage_authors");
 
   const [open, setOpen] = useState(false);
-  const [dialogTab, setDialogTab] = useState<"new" | "link">("new");
   const [editing, setEditing] = useState<StudioAuthorProfile | null>(null);
   const [form, setForm] = useState<AuthorForm>(EMPTY_FORM);
+  const [authorMode, setAuthorMode] = useState<AuthorMode>("internal");
+  const [externalType, setExternalType] = useState<ExternalType>("consulting");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [showInactive, setShowInactive] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StudioAuthorProfile | null>(null);
@@ -112,10 +129,22 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
 
   const { data: candidates, isLoading: candidatesLoading } = useQuery<EmployeeCandidate[]>({
     queryKey: ["/api/admin/studio/author-candidates"],
-    enabled: open && dialogTab === "link" && canManage,
+    enabled: open && !editing && authorMode === "internal" && canManage,
   });
 
-  const selectedCandidate = candidates?.find((c) => c.id === selectedCandidateId) ?? null;
+  // Pre-fill form fields when an employee candidate is selected.
+  useEffect(() => {
+    if (!selectedCandidateId || !candidates) return;
+    const candidate = candidates.find((c) => c.id === selectedCandidateId);
+    if (!candidate) return;
+    setForm((f) => ({
+      ...f,
+      displayName: candidate.displayName,
+      title: candidate.title ?? "",
+      photoUrl: candidate.photoUrl ?? "",
+      linkedinUrl: candidate.linkedinUrl ?? "",
+    }));
+  }, [selectedCandidateId, candidates]);
 
   const visibleAuthors = authors
     ? showInactive
@@ -128,8 +157,9 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   const openCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setAuthorMode("internal");
+    setExternalType("consulting");
     setSelectedCandidateId("");
-    setDialogTab("new");
     setOpen(true);
   };
 
@@ -145,12 +175,24 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
       consented: !!a.consentedAt,
       isActive: a.isActive,
     });
-    setDialogTab("new");
+    setAuthorMode(authorModeFromType((a as any).authorType));
+    setExternalType(externalTypeFromAuthorType((a as any).authorType));
+    setSelectedCandidateId("");
     setOpen(true);
   };
 
+  const linkedinRequired = authorMode === "internal";
+  const linkedinMissing = linkedinRequired && !form.linkedinUrl.trim();
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const authorType = authorMode === "internal" ? "employee" : externalType;
+      const linkedUserId = authorMode === "internal" && selectedCandidateId
+        ? selectedCandidateId
+        : editing
+          ? (editing as any).linkedUserId ?? null
+          : null;
+
       const payload: Record<string, unknown> = {
         displayName: form.displayName.trim(),
         publicTitle: form.publicTitle.trim() || null,
@@ -160,6 +202,8 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
         photoUrl: form.photoUrl.trim() || null,
         isActive: form.isActive,
         consentedAt: form.consented ? (editing?.consentedAt ?? new Date().toISOString()) : null,
+        authorType,
+        linkedUserId,
       };
       if (!editing) payload.projectId = projectId;
       const res = await apiRequest(
@@ -173,39 +217,12 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/author-candidates"] });
       setOpen(false);
       toast({ title: editing ? "Author updated" : "Author created" });
     },
     onError: (err: Error) => {
       toast({ title: "Could not save author", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const linkEmployeeMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedCandidate) throw new Error("No employee selected");
-      const payload = {
-        projectId,
-        displayName: selectedCandidate.displayName,
-        title: selectedCandidate.title || null,
-        photoUrl: selectedCandidate.photoUrl || null,
-        isActive: true,
-        linkedUserId: selectedCandidate.id,
-        authorType: "employee",
-        consentedAt: new Date().toISOString(),
-      };
-      const res = await apiRequest("POST", "/api/admin/studio/authors", payload);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/author-candidates"] });
-      setOpen(false);
-      setSelectedCandidateId("");
-      toast({ title: "Employee linked as author" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Could not link employee", description: err.message, variant: "destructive" });
     },
   });
 
@@ -245,6 +262,12 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
       setDeleteError(err.message);
     },
   });
+
+  const saveDisabled =
+    !form.displayName.trim() ||
+    saveMutation.isPending ||
+    linkedinMissing ||
+    (!editing && authorMode === "internal" && !selectedCandidateId);
 
   return (
     <div className="space-y-4">
@@ -315,129 +338,14 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleAuthors.map((a) => (
-            <Card key={a.id} data-testid={`card-author-${a.id}`} className={!a.isActive ? "opacity-60" : ""}>
-              <CardContent className="space-y-3 p-4">
-                <div className="flex items-start gap-3">
-                  <Avatar className="h-10 w-10">
-                    {a.photoUrl && <AvatarImage src={a.photoUrl} alt={a.displayName} />}
-                    <AvatarFallback>
-                      {a.displayName.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 font-semibold">
-                      <span className="truncate">{a.displayName}</span>
-                      {!a.isActive && (
-                        <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0" data-testid={`badge-inactive-${a.id}`}>
-                          Inactive
-                        </Badge>
-                      )}
-                    </div>
-                    {a.title && (
-                      <div className="truncate text-xs text-muted-foreground">{a.title}</div>
-                    )}
-                  </div>
-                  {canManage && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          data-testid={`button-actions-author-${a.id}`}
-                        >
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => openEdit(a)}
-                          data-testid={`menu-edit-author-${a.id}`}
-                        >
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => toggleActiveMutation.mutate({ id: a.id, isActive: !a.isActive })}
-                          data-testid={`menu-toggle-active-author-${a.id}`}
-                        >
-                          {a.isActive ? (
-                            <>
-                              <EyeOff className="mr-2 h-3.5 w-3.5" />
-                              Deactivate
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="mr-2 h-3.5 w-3.5" />
-                              Reactivate
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => { setDeleteTarget(a); setDeleteError(null); }}
-                          data-testid={`menu-delete-author-${a.id}`}
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-                {a.bio && <p className="line-clamp-3 text-sm text-muted-foreground">{a.bio}</p>}
-                {(() => {
-                  const fields = [
-                    { label: "Byline name", filled: !!a.displayName?.trim() },
-                    { label: "Public title", filled: !!(a as any).publicTitle?.trim() },
-                    { label: "Short bio", filled: !!a.bio?.trim() },
-                    { label: "Photo", filled: !!(a as any).photoUrl?.trim() },
-                  ];
-                  const filledCount = fields.filter((f) => f.filled).length;
-                  const total = fields.length;
-                  const isComplete = filledCount === total;
-                  const missing = fields.filter((f) => !f.filled).map((f) => f.label);
-                  return (
-                    <div className="space-y-1.5" data-testid={`profile-completion-${a.id}`}>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
-                          {isComplete ? "Profile complete" : `${filledCount}/${total} fields filled`}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={`h-full rounded-full transition-all ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`}
-                          style={{ width: `${(filledCount / total) * 100}%` }}
-                        />
-                      </div>
-                      {!isComplete && canManage && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                          Missing: {missing.join(", ")} — complete profile before assigning articles.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge variant={a.isActive ? "default" : "secondary"}>
-                    {a.isActive ? "Active" : "Inactive"}
-                  </Badge>
-                  {(a as any).authorType === "employee" && (
-                    <Badge variant="outline" className="gap-1">
-                      <Users className="h-3 w-3" />
-                      Employee
-                    </Badge>
-                  )}
-                  {a.consentedAt && (
-                    <Badge variant="outline" className="gap-1">
-                      <ShieldCheck className="h-3 w-3" />
-                      Consented
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <AuthorCard
+              key={a.id}
+              author={a}
+              canManage={canManage}
+              onEdit={() => openEdit(a)}
+              onToggleActive={() => toggleActiveMutation.mutate({ id: a.id, isActive: !a.isActive })}
+              onDelete={() => { setDeleteTarget(a); setDeleteError(null); }}
+            />
           ))}
         </div>
       )}
@@ -451,109 +359,154 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
             </DialogDescription>
           </DialogHeader>
 
-          {!editing && canManage && (
-            <Tabs value={dialogTab} onValueChange={(v) => { setDialogTab(v as "new" | "link"); setSelectedCandidateId(""); }}>
-              <TabsList className="w-full">
-                <TabsTrigger value="new" className="flex-1" data-testid="tab-new-author">
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  New Author
-                </TabsTrigger>
-                <TabsTrigger value="link" className="flex-1" data-testid="tab-link-employee">
-                  <Link className="mr-1.5 h-3.5 w-3.5" />
-                  Link Employee
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="new" className="mt-4">
-                <ExternalAuthorForm form={form} setForm={setForm} />
-              </TabsContent>
-
-              <TabsContent value="link" className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label>Select employee</Label>
-                  {candidatesLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading employees…
-                    </div>
-                  ) : !candidates || candidates.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">
-                      All active employees are already linked as authors.
-                    </p>
-                  ) : (
-                    <Select
-                      value={selectedCandidateId}
-                      onValueChange={setSelectedCandidateId}
-                    >
-                      <SelectTrigger data-testid="select-employee-candidate">
-                        <SelectValue placeholder="Choose an employee…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {candidates.map((c) => (
-                          <SelectItem key={c.id} value={c.id} data-testid={`option-candidate-${c.id}`}>
-                            {c.displayName}
-                            {c.title ? ` — ${c.title}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-
-                {selectedCandidate && (
-                  <div className="rounded-md border p-3 space-y-1">
+          <div className="space-y-4 py-1">
+            {/* Internal / External toggle */}
+            {editing ? (
+              <div className="rounded-md border px-3 py-2 bg-muted/40">
+                <p className="text-xs text-muted-foreground mb-1">Author type</p>
+                <p className="text-sm font-medium">
+                  {authorMode === "internal" ? "Internal (Employee)" : `External — ${externalType.charAt(0).toUpperCase() + externalType.slice(1)}`}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Author type</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthorMode("internal");
+                      setSelectedCandidateId("");
+                      setForm(EMPTY_FORM);
+                    }}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors text-left ${
+                      authorMode === "internal"
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                    data-testid="radio-mode-internal"
+                  >
                     <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        {selectedCandidate.photoUrl && <AvatarImage src={selectedCandidate.photoUrl} />}
-                        <AvatarFallback className="text-xs">
-                          {selectedCandidate.displayName.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-semibold">{selectedCandidate.displayName}</p>
-                        {selectedCandidate.title && (
-                          <p className="text-xs text-muted-foreground">{selectedCandidate.title}</p>
-                        )}
-                      </div>
+                      <Users className="h-3.5 w-3.5" />
+                      Internal (Employee)
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      This employee will be created as an author profile linked to their HR record. Their name and title will pre-fill from the employee record.
-                    </p>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          )}
+                    <p className="text-xs font-normal text-muted-foreground mt-0.5">Link to an HR record</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthorMode("external");
+                      setSelectedCandidateId("");
+                      setForm(EMPTY_FORM);
+                    }}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors text-left ${
+                      authorMode === "external"
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                    data-testid="radio-mode-external"
+                  >
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="h-3.5 w-3.5" />
+                      External
+                    </div>
+                    <p className="text-xs font-normal text-muted-foreground mt-0.5">Guest, consultant, or volunteer</p>
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {editing && (
-            <div className="space-y-4 py-2">
-              <ExternalAuthorForm form={form} setForm={setForm} />
-            </div>
-          )}
+            {/* Internal: employee picker */}
+            {!editing && authorMode === "internal" && (
+              <div className="space-y-2">
+                <Label>Select employee</Label>
+                {candidatesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading employees…
+                  </div>
+                ) : !candidates || candidates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    All active employees are already linked as authors.
+                  </p>
+                ) : (
+                  <Select
+                    value={selectedCandidateId}
+                    onValueChange={setSelectedCandidateId}
+                  >
+                    <SelectTrigger data-testid="select-employee-candidate">
+                      <SelectValue placeholder="Choose an employee…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidates.map((c) => (
+                        <SelectItem key={c.id} value={c.id} data-testid={`option-candidate-${c.id}`}>
+                          {c.displayName}
+                          {c.title ? ` — ${c.title}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {selectedCandidateId && (
+                  <p className="text-xs text-muted-foreground">
+                    Fields below are pre-filled from the employee record — you can edit them before saving.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* External: author type picker */}
+            {!editing && authorMode === "external" && (
+              <div className="space-y-2">
+                <Label>Author category</Label>
+                <Select value={externalType} onValueChange={(v) => setExternalType(v as ExternalType)}>
+                  <SelectTrigger data-testid="select-external-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="consulting" data-testid="option-type-consulting">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-3.5 w-3.5 text-blue-500" />
+                        Consulting
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="volunteer" data-testid="option-type-volunteer">
+                      <div className="flex items-center gap-2">
+                        <HandHeart className="h-3.5 w-3.5 text-green-500" />
+                        Volunteer
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="guest" data-testid="option-type-guest">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-3.5 w-3.5 text-purple-500" />
+                        Guest
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Shared form fields */}
+            <AuthorFormFields
+              form={form}
+              setForm={setForm}
+              linkedinRequired={linkedinRequired}
+            />
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            {(!editing && dialogTab === "link") ? (
-              <Button
-                onClick={() => linkEmployeeMutation.mutate()}
-                disabled={!selectedCandidateId || linkEmployeeMutation.isPending}
-                data-testid="button-link-employee"
-              >
-                {linkEmployeeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Link Employee
-              </Button>
-            ) : (
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={!form.displayName.trim() || saveMutation.isPending}
-                data-testid="button-save-author"
-              >
-                {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editing ? "Save changes" : "Create author"}
-              </Button>
-            )}
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveDisabled}
+              data-testid="button-save-author"
+            >
+              {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editing ? "Save changes" : "Create author"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -601,15 +554,193 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   );
 }
 
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
+// ---- Author Card ----
 
-function ExternalAuthorForm({
+function AuthorTypeBadge({ authorType }: { authorType?: string | null }) {
+  if (!authorType || authorType === "external") {
+    return (
+      <Badge variant="secondary" className="gap-1 text-[10px] px-1.5 py-0">
+        External
+      </Badge>
+    );
+  }
+  if (authorType === "employee") {
+    return (
+      <Badge variant="outline" className="gap-1 text-[10px] px-1.5 py-0">
+        <Users className="h-3 w-3" />
+        Employee
+      </Badge>
+    );
+  }
+  if (authorType === "consulting") {
+    return (
+      <Badge className="gap-1 text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+        <Building2 className="h-3 w-3" />
+        Consulting
+      </Badge>
+    );
+  }
+  if (authorType === "volunteer") {
+    return (
+      <Badge className="gap-1 text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-950 dark:text-green-300 dark:border-green-800">
+        <HandHeart className="h-3 w-3" />
+        Volunteer
+      </Badge>
+    );
+  }
+  if (authorType === "guest") {
+    return (
+      <Badge className="gap-1 text-[10px] px-1.5 py-0 bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800">
+        <UserCheck className="h-3 w-3" />
+        Guest
+      </Badge>
+    );
+  }
+  return null;
+}
+
+function AuthorCard({
+  author: a,
+  canManage,
+  onEdit,
+  onToggleActive,
+  onDelete,
+}: {
+  author: StudioAuthorProfile;
+  canManage: boolean;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const fields = [
+    { label: "Byline name", filled: !!a.displayName?.trim() },
+    { label: "Public title", filled: !!(a as any).publicTitle?.trim() },
+    { label: "Short bio", filled: !!a.bio?.trim() },
+    { label: "Photo", filled: !!(a as any).photoUrl?.trim() },
+  ];
+  const filledCount = fields.filter((f) => f.filled).length;
+  const total = fields.length;
+  const isComplete = filledCount === total;
+  const missing = fields.filter((f) => !f.filled).map((f) => f.label);
+
+  return (
+    <Card data-testid={`card-author-${a.id}`} className={!a.isActive ? "opacity-60" : ""}>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-start gap-3">
+          <Avatar className="h-10 w-10">
+            {a.photoUrl && <AvatarImage src={a.photoUrl} alt={a.displayName} />}
+            <AvatarFallback>
+              {a.displayName.slice(0, 2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <span className="truncate">{a.displayName}</span>
+              {!a.isActive && (
+                <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0" data-testid={`badge-inactive-${a.id}`}>
+                  Inactive
+                </Badge>
+              )}
+            </div>
+            {a.title && (
+              <div className="truncate text-xs text-muted-foreground">{a.title}</div>
+            )}
+          </div>
+          {canManage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  data-testid={`button-actions-author-${a.id}`}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onEdit} data-testid={`menu-edit-author-${a.id}`}>
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onToggleActive} data-testid={`menu-toggle-active-author-${a.id}`}>
+                  {a.isActive ? (
+                    <>
+                      <EyeOff className="mr-2 h-3.5 w-3.5" />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="mr-2 h-3.5 w-3.5" />
+                      Reactivate
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={onDelete}
+                  data-testid={`menu-delete-author-${a.id}`}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        {a.bio && <p className="line-clamp-3 text-sm text-muted-foreground">{a.bio}</p>}
+
+        <div className="space-y-1.5" data-testid={`profile-completion-${a.id}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+              {isComplete ? "Profile complete" : `${filledCount}/${total} fields filled`}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-all ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`}
+              style={{ width: `${(filledCount / total) * 100}%` }}
+            />
+          </div>
+          {!isComplete && canManage && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Missing: {missing.join(", ")} — complete profile before assigning articles.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant={a.isActive ? "default" : "secondary"}>
+            {a.isActive ? "Active" : "Inactive"}
+          </Badge>
+          <AuthorTypeBadge authorType={(a as any).authorType} />
+          {a.consentedAt && (
+            <Badge variant="outline" className="gap-1">
+              <ShieldCheck className="h-3 w-3" />
+              Consented
+            </Badge>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Shared form fields ----
+
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+
+function AuthorFormFields({
   form,
   setForm,
+  linkedinRequired,
 }: {
   form: AuthorForm;
   setForm: React.Dispatch<React.SetStateAction<AuthorForm>>;
+  linkedinRequired: boolean;
 }) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -705,14 +836,20 @@ function ExternalAuthorForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="author-linkedin">LinkedIn URL</Label>
+        <Label htmlFor="author-linkedin" className={linkedinRequired && !form.linkedinUrl.trim() ? "text-destructive" : ""}>
+          LinkedIn URL{linkedinRequired ? <span className="text-destructive ml-0.5">*</span> : ""}
+        </Label>
         <Input
           id="author-linkedin"
           value={form.linkedinUrl}
           onChange={(e) => setForm((f) => ({ ...f, linkedinUrl: e.target.value }))}
           placeholder="https://linkedin.com/in/…"
+          className={linkedinRequired && !form.linkedinUrl.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
           data-testid="input-author-linkedin"
         />
+        {linkedinRequired && !form.linkedinUrl.trim() && (
+          <p className="text-xs text-destructive">LinkedIn URL is required for internal authors.</p>
+        )}
       </div>
 
       <div className="space-y-2">

@@ -12576,9 +12576,10 @@ export async function registerRoutes(
           .map((u) => ({
             id: u.id,
             displayName: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
-            title: u.jobTitle ?? u.role ?? null,
-            photoUrl: u.profilePhoto ?? null,
+            title: (u as any).designation ?? u.role ?? null,
+            photoUrl: (u as any).profilePhoto ?? null,
             email: u.email,
+            linkedinUrl: (u as any).linkedinUrl ?? null,
           }));
         res.json(candidates);
       } catch (error) {
@@ -12618,6 +12619,9 @@ export async function registerRoutes(
         if (!parsed.displayName || !parsed.displayName.trim()) {
           return res.status(400).json({ error: "displayName is required" });
         }
+        if ((parsed as any).authorType === "employee" && !(parsed as any).linkedUserId) {
+          return res.status(400).json({ error: "linkedUserId is required for internal (employee) authors" });
+        }
         const body = { ...parsed, displayName: parsed.displayName.trim() };
         const profileComplete = !!(
           body.displayName?.trim() &&
@@ -12629,6 +12633,13 @@ export async function registerRoutes(
           ...body,
           profileComplete,
         } as any);
+        // Sync LinkedIn URL back to the employee's admin_users record when creating
+        // an internal (employee-type) author.
+        if ((body as any).authorType === "employee" && (body as any).linkedUserId && body.linkedinUrl) {
+          await storage.updateAdminUser((body as any).linkedUserId, {
+            linkedinUrl: body.linkedinUrl,
+          } as any).catch(() => {/* non-fatal */});
+        }
         await storage.createStudioAuditEvent({
           articleId: null,
           actorUserId: req.session.userId,
