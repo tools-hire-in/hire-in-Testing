@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Switch, Route, Redirect } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -41,6 +41,8 @@ const AdminContacts = lazy(() => import("@/pages/admin/Contacts"));
 const Recruitment = lazy(() => import("@/pages/admin/Recruitment"));
 const JobApplications = lazy(() => import("@/pages/admin/JobApplications"));
 const MyWork = lazy(() => import("@/pages/admin/hr/MyWork"));
+const MyDesk = lazy(() => import("@/pages/admin/my-desk/MyDesk"));
+const ServiceDesk = lazy(() => import("@/pages/admin/service-desk/ServiceDesk"));
 const MyProfile = lazy(() => import("@/pages/admin/MyProfile"));
 const MyGrowth = lazy(() => import("@/pages/admin/MyGrowth"));
 const PeopleHR = lazy(() => import("@/pages/admin/PeopleHR"));
@@ -90,6 +92,27 @@ const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateS
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
+
+const HR_TAB_MAP: Record<string, string> = {
+  attendance: "time-card",
+  "time-card": "time-card",
+  leaves: "time-off",
+  "time-off": "time-off",
+  holidays: "leave-calendar",
+  "leave-calendar": "leave-calendar",
+  regularizations: "regularizations",
+  tickets: "regularizations",
+};
+
+function HRTabRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    const mapped = tab ? HR_TAB_MAP[tab] : undefined;
+    setLocation(mapped ? `/admin/my-desk?tab=${mapped}` : "/admin/my-desk");
+  }, []);
+  return null;
+}
 
 function AdminFallback() {
   return (
@@ -157,11 +180,17 @@ function PublicRouter() {
       <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
       <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
-      {/* Admin root → My Work */}
-      <Route path="/admin">{() => <Redirect to="/admin/hr" />}</Route>
+      {/* Admin root → My Desk */}
+      <Route path="/admin">{() => <Redirect to="/admin/my-desk" />}</Route>
+
+      {/* Command Center */}
+      <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>
+      <Route path="/admin/service-desk">{() => <Suspense fallback={<AdminFallback />}><ServiceDesk /></Suspense>}</Route>
+
+      {/* Legacy My Work → smart tab-mapping redirect */}
+      <Route path="/admin/hr">{() => <HRTabRedirect />}</Route>
 
       {/* Consolidated tab pages (primary nav) */}
-      <Route path="/admin/hr">{() => <Suspense fallback={<AdminFallback />}><MyWork /></Suspense>}</Route>
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
@@ -177,11 +206,14 @@ function PublicRouter() {
       {/* New Hire */}
       <Route path="/admin/new-hire">{() => <Suspense fallback={<AdminFallback />}><NewHire /></Suspense>}</Route>
 
-      {/* Legacy HR standalone pages */}
-      <Route path="/admin/hr/dashboard">{() => <Suspense fallback={<AdminFallback />}><HRDashboard /></Suspense>}</Route>
-      <Route path="/admin/hr/attendance">{() => <Suspense fallback={<AdminFallback />}><HRAttendance /></Suspense>}</Route>
-      <Route path="/admin/hr/leaves">{() => <Suspense fallback={<AdminFallback />}><HRLeaveManagement /></Suspense>}</Route>
-      <Route path="/admin/hr/holidays">{() => <Suspense fallback={<AdminFallback />}><HRHolidayCalendar /></Suspense>}</Route>
+      {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
+      <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
+      <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
+      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=time-off" />}</Route>
+      <Route path="/admin/hr/holidays">{() => <Redirect to="/admin/my-desk?tab=leave-calendar" />}</Route>
+      <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/my-desk?tab=regularizations" />}</Route>
+
+      {/* HR management / tool pages — remain at their paths */}
       <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
       <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
       <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
@@ -199,7 +231,6 @@ function PublicRouter() {
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
-      <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
       <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
@@ -261,11 +292,17 @@ function EmployeeRouter() {
       <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
       <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
-      {/* Admin root → My Work */}
-      <Route path="/admin">{() => <Redirect to="/admin/hr" />}</Route>
+      {/* Admin root → My Desk */}
+      <Route path="/admin">{() => <Redirect to="/admin/my-desk" />}</Route>
+
+      {/* Command Center */}
+      <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>
+      <Route path="/admin/service-desk">{() => <Suspense fallback={<AdminFallback />}><ServiceDesk /></Suspense>}</Route>
+
+      {/* Legacy My Work → smart tab-mapping redirect */}
+      <Route path="/admin/hr">{() => <HRTabRedirect />}</Route>
 
       {/* Consolidated tab pages (primary nav) */}
-      <Route path="/admin/hr">{() => <Suspense fallback={<AdminFallback />}><MyWork /></Suspense>}</Route>
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
@@ -281,11 +318,14 @@ function EmployeeRouter() {
       {/* New Hire */}
       <Route path="/admin/new-hire">{() => <Suspense fallback={<AdminFallback />}><NewHire /></Suspense>}</Route>
 
-      {/* Legacy HR standalone pages */}
-      <Route path="/admin/hr/dashboard">{() => <Suspense fallback={<AdminFallback />}><HRDashboard /></Suspense>}</Route>
-      <Route path="/admin/hr/attendance">{() => <Suspense fallback={<AdminFallback />}><HRAttendance /></Suspense>}</Route>
-      <Route path="/admin/hr/leaves">{() => <Suspense fallback={<AdminFallback />}><HRLeaveManagement /></Suspense>}</Route>
-      <Route path="/admin/hr/holidays">{() => <Suspense fallback={<AdminFallback />}><HRHolidayCalendar /></Suspense>}</Route>
+      {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
+      <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
+      <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
+      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=time-off" />}</Route>
+      <Route path="/admin/hr/holidays">{() => <Redirect to="/admin/my-desk?tab=leave-calendar" />}</Route>
+      <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/my-desk?tab=regularizations" />}</Route>
+
+      {/* HR management / tool pages — remain at their paths */}
       <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
       <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
       <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
@@ -303,7 +343,6 @@ function EmployeeRouter() {
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
-      <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/hr/attendance?tab=tickets" />}</Route>
       <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
       <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>

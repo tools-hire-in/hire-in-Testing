@@ -546,12 +546,11 @@ export default function Attendance() {
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [reportIssueDate, setReportIssueDate] = useState<string | null>(null);
-  const [showRaiseModal, setShowRaiseModal] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
   const canSeeGrace = ["hr", "admin", "super_admin", "manager"].includes(user?.role || "");
-  const validTabs = ["attendance", "regularizations", ...(canSeeGrace ? ["grace"] : [])];
+  const validTabs = ["attendance", ...(canSeeGrace ? ["grace"] : [])];
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -692,25 +691,12 @@ export default function Attendance() {
     (myRegularizations || []).filter(r => r.status === "pending").map(r => r.attendanceDate)
   );
 
-  // Eligible dates for a standalone "Raise Regularization" = last 7 calendar days
-  // not already covered by a pending request.
-  const eligibleRaiseDates = getLast7Days().filter(d => !pendingDates.has(d));
-  const allDatesCovered = eligibleRaiseDates.length === 0;
-
   return (
     <AdminLayout>
       <div className="space-y-5">
         <PillTabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
           <PillTabsList>
             <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
-            <PillTabsTrigger value="regularizations" data-testid="tab-regularizations">
-              My Regularizations
-              {(myRegularizations?.filter(r => r.status === "pending").length ?? 0) > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-xs w-4 h-4 font-medium">
-                  {myRegularizations?.filter(r => r.status === "pending").length}
-                </span>
-              )}
-            </PillTabsTrigger>
             {canSeeGrace && (
               <PillTabsTrigger value="grace" data-testid="tab-grace">Grace Period Usage</PillTabsTrigger>
             )}
@@ -1006,52 +992,6 @@ export default function Attendance() {
             </div>
           </PillTabsContent>
 
-          <PillTabsContent value="regularizations">
-            <div className="space-y-4 max-w-3xl">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-base font-semibold">My Regularization Requests</h2>
-                  <p className="text-xs text-muted-foreground">All attendance correction requests you have raised</p>
-                </div>
-                {allDatesCovered ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span tabIndex={0}>
-                        <Button
-                          size="sm"
-                          className="gap-1.5"
-                          disabled
-                          data-testid="button-raise-regularization"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Raise Regularization
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      All dates in the last 7 days already have a pending request.
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => setShowRaiseModal(true)}
-                    data-testid="button-raise-regularization"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Raise Regularization
-                  </Button>
-                )}
-              </div>
-              <Card>
-                <CardContent className="p-0">
-                  <MyRegularizationsSection />
-                </CardContent>
-              </Card>
-            </div>
-          </PillTabsContent>
-
           {canSeeGrace && (
             <PillTabsContent value="grace">
               <GracePeriodUsageTab userRole={user?.role || ""} />
@@ -1060,12 +1000,12 @@ export default function Attendance() {
         </PillTabs>
       </div>
 
-      {/* Report Issue / Raise Regularization Modal */}
-      {(reportIssueDate || showRaiseModal) && (
+      {/* Report Issue Modal — opened by "Fix Record" in the time card */}
+      {reportIssueDate && (
         <ReportIssueModal
-          date={reportIssueDate ?? undefined}
+          date={reportIssueDate}
           pendingDates={pendingDates}
-          onClose={() => { setReportIssueDate(null); setShowRaiseModal(false); }}
+          onClose={() => setReportIssueDate(null)}
         />
       )}
     </AdminLayout>

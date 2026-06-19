@@ -31,12 +31,12 @@ export function TicketsContent() {
               <p className="font-semibold text-foreground">The Tickets system has been replaced</p>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Attendance regularization requests are now handled directly from the{" "}
-                <strong>My Work → Attendance</strong> tab. Click "Report Issue" on any
+                <strong>My Desk — Time Card</strong> tab. Click "Fix Record" on any
                 recent attendance row to raise a correction request within the policy window.
               </p>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Your manager will receive the request for review. You can track all your
-                requests on the <strong>My Regularizations</strong> tab.
+                requests on the <strong>My Desk — Regularizations</strong> tab.
               </p>
             </div>
           </div>

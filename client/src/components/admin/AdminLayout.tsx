@@ -37,6 +37,8 @@ import {
   BookOpen,
   Radio,
   LifeBuoy,
+  Monitor,
+  Headphones,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -103,6 +105,100 @@ interface NavItem {
 
 interface AdminLayoutProps {
   children: React.ReactNode;
+}
+
+function CommandCenterSection({
+  isNavActive,
+  isComplianceLocked,
+  location,
+  myDeskBadge,
+  serviceDeskBadge,
+}: {
+  isNavActive: (item: NavItem) => boolean;
+  isComplianceLocked: boolean;
+  location: string;
+  myDeskBadge: number;
+  serviceDeskBadge: number;
+}) {
+  const { open } = useSidebar();
+
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_cc_section_open");
+      if (stored === null) return location.startsWith("/admin/my-desk") || location.startsWith("/admin/service-desk");
+      return stored !== "false";
+    } catch { return true; }
+  });
+
+  useEffect(() => {
+    if ((location.startsWith("/admin/my-desk") || location.startsWith("/admin/service-desk")) && !expanded) {
+      setExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem("admin_cc_section_open", String(next)); } catch {}
+  };
+
+  const myDeskItem: NavItem = { href: "/admin/my-desk", label: "My Desk", icon: LayoutDashboard, roles: [], badge: myDeskBadge > 0 ? myDeskBadge : undefined, badgeColor: "bg-amber-500" };
+  const serviceDeskItem: NavItem = { href: "/admin/service-desk", label: "Service Desk", icon: Headphones, roles: [], badge: serviceDeskBadge > 0 ? serviceDeskBadge : undefined, badgeColor: "bg-blue-500" };
+
+  const isCCActive = location.startsWith("/admin/my-desk") || location.startsWith("/admin/service-desk");
+
+  if (!open) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isCCActive} tooltip="Command Center">
+                <Link href="/admin/my-desk">
+                  <Monitor className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase hover:text-muted-foreground transition-colors"
+        data-testid="button-cc-section-toggle"
+      >
+        <span className="flex items-center gap-1.5">
+          <Monitor className="h-3 w-3" />
+          Command Center
+        </span>
+        <ChevronRight className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`} />
+      </button>
+      {expanded && (
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {/* My Desk */}
+            <NavItemButton
+              item={myDeskItem}
+              isActive={isNavActive(myDeskItem)}
+              isLocked={false}
+            />
+            {/* Service Desk */}
+            <NavItemButton
+              item={serviceDeskItem}
+              isActive={isNavActive(serviceDeskItem)}
+              isLocked={isComplianceLocked}
+            />
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
 }
 
 function ContentStudioSection({
@@ -420,7 +516,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   const isComplianceLocked = !isLockExempt && complianceStatus?.locked === true;
   const isOnTrainingPage = location === "/admin/hr/my-training" || location.startsWith("/admin/hr/my-training") ||
-    location.startsWith("/admin/growth");
+    location.startsWith("/admin/growth") ||
+    location === "/admin/my-desk"; // Command Center overview stays accessible when compliance-locked
   const isOnPolicyGatePage = location === "/admin/policy-gate";
 
   const userNeeds2FASetup = user && !user.totpEnabled;
@@ -528,6 +625,37 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     },
     refetchInterval: 60000,
     enabled: !!user && perfEnabled,
+  });
+
+  // My own pending leave requests — badge on My Desk sidebar item
+  const { data: myPendingLeavesCount } = useQuery<number>({
+    queryKey: ["/api/hr/leave-requests/my", "pending-sidebar-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/leave-requests/my", { credentials: "include" });
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return Array.isArray(data) ? data.filter((r: any) => r.status === "pending").length : 0;
+      } catch { return 0; }
+    },
+    refetchInterval: 120000,
+    enabled: !!user,
+  });
+
+  // Service Desk open requests count — badge on Service Desk sidebar item
+  const { data: serviceDeskOpenCount } = useQuery<number>({
+    queryKey: ["/api/service-desk/open-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/service-desk/open-count", { credentials: "include" });
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return typeof data?.count === "number" ? data.count : 0;
+      } catch { return 0; }
+    },
+    refetchInterval: 120000,
+    enabled: !!user,
+    staleTime: 60000,
   });
 
   // Leave approvals badge for managers
@@ -641,13 +769,6 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   const personalNavItems: NavItem[] = [
     {
-      href: "/admin/hr",
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      roles: ["all"],
-      badge: undefined,
-    },
-    {
       href: "/admin/profile",
       label: "Profile",
       icon: UserCircle,
@@ -721,7 +842,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   const isNavActive = (item: NavItem) => {
     const href = item.href;
-    if (href === "/admin/hr") return location === "/admin/hr" || location.startsWith("/admin/hr") && !location.startsWith("/admin/hr/my-team") && !location.startsWith("/admin/hr/people") && !location.startsWith("/admin/hr/team-attendance") && !location.startsWith("/admin/hr/leave-approvals") && !location.startsWith("/admin/hr/training-progress");
+    if (href === "/admin/my-desk") return location === "/admin/my-desk" || location.startsWith("/admin/my-desk");
+    if (href === "/admin/service-desk") return location === "/admin/service-desk" || location.startsWith("/admin/service-desk");
     if (href === "/admin/profile") return location === "/admin/profile" || location.startsWith("/admin/profile");
     if (href === "/admin/growth") return location === "/admin/growth" || location.startsWith("/admin/growth") || location.startsWith("/admin/performance") || location.startsWith("/admin/hr/my-training");
     if (href === "/admin/hr/my-team") return location === "/admin/hr/my-team" || location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/hr/team-attendance") || location.startsWith("/admin/hr/leave-approvals") || location.startsWith("/admin/hr/training-progress");
@@ -745,10 +867,23 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   };
 
   const breadcrumbLabel = () => {
+    if (location.startsWith("/admin/my-desk")) {
+      try {
+        const tab = new URLSearchParams(window.location.search).get("tab");
+        const tabLabels: Record<string, string> = {
+          "time-card": "Time Card",
+          "time-off": "Time Off",
+          "leave-calendar": "Leave Calendar",
+          "regularizations": "Regularizations",
+        };
+        return tab && tabLabels[tab] ? `My Desk — ${tabLabels[tab]}` : "My Desk";
+      } catch { return "My Desk"; }
+    }
+    if (location.startsWith("/admin/service-desk")) return "Service Desk";
     if (location === "/admin/hr" || location.startsWith("/admin/hr")) {
       const path = location.replace("/admin/hr", "").replace(/^\//, "");
-      if (!path) return "My Work";
-      return path.split("/").pop()?.replace(/-/g, " ") || "My Work";
+      if (!path) return "My Desk";
+      return path.split("/").pop()?.replace(/-/g, " ") || "My Desk";
     }
     if (location.startsWith("/admin/profile")) return "My Profile";
     if (location.startsWith("/admin/growth")) return "My Growth";
@@ -797,6 +932,15 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
             </SidebarHeader>
 
             <SidebarContent>
+              {/* COMMAND CENTER — My Desk + Service Desk */}
+              <CommandCenterSection
+                isNavActive={isNavActive}
+                isComplianceLocked={isComplianceLocked}
+                location={location}
+                myDeskBadge={myPendingLeavesCount ?? 0}
+                serviceDeskBadge={serviceDeskOpenCount ?? 0}
+              />
+
               {/* PERSONAL section — visible to all */}
               <SidebarGroup>
                 <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
@@ -987,8 +1131,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   num: 2,
                   icon: Clock,
                   label: "Punch In, Punch Out & Breaks",
-                  href: "/admin/hr",
-                  desc: "My Work → Attendance tab. Hit Punch In to start your day. Once punched in, you can log a Lunch break (30 min) and up to 2 Tea breaks (15 min each).",
+                  href: "/admin/my-desk",
+                  desc: "My Desk → Time Card tab. Hit Punch In to start your day. Once punched in, you can log a Lunch break (30 min) and up to 2 Tea breaks (15 min each).",
                   tip: "Punch in every working day — late arrivals are visible to your manager.",
                   tipColor: "text-blue-600 dark:text-blue-400",
                   show: true,
@@ -997,8 +1141,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   num: 3,
                   icon: CalendarOff,
                   label: "Apply for Leave",
-                  href: "/admin/hr",
-                  desc: "My Work → Leaves tab shows your EL / SL balance and lets you submit a leave request. Your manager is notified to approve or reject it.",
+                  href: "/admin/my-desk",
+                  desc: "My Desk → Time Off tab shows your EL / SL balance and lets you submit a leave request. Your manager is notified to approve or reject it.",
                   tip: (user?.role === "manager" || user?.role === "hr" || user?.role === "operations")
                     ? "You can also approve your team's requests from this tab."
                     : undefined,
@@ -1021,8 +1165,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   num: 5,
                   icon: MessageCircle,
                   label: "Attendance Issue? Raise a Ticket",
-                  href: "/admin/hr",
-                  desc: "If a punch was missed or recorded incorrectly, go to My Work → Tickets tab and submit a correction request. Your manager will review and approve it.",
+                  href: "/admin/my-desk?tab=regularizations",
+                  desc: "If a punch was missed or recorded incorrectly, go to My Desk → Regularizations tab and raise a correction request. Your manager will review and approve it.",
                   tip: undefined,
                   tipColor: "",
                   show: true,
