@@ -49,6 +49,12 @@ The platform includes a comprehensive HR Portal System with:
 - **Internationalization**: Support for regional holidays and potentially other localized content.
 - **Email Integration**: Extensive use of transactional emails for various system events.
 
+### Database Schema & Migration Policy
+- **Single source of truth**: `shared/schema.ts`. Schema reaches the DB via `drizzle-kit push` (`npm run db:push`). Any column/table that startup "ensure" blocks in `server/index.ts` create MUST also be declared in `shared/schema.ts` — otherwise `db:push` treats it as an orphan and tries to DELETE it (data loss). Ensure-blocks are for idempotent backfills/seeds, not for owning columns that schema.ts doesn't know about.
+- **Drift guard**: `scripts/check-schema-drift.sh` (registered as the `schema-drift` validation) fails if the live DB diverges destructively from `shared/schema.ts`. It answers "No, abort" to every drizzle prompt, so it never applies a destructive change; it only flags drops/renames. Run it before any prod release.
+- **Merge guard**: `scripts/post-merge.sh` runs the same pre-flight before applying `db:push --force`, and aborts the merge on any destructive/ambiguous change. Note: drizzle's data-loss wording is "delete <x> column" (NOT "drop column") — guards must match that.
+- **Never** resolve a drizzle "is created or renamed" prompt as a rename — it is data-destructive. Never hand-run a generated migration file blindly against prod; the committed `migrations/` files are dormant (only applied when `RUN_MIGRATIONS=true`).
+
 ## External Dependencies
 
 ### Database

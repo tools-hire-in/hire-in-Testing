@@ -151,6 +151,13 @@ export const attendance = pgTable("attendance", {
   correctionSource: varchar("correction_source"),
   correctedById: varchar("corrected_by_id").references(() => adminUsers.id),
   correctionNote: text("correction_note"),
+  halfDay: boolean("half_day").notNull().default(false),
+  halfDayPart: varchar("half_day_part"),
+  exceptionStatus: varchar("exception_status"),
+  exceptionStandardHours: numeric("exception_standard_hours", { precision: 5, scale: 2 }),
+  exceptionComment: text("exception_comment"),
+  exceptionResolvedBy: varchar("exception_resolved_by").references(() => adminUsers.id),
+  exceptionResolvedAt: timestamp("exception_resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -881,6 +888,8 @@ export const checkIns = pgTable("check_ins", {
   rating: integer("rating"),
   reviewScores: jsonb("review_scores"),
   completedAt: timestamp("completed_at"),
+  notifiedAt: timestamp("notified_at"),
+  managerNotifiedAt: timestamp("manager_notified_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1098,6 +1107,7 @@ export const trackAssignments = pgTable("track_assignments", {
   exceptionGrantedById: varchar("exception_granted_by_id").references(() => adminUsers.id),
   exceptionGrantedAt: timestamp("exception_granted_at"),
   exceptionReason: text("exception_reason"),
+  signedVersion: integer("signed_version"),
 });
 
 // Per-section progress for an assignment
