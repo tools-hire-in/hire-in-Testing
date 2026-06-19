@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Scale, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1311,6 +1311,354 @@ interface BackfillOverride {
   slOverride?: number;
 }
 
+interface CorrectionCandidate {
+  attendanceId: string | null;
+  userId: string;
+  employeeName: string;
+  date: string;
+  shiftId: string | null;
+  shiftName: string;
+  punchFound: boolean;
+  punchTime: string | null;
+  suggestedStatus: string;
+  isPayrollLocked: boolean;
+  isPendingProposal: boolean;
+  pendingChangeId: string | null;
+}
+
+function candidateKey(c: CorrectionCandidate): string {
+  return c.attendanceId
+    ? c.attendanceId
+    : `${c.userId}-${c.date}${c.pendingChangeId ? `-pc-${c.pendingChangeId}` : ""}`;
+}
+
+function AbsentCorrectionSection() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [fromDate, setFromDate] = useState(thirtyDaysAgo);
+  const [toDate, setToDate] = useState(todayStr);
+  const [candidates, setCandidates] = useState<CorrectionCandidate[] | null>(null);
+  const [rowStates, setRowStates] = useState<Record<string, { included: boolean; status: string }>>({});
+  const [auditNote, setAuditNote] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const dryRunMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/hr/absent-correction/dry-run", { fromDate, toDate });
+      return res.json();
+    },
+    onSuccess: (data: { candidates: CorrectionCandidate[] }) => {
+      setCandidates(data.candidates);
+      const states: Record<string, { included: boolean; status: string }> = {};
+      for (const c of data.candidates) {
+        if (!c.isPayrollLocked) {
+          states[candidateKey(c)] = { included: c.punchFound, status: c.suggestedStatus };
+        }
+      }
+      setRowStates(states);
+      toast({ title: "Scan complete", description: `${data.candidates.length} absent record${data.candidates.length !== 1 ? "s" : ""} found in range.` });
+    },
+    onError: (err: any) => toast({ title: "Scan failed", description: err.message, variant: "destructive" }),
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const corrections = (candidates ?? [])
+        .filter(c => !c.isPayrollLocked && rowStates[candidateKey(c)]?.included)
+        .map(c => ({
+          attendanceId: c.attendanceId,
+          userId: c.userId,
+          attendanceDate: c.date,
+          newStatus: rowStates[candidateKey(c)]?.status ?? c.suggestedStatus,
+          isPendingProposal: c.isPendingProposal,
+          pendingChangeId: c.pendingChangeId,
+        }));
+      const res = await apiRequest("POST", "/api/admin/hr/absent-correction/apply", { corrections, auditNote });
+      return res.json();
+    },
+    onSuccess: (data: { correctedCount: number; message: string }) => {
+      setShowConfirm(false);
+      toast({ title: "Corrections applied", description: data.message });
+      setCandidates(null);
+      setRowStates({});
+      setAuditNote("");
+    },
+    onError: (err: any) => {
+      setShowConfirm(false);
+      toast({ title: "Failed to apply corrections", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (!["super_admin", "hr"].includes(user?.role || "")) return null;
+
+  const unlocked = (candidates ?? []).filter(c => !c.isPayrollLocked);
+  const selectedCount = Object.values(rowStates).filter(s => s.included).length;
+  const lockedCount = (candidates ?? []).filter(c => c.isPayrollLocked).length;
+  const allUnlockedSelected = unlocked.length > 0 && selectedCount === unlocked.length;
+  const canApply = selectedCount > 0 && auditNote.trim().length >= 20;
+  const manualOverrides = (candidates ?? []).filter(
+    c => rowStates[candidateKey(c)]?.included && rowStates[candidateKey(c)]?.status !== c.suggestedStatus
+  );
+
+  return (
+    <div className="pt-4 mt-4 border-t space-y-4">
+      <div>
+        <p className="font-medium text-sm mb-1">Absent Record Correction</p>
+        <p className="text-xs text-muted-foreground">
+          Bulk-correct attendance records that were incorrectly marked absent — e.g. overnight-shift employees missed by the absence sweep.
+          Months with an approved or sent payroll report are read-only.
+        </p>
+      </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">From</Label>
+            <Input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="w-36 text-xs"
+              data-testid="input-absent-from-date"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">To</Label>
+            <Input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="w-36 text-xs"
+              data-testid="input-absent-to-date"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => dryRunMutation.mutate()}
+            disabled={dryRunMutation.isPending}
+            data-testid="button-absent-dry-run"
+          >
+            {dryRunMutation.isPending ? "Scanning…" : "Dry Run (Preview)"}
+          </Button>
+        </div>
+
+        {candidates !== null && (
+          <div className="space-y-3">
+            {candidates.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">
+                No absent records found in the selected date range.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
+                  <span><strong className="text-foreground">{candidates.length}</strong> absent records found</span>
+                  <span className="text-green-700 dark:text-green-400"><strong>{selectedCount}</strong> selected to correct</span>
+                  {lockedCount > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Lock className="h-3 w-3" /><strong>{lockedCount}</strong> payroll-locked (read-only)
+                    </span>
+                  )}
+                </div>
+
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted z-10">
+                      <tr className="border-b">
+                        <th className="py-2 px-2 text-center w-8">
+                          <Checkbox
+                            checked={allUnlockedSelected}
+                            onCheckedChange={(v) => {
+                              const next = { ...rowStates };
+                              for (const c of unlocked) {
+                                if (next[candidateKey(c)]) {
+                                  next[candidateKey(c)] = { ...next[candidateKey(c)], included: !!v };
+                                }
+                              }
+                              setRowStates(next);
+                            }}
+                            data-testid="checkbox-select-all-absent"
+                          />
+                        </th>
+                        <th className="text-left py-2 px-2 font-medium">Employee</th>
+                        <th className="text-left py-2 px-2 font-medium">Date</th>
+                        <th className="text-left py-2 px-2 font-medium">Shift</th>
+                        <th className="text-left py-2 px-2 font-medium">Punch Found</th>
+                        <th className="text-left py-2 px-2 font-medium">New Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {candidates.map((c, i) => {
+                        const key = candidateKey(c);
+                        const rs = rowStates[key];
+                        const isEdited = rs && rs.status !== c.suggestedStatus;
+                        return (
+                          <tr
+                            key={key}
+                            className={`border-b last:border-0 ${
+                              c.isPayrollLocked
+                                ? "opacity-50 bg-muted/30"
+                                : isEdited
+                                  ? "bg-amber-50 dark:bg-amber-950/30 border-l-2 border-l-amber-400"
+                                  : rs?.included
+                                    ? "hover:bg-muted/40"
+                                    : "opacity-60 hover:bg-muted/40"
+                            }`}
+                            data-testid={`absent-row-${i}`}
+                          >
+                            <td className="py-1.5 px-2 text-center">
+                              {c.isPayrollLocked ? (
+                                <Lock className="h-3 w-3 text-muted-foreground mx-auto" />
+                              ) : (
+                                <Checkbox
+                                  checked={rs?.included ?? false}
+                                  onCheckedChange={(v) =>
+                                    setRowStates(prev => ({
+                                      ...prev,
+                                      [key]: { ...prev[key], included: !!v },
+                                    }))
+                                  }
+                                  data-testid={`checkbox-absent-include-${i}`}
+                                />
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 font-medium">
+                              {c.employeeName}
+                              {c.isPendingProposal && (
+                                <span className="ml-1.5 px-1 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700" title="Pending absent sweep proposal — not yet applied">
+                                  Pending
+                                </span>
+                              )}
+                              {isEdited && <span className="ml-1 text-amber-600 dark:text-amber-400" title="Status overridden">✎</span>}
+                            </td>
+                            <td className="py-1.5 px-2 text-muted-foreground font-mono">{c.date}</td>
+                            <td className="py-1.5 px-2 text-muted-foreground">{c.shiftName}</td>
+                            <td className="py-1.5 px-2">
+                              {c.punchFound ? (
+                                <span className="text-green-700 dark:text-green-400 font-medium">
+                                  {c.punchTime} IST
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2">
+                              {c.isPayrollLocked ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-muted border text-muted-foreground">
+                                  <Lock className="h-2.5 w-2.5" /> Locked
+                                </span>
+                              ) : (
+                                <select
+                                  value={rs?.status ?? c.suggestedStatus}
+                                  onChange={e =>
+                                    setRowStates(prev => ({
+                                      ...prev,
+                                      [key]: { ...prev[key], status: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!rs?.included}
+                                  className="border rounded px-1 py-0.5 text-xs bg-background disabled:opacity-50"
+                                  data-testid={`select-absent-status-${i}`}
+                                >
+                                  <option value="present">Present</option>
+                                  <option value="late">Late</option>
+                                  <option value="short_day">Short Day</option>
+                                  <option value="half_day">Half Day</option>
+                                </select>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  <strong className="text-foreground">{selectedCount}</strong> record{selectedCount !== 1 ? "s" : ""} to correct
+                  {lockedCount > 0 && <>, <strong className="text-amber-600 dark:text-amber-400">{lockedCount}</strong> locked (read-only)</>}
+                </div>
+
+                {selectedCount > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium" htmlFor="absent-audit-note">
+                      Audit note <span className="text-destructive">*</span> <span className="text-muted-foreground font-normal">(minimum 20 characters)</span>
+                    </Label>
+                    <Textarea
+                      id="absent-audit-note"
+                      value={auditNote}
+                      onChange={e => setAuditNote(e.target.value)}
+                      placeholder="Explain why these records are being corrected (e.g. 'Overnight shift employees incorrectly marked absent by sweep on 2026-06-18 — punches confirmed')…"
+                      className="text-xs min-h-[72px]"
+                      data-testid="textarea-absent-audit-note"
+                    />
+                    {auditNote.trim().length > 0 && auditNote.trim().length < 20 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {20 - auditNote.trim().length} more character{20 - auditNote.trim().length !== 1 ? "s" : ""} required
+                      </p>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => setShowConfirm(true)}
+                      disabled={!canApply}
+                      data-testid="button-absent-open-confirm"
+                    >
+                      Confirm &amp; Apply Corrections ({selectedCount})
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Bulk Absent Correction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              You are about to correct <strong>{selectedCount}</strong> attendance record{selectedCount !== 1 ? "s" : ""}.
+              Each selected absent record will be updated to the chosen status and marked with your audit note.
+            </p>
+            {manualOverrides.length > 0 && (
+              <div className="border rounded-md p-2 bg-amber-50 dark:bg-amber-950/30 space-y-1">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300">Manually overridden statuses:</p>
+                {manualOverrides.map(c => (
+                  <div key={candidateKey(c)} className="text-xs text-amber-700 dark:text-amber-400">
+                    <strong>{c.employeeName}</strong> {c.date}: {c.suggestedStatus} → {rowStates[candidateKey(c)]?.status}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="border rounded-md p-2 bg-muted/50 text-xs">
+              <span className="font-medium">Audit note: </span>{auditNote}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This operation is idempotent — running it again on already-corrected records with the same status has no effect.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirm(false)}>Cancel</Button>
+            <Button
+              onClick={() => applyMutation.mutate()}
+              disabled={applyMutation.isPending}
+              data-testid="button-absent-apply-confirm"
+            >
+              {applyMutation.isPending ? "Applying…" : "Confirm & Apply"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function DataMaintenanceSection() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1364,7 +1712,7 @@ function DataMaintenanceSection() {
     },
   });
 
-  if (user?.role !== "super_admin") return null;
+  if (!["super_admin", "hr"].includes(user?.role || "")) return null;
 
   function setElOverride(userId: string, computedEl: number, value: string) {
     const num = parseFloat(value);
@@ -1431,6 +1779,7 @@ function DataMaintenanceSection() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {user?.role === "super_admin" && (<>
         <div>
           <p className="font-medium text-sm mb-1">Backfill Historical Leave Accruals</p>
           <p className="text-xs text-muted-foreground mb-3">
@@ -1583,6 +1932,8 @@ function DataMaintenanceSection() {
             )}
           </div>
         )}
+        </>)}
+        <AbsentCorrectionSection />
       </CardContent>
 
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>

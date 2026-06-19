@@ -394,3 +394,22 @@ export function isBlackoutDate(attendanceDate: string, blackoutDays: number): bo
   const lastDayOfMonth = new Date(year, month, 0).getDate();
   return day > lastDayOfMonth - blackoutDays;
 }
+
+/**
+ * Returns true when the given month is payroll-locked — i.e. a salary_report_runs
+ * row exists for that year/month with status 'approved' or 'sent'.
+ * Used by bulk-correction tools to prevent edits to closed payroll periods.
+ */
+export async function isMonthPayrollLocked(year: number, month: number): Promise<boolean> {
+  const { salaryReportRuns } = await import("@shared/schema");
+  const { and: andOp, eq: eqOp, inArray: inArrayOp } = await import("drizzle-orm");
+  const rows = await db.select({ id: salaryReportRuns.id })
+    .from(salaryReportRuns)
+    .where(andOp(
+      eqOp(salaryReportRuns.year, year),
+      eqOp(salaryReportRuns.month, month),
+      inArrayOp(salaryReportRuns.status, ["approved", "sent"]),
+    ))
+    .limit(1);
+  return rows.length > 0;
+}

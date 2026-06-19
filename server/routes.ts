@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -3785,6 +3785,383 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[backfill] Leave accrual backfill failed:", error);
       res.status(500).json({ error: error.message || "Failed to run leave accrual backfill" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ABSENT RECORD CORRECTION TOOL (HR + Super Admin)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  app.post("/api/admin/hr/absent-correction/dry-run", requireAuth, async (req, res) => {
+    // Explicitly restrict to hr and super_admin only — admin is intentionally excluded
+    if (!["hr", "super_admin"].includes(req.session.role!)) {
+      return res.status(403).json({ error: "HR or Super Admin access required" });
+    }
+    try {
+      const { fromDate, toDate } = req.body as { fromDate?: string; toDate?: string };
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ error: "fromDate and toDate are required" });
+      }
+
+      const { isMonthPayrollLocked, computeLateStatus } = await import("./attendancePolicy");
+
+      // Query 1: direct absent attendance records
+      // Query 2: pending absent proposals from the absent sweep (pending_changes)
+      // Both sets are combined into a single candidates list.
+      const rows = await db.execute(sql`
+        SELECT
+          a.id              AS attendance_id,
+          a.user_id,
+          a.date,
+          a.punch_in        AS absent_record_punch_in,
+          u.first_name,
+          u.last_name,
+          u.shift_id,
+          s.display_label   AS shift_name,
+          p_prev.punch_in   AS prev_day_punch_in,
+          false             AS is_pending_proposal,
+          NULL::text        AS pending_change_id
+        FROM attendance a
+        JOIN admin_users u ON u.id = a.user_id AND u.deleted_at IS NULL
+        LEFT JOIN shifts s ON s.id = u.shift_id
+        LEFT JOIN attendance p_prev
+          ON p_prev.user_id = a.user_id
+          AND p_prev.date = to_char((a.date::date - INTERVAL '1 day'), 'YYYY-MM-DD')
+          AND p_prev.punch_in IS NOT NULL
+        WHERE a.status = 'absent'
+          AND a.date >= ${fromDate}
+          AND a.date <= ${toDate}
+          AND u.is_active = true
+
+        UNION ALL
+
+        SELECT
+          COALESCE(a2.id, NULL)   AS attendance_id,
+          pc.target_user_id       AS user_id,
+          pc.run_date             AS date,
+          a2.punch_in             AS absent_record_punch_in,
+          u2.first_name,
+          u2.last_name,
+          u2.shift_id,
+          s2.display_label        AS shift_name,
+          p2.punch_in             AS prev_day_punch_in,
+          true                    AS is_pending_proposal,
+          pc.id                   AS pending_change_id
+        FROM pending_changes pc
+        JOIN admin_users u2 ON u2.id = pc.target_user_id AND u2.deleted_at IS NULL
+        LEFT JOIN shifts s2 ON s2.id = u2.shift_id
+        LEFT JOIN attendance a2 ON a2.id = pc.target_record_id
+        LEFT JOIN attendance p2
+          ON p2.user_id = pc.target_user_id
+          AND p2.date = to_char((pc.run_date::date - INTERVAL '1 day'), 'YYYY-MM-DD')
+          AND p2.punch_in IS NOT NULL
+        WHERE pc.source_job = 'absent_sweep'
+          AND pc.target_table = 'attendance'
+          AND pc.field = 'status'
+          AND pc.proposed_value = 'absent'
+          AND pc.status = 'pending'
+          AND pc.run_date >= ${fromDate}
+          AND pc.run_date <= ${toDate}
+          AND u2.is_active = true
+
+        ORDER BY date DESC, first_name ASC
+      `);
+
+      // Cache payroll-lock lookups to avoid repeated DB hits per month
+      const lockCache: Record<string, boolean> = {};
+      async function checkLock(date: string) {
+        const [yr, mo] = date.split("-");
+        const key = `${yr}-${mo}`;
+        if (lockCache[key] === undefined) {
+          lockCache[key] = await isMonthPayrollLocked(parseInt(yr), parseInt(mo));
+        }
+        return lockCache[key];
+      }
+
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      function fmtPunchIST(ts: Date | null | undefined): string | null {
+        if (!ts) return null;
+        const ist = new Date(new Date(ts).getTime() + IST_OFFSET_MS);
+        const hh = String(ist.getUTCHours()).padStart(2, "0");
+        const mm = String(ist.getUTCMinutes()).padStart(2, "0");
+        return `${hh}:${mm}`;
+      }
+
+      const candidates = [];
+      for (const r of rows.rows as any[]) {
+        const punchFound = !!(r.absent_record_punch_in || r.prev_day_punch_in);
+        const rawPunch = r.absent_record_punch_in || r.prev_day_punch_in;
+        const punchTime = fmtPunchIST(rawPunch);
+        const isPayrollLocked = await checkLock(r.date as string);
+
+        let suggestedStatus = "present";
+        if (punchFound && rawPunch && r.shift_id) {
+          try {
+            const lateResult = await computeLateStatus(r.shift_id, new Date(rawPunch));
+            if (lateResult) suggestedStatus = lateResult.status;
+          } catch {
+            // Fall back to "present"
+          }
+        }
+
+        candidates.push({
+          attendanceId: r.attendance_id ?? null,
+          userId: r.user_id,
+          employeeName: `${r.first_name} ${r.last_name}`.trim(),
+          date: r.date,
+          shiftId: r.shift_id ?? null,
+          shiftName: r.shift_name ?? "—",
+          punchFound,
+          punchTime,
+          suggestedStatus,
+          isPayrollLocked,
+          isPendingProposal: !!r.is_pending_proposal,
+          pendingChangeId: r.pending_change_id ?? null,
+        });
+      }
+
+      res.json({ candidates, fromDate, toDate });
+    } catch (error: any) {
+      console.error("[absent-correction] dry-run failed:", error);
+      res.status(500).json({ error: error.message || "Dry run failed" });
+    }
+  });
+
+  app.post("/api/admin/hr/absent-correction/apply", requireAuth, async (req, res) => {
+    // Explicitly restrict to hr and super_admin only — admin is intentionally excluded
+    if (!["hr", "super_admin"].includes(req.session.role!)) {
+      return res.status(403).json({ error: "HR or Super Admin access required" });
+    }
+    try {
+      const { corrections, auditNote } = req.body as {
+        corrections?: Array<{
+          attendanceId: string | null;
+          userId: string;
+          attendanceDate: string;
+          newStatus: string;
+          newPunchIn?: string;
+          newPunchOut?: string;
+          isPendingProposal?: boolean;
+          pendingChangeId?: string | null;
+        }>;
+        auditNote?: string;
+      };
+
+      if (!Array.isArray(corrections) || corrections.length === 0) {
+        return res.status(400).json({ error: "corrections must be a non-empty array" });
+      }
+      if (!auditNote || auditNote.trim().length < 20) {
+        return res.status(400).json({ error: "auditNote is required and must be at least 20 characters" });
+      }
+
+      const actorId = req.session.userId!;
+      const { isMonthPayrollLocked } = await import("./attendancePolicy");
+
+      // ── PRE-VALIDATION PHASE ──────────────────────────────────────────────
+      // Fetch every DB record first, then use the authoritative DB-sourced date
+      // for payroll-lock checks — never trust the client-supplied attendanceDate.
+      const lockCache: Record<string, boolean> = {};
+      async function checkLock(date: string) {
+        const [yr, mo] = date.split("-");
+        const key = `${yr}-${mo}`;
+        if (lockCache[key] === undefined) {
+          lockCache[key] = await isMonthPayrollLocked(parseInt(yr), parseInt(mo));
+        }
+        return lockCache[key];
+      }
+
+      type AttendanceRow = typeof attendance.$inferSelect;
+      type PendingRow = { id: string; target_user_id: string; run_date: string; target_record_id: string | null; status: string };
+      type Enriched = {
+        c: (typeof corrections)[number];
+        existing: AttendanceRow | null;
+        pendingRow: PendingRow | null;
+        dbDate: string;
+        dbUserId: string;
+        alreadyIdempotent: boolean;
+      };
+      const enriched: Enriched[] = [];
+      const validationErrors: string[] = [];
+
+      for (const c of corrections) {
+        // ── Step 1: Fetch DB records to get authoritative date + userId ────
+        let existing: AttendanceRow | null = null;
+        let pendingRow: PendingRow | null = null;
+        let dbDate = c.attendanceDate;
+        let dbUserId = c.userId; // will be overwritten by DB value
+
+        if (c.attendanceId) {
+          const [row] = await db.select()
+            .from(attendance)
+            .where(eq(attendance.id, c.attendanceId))
+            .limit(1);
+          if (!row) {
+            validationErrors.push(`${c.attendanceDate}: attendance record ${c.attendanceId} not found`);
+            continue;
+          }
+          existing = row;
+          dbDate = existing.date;
+          dbUserId = existing.userId;
+        }
+
+        if (c.isPendingProposal && c.pendingChangeId) {
+          // Fetch and fully validate the pending_change row — must be an absent-sweep proposal
+          const pcResult = await db.execute(sql`
+            SELECT id, target_user_id, run_date, target_record_id, status
+            FROM pending_changes
+            WHERE id = ${c.pendingChangeId}
+              AND source_job = 'absent_sweep'
+              AND target_table = 'attendance'
+              AND field = 'status'
+              AND proposed_value = 'absent'
+            LIMIT 1
+          `);
+          if (!pcResult.rows[0]) {
+            validationErrors.push(`${c.attendanceDate}: pending change ${c.pendingChangeId} not found or is not a valid absent-sweep proposal`);
+            continue;
+          }
+          pendingRow = pcResult.rows[0] as PendingRow;
+          if (!c.attendanceId) {
+            dbDate = pendingRow.run_date;
+            dbUserId = pendingRow.target_user_id;
+          }
+          // If attendance record not yet fetched via attendanceId, try via pending_change's target_record_id
+          if (!existing && pendingRow.target_record_id) {
+            const [attRow] = await db.select()
+              .from(attendance)
+              .where(eq(attendance.id, pendingRow.target_record_id))
+              .limit(1);
+            if (attRow) {
+              existing = attRow;
+              dbDate = existing.date;
+              dbUserId = existing.userId;
+            }
+          }
+        }
+
+        // ── Step 2: Payroll-lock check using DB-sourced date ──────────────
+        if (await checkLock(dbDate)) {
+          validationErrors.push(`${dbDate} is in a payroll-locked month — cannot correct`);
+          continue;
+        }
+
+        // ── Step 3: Idempotency checks ────────────────────────────────────
+        // (a) Attendance record already corrected to the target status
+        const attendanceAlreadyCorrect = !!(
+          existing &&
+          existing.isCorrect === true &&
+          existing.status === c.newStatus
+        );
+        // (b) Pending proposal already handled (non-pending) — no-op, no new regularization
+        const pendingAlreadyHandled = !!(pendingRow && pendingRow.status !== "pending");
+        const alreadyIdempotent = attendanceAlreadyCorrect || pendingAlreadyHandled;
+
+        enriched.push({ c, existing, pendingRow, dbDate, dbUserId, alreadyIdempotent });
+      }
+
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          error: "Pre-validation failed — no records were modified",
+          details: validationErrors,
+        });
+      }
+
+      // ── APPLY PHASE (atomic transaction) ─────────────────────────────────
+      // Uses the same correction engine as regularization overrides:
+      //   1. Insert an approved attendanceRegularizations row for audit trail
+      //   2. Update attendance with corrected status/punches/totalHours
+      //   3. Reject pending_changes proposals to prevent re-application
+      let correctedCount = 0;
+
+      await db.transaction(async (tx) => {
+        for (const { c, existing, pendingRow, dbDate, dbUserId, alreadyIdempotent } of enriched) {
+          if (alreadyIdempotent) {
+            correctedCount++;
+            continue;
+          }
+
+          // Recompute punch times and totalHours (same logic as applyRegularizationOverride)
+          const punchIn = c.newPunchIn
+            ? new Date(c.newPunchIn)
+            : (existing?.punchIn ?? undefined);
+          const punchOut = c.newPunchOut
+            ? new Date(c.newPunchOut)
+            : (existing?.punchOut ?? undefined);
+          let totalHours: string | undefined;
+          if (punchIn && punchOut) {
+            const diffMs = punchOut.getTime() - punchIn.getTime();
+            if (diffMs > 0) totalHours = (diffMs / 3600000).toFixed(2);
+          }
+
+          // 1. Create an approved regularization record using DB-sourced userId (not client payload)
+          await tx.insert(attendanceRegularizations).values({
+            employeeId: dbUserId,
+            attendanceDate: dbDate,
+            requestedPunchIn: punchIn,
+            requestedPunchOut: punchOut,
+            requestType: "wrong_absent" as any,
+            reason: "bulk_absent_correction",
+            status: "approved" as any,
+            reviewedBy: actorId,
+            reviewerComment: auditNote.trim(),
+            reviewedAt: new Date(),
+          });
+
+          // 2. Update the attendance record atomically
+          if (existing) {
+            await tx.update(attendance).set({
+              status: c.newStatus as any,
+              punchIn: punchIn ?? existing.punchIn,
+              punchOut: punchOut ?? existing.punchOut,
+              totalHours: totalHours ?? existing.totalHours,
+              isCorrect: true,
+              correctionSource: "bulk_absent_correction",
+              correctedById: actorId,
+              correctionNote: auditNote.trim(),
+              updatedAt: new Date(),
+            }).where(eq(attendance.id, existing.id));
+          }
+
+          // 3. Reject the pending absent proposal so the sweep cannot re-apply it
+          // Use DB-validated pendingRow.id (not client-supplied pendingChangeId)
+          if (pendingRow && pendingRow.status === "pending") {
+            await tx.execute(sql`
+              UPDATE pending_changes
+              SET status = 'rejected',
+                  reviewed_by = ${actorId},
+                  reviewed_at = NOW(),
+                  review_note = ${`Bulk absent correction: ${auditNote.trim()}`}
+              WHERE id = ${pendingRow.id}
+                AND status = 'pending'
+            `);
+          }
+
+          correctedCount++;
+        }
+
+        // Single audit log entry covering the entire batch
+        await tx.insert(auditLogs).values({
+          actorId,
+          targetId: actorId,
+          action: "bulk_absent_correction",
+          changes: {
+            correctedCount,
+            totalSubmitted: corrections.length,
+            auditNote: auditNote.trim(),
+            dateRange: corrections.length > 0
+              ? { from: corrections[0].attendanceDate, to: corrections[corrections.length - 1].attendanceDate }
+              : null,
+          },
+        });
+      });
+
+      res.json({
+        correctedCount,
+        message: `${correctedCount} record${correctedCount !== 1 ? "s" : ""} corrected successfully.`,
+      });
+    } catch (error: any) {
+      console.error("[absent-correction] apply failed:", error);
+      res.status(500).json({ error: error.message || "Failed to apply corrections" });
     }
   });
 
