@@ -83,6 +83,8 @@ const StudioFinalApproval = lazy(() => import("@/pages/admin/studio/FinalApprova
 const StudioCMReview = lazy(() => import("@/pages/admin/studio/CMReview"));
 const StudioAuthorSignOff = lazy(() => import("@/pages/admin/studio/AuthorSignOff"));
 const AutomatedChanges = lazy(() => import("@/pages/admin/AutomatedChanges"));
+const HelpDesk = lazy(() => import("@/pages/admin/HelpDesk"));
+const HelpDeskTicket = lazy(() => import("@/pages/admin/HelpDeskTicket"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
@@ -205,6 +207,10 @@ function PublicRouter() {
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
 
+      {/* Help Desk */}
+      <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
+      <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
+
       {/* Content Studio */}
       <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>
       <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
@@ -304,6 +310,10 @@ function EmployeeRouter() {
 
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
+
+      {/* Help Desk */}
+      <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
+      <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
 
       {/* Content Studio */}
       <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>

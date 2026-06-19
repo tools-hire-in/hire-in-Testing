@@ -2579,3 +2579,136 @@ export interface StudioRoutingRules {
   defaultReviewerUserIds?: string[];
   rules: StudioRoutingRule[];
 }
+
+// ==========================================
+// INTERNAL HELP DESK (HIRD)
+// ==========================================
+
+export const internalRequestStatusEnum = pgEnum("internal_request_status", [
+  "pending_approval",
+  "assigned",
+  "in_progress",
+  "resolved",
+  "closed",
+  "rejected",
+]);
+
+export const internalRequestTypeEnum = pgEnum("internal_request_type", [
+  "access",
+  "hr",
+  "ops",
+  "general",
+]);
+
+export const internalRequestPriorityEnum = pgEnum("internal_request_priority", [
+  "p1",
+  "p2",
+  "p3",
+  "p4",
+]);
+
+export const internalRequests = pgTable("internal_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestNumber: varchar("request_number").notNull().unique(),
+  requesterId: varchar("requester_id").notNull().references(() => adminUsers.id),
+  requestedForId: varchar("requested_for_id").references(() => adminUsers.id),
+  type: internalRequestTypeEnum("type").notNull(),
+  title: varchar("title").notNull(),
+  description: text("description").notNull(),
+  priority: internalRequestPriorityEnum("priority").notNull().default("p3"),
+  status: internalRequestStatusEnum("status").notNull().default("pending_approval"),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  assignedToId: varchar("assigned_to_id").references(() => adminUsers.id),
+  departmentId: varchar("department_id").references(() => departments.id),
+  neededByDate: date("needed_by_date"),
+  templateData: jsonb("template_data"),
+  attachmentUrl: text("attachment_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const internalRequestComments = pgTable("internal_request_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => internalRequests.id),
+  authorId: varchar("author_id").notNull().references(() => adminUsers.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const internalRequestApprovals = pgTable("internal_request_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => internalRequests.id),
+  approverId: varchar("approver_id").notNull().references(() => adminUsers.id),
+  decision: varchar("decision").notNull(),
+  reason: text("reason"),
+  decidedAt: timestamp("decided_at").defaultNow(),
+});
+
+export const internalRequestAuditLog = pgTable("internal_request_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => internalRequests.id),
+  actorId: varchar("actor_id").notNull().references(() => adminUsers.id),
+  action: varchar("action").notNull(),
+  oldStatus: varchar("old_status"),
+  newStatus: varchar("new_status"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const internalRequestsRelations = relations(internalRequests, ({ one, many }) => ({
+  requester: one(adminUsers, { fields: [internalRequests.requesterId], references: [adminUsers.id], relationName: "hirdRequester" }),
+  manager: one(adminUsers, { fields: [internalRequests.managerId], references: [adminUsers.id], relationName: "hirdManager" }),
+  assignedTo: one(adminUsers, { fields: [internalRequests.assignedToId], references: [adminUsers.id], relationName: "hirdAssignee" }),
+  department: one(departments, { fields: [internalRequests.departmentId], references: [departments.id] }),
+  comments: many(internalRequestComments),
+  approvals: many(internalRequestApprovals),
+  auditLog: many(internalRequestAuditLog),
+}));
+
+export const internalRequestCommentsRelations = relations(internalRequestComments, ({ one }) => ({
+  request: one(internalRequests, { fields: [internalRequestComments.requestId], references: [internalRequests.id] }),
+  author: one(adminUsers, { fields: [internalRequestComments.authorId], references: [adminUsers.id], relationName: "hirdCommentAuthor" }),
+}));
+
+export const internalRequestApprovalsRelations = relations(internalRequestApprovals, ({ one }) => ({
+  request: one(internalRequests, { fields: [internalRequestApprovals.requestId], references: [internalRequests.id] }),
+  approver: one(adminUsers, { fields: [internalRequestApprovals.approverId], references: [adminUsers.id], relationName: "hirdApprover" }),
+}));
+
+export const internalRequestAuditLogRelations = relations(internalRequestAuditLog, ({ one }) => ({
+  request: one(internalRequests, { fields: [internalRequestAuditLog.requestId], references: [internalRequests.id] }),
+  actor: one(adminUsers, { fields: [internalRequestAuditLog.actorId], references: [adminUsers.id], relationName: "hirdAuditActor" }),
+}));
+
+export const insertInternalRequestSchema = createInsertSchema(internalRequests).omit({
+  id: true,
+  requestNumber: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  assignedToId: true,
+});
+
+export const insertInternalRequestCommentSchema = createInsertSchema(internalRequestComments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertInternalRequestApprovalSchema = createInsertSchema(internalRequestApprovals).omit({
+  id: true,
+  decidedAt: true,
+});
+
+export const insertInternalRequestAuditLogSchema = createInsertSchema(internalRequestAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InternalRequest = typeof internalRequests.$inferSelect;
+export type InsertInternalRequest = z.infer<typeof insertInternalRequestSchema>;
+export type InternalRequestComment = typeof internalRequestComments.$inferSelect;
+export type InsertInternalRequestComment = z.infer<typeof insertInternalRequestCommentSchema>;
+export type InternalRequestApproval = typeof internalRequestApprovals.$inferSelect;
+export type InsertInternalRequestApproval = z.infer<typeof insertInternalRequestApprovalSchema>;
+export type InternalRequestAuditLog = typeof internalRequestAuditLog.$inferSelect;
+export type InsertInternalRequestAuditLog = z.infer<typeof insertInternalRequestAuditLogSchema>;

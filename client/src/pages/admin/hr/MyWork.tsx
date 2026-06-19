@@ -7,8 +7,9 @@ import HRDashboard from "./HRDashboard";
 import Attendance from "./Attendance";
 import LeaveManagement from "./LeaveManagement";
 import HolidayCalendar from "./HolidayCalendar";
+import RequestsTab from "./RequestsTab";
 
-const TABS = ["dashboard", "attendance", "leaves", "holidays"] as const;
+const TABS = ["dashboard", "attendance", "leaves", "holidays", "requests"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -49,11 +50,12 @@ export default function MyWork() {
           <p className="text-sm text-muted-foreground">Your dashboard, attendance, leaves, and holidays</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-mywork">
-          <TabsList className="grid grid-cols-4 w-full max-w-lg">
+          <TabsList className="grid grid-cols-5 w-full max-w-2xl">
             <TabsTrigger value="dashboard" data-testid="tab-mywork-dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="attendance" data-testid="tab-mywork-attendance">Attendance</TabsTrigger>
             <TabsTrigger value="leaves" data-testid="tab-mywork-leaves">Leaves</TabsTrigger>
             <TabsTrigger value="holidays" data-testid="tab-mywork-holidays">Holidays</TabsTrigger>
+            <TabsTrigger value="requests" data-testid="tab-mywork-requests">Requests</TabsTrigger>
           </TabsList>
           <TabsContent value="dashboard" className="mt-4">
             <HRDashboard />
@@ -66,6 +68,9 @@ export default function MyWork() {
           </TabsContent>
           <TabsContent value="holidays" className="mt-4">
             <HolidayCalendar />
+          </TabsContent>
+          <TabsContent value="requests" className="mt-4">
+            <RequestsTab />
           </TabsContent>
         </Tabs>
       </div>

@@ -238,6 +238,12 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "studio.manage_settings": ["super_admin", "admin", "hr"],
   "system.featureFlags": ["super_admin", "admin"],
   "systemSettings": ["super_admin", "admin", "hr"],
+  "helpDesk.create": ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"],
+  "helpDesk.viewOwn": ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"],
+  "helpDesk.viewTeam": ["super_admin", "admin", "hr", "operations", "manager"],
+  "helpDesk.queue": ["super_admin", "admin", "hr", "operations"],
+  "helpDesk.resolve": ["super_admin", "admin", "hr", "operations"],
+  "helpDesk.approve": ["super_admin", "admin", "hr", "operations", "manager"],
 };
 
 // ============================================================================

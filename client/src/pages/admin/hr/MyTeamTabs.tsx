@@ -8,8 +8,9 @@ import TeamAttendance from "./TeamAttendance";
 import LeaveApprovals from "./LeaveApprovals";
 import TrainingProgress from "./TrainingProgress";
 import AttendanceApproval from "./AttendanceApproval";
+import TicketApprovalsTab from "./TicketApprovalsTab";
 
-const TABS = ["overview", "attendance", "leave-approvals", "training-progress", "attendance-approval"] as const;
+const TABS = ["overview", "attendance", "leave-approvals", "training-progress", "attendance-approval", "approvals"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -57,12 +58,13 @@ export default function MyTeamTabs() {
           <p className="text-sm text-muted-foreground">Team overview, attendance, leave approvals, training progress, and month-end approval</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-myteam">
-          <TabsList className="grid grid-cols-5 w-full max-w-3xl">
-            <TabsTrigger value="overview" data-testid="tab-team-overview">Overview</TabsTrigger>
-            <TabsTrigger value="attendance" data-testid="tab-team-attendance">Attendance</TabsTrigger>
-            <TabsTrigger value="leave-approvals" data-testid="tab-team-leave-approvals">Leave Approvals</TabsTrigger>
-            <TabsTrigger value="training-progress" data-testid="tab-team-training-progress">Training</TabsTrigger>
-            <TabsTrigger value="attendance-approval" data-testid="tab-team-attendance-approval">Month Approval</TabsTrigger>
+          <TabsList className="flex w-full max-w-4xl overflow-x-auto">
+            <TabsTrigger value="overview" className="flex-1" data-testid="tab-team-overview">Overview</TabsTrigger>
+            <TabsTrigger value="attendance" className="flex-1" data-testid="tab-team-attendance">Attendance</TabsTrigger>
+            <TabsTrigger value="leave-approvals" className="flex-1" data-testid="tab-team-leave-approvals">Leave Approvals</TabsTrigger>
+            <TabsTrigger value="training-progress" className="flex-1" data-testid="tab-team-training-progress">Training</TabsTrigger>
+            <TabsTrigger value="attendance-approval" className="flex-1" data-testid="tab-team-attendance-approval">Month Approval</TabsTrigger>
+            <TabsTrigger value="approvals" className="flex-1" data-testid="tab-team-approvals">Req. Approvals</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="mt-4">
             <MyTeam />
@@ -78,6 +80,9 @@ export default function MyTeamTabs() {
           </TabsContent>
           <TabsContent value="attendance-approval" className="mt-4">
             <AttendanceApproval />
+          </TabsContent>
+          <TabsContent value="approvals" className="mt-4">
+            <TicketApprovalsTab />
           </TabsContent>
         </Tabs>
       </div>

@@ -13,6 +13,89 @@ const SIGNOFF_HTML = `
 
 const SIGNOFF_TEXT = `\n\nBest regards,\nAlina Carter\nHR Manager · Hire'in Solutions\nalina.carter@hire-in.com`;
 
+export async function sendHelpDeskEmail(options: {
+  to: string;
+  firstName: string;
+  event: "submitted" | "approved" | "rejected" | "assigned" | "resolved" | "comment" | "closed" | "reopened";
+  requestNumber: string;
+  requestTitle: string;
+  requestType: string;
+  message?: string;
+  portalUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+
+    const eventLabels: Record<string, { subject: string; heading: string; color: string }> = {
+      submitted: { subject: "Request submitted", heading: "Your request has been submitted", color: "#3b82f6" },
+      approved: { subject: "Request approved", heading: "Your request has been approved", color: "#16a34a" },
+      rejected: { subject: "Request rejected", heading: "Your request was not approved", color: "#dc2626" },
+      assigned: { subject: "Request assigned & in progress", heading: "Your request is now in progress", color: "#7c3aed" },
+      resolved: { subject: "Request resolved — please confirm", heading: "Your request has been resolved", color: "#ea580c" },
+      comment: { subject: "New update on your request", heading: "An update was added to your request", color: "#0891b2" },
+      closed: { subject: "Request closed", heading: "Your request has been closed", color: "#475569" },
+      reopened: { subject: "Request reopened", heading: "A request has been reopened", color: "#b45309" },
+    };
+
+    const ev = eventLabels[options.event] || eventLabels.comment;
+    const typeLabel: Record<string, string> = { access: "Access & IT", hr: "HR", ops: "Operations", general: "General" };
+
+    // Escape user-controlled content before HTML interpolation
+    const esc = (s: string) => s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+    const safeTitle = esc(options.requestTitle);
+    const safeNum = esc(options.requestNumber);
+    const safeType = esc(typeLabel[options.requestType] || options.requestType);
+    const safeMsg = options.message ? esc(options.message) : null;
+
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `[HIRD] ${ev.subject} — ${safeNum}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #2c5282 100%); padding: 28px 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 700;">Hire&rsquo;in Solutions — Help Desk</h1>
+            <p style="color: #bfdbfe; margin: 6px 0 0; font-size: 13px;">HIRD Internal Request System</p>
+          </div>
+          <div style="padding: 32px;">
+            <div style="border-left: 4px solid ${ev.color}; padding-left: 16px; margin-bottom: 20px;">
+              <h2 style="color: #1e293b; margin: 0 0 4px; font-size: 18px;">${ev.heading}</h2>
+              <p style="color: #64748b; margin: 0; font-size: 13px;">${safeNum} &middot; ${safeType}</p>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
+              <p style="color: #475569; margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Request Title</p>
+              <p style="color: #1e293b; margin: 0; font-weight: 600;">${safeTitle}</p>
+            </div>
+            ${safeMsg ? `<p style="color: #475569; line-height: 1.6; margin: 0 0 24px;">${safeMsg}</p>` : ""}
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${options.portalUrl}" style="display: inline-block; background: #F47C20; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                View Request
+              </a>
+            </div>
+          </div>
+          ${SIGNOFF_HTML}
+          <div style="padding: 16px 32px; background: #f8fafc; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 11px; margin: 0;">This is an automated notification from the Hire&rsquo;in Internal Help Desk system.</p>
+          </div>
+        </div>
+      `,
+      text: `[HIRD] ${ev.heading}\n\nRequest: ${options.requestNumber}\nTitle: ${options.requestTitle}\n\n${options.message || ""}\n\nView at: ${options.portalUrl}${SIGNOFF_TEXT}`,
+    };
+
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send help desk email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 async function getUncachableSendGridClient() {
   const apiKey = process.env.SENDGRID_API_KEY_NEW;
   if (!apiKey) throw new Error('SENDGRID_API_KEY_NEW is not set');

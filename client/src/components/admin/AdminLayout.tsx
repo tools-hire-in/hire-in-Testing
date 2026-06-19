@@ -36,6 +36,7 @@ import {
   BarChart3,
   BookOpen,
   Radio,
+  LifeBuoy,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -552,6 +553,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole) && can("hr.users");
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
   const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
+  const hasHelpDeskAccess = ["super_admin", "admin", "hr", "operations"].includes(userRole) && can("helpDesk.queue");
   const hasStudioAccess = can("studio.view");
   const hasMarketingApproveAccess = can("studio.marketing_approve");
   const hasStudioAnalyticsAccess = can("studio.view_analytics");
@@ -606,6 +608,21 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   // (HR/admin/super_admin access training request management from People & HR → Training)
   const peopleHRTrainingBadge = ["hr", "admin", "super_admin"].includes(userRole) ? trainingReqBadge : 0;
   const peopleHRBadge = (pendingEndorseCount ?? 0) + peopleHRTrainingBadge;
+
+  // HIRD open ticket badge for resolver roles
+  const { data: hirdOpenData } = useQuery<{ count: number }>({
+    queryKey: ["/api/help-desk/open-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/help-desk/open-count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && ["super_admin", "admin", "hr", "operations"].includes(user?.role || ""),
+  });
+  const hirdOpenCount = hirdOpenData?.count ?? 0;
 
   // Salary report pending approval badge (admin/super_admin only)
   const { data: salaryRunPending } = useQuery<{ count: number }>({
@@ -686,6 +703,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: FileText,
       roles: ["super_admin", "admin"],
     }] : []),
+    ...(hasHelpDeskAccess ? [{
+      href: "/admin/help-desk",
+      label: "Help Desk",
+      icon: LifeBuoy,
+      badge: hirdOpenCount > 0 ? hirdOpenCount : undefined,
+      badgeColor: "bg-orange-500",
+      roles: ["super_admin", "admin", "hr", "operations"],
+    }] : []),
     ...(isSuperAdmin ? [{
       href: "/admin/automated-changes",
       label: "Automated Changes",
@@ -703,6 +728,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
+    if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/studio") return location === "/admin/studio";
     if (href === "/admin/studio/articles") return (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));

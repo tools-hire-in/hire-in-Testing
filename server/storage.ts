@@ -129,6 +129,18 @@ import {
   type InsertStudioGeneration,
   type StudioReviewAssignment,
   type InsertStudioReviewAssignment,
+  internalRequests,
+  internalRequestComments,
+  internalRequestApprovals,
+  internalRequestAuditLog,
+  type InternalRequest,
+  type InsertInternalRequest,
+  type InternalRequestComment,
+  type InsertInternalRequestComment,
+  type InternalRequestApproval,
+  type InsertInternalRequestApproval,
+  type InternalRequestAuditLog,
+  type InsertInternalRequestAuditLog,
 } from "@shared/schema";
 
 export interface StudioAnalytics {
@@ -544,6 +556,25 @@ export interface IStorage {
   getActiveNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]>;
   getAllNewsletterSubscribers(): Promise<StudioNewsletterSubscriber[]>;
   getNewsletterSubscriberCounts(): Promise<{ active: number; unsubscribed: number; suppressed: number }>;
+
+  // HIRD — Internal Help Desk
+  generateHirdRequestNumber(): Promise<string>;
+  createInternalRequest(data: InsertInternalRequest & { requestNumber: string }): Promise<InternalRequest>;
+  createInternalRequestWithNumber(data: InsertInternalRequest): Promise<InternalRequest>;
+  getInternalRequest(id: string): Promise<InternalRequest | undefined>;
+  getInternalRequestByNumber(requestNumber: string): Promise<InternalRequest | undefined>;
+  listInternalRequestsByRequester(requesterId: string): Promise<InternalRequest[]>;
+  listInternalRequestsForManager(managerId: string): Promise<InternalRequest[]>;
+  listInternalRequestsQueue(filters?: { status?: string; type?: string; assignedToId?: string; tab?: string; requesterId?: string }): Promise<InternalRequest[]>;
+  updateInternalRequest(id: string, updates: Partial<InternalRequest>): Promise<InternalRequest | undefined>;
+  addInternalRequestComment(data: InsertInternalRequestComment): Promise<InternalRequestComment>;
+  getInternalRequestComments(requestId: string): Promise<InternalRequestComment[]>;
+  addInternalRequestApproval(data: InsertInternalRequestApproval): Promise<InternalRequestApproval>;
+  listInternalRequestApprovals(requestId: string): Promise<InternalRequestApproval[]>;
+  addInternalRequestAuditEntry(data: InsertInternalRequestAuditLog): Promise<InternalRequestAuditLog>;
+  getInternalRequestAuditLog(requestId: string): Promise<InternalRequestAuditLog[]>;
+  getHirdStats(userId: string, role: string): Promise<{ open: number; pendingApproval: number; resolved: number; total: number }>;
+  getHirdOpenCount(): Promise<number>;
 }
 
 export type PublicInsightArticle = StudioArticle & {
@@ -4315,6 +4346,182 @@ export class DatabaseStorage implements IStorage {
       else active++;
     }
     return { active, unsubscribed, suppressed };
+  }
+
+  // =====================================================================
+  // HIRD — Internal Help Desk
+  // =====================================================================
+
+  async generateHirdRequestNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const prefix = `HIRD-${year}-`;
+    const result = await db
+      .select({ requestNumber: internalRequests.requestNumber })
+      .from(internalRequests)
+      .where(sql`${internalRequests.requestNumber} LIKE ${prefix + "%"}`)
+      .orderBy(desc(internalRequests.requestNumber))
+      .limit(1);
+    if (result.length === 0) return `${prefix}00001`;
+    const last = result[0].requestNumber;
+    const seq = parseInt(last.split("-").pop() || "0", 10);
+    return `${prefix}${String(seq + 1).padStart(5, "0")}`;
+  }
+
+  async createInternalRequest(data: InsertInternalRequest & { requestNumber: string }): Promise<InternalRequest> {
+    const [row] = await db.insert(internalRequests).values(data as any).returning();
+    return row;
+  }
+
+  async getInternalRequest(id: string): Promise<InternalRequest | undefined> {
+    const [row] = await db.select().from(internalRequests).where(eq(internalRequests.id, id));
+    return row;
+  }
+
+  async getInternalRequestByNumber(requestNumber: string): Promise<InternalRequest | undefined> {
+    const [row] = await db.select().from(internalRequests).where(eq(internalRequests.requestNumber, requestNumber));
+    return row;
+  }
+
+  async listInternalRequestsByRequester(requesterId: string): Promise<InternalRequest[]> {
+    return db
+      .select()
+      .from(internalRequests)
+      .where(eq(internalRequests.requesterId, requesterId))
+      .orderBy(desc(internalRequests.createdAt));
+  }
+
+  async listInternalRequestsForManager(managerId: string): Promise<InternalRequest[]> {
+    return db
+      .select()
+      .from(internalRequests)
+      .where(eq(internalRequests.managerId, managerId))
+      .orderBy(desc(internalRequests.createdAt));
+  }
+
+  async createInternalRequestWithNumber(data: InsertInternalRequest): Promise<InternalRequest> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(987654321)`);
+      const year = new Date().getFullYear();
+      const prefix = `HIRD-${year}-`;
+      const result = await tx
+        .select({ requestNumber: internalRequests.requestNumber })
+        .from(internalRequests)
+        .where(sql`${internalRequests.requestNumber} LIKE ${prefix + "%"}`)
+        .orderBy(desc(internalRequests.requestNumber))
+        .limit(1);
+      const requestNumber = result.length > 0
+        ? `${prefix}${String(parseInt(result[0].requestNumber.split("-").pop() || "0", 10) + 1).padStart(5, "0")}`
+        : `${prefix}00001`;
+      const [row] = await tx.insert(internalRequests).values({ ...data, requestNumber } as any).returning();
+      return row;
+    });
+  }
+
+  async listInternalRequestsQueue(filters?: { status?: string; type?: string; assignedToId?: string; tab?: string; requesterId?: string }): Promise<InternalRequest[]> {
+    const conditions: any[] = [];
+    if (filters?.type) conditions.push(eq(internalRequests.type, filters.type as any));
+    if (filters?.requesterId) conditions.push(eq(internalRequests.requesterId, filters.requesterId));
+
+    if (filters?.tab) {
+      switch (filters.tab) {
+        case "unassigned":
+          conditions.push(eq(internalRequests.status, "assigned" as any));
+          conditions.push(sql`${internalRequests.assignedToId} IS NULL`);
+          break;
+        case "mine":
+          if (filters.assignedToId) conditions.push(eq(internalRequests.assignedToId, filters.assignedToId));
+          break;
+        case "resolved":
+          conditions.push(sql`${internalRequests.status} IN ('resolved', 'closed')`);
+          break;
+        default: // "open"
+          conditions.push(sql`${internalRequests.status} NOT IN ('closed', 'rejected')`);
+      }
+    } else {
+      if (filters?.status) conditions.push(eq(internalRequests.status, filters.status as any));
+      if (filters?.assignedToId) conditions.push(eq(internalRequests.assignedToId, filters.assignedToId));
+    }
+
+    return db
+      .select()
+      .from(internalRequests)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(internalRequests.createdAt));
+  }
+
+  async updateInternalRequest(id: string, updates: Partial<InternalRequest>): Promise<InternalRequest | undefined> {
+    const [row] = await db
+      .update(internalRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(internalRequests.id, id))
+      .returning();
+    return row;
+  }
+
+  async addInternalRequestComment(data: InsertInternalRequestComment): Promise<InternalRequestComment> {
+    const [row] = await db.insert(internalRequestComments).values(data).returning();
+    return row;
+  }
+
+  async getInternalRequestComments(requestId: string): Promise<InternalRequestComment[]> {
+    return db
+      .select()
+      .from(internalRequestComments)
+      .where(eq(internalRequestComments.requestId, requestId))
+      .orderBy(asc(internalRequestComments.createdAt));
+  }
+
+  async addInternalRequestApproval(data: InsertInternalRequestApproval): Promise<InternalRequestApproval> {
+    const [row] = await db.insert(internalRequestApprovals).values(data as any).returning();
+    return row;
+  }
+
+  async listInternalRequestApprovals(requestId: string): Promise<InternalRequestApproval[]> {
+    return db
+      .select()
+      .from(internalRequestApprovals)
+      .where(eq(internalRequestApprovals.requestId, requestId))
+      .orderBy(asc(internalRequestApprovals.decidedAt));
+  }
+
+  async addInternalRequestAuditEntry(data: InsertInternalRequestAuditLog): Promise<InternalRequestAuditLog> {
+    const [row] = await db.insert(internalRequestAuditLog).values(data as any).returning();
+    return row;
+  }
+
+  async getInternalRequestAuditLog(requestId: string): Promise<InternalRequestAuditLog[]> {
+    return db
+      .select()
+      .from(internalRequestAuditLog)
+      .where(eq(internalRequestAuditLog.requestId, requestId))
+      .orderBy(asc(internalRequestAuditLog.createdAt));
+  }
+
+  async getHirdStats(userId: string, role: string): Promise<{ open: number; pendingApproval: number; resolved: number; total: number }> {
+    const resolverRoles = ["super_admin", "admin", "hr", "operations"];
+    const isResolver = resolverRoles.includes(role);
+    let rows: InternalRequest[];
+    if (isResolver) {
+      rows = await db.select().from(internalRequests);
+    } else if (role === "manager") {
+      rows = await db.select().from(internalRequests).where(
+        or(eq(internalRequests.requesterId, userId), eq(internalRequests.managerId, userId))
+      );
+    } else {
+      rows = await db.select().from(internalRequests).where(eq(internalRequests.requesterId, userId));
+    }
+    const open = rows.filter(r => ["pending_approval", "assigned", "in_progress"].includes(r.status)).length;
+    const pendingApproval = rows.filter(r => r.status === "pending_approval").length;
+    const resolved = rows.filter(r => ["resolved", "closed"].includes(r.status)).length;
+    return { open, pendingApproval, resolved, total: rows.length };
+  }
+
+  async getHirdOpenCount(): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(internalRequests)
+      .where(sql`${internalRequests.status} NOT IN ('closed', 'rejected')`);
+    return result?.count ?? 0;
   }
 
 }
