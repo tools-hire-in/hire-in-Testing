@@ -475,11 +475,22 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
-  // End-of-day absent sweep: runs at 23:59 IST every day
-  cron.schedule("59 23 * * *", async () => {
+  // Morning absent sweep: runs at 08:00 IST every day.
+  // By 08:00 IST all overnight shifts have ended:
+  //   - SHIFT_A DST (end 02:30) and STD (end 03:30) ended 4–5.5 h earlier.
+  //   - SHIFT_B DST (end 04:30) and STD (end 05:30) ended 2–3.5 h earlier.
+  //   - SHIFT_C DST (end 06:30) and STD (end 07:30) ended 0.5–1.5 h earlier.
+  // The sweep targets YESTERDAY'S IST date (the calendar day the shifts started —
+  // employees punched in on the prior evening). The overnight-shift guard remains as
+  // a belt-and-suspenders check for any edge case where a shift extends past 08:00.
+  cron.schedule("0 8 * * *", async () => {
     const { year, month, day } = getIstDateTime();
-    const todayStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    console.log(`[scheduler] Running end-of-day absent sweep for ${todayStr}...`);
+    // Compute yesterday's IST date (the shift start date for overnight shifts)
+    const todayDate = new Date(Date.UTC(year, month - 1, day));
+    const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
+    const yd = yesterdayDate.toISOString().slice(0, 10);
+    const todayStr = yd;
+    console.log(`[scheduler] Running early-morning absent sweep for ${todayStr} (yesterday's date)...`);
     try {
       const result = await runAbsentSweep(todayStr);
       if (result.skippedWeekend) {
@@ -1080,7 +1091,7 @@ export function startScheduler() {
   console.log("  - Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)");
   console.log("  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
-  console.log("  - End-of-day absent sweep: daily at 23:59 IST");
+  console.log("  - Absent sweep: daily at 08:00 IST (all shifts ended by then; targets yesterday's date)");
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
 }

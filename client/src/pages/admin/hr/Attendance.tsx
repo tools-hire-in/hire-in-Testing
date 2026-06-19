@@ -561,7 +561,12 @@ export default function Attendance() {
     refetchInterval: 60000,
   });
 
-  const { data: myShift } = useQuery<{ id: string; name: string; istStart: string; istEnd: string } | null>({
+  const { data: myShift } = useQuery<{
+    id: string; name: string; displayLabel: string;
+    istStart: string; istEnd: string; isDst: boolean;
+    usCoverage: string; usCoverageDst: string | null; usCoverageStd: string | null;
+    dstTransition: { date: string; newStart: string; newEnd: string } | null;
+  } | null>({
     queryKey: ["/api/hr/my-shift"],
     enabled: isAuthenticated,
   });
@@ -744,9 +749,27 @@ export default function Attendance() {
                       </p>
                       <p className="text-sm font-semibold mt-0.5 text-foreground">Today's Time Card</p>
                       {myShift && myShift.istStart && myShift.istEnd && (
-                        <p className="text-xs text-muted-foreground mt-1" data-testid="text-shift-info">
-                          Shift: {myShift.name} · {formatShiftTime(myShift.istStart)} – {formatShiftTime(myShift.istEnd)}
-                        </p>
+                        <div className="mt-1 space-y-0.5" data-testid="text-shift-info">
+                          <p className="text-xs text-muted-foreground">
+                            {myShift.displayLabel ?? myShift.name} · {formatShiftTime(myShift.istStart)} – {formatShiftTime(myShift.istEnd)} IST
+                          </p>
+                          {(myShift.usCoverageDst || myShift.usCoverageStd || myShift.usCoverage) && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <span>{myShift.isDst
+                                ? (myShift.usCoverageDst ?? myShift.usCoverage)
+                                : (myShift.usCoverageStd ?? myShift.usCoverage)
+                              }</span>
+                              <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                                {myShift.isDst ? "Summer schedule" : "Winter schedule"} · active
+                              </span>
+                            </p>
+                          )}
+                          {myShift.dstTransition && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                              Schedule changes on {myShift.dstTransition.date}: {formatShiftTime(myShift.dstTransition.newStart)} – {formatShiftTime(myShift.dstTransition.newEnd)} IST
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                     {isLoading ? (

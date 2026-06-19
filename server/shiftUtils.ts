@@ -8,6 +8,9 @@ export interface ShiftTiming {
   isDst: boolean;
   scheduledHours: number;
   gracePeriodMinutes: number;
+  usCoverage: string;
+  usCoverageDst: string | null;
+  usCoverageStd: string | null;
 }
 
 /** Return today's date string in IST (UTC+5:30) to avoid UTC boundary errors on DST transition days. */
@@ -37,7 +40,8 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
 
   const shiftRows = await db.execute(sql`
     SELECT id, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std,
-           scheduled_hours, grace_period_minutes
+           scheduled_hours, grace_period_minutes,
+           us_coverage, us_coverage_dst, us_coverage_std
     FROM shifts
     WHERE id = ${shiftId} AND is_active = true
     LIMIT 1
@@ -53,6 +57,9 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
     ist_end_std: string;
     scheduled_hours: number;
     grace_period_minutes: number | null;
+    us_coverage: string;
+    us_coverage_dst: string | null;
+    us_coverage_std: string | null;
   };
 
   return {
@@ -62,6 +69,9 @@ export async function getCurrentShiftTiming(shiftId: string): Promise<ShiftTimin
     isDst,
     scheduledHours: shift.scheduled_hours ?? 9,
     gracePeriodMinutes: shift.grace_period_minutes ?? 15,
+    usCoverage: shift.us_coverage,
+    usCoverageDst: shift.us_coverage_dst,
+    usCoverageStd: shift.us_coverage_std,
   };
 }
 
@@ -70,6 +80,8 @@ interface ShiftRow {
   name: string;
   display_label: string;
   us_coverage: string;
+  us_coverage_dst: string | null;
+  us_coverage_std: string | null;
   ist_start_dst: string;
   ist_end_dst: string;
   ist_start_std: string;
@@ -93,7 +105,7 @@ export async function getAllShiftsWithTiming() {
   }
 
   const shiftRows = await db.execute(sql`
-    SELECT id, name, display_label, us_coverage,
+    SELECT id, name, display_label, us_coverage, us_coverage_dst, us_coverage_std,
            ist_start_dst, ist_end_dst, ist_start_std, ist_end_std,
            scheduled_hours, grace_period_minutes, is_active
     FROM shifts
@@ -106,6 +118,8 @@ export async function getAllShiftsWithTiming() {
     name: s.name,
     displayLabel: s.display_label,
     usCoverage: s.us_coverage,
+    usCoverageDst: s.us_coverage_dst,
+    usCoverageStd: s.us_coverage_std,
     istStart: isDst ? s.ist_start_dst : s.ist_start_std,
     istEnd: isDst ? s.ist_end_dst : s.ist_end_std,
     istStartDst: s.ist_start_dst,

@@ -50,6 +50,7 @@ interface RegularizationRequest {
   reviewerName: string | null;
   reviewedAt: string | null;
   createdAt: string;
+  shiftCorrectionWarning?: boolean;
 }
 
 interface PolicyConfig {
@@ -104,6 +105,12 @@ function ReviewModal({
           <DialogTitle>Review Regularization Request</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 text-sm">
+          {request.shiftCorrectionWarning && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200" data-testid="alert-shift-correction-warning">
+              <span className="font-semibold shrink-0">⚠</span>
+              <span>This record predates a shift-time correction — verify the punch times manually before approving.</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 p-3 bg-muted/40 rounded-lg">
             <div><span className="text-muted-foreground">Employee</span><p className="font-medium">{request.employeeName}</p></div>
             <div><span className="text-muted-foreground">Date</span><p className="font-mono font-medium">{request.attendanceDate}</p></div>

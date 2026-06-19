@@ -22,6 +22,8 @@ interface ShiftBreakInfo {
   name: string;
   istStart: string;
   istEnd: string;
+  usCoverage?: string;
+  isDst?: boolean;
   tea1WindowStart: string;
   tea1WindowEnd: string;
   lunchWindowStart: string;
@@ -183,13 +185,23 @@ export function BreakWidget({ punchedIn }: { punchedIn: boolean }) {
     <div className="space-y-3">
       {/* Shift timing header */}
       {shift && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5" data-testid="panel-shift-timing">
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            <span className="font-medium text-foreground">{shift.name}</span>
-            {" · "}
-            {formatHHMM(shift.istStart)} – {formatHHMM(shift.istEnd)}
-          </span>
+        <div className="flex flex-col gap-0.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5" data-testid="panel-shift-timing">
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              <span className="font-medium text-foreground">{shift.name}</span>
+              {" · "}
+              {formatHHMM(shift.istStart)} – {formatHHMM(shift.istEnd)} IST
+            </span>
+          </div>
+          {shift.usCoverage && (
+            <div className="flex items-center gap-1.5 pl-5">
+              <span>{shift.usCoverage}</span>
+              <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                {shift.isDst ? "Summer" : "Winter"} schedule
+              </span>
+            </div>
+          )}
         </div>
       )}
 

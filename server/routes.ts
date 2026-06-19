@@ -217,6 +217,88 @@ async function recordAttendanceException(opts: {
 }
 
 /**
+ * Tiered late-arrival escalation (monthly count, not consecutive):
+ *
+ *  3rd late in month  → notify Manager only           (first warning)
+ *  6th late in month  → notify Manager + HR + Admin   (escalation)
+ *
+ * Fires only at the exact threshold crossing so recipients aren't spammed.
+ * All failures are swallowed — this must never block a punch.
+ */
+async function checkMonthlyLatesAndNotify(opts: {
+  employeeId: string;
+  managerId: string | null;
+  employeeName: string;
+}): Promise<void> {
+  try {
+    const setting = await storage.getSystemSetting("feature_flags");
+    const flags = (setting?.value as Record<string, boolean>) || {};
+    if (!flags.notifications_enabled) return;
+
+    // Count late punch-ins in the current calendar month.
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const today = now.toISOString().split("T")[0];
+    const monthRecords = await storage.getAttendanceByUser(opts.employeeId, monthStart, today);
+    const monthlyLates = monthRecords.filter(
+      (r) => r.punchIn && r.notes && r.notes.includes("[Auto] Late punch-in")
+    ).length;
+
+    // Only act at exact threshold crossings to avoid notification spam.
+    const MANAGER_THRESHOLD = 3;   // 3rd late → manager only
+    const ESCALATION_THRESHOLD = 6; // 6th late → manager + HR + Admin
+
+    let tier: "manager" | "escalation" | null = null;
+    if (monthlyLates === MANAGER_THRESHOLD) tier = "manager";
+    else if (monthlyLates === ESCALATION_THRESHOLD) tier = "escalation";
+    if (!tier) return;
+
+    const allUsers = await storage.getAdminUsers();
+
+    const recipients: string[] = [];
+    // Manager always gets notified at both tiers.
+    if (opts.managerId) recipients.push(opts.managerId);
+
+    if (tier === "escalation") {
+      // Add HR and Admin users at escalation tier.
+      for (const u of allUsers) {
+        if ((u.role === "hr" || u.role === "admin" || u.role === "super_admin") &&
+            !recipients.includes(u.id)) {
+          recipients.push(u.id);
+        }
+      }
+    }
+
+    const tierLabel = tier === "escalation" ? "⚠️ Escalation" : "Warning";
+    const title = `[${tierLabel}] Late Arrivals — ${opts.employeeName}`;
+    const message =
+      tier === "manager"
+        ? `${opts.employeeName} has been late ${monthlyLates} times this month. Please speak with them directly.`
+        : `${opts.employeeName} has now been late ${monthlyLates} times this month. This has been escalated to HR and Admin for review.`;
+
+    for (const recipientId of recipients) {
+      try {
+        await storage.createNotification({
+          userId: recipientId,
+          title,
+          message,
+          type: "warning",
+        });
+      } catch { /* non-fatal */ }
+    }
+
+    try {
+      await storage.createAuditLog({
+        actorId: opts.employeeId,
+        targetId: opts.employeeId,
+        action: tier === "escalation" ? "attendance_late_escalated" : "attendance_late_warning",
+        changes: { monthlyLates, tier, employeeName: opts.employeeName },
+      });
+    } catch { /* non-fatal */ }
+  } catch { /* non-fatal */ }
+}
+
+/**
  * ROLE-BASED ACCESS CONTROL (RBAC) DOCUMENTATION
  * 
  * Role Hierarchy (highest to lowest):
@@ -2722,79 +2804,62 @@ export async function registerRoutes(
           (existing.notes?.includes("[Training non-compliance]") ||
             existing.notes?.includes("[Auto] No punch-in recorded"));
         if (isAutoAbsentPlaceholder) {
-          // Determine late/present status for this corrected punch-in
+          // Convert the placeholder to a real punch-in. Status is always "present"
+          // regardless of shift — the timing note is informational only.
           const punchInTime = new Date();
-          let punchStatus: "present" | "late" = "present";
-          // No shift → never block; record a neutral note so the audit trail is clear.
-          let noteStr: string | null = NO_SHIFT_PUNCH_NOTE;
+          let punchNote: string | null = null;
           const typedUser2 = currentUser as AdminUser & { shiftId?: string | null };
           if (typedUser2.shiftId) {
             try {
               const { computeLateStatus } = await import("./attendancePolicy");
               const result = await computeLateStatus(typedUser2.shiftId, punchInTime);
-              if (result) {
-                punchStatus = result.status;
-                noteStr = result.notes;
-              }
-            } catch (policyErr) {
-              console.error("[punch-in correction] Late-status computation failed:", policyErr);
-            }
+              if (result?.notes) punchNote = result.notes;
+            } catch { /* non-fatal */ }
           }
           const record = await storage.updateAttendance(existing.id, {
             punchIn: punchInTime,
-            status: punchStatus,
-            notes: noteStr,
+            status: "present",
+            notes: punchNote,
           });
-          if (punchStatus === "late") {
-            await recordAttendanceException({
+          // Fire monthly-late escalation in background (never blocks the punch).
+          if (punchNote?.includes("[Auto] Late punch-in")) {
+            checkMonthlyLatesAndNotify({
               employeeId: userId,
               managerId: currentUser?.managerId ?? null,
-              action: "attendance_late_punch_in",
-              changes: { date: today, punchIn: punchInTime.toISOString(), note: noteStr },
-              title: "Late punch-in",
-              message: `${employeeDisplayName(currentUser)} punched in late on ${today}. ${noteStr ?? ""}`.trim(),
-            });
+              employeeName: employeeDisplayName(currentUser),
+            }).catch(() => {});
           }
           return res.status(200).json(record);
         }
         return res.status(400).json({ error: "Already punched in today" });
       }
 
-      // Determine if punch-in is late (after shift start + grace period)
+      // Status is always "present" — shift timing note is informational only,
+      // no automatic actions or notifications are triggered.
       const punchInTime = new Date();
-      let punchStatus: "present" | "late" = "present";
-      // No shift → never block; record a neutral note so the audit trail is clear.
-      let graceNote: string | null = NO_SHIFT_PUNCH_NOTE;
+      let punchNote: string | null = null;
       const typedUserForShift = currentUser as AdminUser & { shiftId?: string | null };
       if (typedUserForShift.shiftId) {
         try {
           const { computeLateStatus } = await import("./attendancePolicy");
           const result = await computeLateStatus(typedUserForShift.shiftId, punchInTime);
-          if (result) {
-            punchStatus = result.status;
-            graceNote = result.notes;
-          }
-        } catch (policyErr) {
-          console.error("[punch-in] Late-status computation failed:", policyErr);
-        }
+          if (result?.notes) punchNote = result.notes;
+        } catch { /* non-fatal */ }
       }
-
       const record = await storage.createAttendance({
         userId,
         date: today,
         punchIn: punchInTime,
-        status: punchStatus,
-        notes: graceNote,
+        status: "present",
+        notes: punchNote,
       });
-      if (punchStatus === "late") {
-        await recordAttendanceException({
+      // Fire monthly-late escalation in background (never blocks the punch).
+      if (punchNote?.includes("[Auto] Late punch-in")) {
+        checkMonthlyLatesAndNotify({
           employeeId: userId,
           managerId: currentUser?.managerId ?? null,
-          action: "attendance_late_punch_in",
-          changes: { date: today, punchIn: punchInTime.toISOString(), note: graceNote },
-          title: "Late punch-in",
-          message: `${employeeDisplayName(currentUser)} punched in late on ${today}. ${graceNote ?? ""}`.trim(),
-        });
+          employeeName: employeeDisplayName(currentUser),
+        }).catch(() => {});
       }
       res.status(201).json(record);
     } catch (error) {
@@ -2852,60 +2917,39 @@ export async function registerRoutes(
       const totalHoursNum = diffMs / (1000 * 60 * 60);
       const totalHours = totalHoursNum.toFixed(2);
 
-      // Auto half-day detection: if worked hours < half of scheduled hours
+      // Status is determined purely by hours worked (fixed 9 h benchmark).
+      // Shift timing note is collected and stored for HR visibility only —
+      // no exception notifications or automatic actions are triggered.
+      const STANDARD_HOURS = 9;
       const currentStatus = existing.status as string;
       let updatedStatus: string | undefined;
-      const noteSegments: string[] = [];
-      let logoutException: { action: string; title: string; message: string } | null = null;
-      const typedUserOut = await storage.getAdminUser(userId) as AdminUser & { shiftId?: string | null };
-      if (typedUserOut?.shiftId) {
-        try {
-          const { computeDayCompletionStatus, computeLogoutStatus } = await import("./attendancePolicy");
-          const result = await computeDayCompletionStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
-          if (result.status !== currentStatus) {
-            updatedStatus = result.status;
-            if (result.notes) noteSegments.push(result.notes);
-          }
-          // Early-logout / overtime note relative to the shift END time (in addition
-          // to the worked-hours-based short/half-day handling above).
-          const logout = await computeLogoutStatus(typedUserOut.shiftId, punchOut);
-          if (logout?.notes) {
-            noteSegments.push(logout.notes);
-            if (logout.isException) {
-              logoutException = {
-                action: logout.kind === "early" ? "attendance_early_logout" : "attendance_overtime",
-                title: logout.kind === "early" ? "Early logout" : "Overtime logout",
-                message: `${employeeDisplayName(currentUser)} ${logout.kind === "early" ? "logged off early" : "logged off after overtime"} on ${existing.date}. ${logout.notes}`.trim(),
-              };
-            }
-          }
-        } catch (policyErr) {
-          console.error("[punch-out] Day-completion / logout computation failed:", policyErr);
+      if (currentStatus !== "absent") {
+        if (totalHoursNum < STANDARD_HOURS / 2) {
+          updatedStatus = "half_day";
+        } else if (totalHoursNum < STANDARD_HOURS * 0.75) {
+          updatedStatus = "short_day";
         }
       }
 
-      const updatePayload: Partial<typeof existing> & { punchOut: Date; totalHours: string; status?: string; notes?: string } = { punchOut, totalHours };
-      if (updatedStatus) {
-        updatePayload.status = updatedStatus;
+      // Collect informational shift-timing note (early / on-time / overtime).
+      const noteSegments: string[] = [];
+      const typedUserOut = currentUser as AdminUser & { shiftId?: string | null };
+      if (typedUserOut?.shiftId) {
+        try {
+          const { computeLogoutStatus } = await import("./attendancePolicy");
+          const logout = await computeLogoutStatus(typedUserOut.shiftId, punchOut);
+          if (logout?.notes) noteSegments.push(logout.notes);
+        } catch { /* non-fatal */ }
       }
+
+      const updatePayload: Partial<typeof existing> & { punchOut: Date; totalHours: string; status?: string; notes?: string } = { punchOut, totalHours };
+      if (updatedStatus) updatePayload.status = updatedStatus;
       if (noteSegments.length > 0) {
         const existingNotes = existing.notes ? `${existing.notes}; ` : "";
         updatePayload.notes = existingNotes + noteSegments.join("; ");
       }
 
       const record = await storage.updateAttendance(existing.id, updatePayload);
-
-      if (logoutException) {
-        await recordAttendanceException({
-          employeeId: userId,
-          managerId: currentUser?.managerId ?? null,
-          action: logoutException.action,
-          changes: { date: existing.date, punchOut: punchOut.toISOString(), totalHours },
-          title: logoutException.title,
-          message: logoutException.message,
-        });
-      }
-
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Failed to punch out" });
@@ -2931,6 +2975,8 @@ export async function registerRoutes(
         name: string;
         istStart: string;
         istEnd: string;
+        usCoverage: string;
+        isDst: boolean;
         tea1WindowStart: string;
         tea1WindowEnd: string;
         lunchWindowStart: string;
@@ -2940,7 +2986,8 @@ export async function registerRoutes(
       } | null = null;
 
       const userShiftRow = await db.execute(sql`
-        SELECT u.shift_id, s.name, s.ist_start_dst, s.ist_end_dst, s.ist_start_std, s.ist_end_std, s.scheduled_hours
+        SELECT u.shift_id, s.name, s.ist_start_dst, s.ist_end_dst, s.ist_start_std, s.ist_end_std,
+               s.scheduled_hours, s.us_coverage, s.us_coverage_dst, s.us_coverage_std
         FROM admin_users u
         LEFT JOIN shifts s ON s.id = u.shift_id AND s.is_active = true
         WHERE u.id = ${userId} LIMIT 1
@@ -2976,6 +3023,8 @@ export async function registerRoutes(
             name: row.name,
             istStart,
             istEnd,
+            usCoverage: isDst ? (row.us_coverage_dst ?? row.us_coverage) : (row.us_coverage_std ?? row.us_coverage),
+            isDst,
             tea1WindowStart: fmtM(startMins + 90),
             tea1WindowEnd: fmtM(midMins),
             lunchWindowStart: fmtM(midMins - 30),
@@ -4761,14 +4810,43 @@ export async function registerRoutes(
       const allUsers = await storage.getAdminUsers();
       const userMap = new Map(allUsers.map(u => [u.id, u]));
 
+      // Load the one-time shift-correction cutoff date from system_settings.
+      // This is set once when notifyShiftCorrectionEmployees() runs and never
+      // changes on subsequent restarts — avoiding false-positive drift from the
+      // seed upsert's updated_at timestamp.
+      let shiftCorrectionCutoffDate: string | null = null;
+      {
+        const cutoffRow = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'shift_correction_applied_at' LIMIT 1
+        `);
+        if (cutoffRow.rows.length > 0) {
+          try {
+            const parsed = JSON.parse((cutoffRow.rows[0] as { value: string }).value);
+            shiftCorrectionCutoffDate = parsed?.date ?? null;
+          } catch { /* ignore malformed */ }
+        }
+      }
+
+      // Determine which employees are on a corrected shift (SHIFT_A or SHIFT_C)
+      const correctedShiftIds = new Set(["SHIFT_A", "SHIFT_C"]);
+
       const enriched = requests.map(r => {
         const emp = userMap.get(r.employeeId);
         const reviewer = r.reviewedBy ? userMap.get(r.reviewedBy) : null;
+        const shiftId = (emp as any)?.shiftId ?? null;
+        // Warn when: the request is pending, the employee is on a corrected shift,
+        // and the attendance date predates the fixed correction cutoff.
+        const shiftCorrectionWarning =
+          r.status === "pending" &&
+          shiftCorrectionCutoffDate !== null &&
+          correctedShiftIds.has(shiftId) &&
+          r.attendanceDate < shiftCorrectionCutoffDate;
         return {
           ...r,
           employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
           employeeCode: emp?.employeeId ?? null,
           reviewerName: reviewer ? `${reviewer.firstName} ${reviewer.lastName}` : null,
+          shiftCorrectionWarning,
         };
       });
 
@@ -14608,7 +14686,7 @@ export async function registerRoutes(
       }
 
       const shiftRows = await db.execute(sql`
-        SELECT id, name, display_label, us_coverage,
+        SELECT id, name, display_label, us_coverage, us_coverage_dst, us_coverage_std,
                ist_start_dst, ist_end_dst, ist_start_std, ist_end_std, scheduled_hours
         FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1
       `);
@@ -14635,6 +14713,8 @@ export async function registerRoutes(
         name: s.name,
         displayLabel: s.display_label,
         usCoverage: s.us_coverage,
+        usCoverageDst: s.us_coverage_dst ?? null,
+        usCoverageStd: s.us_coverage_std ?? null,
         istStart,
         istEnd,
         isDst,

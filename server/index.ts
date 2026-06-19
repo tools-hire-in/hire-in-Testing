@@ -939,6 +939,9 @@ async function ensureShiftTables() {
     `);
     await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 15`);
     await db.execute(sql`ALTER TABLE shifts ALTER COLUMN grace_period_minutes SET DEFAULT 15`);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS us_coverage_dst VARCHAR`);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS us_coverage_std VARCHAR`);
+    await db.execute(sql`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS dst_config (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -992,13 +995,45 @@ async function ensureNightShiftConsentsTable() {
 
 async function seedShiftData() {
   try {
+    // ON CONFLICT DO UPDATE ensures corrections are applied on every server restart.
+    // SHIFT_A: moved 1 hour earlier to correctly cover 8:00 AM – 5:00 PM ET.
+    // SHIFT_C: moved 1 hour later to correctly cover 12:00 PM – 9:00 PM ET / 9:00 AM – 6:00 PM PT.
+    // SHIFT_B: unchanged (was already correct).
     await db.execute(sql`
-      INSERT INTO shifts (id, name, display_label, us_coverage, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std, scheduled_hours)
+      INSERT INTO shifts (id, name, display_label, us_coverage, us_coverage_dst, us_coverage_std,
+                          ist_start_dst, ist_end_dst, ist_start_std, ist_end_std, scheduled_hours, updated_at)
       VALUES
-        ('SHIFT_A', 'SHIFT_A', 'Shift A – East Coast', 'East Coast', '18:30', '03:30', '19:30', '04:30', 9),
-        ('SHIFT_B', 'SHIFT_B', 'Shift B – West Coast', 'West Coast', '20:30', '05:30', '21:30', '06:30', 9),
-        ('SHIFT_C', 'SHIFT_C', 'Shift C – Dual Coast', 'Dual Coast', '19:30', '04:30', '20:30', '05:30', 9)
-      ON CONFLICT (id) DO NOTHING
+        ('SHIFT_A', 'SHIFT_A', 'Early U.S. – East Coast', '8:00 AM – 5:00 PM ET',
+         '8:00 AM – 5:00 PM ET (Summer)', '8:00 AM – 5:00 PM ET (Winter)',
+         '17:30', '02:30', '18:30', '03:30', 9, NOW()),
+        ('SHIFT_B', 'SHIFT_B', 'National Coverage', '10:00 AM – 7:00 PM ET / 7:00 AM – 4:00 PM PT',
+         '10:00 AM – 7:00 PM ET / 7:00 AM – 4:00 PM PT (Summer)',
+         '10:00 AM – 7:00 PM ET / 7:00 AM – 4:00 PM PT (Winter)',
+         '19:30', '04:30', '20:30', '05:30', 9, NOW()),
+        ('SHIFT_C', 'SHIFT_C', 'Late U.S. – West Coast', '12:00 PM – 9:00 PM ET / 9:00 AM – 6:00 PM PT',
+         '12:00 PM – 9:00 PM ET / 9:00 AM – 6:00 PM PT (Summer)',
+         '12:00 PM – 9:00 PM ET / 9:00 AM – 6:00 PM PT (Winter)',
+         '21:30', '06:30', '22:30', '07:30', 9, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        display_label    = EXCLUDED.display_label,
+        us_coverage      = EXCLUDED.us_coverage,
+        us_coverage_dst  = EXCLUDED.us_coverage_dst,
+        us_coverage_std  = EXCLUDED.us_coverage_std,
+        ist_start_dst    = EXCLUDED.ist_start_dst,
+        ist_end_dst      = EXCLUDED.ist_end_dst,
+        ist_start_std    = EXCLUDED.ist_start_std,
+        ist_end_std      = EXCLUDED.ist_end_std,
+        scheduled_hours  = EXCLUDED.scheduled_hours,
+        -- Only advance updated_at when an actual IST timing value changed.
+        -- This prevents the regularization-warning cutoff from drifting on every restart.
+        updated_at = CASE
+          WHEN shifts.ist_start_dst != EXCLUDED.ist_start_dst
+            OR shifts.ist_end_dst   != EXCLUDED.ist_end_dst
+            OR shifts.ist_start_std != EXCLUDED.ist_start_std
+            OR shifts.ist_end_std   != EXCLUDED.ist_end_std
+          THEN NOW()
+          ELSE COALESCE(shifts.updated_at, NOW())
+        END
     `);
 
     const dstYears = [
@@ -1015,9 +1050,106 @@ async function seedShiftData() {
         ON CONFLICT (year) DO NOTHING
       `);
     }
+    // Record a one-time cutoff date for the regularization pre-correction warning.
+    // This is inserted once (DO NOTHING on conflict) so it never drifts on restarts.
+    // The date reflects when the SHIFT_A/SHIFT_C time corrections first took effect.
+    const correctionCutoff = "2026-06-19";
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('shift_correction_applied_at', ${JSON.stringify({ date: correctionCutoff })})
+      ON CONFLICT (key) DO NOTHING
+    `);
+
     log("Shift seed data ensured");
   } catch (err) {
     console.error("Shift seed data error:", err);
+  }
+}
+
+/**
+ * One-time idempotent notification for employees on SHIFT_A and SHIFT_C informing
+ * them of the corrected shift times. Gated by a system_settings key so it only fires
+ * on the first server restart after the correction is applied.
+ */
+async function notifyShiftCorrectionEmployees() {
+  try {
+    const NOTIF_KEY = "shift_correction_notified_v2";
+    const existing = await db.execute(sql`
+      SELECT value FROM system_settings WHERE key = ${NOTIF_KEY} LIMIT 1
+    `);
+    if (existing.rows.length > 0) return; // already done
+
+    // Fetch current shifts to get the corrected times
+    const shiftRows = await db.execute(sql`
+      SELECT id, display_label, ist_start_dst, ist_end_dst, ist_start_std, ist_end_std,
+             us_coverage_dst, us_coverage_std
+      FROM shifts WHERE id IN ('SHIFT_A', 'SHIFT_C') AND is_active = true
+    `);
+    const shiftMap = new Map<string, any>();
+    for (const row of shiftRows.rows as any[]) shiftMap.set(row.id, row);
+
+    // Find all active employees on SHIFT_A or SHIFT_C
+    const affected = await db.execute(sql`
+      SELECT id, first_name, last_name, email, shift_id
+      FROM admin_users
+      WHERE shift_id IN ('SHIFT_A', 'SHIFT_C')
+        AND is_active = true AND deleted_at IS NULL
+    `);
+
+    let notified = 0;
+    for (const user of affected.rows as any[]) {
+      const shift = shiftMap.get(user.shift_id);
+      if (!shift) continue;
+
+      const dstLabel = `${shift.ist_start_dst}–${shift.ist_end_dst} IST · ${shift.us_coverage_dst ?? shift.us_coverage}`;
+      const stdLabel = `${shift.ist_start_std}–${shift.ist_end_std} IST · ${shift.us_coverage_std ?? shift.us_coverage}`;
+
+      await storage.createNotification({
+        userId: user.id,
+        type: "system",
+        title: "Your shift times have been updated",
+        message: `${shift.display_label}: Summer schedule ${dstLabel} | Winter schedule ${stdLabel}. Please review your updated schedule.`,
+        isRead: false,
+        metadata: {
+          shiftId: user.shift_id,
+          shiftLabel: shift.display_label,
+          dstTimes: dstLabel,
+          stdTimes: stdLabel,
+        },
+      }).catch(console.error);
+
+      // Log the correction in shift_assignment_log (shift ID unchanged; only times changed)
+      await db.execute(sql`
+        INSERT INTO shift_assignment_log (user_id, changed_by_id, old_shift_id, new_shift_id, reason)
+        VALUES (${user.id}, ${user.id}, ${user.shift_id}, ${user.shift_id},
+                'Shift times corrected — see updated schedule')
+      `).catch(console.error);
+
+      // Send email notification (fire-and-forget)
+      if (user.email) {
+        import("./email").then(({ sendPolicyUpdateEmail }) => {
+          sendPolicyUpdateEmail({
+            to: user.email,
+            employeeName: `${user.first_name} ${user.last_name}`,
+            policyName: `${shift.display_label} — Updated Schedule`,
+            changeDescription: `Your shift times have been corrected.\n\nSummer schedule (DST): ${dstLabel}\nWinter schedule (STD): ${stdLabel}\n\nAll past attendance records remain unchanged. Only future punches will use the updated times.`,
+            effectiveDate: new Date().toISOString().slice(0, 10),
+          }).catch(console.error);
+        }).catch(console.error);
+      }
+
+      notified++;
+    }
+
+    // Mark as done
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES (${NOTIF_KEY}, '{"done":true}')
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    `);
+    if (notified > 0) log(`Shift correction notifications sent to ${notified} employee(s)`);
+  } catch (err) {
+    console.error("Shift correction notification error (non-fatal):", err);
   }
 }
 
@@ -2030,6 +2162,7 @@ async function ensureHealthcarePlansTables() {
   await ensureShiftTables();
   await ensureNightShiftConsentsTable();
   await seedShiftData();
+  await notifyShiftCorrectionEmployees();
 
   try {
     const [firstAdmin] = await db.select({ id: adminUsers.id })

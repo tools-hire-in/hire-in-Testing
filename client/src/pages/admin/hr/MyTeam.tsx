@@ -796,14 +796,13 @@ function ShiftTab({ userId }: { userId: string }) {
                 <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" data-testid="badge-current-shift">
                   {currentShiftId}
                 </Badge>
-                {shiftTiming?.isDst && (
-                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">DST Active</Badge>
-                )}
+                <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                  {shiftTiming?.isDst ? "Summer schedule" : "Winter schedule"} · active
+                </span>
               </div>
               {shiftTiming && (
                 <p className="text-sm text-muted-foreground">
                   IST: <span className="font-medium text-foreground">{shiftTiming.istStart} – {shiftTiming.istEnd}</span>
-                  {" "}({shiftTiming.isDst ? "DST" : "Standard"} timing)
                 </p>
               )}
             </div>

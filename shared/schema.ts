@@ -1581,6 +1581,8 @@ export const shifts = pgTable("shifts", {
   name: varchar("name").notNull(),
   displayLabel: varchar("display_label").notNull(),
   usCoverage: varchar("us_coverage").notNull(),
+  usCoverageDst: varchar("us_coverage_dst"),
+  usCoverageStd: varchar("us_coverage_std"),
   istStartDst: varchar("ist_start_dst").notNull(),
   istEndDst: varchar("ist_end_dst").notNull(),
   istStartStd: varchar("ist_start_std").notNull(),
@@ -1589,6 +1591,7 @@ export const shifts = pgTable("shifts", {
   gracePeriodMinutes: integer("grace_period_minutes").default(15),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const dstConfig = pgTable("dst_config", {

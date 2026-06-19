@@ -133,25 +133,25 @@ function MyShiftCard() {
             <div className="rounded-md bg-muted/50 p-3 space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium">{currentShift.displayLabel || currentShift.name}</span>
-                {currentShift.isDst && (
-                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">DST Active</Badge>
-                )}
+                <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+                  {currentShift.isDst ? "Summer schedule" : "Winter schedule"} · active
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                 <div>
-                  <span className="block font-medium text-foreground">Standard</span>
+                  <span className="block font-medium text-foreground">Winter schedule</span>
                   {currentShift.isDst ? (
-                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartStd ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndStd ?? "—"}</span>
+                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartStd ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndStd ?? "—"} IST</span>
                   ) : (
-                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd}</span>
+                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd} IST</span>
                   )}
                 </div>
                 <div>
-                  <span className="block font-medium text-foreground">DST</span>
+                  <span className="block font-medium text-foreground">Summer schedule</span>
                   {currentShift.isDst ? (
-                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd}</span>
+                    <span className="font-semibold text-foreground">{currentShift.istStart} – {currentShift.istEnd} IST</span>
                   ) : (
-                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartDst ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndDst ?? "—"}</span>
+                    <span>{allShifts?.find(s => s.id === currentShift.id)?.istStartDst ?? "—"} – {allShifts?.find(s => s.id === currentShift.id)?.istEndDst ?? "—"} IST</span>
                   )}
                 </div>
               </div>
