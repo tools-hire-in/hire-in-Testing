@@ -55,6 +55,8 @@ export const adminUsers = pgTable("admin_users", {
   maternityLeaveEligible: boolean("maternity_leave_eligible").notNull().default(false),
   employmentType: varchar("employment_type"),
   employeeCategory: varchar("employee_category").default("experienced"),
+  // Per-user UI preferences (e.g. { newLook: true } for the app redesign opt-in).
+  preferences: jsonb("preferences"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

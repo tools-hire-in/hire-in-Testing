@@ -16,6 +16,12 @@ export interface AuthUser {
   trainingExempt?: boolean;
   maternityLeaveEligible?: boolean;
   employmentType?: string | null;
+  preferences?: UserPreferences | null;
+}
+
+export interface UserPreferences {
+  newLook?: boolean;
+  [key: string]: unknown;
 }
 
 async function fetchUser(): Promise<AuthUser | null> {

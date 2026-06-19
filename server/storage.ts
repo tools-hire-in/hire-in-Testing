@@ -205,6 +205,7 @@ export interface IStorage {
   getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   updateAdminUser(id: string, user: Partial<AdminUser>): Promise<AdminUser | undefined>;
+  updateUserPreferences(id: string, partial: Record<string, unknown>): Promise<AdminUser | undefined>;
   deleteAdminUser(id: string): Promise<boolean>;
   softDeleteAdminUser(id: string): Promise<boolean>;
   restoreAdminUser(id: string): Promise<AdminUser | undefined>;
@@ -880,6 +881,23 @@ export class DatabaseStorage implements IStorage {
   async updateAdminUser(id: string, user: Partial<AdminUser>): Promise<AdminUser | undefined> {
     const [updated] = await db.update(adminUsers)
       .set({ ...user, updatedAt: new Date() })
+      .where(eq(adminUsers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateUserPreferences(id: string, partial: Record<string, unknown>): Promise<AdminUser | undefined> {
+    const [current] = await db
+      .select({ preferences: adminUsers.preferences })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, id))
+      .limit(1);
+    const existing = (current?.preferences && typeof current.preferences === "object")
+      ? (current.preferences as Record<string, unknown>)
+      : {};
+    const merged = { ...existing, ...partial };
+    const [updated] = await db.update(adminUsers)
+      .set({ preferences: merged, updatedAt: new Date() })
       .where(eq(adminUsers.id, id))
       .returning();
     return updated;

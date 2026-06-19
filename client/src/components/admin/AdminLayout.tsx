@@ -40,6 +40,8 @@ import {
   Monitor,
   Headphones,
   Calculator,
+  Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,7 +73,17 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { useNewLook } from "@/hooks/use-new-look";
+import { useToast } from "@/hooks/use-toast";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -516,7 +528,25 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { user, logout } = useAuth();
   const { isEnabled } = useFeatureFlags();
   const { can } = usePermissions();
+  const { enabled: newLook, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
+  const { toast } = useToast();
   const notificationsEnabled = isEnabled("notifications_enabled");
+
+  const enableNewLook = useCallback(() => {
+    setNewLook(true);
+    toast({
+      title: "New look enabled (beta)",
+      description: "You're previewing the redesigned portal. Switch back anytime from your profile menu.",
+    });
+  }, [setNewLook, toast]);
+
+  const disableNewLook = useCallback(() => {
+    setNewLook(false);
+    toast({
+      title: "Classic look restored",
+      description: "You're back on the classic portal layout.",
+    });
+  }, [setNewLook, toast]);
 
   const handleIdleTimeout = useCallback(() => {
     logout();
@@ -1007,7 +1037,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
       >
-        <div className="flex h-screen w-full">
+        <div className={`flex h-screen w-full ${newLook ? "app-v2" : ""}`} data-look={newLook ? "v2" : "classic"}>
           <Sidebar collapsible="icon">
             {/* Profile Header */}
             <SidebarHeader className="border-b p-0">
@@ -1145,38 +1175,129 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </Sidebar>
 
           <div className="flex flex-col flex-1 overflow-hidden">
-            <header className="flex items-center justify-between h-14 px-4 border-b bg-background shrink-0">
-              <div className="flex items-center gap-2">
-                <SidebarTrigger data-testid="button-sidebar-toggle" />
-                <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <span>Admin</span>
-                  <ChevronRight className="h-4 w-4" />
-                  <span className="text-foreground font-medium capitalize">
-                    {breadcrumbLabel()}
-                  </span>
-                </nav>
-              </div>
-              <div className="flex items-center gap-3">
-                {notificationsEnabled && <NotificationBell />}
-                <Badge variant="outline" className="text-xs hidden sm:flex">
-                  {roleInfo.label}
-                </Badge>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground"
-                      onClick={() => setShowTour(true)}
-                      data-testid="button-help-tour"
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Portal guide</TooltipContent>
-                </Tooltip>
-              </div>
-            </header>
+            {newLook ? (
+              <header className="app-v2-header flex items-center justify-between h-14 px-4 shrink-0">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger data-testid="button-sidebar-toggle" />
+                  <nav className="flex items-center gap-1 text-sm">
+                    <span className="v2-muted">Admin</span>
+                    <ChevronRight className="h-4 w-4 v2-muted" />
+                    <span className="font-medium capitalize">
+                      {breadcrumbLabel()}
+                    </span>
+                  </nav>
+                </div>
+                <div className="flex items-center gap-2">
+                  {notificationsEnabled && <NotificationBell />}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 v2-muted hover:text-current"
+                        onClick={() => setShowTour(true)}
+                        data-testid="button-help-tour"
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Portal guide</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-white/5 transition-colors"
+                        data-testid="button-profile-menu"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-[hsl(var(--v2-orange))]/20 flex items-center justify-center font-semibold text-[hsl(var(--v2-orange))] text-xs shrink-0">
+                          {user?.firstName?.[0] || "?"}{user?.lastName?.[0] || ""}
+                        </div>
+                        <div className="hidden sm:block text-left leading-tight">
+                          <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
+                          <p className="text-[11px] v2-muted">{roleInfo.label}</p>
+                        </div>
+                        <ChevronDown className="h-4 w-4 v2-muted" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuLabel>
+                        <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
+                        <p className="text-xs text-muted-foreground font-normal truncate">{user?.email}</p>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild data-testid="menu-my-profile">
+                        <Link href="/admin/profile">
+                          <UserCircle className="mr-2 h-4 w-4" />
+                          My Profile
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={disableNewLook}
+                        disabled={newLookPending}
+                        data-testid="button-switch-classic"
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Switch back to classic
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => logout()} data-testid="button-logout-menu">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Sign Out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </header>
+            ) : (
+              <header className="flex items-center justify-between h-14 px-4 border-b bg-background shrink-0">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger data-testid="button-sidebar-toggle" />
+                  <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <span>Admin</span>
+                    <ChevronRight className="h-4 w-4" />
+                    <span className="text-foreground font-medium capitalize">
+                      {breadcrumbLabel()}
+                    </span>
+                  </nav>
+                </div>
+                <div className="flex items-center gap-3">
+                  {notificationsEnabled && <NotificationBell />}
+                  <Badge variant="outline" className="text-xs hidden sm:flex">
+                    {roleInfo.label}
+                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 text-muted-foreground hidden sm:flex"
+                        onClick={enableNewLook}
+                        disabled={newLookPending}
+                        data-testid="button-try-new-look"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        <span className="text-xs">Try the new look</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Preview the redesigned portal (beta). You can switch back anytime.</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground"
+                        onClick={() => setShowTour(true)}
+                        data-testid="button-help-tour"
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Portal guide</TooltipContent>
+                  </Tooltip>
+                </div>
+              </header>
+            )}
 
             <main className="flex-1 overflow-auto p-4 sm:p-6 bg-muted/20">
               {needs2FA ? (

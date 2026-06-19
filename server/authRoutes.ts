@@ -116,6 +116,38 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
+  // Update the current user's UI preferences (e.g. app redesign opt-in).
+  app.patch("/api/auth/me/preferences", requireAuth, async (req, res) => {
+    try {
+      const user = await getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const prefsSchema = z.object({
+        newLook: z.boolean().optional(),
+      });
+      const parsed = prefsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      }
+
+      const existing = (user.preferences && typeof user.preferences === "object")
+        ? (user.preferences as Record<string, unknown>)
+        : {};
+      const merged = { ...existing, ...parsed.data };
+      const [updated] = await db
+        .update(adminUsers)
+        .set({ preferences: merged, updatedAt: new Date() })
+        .where(eq(adminUsers.id, user.id))
+        .returning({ preferences: adminUsers.preferences });
+      res.json({ preferences: updated?.preferences ?? null });
+    } catch (error) {
+      console.error("Update preferences error:", error);
+      res.status(500).json({ message: "Failed to update preferences" });
+    }
+  });
+
   // Register new admin user (Super Admin only)
   app.post("/api/auth/register", requirePermission("auth.register", "super_admin"), async (req, res) => {
     try {

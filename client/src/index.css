@@ -448,3 +448,66 @@
     justify-content: center;
   }
 }
+
+/* ============================================================
+   APP REDESIGN (v2) — centralized brand design tokens
+   ------------------------------------------------------------
+   Opt-in only. These rules apply solely under the `.app-v2`
+   scope, which AdminLayout adds when a user enables the new
+   look. With the flag OFF the scope is absent and the classic
+   look is rendered byte-for-byte unchanged.
+
+   Brand palette ONLY: Navy #1F3A6E, Orange #F47C20 / #F96D3E.
+   Strategy: dark navy chrome (sidebar + header) with a clean
+   light content area (content tokens are intentionally NOT
+   overridden here).
+   ============================================================ */
+.app-v2 {
+  /* --- Raw brand palette (H S% L%, space separated) --- */
+  --v2-navy: 218 56% 28%;            /* #1F3A6E */
+  --v2-orange: 25 91% 54%;           /* #F47C20 */
+  --v2-orange-hot: 14 94% 61%;       /* #F96D3E */
+  --v2-bg: 219 47% 8%;               /* #0B1220 cockpit background */
+  --v2-card: 219 38% 13%;            /* #131C2E elevated card */
+  --v2-text-primary: 219 41% 93%;    /* #E8EDF6 */
+  --v2-text-secondary: 219 16% 61%;  /* #8A97AD */
+
+  /* --- Chrome design seam (typography / radius / shadow) --- */
+  --v2-radius: 0.75rem;
+  --v2-shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25);
+
+  /* --- Re-map shadcn sidebar chrome tokens to the navy cockpit
+         so the existing Sidebar primitives render in the v2 look
+         automatically. Content tokens (--background, --card, etc.)
+         are deliberately left untouched. --- */
+  --sidebar: var(--v2-card);
+  --sidebar-foreground: var(--v2-text-primary);
+  --sidebar-border: 215 30% 90% / 0.08;
+  --sidebar-primary: var(--v2-orange);
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: var(--v2-navy);
+  --sidebar-accent-foreground: var(--v2-text-primary);
+  --sidebar-ring: var(--v2-orange);
+}
+
+/* Rounded, cockpit-style nav items in the v2 sidebar */
+.app-v2 [data-sidebar="menu-button"],
+.app-v2 [data-sidebar="menu-sub-button"] {
+  border-radius: var(--v2-radius);
+}
+
+/* Active nav item: navy fill with an orange icon (mockup cockpit) */
+.app-v2 [data-sidebar="menu-button"][data-active="true"] svg,
+.app-v2 [data-sidebar="menu-button"].bg-sidebar-primary svg {
+  color: hsl(var(--v2-orange));
+}
+
+/* v2 top header (navy chrome) */
+.app-v2-header {
+  background: hsl(var(--v2-card));
+  color: hsl(var(--v2-text-primary));
+  border-bottom: 1px solid hsl(215 30% 90% / 0.08);
+}
+.app-v2-header .v2-muted {
+  color: hsl(var(--v2-text-secondary));
+}
