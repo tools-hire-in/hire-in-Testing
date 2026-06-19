@@ -75,6 +75,7 @@ import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
+import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -15175,6 +15176,7 @@ export async function registerRoutes(
   registerReleaseNotesRoutes(app);
   registerHelpDeskRoutes(app);
   registerAttendanceExceptionRoutes(app);
+  registerTravelRoutes(app);
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);

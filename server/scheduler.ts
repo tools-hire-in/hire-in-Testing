@@ -6,6 +6,7 @@ import { db } from "./db";
 import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns, offerLetters, offerLetterAddendums } from "@shared/schema";
 import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
 import { generateAttendanceReportRun } from "./attendanceReport";
+import { refreshRecentZips } from "./gsaRateService";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -1097,6 +1098,16 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // GSA per diem nightly refresh — 02:00 EST (07:00 UTC) — refreshes all ZIPs used in last 90 days
+  cron.schedule("0 7 * * *", async () => {
+    console.log("[scheduler] GSA nightly ZIP refresh starting…");
+    try {
+      await refreshRecentZips();
+    } catch (err) {
+      console.error("[scheduler] GSA nightly refresh failed:", err);
+    }
+  });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1109,4 +1120,5 @@ export function startScheduler() {
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
   console.log("  - Overtime recognition scan: every Monday at 09:00 IST → alerts managers of team members with 3+ OT days");
+  console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
 }

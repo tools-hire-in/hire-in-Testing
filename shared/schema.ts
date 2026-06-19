@@ -2712,3 +2712,143 @@ export type InternalRequestApproval = typeof internalRequestApprovals.$inferSele
 export type InsertInternalRequestApproval = z.infer<typeof insertInternalRequestApprovalSchema>;
 export type InternalRequestAuditLog = typeof internalRequestAuditLog.$inferSelect;
 export type InsertInternalRequestAuditLog = z.infer<typeof insertInternalRequestAuditLogSchema>;
+
+// ==========================================
+// TRAVEL PAY CALCULATOR TABLES
+// ==========================================
+
+export const gsaRateSnapshots = pgTable("gsa_rate_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  zip: varchar("zip").notNull(),
+  county: varchar("county"),
+  state: varchar("state"),
+  city: varchar("city"),
+  fiscalYear: integer("fiscal_year").notNull(),
+  month: integer("month").notNull(),
+  lodgingRate: numeric("lodging_rate").notNull(),
+  mieRate: numeric("mie_rate").notNull(),
+  firstLastDayMie: numeric("first_last_day_mie").notNull(),
+  snapshotDate: timestamp("snapshot_date").defaultNow(),
+  sourceVersion: varchar("source_version"),
+  isCached: boolean("is_cached").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_gsa_snapshot_zip_fy_month").on(table.zip, table.fiscalYear, table.month),
+]);
+
+export const travelMarginFloors = pgTable("travel_margin_floors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleType: varchar("role_type").notNull().unique(),
+  redThresholdPct: numeric("red_threshold_pct").notNull(),
+  yellowThresholdPct: numeric("yellow_threshold_pct").notNull(),
+  payrollBurdenPct: numeric("payroll_burden_pct").notNull().default("18.8"),
+  defaultOtMultiplier: numeric("default_ot_multiplier").notNull().default("1.5"),
+  defaultCallbackRate: numeric("default_callback_rate").notNull().default("0"),
+  defaultHolidayRate: numeric("default_holiday_rate").notNull().default("0"),
+  defaultOnCallRate: numeric("default_on_call_rate").notNull().default("0"),
+  defaultVmsFeePct: numeric("default_vms_fee_pct").notNull().default("3"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by").references(() => adminUsers.id),
+});
+
+export const travelQuoteStatusEnum = pgEnum("travel_quote_status", ["draft", "submitted", "approved", "rejected"]);
+export const travelComplianceStatusEnum = pgEnum("travel_compliance_status", ["compliant", "over_cap", "override_pending", "override_approved"]);
+
+export const travelQuotes = pgTable("travel_quotes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recruiterId: varchar("recruiter_id").notNull().references(() => adminUsers.id),
+  candidateName: varchar("candidate_name").notNull(),
+  facilityClientName: varchar("facility_client_name").notNull(),
+  label: varchar("label"),
+  assignmentZip: varchar("assignment_zip").notNull(),
+  state: varchar("state"),
+  county: varchar("county"),
+  city: varchar("city"),
+  roleType: varchar("role_type").notNull().default("healthcare_travel"),
+  weeksInAssignment: integer("weeks_in_assignment").notNull().default(13),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  awayDays: integer("away_days").notNull().default(5),
+  scheduledHours: numeric("scheduled_hours").notNull().default("36"),
+  w2Hourly: numeric("w2_hourly").notNull(),
+  otMultiplier: numeric("ot_multiplier").notNull().default("1.5"),
+  totalHours: numeric("total_hours").notNull().default("36"),
+  masterBillRate: numeric("master_bill_rate").notNull(),
+  otBillRate: numeric("ot_bill_rate"),
+  clientOtMultiplier: numeric("client_ot_multiplier").notNull().default("1.5"),
+  vmsFeePct: numeric("vms_fee_pct").notNull().default("3"),
+  orientationHoursTotal: numeric("orientation_hours_total").notNull().default("0"),
+  orientationHoursBillable: numeric("orientation_hours_billable").notNull().default("0"),
+  orientationHoursFree: numeric("orientation_hours_free").notNull().default("0"),
+  orientationPayRate: numeric("orientation_pay_rate"),
+  orientationOtMultiplier: numeric("orientation_ot_multiplier").notNull().default("1"),
+  completionBonus: numeric("completion_bonus").notNull().default("0"),
+  dailyMie: numeric("daily_mie"),
+  dailyLodging: numeric("daily_lodging"),
+  decreasedStipendOverride: numeric("decreased_stipend_override"),
+  payrollBurdenPct: numeric("payroll_burden_pct").notNull().default("18.8"),
+  onCallRate: numeric("on_call_rate").notNull().default("0"),
+  callbackRate: numeric("callback_rate").notNull().default("0"),
+  holidayRate: numeric("holiday_rate").notNull().default("0"),
+  status: travelQuoteStatusEnum("status").notNull().default("draft"),
+  gsaSnapshotId: varchar("gsa_snapshot_id").references(() => gsaRateSnapshots.id),
+  complianceOverrideBy: varchar("compliance_override_by").references(() => adminUsers.id),
+  complianceOverrideReason: text("compliance_override_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const travelQuoteOutputs = pgTable("travel_quote_outputs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quoteId: varchar("quote_id").notNull().references(() => travelQuotes.id).unique(),
+  weeklyTaxable: numeric("weekly_taxable"),
+  weeklyNonTaxable: numeric("weekly_non_taxable"),
+  weeklyGross: numeric("weekly_gross"),
+  hourlyTaxable: numeric("hourly_taxable"),
+  hourlyBlended: numeric("hourly_blended"),
+  otRate: numeric("ot_rate"),
+  wagePayableWeekly: numeric("wage_payable_weekly"),
+  payrollTaxesWeekly: numeric("payroll_taxes_weekly"),
+  nonTaxableWeekly: numeric("non_taxable_weekly"),
+  orientationRevenue: numeric("orientation_revenue"),
+  orientationCandidateCost: numeric("orientation_candidate_cost"),
+  orientationNet: numeric("orientation_net"),
+  totalBillingWeekly: numeric("total_billing_weekly"),
+  totalBillingContract: numeric("total_billing_contract"),
+  totalExpenseWeekly: numeric("total_expense_weekly"),
+  totalExpenseContract: numeric("total_expense_contract"),
+  grossProfitWeekly: numeric("gross_profit_weekly"),
+  netMarginPerHour: numeric("net_margin_per_hour"),
+  netMarginPerWeek: numeric("net_margin_per_week"),
+  netMarginPerContract: numeric("net_margin_per_contract"),
+  netMarginPct: numeric("net_margin_pct"),
+  stipendComplianceStatus: travelComplianceStatusEnum("stipend_compliance_status"),
+  marginStatus: varchar("margin_status"),
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+});
+
+export const travelQuotesRelations = relations(travelQuotes, ({ one }) => ({
+  recruiter: one(adminUsers, { fields: [travelQuotes.recruiterId], references: [adminUsers.id], relationName: "travelQuoteRecruiter" }),
+  gsaSnapshot: one(gsaRateSnapshots, { fields: [travelQuotes.gsaSnapshotId], references: [gsaRateSnapshots.id] }),
+  outputs: one(travelQuoteOutputs, { fields: [travelQuotes.id], references: [travelQuoteOutputs.quoteId] }),
+}));
+
+export const travelQuoteOutputsRelations = relations(travelQuoteOutputs, ({ one }) => ({
+  quote: one(travelQuotes, { fields: [travelQuoteOutputs.quoteId], references: [travelQuotes.id] }),
+}));
+
+export const insertTravelQuoteSchema = createInsertSchema(travelQuotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  recruiterId: true,
+});
+
+export type GsaRateSnapshot = typeof gsaRateSnapshots.$inferSelect;
+export type InsertGsaRateSnapshot = typeof gsaRateSnapshots.$inferInsert;
+export type TravelMarginFloor = typeof travelMarginFloors.$inferSelect;
+export type InsertTravelMarginFloor = typeof travelMarginFloors.$inferInsert;
+export type TravelQuote = typeof travelQuotes.$inferSelect;
+export type InsertTravelQuote = z.infer<typeof insertTravelQuoteSchema>;
+export type TravelQuoteOutput = typeof travelQuoteOutputs.$inferSelect;

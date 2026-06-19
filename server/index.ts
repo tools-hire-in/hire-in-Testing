@@ -2651,6 +2651,143 @@ async function ensureHealthcarePlansTables() {
 
   await ensureHealthcarePlansTables();
 
+  // Travel Pay Calculator — enum types + tables (idempotent, matches shared/schema.ts exactly)
+  try {
+    // Enum types — PG has no IF NOT EXISTS for CREATE TYPE; use DO $$ block
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'travel_quote_status') THEN
+          CREATE TYPE travel_quote_status AS ENUM ('draft','submitted','approved','rejected');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'travel_compliance_status') THEN
+          CREATE TYPE travel_compliance_status AS ENUM ('compliant','over_cap','override_pending','override_approved');
+        END IF;
+      END $$
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS gsa_rate_snapshots (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        zip VARCHAR NOT NULL,
+        county VARCHAR,
+        state VARCHAR,
+        city VARCHAR,
+        fiscal_year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        lodging_rate NUMERIC NOT NULL,
+        mie_rate NUMERIC NOT NULL,
+        first_last_day_mie NUMERIC NOT NULL,
+        snapshot_date TIMESTAMP DEFAULT NOW(),
+        source_version VARCHAR,
+        is_cached BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_gsa_snapshot_zip_fy_month ON gsa_rate_snapshots(zip, fiscal_year, month)
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS travel_margin_floors (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        role_type VARCHAR NOT NULL UNIQUE,
+        red_threshold_pct NUMERIC NOT NULL,
+        yellow_threshold_pct NUMERIC NOT NULL,
+        payroll_burden_pct NUMERIC NOT NULL DEFAULT 18.8,
+        default_ot_multiplier NUMERIC NOT NULL DEFAULT 1.5,
+        default_callback_rate NUMERIC NOT NULL DEFAULT 0,
+        default_holiday_rate NUMERIC NOT NULL DEFAULT 0,
+        default_on_call_rate NUMERIC NOT NULL DEFAULT 0,
+        default_vms_fee_pct NUMERIC NOT NULL DEFAULT 3,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        updated_by VARCHAR REFERENCES admin_users(id)
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS travel_quotes (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        recruiter_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        candidate_name VARCHAR NOT NULL,
+        facility_client_name VARCHAR NOT NULL DEFAULT '',
+        label VARCHAR,
+        assignment_zip VARCHAR NOT NULL DEFAULT '',
+        state VARCHAR,
+        county VARCHAR,
+        city VARCHAR,
+        role_type VARCHAR NOT NULL DEFAULT 'healthcare_travel',
+        weeks_in_assignment INTEGER NOT NULL DEFAULT 13,
+        month INTEGER NOT NULL DEFAULT 1,
+        year INTEGER NOT NULL DEFAULT 2025,
+        away_days INTEGER NOT NULL DEFAULT 5,
+        scheduled_hours NUMERIC NOT NULL DEFAULT 36,
+        w2_hourly NUMERIC NOT NULL DEFAULT 0,
+        ot_multiplier NUMERIC NOT NULL DEFAULT 1.5,
+        total_hours NUMERIC NOT NULL DEFAULT 36,
+        master_bill_rate NUMERIC NOT NULL DEFAULT 0,
+        ot_bill_rate NUMERIC,
+        client_ot_multiplier NUMERIC NOT NULL DEFAULT 1.5,
+        vms_fee_pct NUMERIC NOT NULL DEFAULT 3,
+        orientation_hours_total NUMERIC NOT NULL DEFAULT 0,
+        orientation_hours_billable NUMERIC NOT NULL DEFAULT 0,
+        orientation_hours_free NUMERIC NOT NULL DEFAULT 0,
+        orientation_pay_rate NUMERIC,
+        orientation_ot_multiplier NUMERIC NOT NULL DEFAULT 1,
+        completion_bonus NUMERIC NOT NULL DEFAULT 0,
+        daily_mie NUMERIC,
+        daily_lodging NUMERIC,
+        decreased_stipend_override NUMERIC,
+        payroll_burden_pct NUMERIC NOT NULL DEFAULT 18.8,
+        on_call_rate NUMERIC NOT NULL DEFAULT 0,
+        callback_rate NUMERIC NOT NULL DEFAULT 0,
+        holiday_rate NUMERIC NOT NULL DEFAULT 0,
+        status VARCHAR NOT NULL DEFAULT 'draft',
+        gsa_snapshot_id VARCHAR REFERENCES gsa_rate_snapshots(id),
+        compliance_override_by VARCHAR REFERENCES admin_users(id),
+        compliance_override_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_travel_quotes_recruiter ON travel_quotes(recruiter_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_travel_quotes_status ON travel_quotes(status)`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS travel_quote_outputs (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        quote_id VARCHAR NOT NULL UNIQUE REFERENCES travel_quotes(id) ON DELETE CASCADE,
+        weekly_taxable NUMERIC,
+        weekly_non_taxable NUMERIC,
+        weekly_gross NUMERIC,
+        hourly_taxable NUMERIC,
+        hourly_blended NUMERIC,
+        ot_rate NUMERIC,
+        wage_payable_weekly NUMERIC,
+        payroll_taxes_weekly NUMERIC,
+        non_taxable_weekly NUMERIC,
+        orientation_revenue NUMERIC,
+        orientation_candidate_cost NUMERIC,
+        orientation_net NUMERIC,
+        total_billing_weekly NUMERIC,
+        total_billing_contract NUMERIC,
+        total_expense_weekly NUMERIC,
+        total_expense_contract NUMERIC,
+        gross_profit_weekly NUMERIC,
+        net_margin_per_hour NUMERIC,
+        net_margin_per_week NUMERIC,
+        net_margin_per_contract NUMERIC,
+        net_margin_pct NUMERIC,
+        stipend_compliance_status VARCHAR,
+        margin_status VARCHAR,
+        calculated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    log("Travel pay calculator tables ensured");
+  } catch (err) {
+    console.error("Travel pay calculator tables migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   try {
