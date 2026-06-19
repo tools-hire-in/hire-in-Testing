@@ -10,21 +10,23 @@ import {
   FileCheck,
   CalendarDays,
   Coffee,
+  UtensilsCrossed,
   X,
-  Clock,
+  ChevronDown,
+  Timer,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { BreakWidget } from "@/components/admin/BreakWidget";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-const TARGET_HOURS = 8;
+const TARGET_HOURS = 9;
 
 function formatElapsed(ms: number): string {
   if (ms <= 0) return "0h 00m";
@@ -63,6 +65,25 @@ interface LeaveType {
   isConditional: boolean;
   carryForwardCap: number | null;
   occurrenceBased: boolean;
+}
+
+interface BreakRecord {
+  id: string;
+  breakType: "lunch" | "tea";
+  startedAt: string;
+  endedAt: string | null;
+  durationMinutes: string | null;
+}
+
+interface BreakStatus {
+  breaks: BreakRecord[];
+  totalMinutes: number;
+  lunchMinutes: number;
+  teaMinutes: number;
+  activeBreak: BreakRecord | null;
+  entitlement: { lunch: number; tea: number; teaCount: number; total: number };
+  lunchCount: number;
+  teaCount: number;
 }
 
 export default function CommandCenter() {
@@ -155,6 +176,12 @@ export default function CommandCenter() {
     refetchInterval: 60000,
   });
 
+  const { data: breakStatus } = useQuery<BreakStatus>({
+    queryKey: ["/api/hr/attendance/breaks/today"],
+    enabled: isAuthenticated && stats?.todayStatus === "punched_in",
+    refetchInterval: 30000,
+  });
+
   const punchInMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-in"),
     onSuccess: () => {
@@ -197,7 +224,7 @@ export default function CommandCenter() {
   const progressPct = Math.min(100, (liveMs / (TARGET_HOURS * 3600000)) * 100);
   const hoursWorked = liveMs / 3600000;
 
-  const progressColor = hoursWorked >= 9
+  const progressColor = hoursWorked >= TARGET_HOURS + 0.5
     ? "bg-amber-500"
     : hoursWorked >= TARGET_HOURS
     ? "bg-green-500"
@@ -206,13 +233,19 @@ export default function CommandCenter() {
   const showLunchReminder = punchedIn && !lunchReminderDismissed && hoursWorked >= 5;
 
   const selectedRegionalIds = new Set(regionalSelections?.map(s => s.holidayId) || []);
+  const in7DaysStr = (() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split("T")[0];
+  })();
   const upcomingHolidays = holidays
     ?.filter(h => {
       if (h.date < todayStr) return false;
+      if (h.date > in7DaysStr) return false;
       if (h.type === "regional") return selectedRegionalIds.has(h.id);
       return true;
     })
-    .slice(0, 3) || [];
+    .slice(0, 2) || [];
 
   const getLeaveTypeName = (typeId: string) => leaveTypes?.find(lt => lt.id === typeId)?.name || "Leave";
 
@@ -272,219 +305,213 @@ export default function CommandCenter() {
         </Alert>
       )}
 
-      {/* Bento grid: hero (3/5) + right column (2/5) */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* Left hero: Punch status */}
-        <Card className="md:col-span-3 border-2" data-testid="cc-punch-card">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Time Card — Today
-              </CardTitle>
-              {!isLoading && (
-                <Badge
-                  variant={dayComplete ? "default" : punchedIn ? "secondary" : "outline"}
-                  data-testid="cc-punch-status-badge"
+      {/* ── Compact Time Card strip ── */}
+      <Card className="border shadow-sm" data-testid="cc-punch-card">
+        <CardContent className="px-4 py-3">
+          {isLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : (
+            <div className="flex items-center gap-4 min-h-[64px]">
+              {/* Left: elapsed time + punch-in timestamp */}
+              <div className="flex flex-col justify-center min-w-[100px]">
+                <span
+                  className={`text-2xl font-mono font-bold tracking-tight leading-none ${punchedIn ? "text-foreground" : "text-muted-foreground"}`}
+                  data-testid="cc-hours-worked"
                 >
-                  {dayComplete ? "Day Complete" : punchedIn ? "● Working" : "Not Started"}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (
-              <>
-                {/* Live hours counter */}
-                <div className="space-y-2">
-                  <div className="flex items-end justify-between">
-                    <span
-                      className={`text-5xl font-mono font-bold tracking-tight ${punchedIn ? "text-foreground" : "text-muted-foreground"}`}
-                      data-testid="cc-hours-worked"
-                    >
-                      {(punchedIn || dayComplete) ? formatElapsed(liveMs) : "—h ——m"}
-                    </span>
-                    <span className="text-sm text-muted-foreground mb-2">{TARGET_HOURS}h target</span>
-                  </div>
+                  {(punchedIn || dayComplete) ? formatElapsed(liveMs) : "—h ——m"}
+                </span>
+                <span className="text-[11px] text-muted-foreground mt-0.5">
+                  {stats?.punchInTime
+                    ? `In: ${formatTime(stats.punchInTime)}${dayComplete && stats.punchOutTime ? ` · Out: ${formatTime(stats.punchOutTime)}` : ""}`
+                    : "Not punched in"}
+                </span>
+              </div>
+
+              {/* Center: slim progress bar + label */}
+              <div className="flex-1 space-y-1 hidden sm:block">
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                   {(punchedIn || dayComplete) && (
-                    <div className="space-y-1">
-                      <div className={`h-3 w-full rounded-full overflow-hidden bg-muted`}>
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${progressColor}`}
-                          style={{ width: `${progressPct}%` }}
-                          data-testid="cc-progress-bar"
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        {stats?.punchInTime && <span>In: {formatTime(stats.punchInTime)}</span>}
-                        {dayComplete && stats?.punchOutTime && <span>Out: {formatTime(stats.punchOutTime)}</span>}
-                        {punchedIn && <span className="text-green-600 dark:text-green-400">{Math.round(progressPct)}%</span>}
-                      </div>
-                    </div>
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${progressColor}`}
+                      style={{ width: `${progressPct}%` }}
+                      data-testid="cc-progress-bar"
+                    />
                   )}
                 </div>
-
-                {/* Punch action — compact, not full-width */}
-                <div className="flex items-center gap-3">
-                  {stats?.todayStatus === "not_punched" && (
-                    <Button
-                      size="sm"
-                      className="h-8 px-5 text-sm font-semibold"
-                      onClick={() => punchInMutation.mutate()}
-                      disabled={punchInMutation.isPending}
-                      data-testid="cc-button-punch-in"
-                    >
-                      <LogIn className="h-4 w-4 mr-1.5" />
-                      {punchInMutation.isPending ? "Punching In…" : "Punch In"}
-                    </Button>
-                  )}
-                  {stats?.todayStatus === "punched_in" && (
-                    <Button
-                      size="sm"
-                      className="h-8 px-5 text-sm font-semibold"
-                      variant="secondary"
-                      onClick={() => punchOutMutation.mutate()}
-                      disabled={punchOutMutation.isPending}
-                      data-testid="cc-button-punch-out"
-                    >
-                      <LogOutIcon className="h-4 w-4 mr-1.5" />
-                      {punchOutMutation.isPending ? "Punching Out…" : "Punch Out"}
-                    </Button>
-                  )}
-                  {stats?.todayStatus === "completed" && (
-                    <p className="text-sm text-green-600 dark:text-green-400 font-medium">
-                      ✓ Attendance recorded
-                    </p>
-                  )}
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>0h</span>
+                  <span className={punchedIn ? "text-foreground font-medium" : ""}>
+                    {(punchedIn || dayComplete) ? `${Math.round(progressPct)}% of ${TARGET_HOURS}h` : `${TARGET_HOURS}h target`}
+                  </span>
+                  <span>{TARGET_HOURS}h</span>
                 </div>
+              </div>
 
-                {/* Break widget */}
-                {punchedIn && (
-                  <div className="pt-1 border-t">
-                    <BreakWidget punchedIn={punchedIn} />
-                  </div>
+              {/* Right: status badge + action button */}
+              <div className="flex items-center gap-2 shrink-0">
+                {!isLoading && (
+                  <Badge
+                    variant={dayComplete ? "default" : punchedIn ? "secondary" : "outline"}
+                    className="hidden md:inline-flex text-xs"
+                    data-testid="cc-punch-status-badge"
+                  >
+                    {dayComplete ? "✓ Done" : punchedIn ? "● Working" : "Not In"}
+                  </Badge>
                 )}
+                {stats?.todayStatus === "not_punched" && (
+                  <Button
+                    size="sm"
+                    className="h-8 px-4 text-sm font-semibold"
+                    onClick={() => punchInMutation.mutate()}
+                    disabled={punchInMutation.isPending}
+                    data-testid="cc-button-punch-in"
+                  >
+                    <LogIn className="h-4 w-4 mr-1.5" />
+                    {punchInMutation.isPending ? "Starting…" : "Punch In"}
+                  </Button>
+                )}
+                {stats?.todayStatus === "punched_in" && (
+                  <Button
+                    size="sm"
+                    className="h-8 px-4 text-sm font-semibold"
+                    variant="secondary"
+                    onClick={() => punchOutMutation.mutate()}
+                    disabled={punchOutMutation.isPending}
+                    data-testid="cc-button-punch-out"
+                  >
+                    <LogOutIcon className="h-4 w-4 mr-1.5" />
+                    {punchOutMutation.isPending ? "Wrapping up…" : "Punch Out"}
+                  </Button>
+                )}
+                {stats?.todayStatus === "completed" && (
+                  <span className="text-sm text-green-600 dark:text-green-400 font-medium">✓ Recorded</span>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Inline break chips (only when punched in) ── */}
+      {punchedIn && (
+        <BreakChips breakStatus={breakStatus ?? null} />
+      )}
+
+      {/* ── Smart action cards row ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Leave balance */}
+        <Card data-testid="cc-leave-balance-card" className="shadow-sm">
+          <CardHeader className="pb-1 pt-3 px-4">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Leave Balance</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 space-y-2">
+            {isLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : stats?.leaveBalances && stats.leaveBalances.length > 0 ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {stats.leaveBalances.slice(0, 3).map((bal) => {
+                    const total = parseFloat(bal.totalDays);
+                    const used = parseFloat(bal.usedDays);
+                    const available = Math.max(0, total - used);
+                    const name = getLeaveTypeName(bal.leaveTypeId);
+                    const shortName = name.replace(/\s+leave$/i, "").slice(0, 2).toUpperCase();
+                    return (
+                      <div
+                        key={bal.id}
+                        className="flex flex-col items-center bg-muted/50 rounded-lg px-3 py-1.5 min-w-[52px]"
+                        data-testid={`cc-leave-bal-${bal.leaveTypeId}`}
+                      >
+                        <span className="text-lg font-bold font-mono leading-none text-foreground">{available}</span>
+                        <span className="text-[10px] text-muted-foreground mt-0.5">{shortName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs h-7 text-muted-foreground"
+                  onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+                  data-testid="cc-link-view-leaves"
+                >
+                  + Apply Leave
+                </Button>
               </>
+            ) : (
+              <p className="text-xs text-muted-foreground py-2">No leave data</p>
             )}
           </CardContent>
         </Card>
 
-        {/* Right column: leave balance + open requests */}
-        <div className="md:col-span-2 flex flex-col gap-4">
-          {/* Leave balance card */}
-          <Card data-testid="cc-leave-balance-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Leave Balance</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading ? (
-                <Skeleton className="h-24 w-full" />
-              ) : stats?.leaveBalances && stats.leaveBalances.length > 0 ? (
-                stats.leaveBalances.slice(0, 3).map((bal) => {
-                  const total = parseFloat(bal.totalDays);
-                  const used = parseFloat(bal.usedDays);
-                  const available = Math.max(0, total - used);
-                  const pct = total > 0 ? Math.min(100, (available / total) * 100) : 0;
-                  const name = getLeaveTypeName(bal.leaveTypeId);
-                  return (
-                    <div key={bal.id} className="space-y-1" data-testid={`cc-leave-bal-${bal.leaveTypeId}`}>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground font-medium truncate mr-2">{name}</span>
-                        <span className="font-semibold text-foreground shrink-0">{available}d left</span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${pct > 50 ? "bg-green-500" : pct > 25 ? "bg-amber-500" : "bg-red-400"}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-xs text-muted-foreground">No leave data available</p>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs h-7 mt-1"
-                onClick={() => setLocation("/admin/my-desk?tab=time-off")}
-                data-testid="cc-link-view-leaves"
-              >
-                Time Off →
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Open requests card */}
-          <Card data-testid="cc-open-requests-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Open Requests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Pending leaves</span>
-                    <span
-                      className={`text-lg font-bold font-mono ${(stats?.pendingLeaveRequests ?? 0) > 0 ? "text-amber-600" : "text-muted-foreground"}`}
-                      data-testid="cc-pending-leaves-count"
-                    >
-                      {stats?.pendingLeaveRequests ?? 0}
-                    </span>
-                  </div>
-                  {(stats?.pendingLeaveRequests ?? 0) > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-xs h-7"
-                      onClick={() => setLocation("/admin/my-desk?tab=time-off")}
-                      data-testid="cc-link-view-requests"
-                    >
-                      View requests →
-                    </Button>
-                  )}
-                  {(stats?.pendingLeaveRequests ?? 0) === 0 && (
-                    <p className="text-xs text-muted-foreground text-center">No open requests ✓</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Upcoming holidays strip */}
-      {upcomingHolidays.length > 0 && (
-        <Card data-testid="cc-holidays-strip">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 shrink-0">
-                <CalendarDays className="h-3.5 w-3.5" />
-                Upcoming
-              </span>
-              <div className="flex items-center gap-2 flex-wrap">
-                {upcomingHolidays.map((h, i) => (
-                  <span key={h.id} className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`cc-holiday-${h.id}`}>
-                    {i > 0 && <span className="text-muted-foreground/30">•</span>}
-                    <span className="font-medium text-foreground">{new Date(h.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    <span>{h.name}</span>
-                    {h.type === "regional" && <Badge variant="outline" className="text-[10px] px-1 h-4">Regional</Badge>}
+        {/* Pending items */}
+        <Card data-testid="cc-open-requests-card" className="shadow-sm">
+          <CardHeader className="pb-1 pt-3 px-4">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending Items</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            {isLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`text-3xl font-bold font-mono leading-none ${(stats?.pendingLeaveRequests ?? 0) > 0 ? "text-amber-600" : "text-muted-foreground/40"}`}
+                    data-testid="cc-pending-leaves-count"
+                  >
+                    {stats?.pendingLeaveRequests ?? 0}
                   </span>
-                ))}
+                  <span className="text-xs text-muted-foreground">
+                    {(stats?.pendingLeaveRequests ?? 0) === 1 ? "leave request" : "leave requests"} pending
+                  </span>
+                </div>
+                {(stats?.pendingLeaveRequests ?? 0) > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs h-7 text-muted-foreground"
+                    onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+                    data-testid="cc-link-view-requests"
+                  >
+                    View History →
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">All clear ✓</p>
+                )}
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Team Pulse — manager/HR/admin only */}
+        {/* Upcoming holidays in next 7 days — hidden when none */}
+        {upcomingHolidays.length > 0 && (
+          <Card data-testid="cc-upcoming-card" className="shadow-sm">
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Upcoming
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-1.5">
+              {upcomingHolidays.map((h) => (
+                <div key={h.id} className="flex items-center gap-2" data-testid={`cc-holiday-${h.id}`}>
+                  <span className="text-[11px] font-mono text-muted-foreground shrink-0 w-[44px]">
+                    {new Date(h.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </span>
+                  <span className="text-xs font-medium text-foreground truncate">{h.name}</span>
+                  {h.type === "regional" && (
+                    <Badge variant="outline" className="text-[9px] px-1 h-4 shrink-0">Reg</Badge>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* ── Team Pulse — manager/HR/admin only ── */}
       {isManagerRole && teamTodayData && teamTodayData.totalCount > 0 && (
-        <Card className="border-primary/20 bg-primary/5" data-testid="cc-team-pulse">
+        <Card className="border-primary/20 bg-primary/5 shadow-sm" data-testid="cc-team-pulse">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -527,6 +554,207 @@ export default function CommandCenter() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/* ── Inline break chips with Popover ── */
+function BreakChips({ breakStatus }: { breakStatus: BreakStatus | null }) {
+  const { toast } = useToast();
+  const [lunchOpen, setLunchOpen] = useState(false);
+  const [teaOpen, setTeaOpen] = useState(false);
+  const [breakElapsed, setBreakElapsed] = useState("0:00");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const active = breakStatus?.activeBreak ?? null;
+  const lunchCount = breakStatus?.lunchCount ?? 0;
+  const teaCount = breakStatus?.teaCount ?? 0;
+  const lunchDone = lunchCount >= 1;
+  const teaDone = teaCount >= 2;
+
+  useEffect(() => {
+    if (active?.startedAt) {
+      const tick = () => {
+        const elapsed = Math.floor((Date.now() - new Date(active.startedAt).getTime()) / 1000);
+        const m = Math.floor(elapsed / 60);
+        const s = elapsed % 60;
+        setBreakElapsed(`${m}:${String(s).padStart(2, "0")}`);
+      };
+      tick();
+      intervalRef.current = setInterval(tick, 1000);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      setBreakElapsed("0:00");
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [active?.id]);
+
+  const startBreak = useMutation({
+    mutationFn: (breakType: "lunch" | "tea") => apiRequest("POST", "/api/hr/attendance/breaks/start", { breakType }),
+    onSuccess: (_, breakType) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
+      setLunchOpen(false);
+      setTeaOpen(false);
+      toast({ title: `${breakType === "lunch" ? "Lunch" : "Tea"} break started` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Can't start break", description: err.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const endBreak = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hr/attendance/breaks/end"),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance/breaks/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
+      setLunchOpen(false);
+      setTeaOpen(false);
+      if (data?.exceeded) {
+        toast({ title: "Break ended — slightly over", description: `${data.durationMinutes} min taken (policy: ${data.allocated} min).` });
+      } else {
+        toast({ title: "Break ended", description: "Welcome back!" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const activeIsLunch = active?.breakType === "lunch";
+  const activeIsTea = active?.breakType === "tea";
+  const elapsedMin = active ? (Date.now() - new Date(active.startedAt).getTime()) / 60000 : 0;
+  const allocated = active ? (activeIsLunch ? 30 : 15) : 0;
+  const isOver = active && elapsedMin > allocated;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap" data-testid="cc-break-chips">
+      {/* Lunch chip */}
+      <Popover open={lunchOpen} onOpenChange={setLunchOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors cursor-pointer
+              ${activeIsLunch
+                ? isOver ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/30 dark:border-red-700 dark:text-red-400"
+                         : "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/30 dark:border-blue-700 dark:text-blue-400"
+                : lunchDone ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-950/30 dark:border-green-700 dark:text-green-400"
+                            : "bg-muted border-border text-muted-foreground hover:border-foreground/30"
+              }`}
+            data-testid="cc-chip-lunch"
+          >
+            <UtensilsCrossed className="h-3 w-3" />
+            {activeIsLunch
+              ? <><Timer className="h-3 w-3" />{breakElapsed}</>
+              : lunchDone ? "Lunch ✓"
+              : "Lunch · not taken"
+            }
+            {!lunchDone && !activeIsLunch && <ChevronDown className="h-3 w-3 opacity-50" />}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-3 space-y-2" align="start" data-testid="cc-popover-lunch">
+          <p className="text-xs font-semibold">Lunch Break <span className="text-muted-foreground font-normal">(up to 30 min)</span></p>
+          {lunchDone && !activeIsLunch && (
+            <p className="text-xs text-muted-foreground">Lunch already taken today.</p>
+          )}
+          {activeIsLunch && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Timer className="h-3.5 w-3.5" />
+                <span className={`font-mono ${isOver ? "text-red-600" : ""}`}>{breakElapsed}</span>
+                {isOver && <AlertCircle className="h-3.5 w-3.5 text-red-500" />}
+              </div>
+              <Button
+                size="sm"
+                variant={isOver ? "destructive" : "default"}
+                className="w-full h-7 text-xs"
+                onClick={() => endBreak.mutate()}
+                disabled={endBreak.isPending}
+                data-testid="cc-button-end-lunch"
+              >
+                {endBreak.isPending ? "Ending…" : "End Lunch Break"}
+              </Button>
+            </>
+          )}
+          {!lunchDone && !active && (
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs"
+              onClick={() => startBreak.mutate("lunch")}
+              disabled={startBreak.isPending}
+              data-testid="cc-button-start-lunch"
+            >
+              {startBreak.isPending ? "Starting…" : "Start Lunch Break"}
+            </Button>
+          )}
+          {!lunchDone && activeIsTea && (
+            <p className="text-xs text-muted-foreground">End your tea break first.</p>
+          )}
+        </PopoverContent>
+      </Popover>
+
+      {/* Tea chip */}
+      <Popover open={teaOpen} onOpenChange={setTeaOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors cursor-pointer
+              ${activeIsTea
+                ? isOver ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950/30 dark:border-red-700 dark:text-red-400"
+                         : "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/30 dark:border-blue-700 dark:text-blue-400"
+                : teaDone ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-950/30 dark:border-green-700 dark:text-green-400"
+                : teaCount > 0 ? "bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400"
+                              : "bg-muted border-border text-muted-foreground hover:border-foreground/30"
+              }`}
+            data-testid="cc-chip-tea"
+          >
+            <Coffee className="h-3 w-3" />
+            {activeIsTea
+              ? <><Timer className="h-3 w-3" />{breakElapsed}</>
+              : teaDone ? `Tea ✓ (${teaCount}/2)`
+              : `Tea · ${teaCount}/2`
+            }
+            {!teaDone && !activeIsTea && <ChevronDown className="h-3 w-3 opacity-50" />}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-3 space-y-2" align="start" data-testid="cc-popover-tea">
+          <p className="text-xs font-semibold">Tea Break <span className="text-muted-foreground font-normal">(up to 15 min · {teaCount}/2 used)</span></p>
+          {teaDone && !activeIsTea && (
+            <p className="text-xs text-muted-foreground">Both tea breaks taken today.</p>
+          )}
+          {activeIsTea && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Timer className="h-3.5 w-3.5" />
+                <span className={`font-mono ${isOver ? "text-red-600" : ""}`}>{breakElapsed}</span>
+                {isOver && <AlertCircle className="h-3.5 w-3.5 text-red-500" />}
+              </div>
+              <Button
+                size="sm"
+                variant={isOver ? "destructive" : "default"}
+                className="w-full h-7 text-xs"
+                onClick={() => endBreak.mutate()}
+                disabled={endBreak.isPending}
+                data-testid="cc-button-end-tea"
+              >
+                {endBreak.isPending ? "Ending…" : "End Tea Break"}
+              </Button>
+            </>
+          )}
+          {!teaDone && !active && (
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs"
+              onClick={() => startBreak.mutate("tea")}
+              disabled={startBreak.isPending}
+              data-testid="cc-button-start-tea"
+            >
+              {startBreak.isPending ? "Starting…" : "Start Tea Break"}
+            </Button>
+          )}
+          {!teaDone && activeIsLunch && (
+            <p className="text-xs text-muted-foreground">End your lunch break first.</p>
+          )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

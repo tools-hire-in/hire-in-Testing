@@ -87,7 +87,7 @@ interface PolicyConfig {
   monthEndBlackoutDays: number;
 }
 
-const TARGET_HOURS = 8;
+const TARGET_HOURS = 9;
 
 function formatElapsed(ms: number): string {
   if (ms <= 0) return "0h 00m";
