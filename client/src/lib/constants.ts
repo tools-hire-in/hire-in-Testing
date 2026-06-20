@@ -95,12 +95,18 @@ export const NAV_LINKS = [
     label: "Services",
     children: [
       { href: "/services/healthcare-recruitment", label: "Healthcare Recruitment" },
-      { href: "/ehealthcare-staffing", label: "eHealthcare Staffing" },
       { href: "/services/it-software", label: "IT & Software Development" },
-      { href: "/it-staffing", label: "IT Staffing Solutions" },
       { href: "/services/engineering-technical", label: "Engineering & Technical" },
       { href: "/services/non-it-professional", label: "Professional Services" },
       { href: "/services/contract-staffing", label: "Contract Staffing" },
+    ],
+  },
+  {
+    label: "Capability Decks",
+    children: [
+      { href: "/capability-deck", label: "Capability Deck" },
+      { href: "/it-staffing", label: "IT Staffing Solutions" },
+      { href: "/ehealthcare-staffing", label: "eHealthcare Staffing" },
     ],
   },
   { href: "/contracts", label: "Contracts" },
