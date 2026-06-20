@@ -797,6 +797,11 @@ function FeatureFlagsSection() {
       label: "DocuSign-Style E-Sign Flow",
       description: "When enabled, candidates and clients are shown a professional guided signing experience: e-sign consent gate, signature style setup, auto-advance initialing, and pre-filled final signature. When disabled, the original single-step signing form is used.",
     },
+    {
+      key: "new_look",
+      label: "New Look Rollout (master switch)",
+      description: "Rollout gate for the redesigned portal (v2 shell + Command Center cockpit). When ON, users see a \"Try the new look\" option in their profile and can opt in individually; opted-in users get the new shell and cockpit. When OFF, the option is hidden and everyone sees the classic portal — use this as an instant kill-switch.",
+    },
   ];
 
   return (

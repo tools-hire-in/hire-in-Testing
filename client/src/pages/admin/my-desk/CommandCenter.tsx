@@ -75,7 +75,7 @@ interface BreakRecord {
   durationMinutes: string | null;
 }
 
-interface BreakStatus {
+export interface BreakStatus {
   breaks: BreakRecord[];
   totalMinutes: number;
   lunchMinutes: number;
@@ -559,7 +559,7 @@ export default function CommandCenter() {
 }
 
 /* ── Inline break chips with Popover ── */
-function BreakChips({ breakStatus }: { breakStatus: BreakStatus | null }) {
+export function BreakChips({ breakStatus }: { breakStatus: BreakStatus | null }) {
   const { toast } = useToast();
   const [lunchOpen, setLunchOpen] = useState(false);
   const [teaOpen, setTeaOpen] = useState(false);

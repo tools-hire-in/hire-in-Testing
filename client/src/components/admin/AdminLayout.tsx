@@ -528,7 +528,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { user, logout } = useAuth();
   const { isEnabled } = useFeatureFlags();
   const { can } = usePermissions();
-  const { enabled: newLook, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
+  const { enabled: newLook, available: newLookAvailable, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
   const { toast } = useToast();
   const notificationsEnabled = isEnabled("notifications_enabled");
 
@@ -1193,6 +1193,22 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 rounded-full px-3 border border-[hsl(var(--v2-orange))]/40 text-[hsl(var(--v2-orange))] hover:bg-[hsl(var(--v2-orange))]/10"
+                        onClick={disableNewLook}
+                        disabled={newLookPending}
+                        data-testid="button-new-look-active"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span className="text-xs hidden sm:inline">New Look</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>You're on the new look — click to switch back to classic</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
                         size="icon"
                         className="h-8 w-8 v2-muted hover:text-current"
                         onClick={() => setShowTour(true)}
@@ -1265,22 +1281,24 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   <Badge variant="outline" className="text-xs hidden sm:flex">
                     {roleInfo.label}
                   </Badge>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 gap-1.5 text-muted-foreground hidden sm:flex"
-                        onClick={enableNewLook}
-                        disabled={newLookPending}
-                        data-testid="button-try-new-look"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        <span className="text-xs">Try the new look</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Preview the redesigned portal (beta). You can switch back anytime.</TooltipContent>
-                  </Tooltip>
+                  {newLookAvailable && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 border-orange-300 text-orange-600 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-400 font-medium"
+                          onClick={enableNewLook}
+                          disabled={newLookPending}
+                          data-testid="button-try-new-look"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span className="text-xs">Try new look</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Preview the redesigned portal — you can switch back anytime.</TooltipContent>
+                    </Tooltip>
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button

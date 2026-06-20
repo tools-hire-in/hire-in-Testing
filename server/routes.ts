@@ -8808,6 +8808,19 @@ export async function registerRoutes(
     }
   });
 
+  // My pending addendums — addendums sent to the logged-in employee awaiting their acceptance
+  app.get("/api/hr/tools/addendums/my-pending", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      const addendums = await storage.getPendingAddendumsForEmployee(userId);
+      res.json(addendums);
+    } catch (error) {
+      console.error("My pending addendums error:", error);
+      res.status(500).json({ error: "Failed to fetch pending addendums" });
+    }
+  });
+
   // Create standalone addendum
   app.post("/api/hr/tools/addendums/standalone", requireAuth, requirePermission("hr.tools.addendums.standalone.post", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
@@ -10397,7 +10410,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {

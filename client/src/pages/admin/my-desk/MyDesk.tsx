@@ -5,7 +5,9 @@ import { Lock, GraduationCap } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { useNewLook } from "@/hooks/use-new-look";
 import CommandCenter from "./CommandCenter";
+import CommandCenterV2 from "./CommandCenterV2";
 import MyRegularizations from "./MyRegularizations";
 
 const Attendance = lazy(() => import("@/pages/admin/hr/Attendance"));
@@ -38,6 +40,7 @@ export default function MyDesk() {
   const search = useSearch();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
 
   const activeTab: Tab | null = useMemo(() => {
     try {
@@ -91,7 +94,7 @@ export default function MyDesk() {
 
         {/* Content driven by sidebar sub-nav */}
         <div>
-          {activeTab === null && <CommandCenter />}
+          {activeTab === null && (newLook ? <CommandCenterV2 /> : <CommandCenter />)}
 
           {activeTab === "time-card" && !isComplianceLocked && (
             <Suspense fallback={<TabFallback />}>

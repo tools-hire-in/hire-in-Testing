@@ -388,6 +388,7 @@ export interface IStorage {
   getAddendumByToken(token: string): Promise<OfferLetterAddendum | undefined>;
   getAddendum(id: string): Promise<OfferLetterAddendum | undefined>;
   updateAddendumStatus(id: string, updates: Partial<OfferLetterAddendum>): Promise<OfferLetterAddendum | undefined>;
+  getPendingAddendumsForEmployee(employeeId: string): Promise<OfferLetterAddendum[]>;
 
   // HR Letters
   createHrLetter(data: InsertHrLetter): Promise<HrLetter>;
@@ -2763,6 +2764,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(offerLetterAddendums.id, id))
       .returning();
     return updated;
+  }
+
+  async getPendingAddendumsForEmployee(employeeId: string): Promise<OfferLetterAddendum[]> {
+    return db.select().from(offerLetterAddendums)
+      .where(and(
+        eq(offerLetterAddendums.forEmployeeId, employeeId),
+        eq(offerLetterAddendums.status, "sent"),
+        isNull(offerLetterAddendums.acceptedAt),
+      ))
+      .orderBy(desc(offerLetterAddendums.createdAt));
   }
 
   async createNotification(data: InsertNotification): Promise<Notification> {
