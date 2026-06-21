@@ -326,7 +326,7 @@ export function AdminJobsContent({ embedded = false }: { embedded?: boolean }) {
   };
 
   return (
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           {newLook ? (

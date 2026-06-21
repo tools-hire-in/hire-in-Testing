@@ -56,7 +56,7 @@ export default function PeopleHR() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 v2-surface">
         {newLook ? (
           <V2PageHeader
             icon={UsersIcon}

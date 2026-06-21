@@ -39,7 +39,7 @@ export default function Recruitment() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {newLook ? (
           <V2PageHeader
             icon={Briefcase}

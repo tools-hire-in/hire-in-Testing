@@ -513,17 +513,27 @@
 }
 
 /* ------------------------------------------------------------
-   v2 content polish — applied to data-dense HR & Recruitment
-   surfaces. Content stays on the clean light tokens (readability);
-   these rules only brand the shared chrome bits (tab strips) so
-   pages feel consistent with the Command Center pilot.
+   v2 tab strips — ONE consistent treatment across every v2
+   surface (personal areas, People & HR, Recruitment, New Hire,
+   Service Desk, etc.). Promoted to the global `.app-v2` scope so
+   tab strips look identical whether or not a page opts into the
+   `.v2-surface` content treatment. Soft navy track, white active
+   pill with a navy label and an orange underline accent — matching
+   the Command Center pilot.
    ------------------------------------------------------------ */
-
-/* Branded active tab: navy fill, white label — consistent across
-   People & HR, Recruitment and other admin tab strips in v2. */
+.app-v2 [role="tablist"] {
+  background: hsl(var(--v2-navy) / 0.06);
+  border-radius: var(--v2-radius);
+}
+.app-v2 [role="tab"] {
+  border-radius: calc(var(--v2-radius) - 0.25rem);
+  font-weight: 500;
+}
 .app-v2 [role="tab"][data-state="active"] {
-  background-color: hsl(var(--v2-navy));
-  color: #fff;
+  background: #fff;
+  color: hsl(var(--v2-navy));
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), inset 0 -2px 0 hsl(var(--v2-orange));
 }
 .app-v2 [role="tab"][data-state="active"] svg {
   color: hsl(var(--v2-orange));
@@ -558,6 +568,7 @@
 .app-v2 .v2-surface .bg-indigo-100,
 .app-v2 .v2-surface .bg-purple-50,
 .app-v2 .v2-surface .bg-purple-100,
+.app-v2 .v2-surface .bg-violet-100,
 .app-v2 .v2-surface .bg-teal-100,
 .app-v2 .v2-surface .bg-pink-100 {
   background-color: hsl(var(--v2-navy) / 0.10);
@@ -588,6 +599,7 @@
 .app-v2 .v2-surface .text-indigo-800,
 .app-v2 .v2-surface .text-purple-600,
 .app-v2 .v2-surface .text-purple-700,
+.app-v2 .v2-surface .text-violet-800,
 .app-v2 .v2-surface .text-teal-700,
 .app-v2 .v2-surface .text-pink-700 {
   color: hsl(218 56% 48%);
@@ -659,11 +671,11 @@
 .app-v2 .v2-surface .v2-page-head {
   position: relative;
   overflow: hidden;
-  border-radius: var(--v2-radius);
-  padding: 1.15rem 1.5rem;
+  border-radius: 1rem;
+  padding: 1.25rem 1.5rem;
   color: #fff;
-  background: linear-gradient(120deg, hsl(var(--v2-navy)) 0%, #16294d 58%, hsl(var(--v2-orange)) 220%);
-  box-shadow: var(--v2-shadow-card);
+  background: linear-gradient(120deg, hsl(var(--v2-navy)) 0%, #16294d 55%, hsl(var(--v2-orange)) 165%);
+  box-shadow: var(--shadow-sm);
 }
 .app-v2 .v2-surface .v2-page-head::after {
   content: "";
@@ -688,22 +700,8 @@
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* Tabs — soft navy track with a clean white active pill + navy
-   label, matching the cockpit nav language. */
-.app-v2 .v2-surface [role="tablist"] {
-  background: hsl(var(--v2-navy) / 0.06);
-  border-radius: var(--v2-radius);
-}
-.app-v2 .v2-surface [role="tab"] {
-  border-radius: calc(var(--v2-radius) - 0.25rem);
-  font-weight: 500;
-}
-.app-v2 .v2-surface [role="tab"][data-state="active"] {
-  background: #fff;
-  color: hsl(var(--v2-navy));
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), inset 0 -2px 0 hsl(var(--v2-orange));
-}
+/* Tab strips are defined once at the global `.app-v2` scope above
+   so personal, HR, recruitment and other surfaces share one look. */
 
 /* Tables — quiet navy header row for scan-ability, soft hover. */
 .app-v2 .v2-surface table thead th {

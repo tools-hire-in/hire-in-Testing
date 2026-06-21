@@ -161,7 +161,7 @@ export function AdminApplicationsContent({ embedded = false }: { embedded?: bool
   }
 
   return (
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {newLook ? (
           !embedded && (
             <V2PageHeader

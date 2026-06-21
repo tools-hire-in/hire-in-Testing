@@ -505,7 +505,7 @@ export default function ServiceDesk() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 max-w-3xl">
+      <div className="space-y-6 max-w-3xl v2-surface">
         {newLook ? (
           <V2PageHeader
             icon={LifeBuoy}
