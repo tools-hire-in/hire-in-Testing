@@ -52,8 +52,8 @@ export default function MyTeamTabs() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
-        <div>
+      <div className="space-y-4 v2-surface">
+        <div className="v2-page-head">
           <h1 className="text-2xl font-bold" data-testid="text-myteam-title">My Team</h1>
           <p className="text-sm text-muted-foreground">Team overview, attendance, leave approvals, training progress, and month-end approval</p>
         </div>

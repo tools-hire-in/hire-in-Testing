@@ -636,3 +636,89 @@
 .app-v2 .v2-surface .hover\:text-indigo-800:hover {
   color: hsl(218 56% 40%);
 }
+
+/* ============================================================
+   APP REDESIGN (v2) — Personal-area content surfaces
+   ------------------------------------------------------------
+   Scoped to `.app-v2 .v2-surface` so ONLY the personal surfaces
+   (My Work, My Team, My Profile) pick up the brand content
+   treatment. HR / recruitment / growth are intentionally left
+   alone — they have their own rollout tasks. With the new look
+   OFF there is no `.app-v2` ancestor, so every rule below is
+   inert and the classic look renders byte-for-byte unchanged.
+
+   Strategy: keep the content area light & readable (content
+   tokens are NOT overridden) and layer brand polish on top —
+   navy/orange accents on headers, tabs, cards and tables to
+   match the Command Center pilot.
+   ============================================================ */
+
+/* Branded page-header band — navy cockpit gradient (matches the
+   pilot hero). Inert in classic: `.v2-page-head` has no styling
+   outside the v2 scope. */
+.app-v2 .v2-surface .v2-page-head {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--v2-radius);
+  padding: 1.15rem 1.5rem;
+  color: #fff;
+  background: linear-gradient(120deg, hsl(var(--v2-navy)) 0%, #16294d 58%, hsl(var(--v2-orange)) 220%);
+  box-shadow: var(--v2-shadow-card);
+}
+.app-v2 .v2-surface .v2-page-head::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  right: -2rem;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 9999px;
+  background: hsl(var(--v2-orange) / 0.12);
+  pointer-events: none;
+}
+.app-v2 .v2-surface .v2-page-head > * { position: relative; z-index: 1; }
+.app-v2 .v2-surface .v2-page-head h1 { color: #fff; }
+.app-v2 .v2-surface .v2-page-head p { color: rgba(255, 255, 255, 0.78); }
+
+/* Cards — adopt the v2 radius, a navy-tinted hairline and a soft
+   lift so data-dense cards read as one cohesive set. */
+.app-v2 .v2-surface .shadcn-card {
+  border-radius: var(--v2-radius);
+  border-color: hsl(var(--v2-navy) / 0.12);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Tabs — soft navy track with a clean white active pill + navy
+   label, matching the cockpit nav language. */
+.app-v2 .v2-surface [role="tablist"] {
+  background: hsl(var(--v2-navy) / 0.06);
+  border-radius: var(--v2-radius);
+}
+.app-v2 .v2-surface [role="tab"] {
+  border-radius: calc(var(--v2-radius) - 0.25rem);
+  font-weight: 500;
+}
+.app-v2 .v2-surface [role="tab"][data-state="active"] {
+  background: #fff;
+  color: hsl(var(--v2-navy));
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), inset 0 -2px 0 hsl(var(--v2-orange));
+}
+
+/* Tables — quiet navy header row for scan-ability, soft hover. */
+.app-v2 .v2-surface table thead th {
+  background: hsl(var(--v2-navy) / 0.04);
+  color: hsl(var(--v2-navy));
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.app-v2 .v2-surface table tbody tr:hover {
+  background: hsl(var(--v2-navy) / 0.03);
+}
+
+/* Progress bars pick up the brand orange under the v2 surface. */
+.app-v2 .v2-surface [role="progressbar"] > * {
+  background-color: hsl(var(--v2-orange));
+}

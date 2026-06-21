@@ -43,8 +43,8 @@ export default function MyProfile() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
-        <div>
+      <div className="space-y-4 v2-surface">
+        <div className="v2-page-head">
           <h1 className="text-2xl font-bold" data-testid="text-myprofile-title">My Profile</h1>
           <p className="text-sm text-muted-foreground">Your profile, documents, salary slips, and org chart</p>
         </div>
