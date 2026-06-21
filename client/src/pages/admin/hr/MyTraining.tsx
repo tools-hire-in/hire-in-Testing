@@ -814,14 +814,16 @@ export default function MyTraining() {
   if (activeAssignmentId && !(assignments as any[]).find((a: any) => a.fromRayo && a.id === activeAssignmentId)) {
     return (
       <AdminLayout>
-        <TrackPlayer assignmentId={activeAssignmentId} onBack={() => setActiveAssignmentId(null)} />
+        <div className="v2-surface">
+          <TrackPlayer assignmentId={activeAssignmentId} onBack={() => setActiveAssignmentId(null)} />
+        </div>
       </AdminLayout>
     );
   }
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
+      <div className="v2-surface p-6 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-xl font-semibold leading-tight">My Training</h1>

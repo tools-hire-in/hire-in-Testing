@@ -6,6 +6,7 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useNewLook } from "@/hooks/use-new-look";
 
 interface AnalyticsSummary {
   totalActiveGoals: number;
@@ -48,8 +49,15 @@ export default function Analytics() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
+  const { enabled: newLook } = useNewLook();
   const isManagerOrAbove = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
   const isHrOrAdmin = ["super_admin", "admin", "hr"].includes(user?.role || "");
+
+  // Analytics tiles must read as brand-only (navy/orange) under the new look.
+  // Arbitrary hex classes are used so the v2-surface recolor layer leaves them
+  // exactly as set. Classic (newLook OFF) keeps the original rainbow palette.
+  const tileNavy = newLook ? "bg-[#1F3A6E]" : "";
+  const tileOrange = newLook ? "bg-[#F47C20]" : "";
 
   const { data: analytics, isLoading } = useQuery<AnalyticsSummary>({
     queryKey: ["/api/performance/analytics"],
@@ -74,7 +82,7 @@ export default function Analytics() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="v2-surface space-y-6">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-analytics-title">Performance Analytics</h1>
           <p className="text-muted-foreground">
@@ -94,35 +102,35 @@ export default function Analytics() {
                 label="Active Goals"
                 value={analytics.totalActiveGoals}
                 subtext="Across all employees"
-                color="bg-blue-500"
+                color={newLook ? tileNavy : "bg-blue-500"}
               />
               <StatCard
                 icon={TrendingUp}
                 label="Goals Completed"
                 value={`${analytics.goalsCompletedPercentage}%`}
                 subtext="Of all goals"
-                color="bg-green-500"
+                color={newLook ? tileOrange : "bg-green-500"}
               />
               <StatCard
                 icon={RefreshCw}
                 label="Review Completion"
                 value={`${analytics.reviewCompletionRate}%`}
                 subtext="Active cycle"
-                color="bg-purple-500"
+                color={newLook ? tileNavy : "bg-purple-500"}
               />
               <StatCard
                 icon={Star}
                 label="Avg Rating"
                 value={analytics.averageRating.toFixed(1)}
                 subtext="Out of 5.0"
-                color="bg-amber-500"
+                color={newLook ? tileOrange : "bg-amber-500"}
               />
               <StatCard
                 icon={MessageSquare}
                 label="Feedback Given"
                 value={analytics.feedbackThisMonth}
                 subtext="This month"
-                color="bg-indigo-500"
+                color={newLook ? tileNavy : "bg-indigo-500"}
               />
             </div>
 

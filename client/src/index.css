@@ -528,3 +528,111 @@
 .app-v2 [role="tab"][data-state="active"] svg {
   color: hsl(var(--v2-orange));
 }
+
+/* ============================================================
+   v2 CONTENT SURFACES — Growth & Performance brand recolor
+   ------------------------------------------------------------
+   Scoped to `.app-v2 .v2-surface`, so it only activates when a
+   user has the new look ON (the `.app-v2` ancestor is added by
+   AdminLayout). With the flag OFF there is no `.app-v2` ancestor
+   and these rules never apply — classic renders unchanged.
+
+   Strategy: keep STATUS colours intact (green = success,
+   amber/yellow = warning, red = destructive) but remap the
+   off-brand COOL decorative accents (blue / indigo / purple /
+   teal / pink) onto the brand navy so learning, goal, review,
+   feedback, praise and analytics surfaces read on-brand.
+
+   Specificity note: `.app-v2 .v2-surface .x` is (0,3,0) which
+   outranks both base utilities (0,1,0) and `.dark`-gated dark:
+   variants (0,2,0), so a single base-class override also wins in
+   dark mode — no separate dark: handling needed. hover: variants
+   are matched explicitly below.
+   ============================================================ */
+
+/* Cool decorative TINT backgrounds -> soft navy wash */
+.app-v2 .v2-surface .bg-blue-50,
+.app-v2 .v2-surface .bg-blue-50\/40,
+.app-v2 .v2-surface .bg-blue-100,
+.app-v2 .v2-surface .bg-indigo-50,
+.app-v2 .v2-surface .bg-indigo-100,
+.app-v2 .v2-surface .bg-purple-50,
+.app-v2 .v2-surface .bg-purple-100,
+.app-v2 .v2-surface .bg-teal-100,
+.app-v2 .v2-surface .bg-pink-100 {
+  background-color: hsl(var(--v2-navy) / 0.10);
+}
+
+/* Cool decorative SOLID backgrounds -> brand navy (text stays white) */
+.app-v2 .v2-surface .bg-blue-500,
+.app-v2 .v2-surface .bg-blue-600,
+.app-v2 .v2-surface .bg-blue-700,
+.app-v2 .v2-surface .bg-blue-800,
+.app-v2 .v2-surface .bg-blue-900,
+.app-v2 .v2-surface .bg-indigo-500,
+.app-v2 .v2-surface .bg-indigo-600,
+.app-v2 .v2-surface .bg-indigo-700,
+.app-v2 .v2-surface .bg-purple-500,
+.app-v2 .v2-surface .bg-purple-700,
+.app-v2 .v2-surface .bg-purple-800 {
+  background-color: hsl(var(--v2-navy));
+}
+
+/* Cool decorative DEEP text/icons -> navy (legible in light & dark) */
+.app-v2 .v2-surface .text-blue-600,
+.app-v2 .v2-surface .text-blue-700,
+.app-v2 .v2-surface .text-blue-800,
+.app-v2 .v2-surface .text-blue-900,
+.app-v2 .v2-surface .text-indigo-600,
+.app-v2 .v2-surface .text-indigo-700,
+.app-v2 .v2-surface .text-indigo-800,
+.app-v2 .v2-surface .text-purple-600,
+.app-v2 .v2-surface .text-purple-700,
+.app-v2 .v2-surface .text-teal-700,
+.app-v2 .v2-surface .text-pink-700 {
+  color: hsl(218 56% 48%);
+}
+
+/* Cool decorative LIGHT text (used on dark surfaces) -> light navy */
+.app-v2 .v2-surface .text-blue-200,
+.app-v2 .v2-surface .text-blue-300,
+.app-v2 .v2-surface .text-blue-400,
+.app-v2 .v2-surface .text-indigo-300 {
+  color: hsl(218 70% 72%);
+}
+
+/* Cool decorative light borders -> navy hairline */
+.app-v2 .v2-surface .border-blue-200,
+.app-v2 .v2-surface .border-blue-300,
+.app-v2 .v2-surface .border-blue-400,
+.app-v2 .v2-surface .border-indigo-200,
+.app-v2 .v2-surface .border-purple-200,
+.app-v2 .v2-surface .border-purple-300 {
+  border-color: hsl(var(--v2-navy) / 0.25);
+}
+
+/* Cool decorative dark borders -> navy */
+.app-v2 .v2-surface .border-blue-800,
+.app-v2 .v2-surface .border-blue-900,
+.app-v2 .v2-surface .border-indigo-800 {
+  border-color: hsl(218 56% 45% / 0.4);
+}
+
+/* Cool decorative focus ring -> navy */
+.app-v2 .v2-surface .ring-blue-500 {
+  --tw-ring-color: hsl(var(--v2-navy));
+}
+
+/* hover: variants (matched explicitly so the :hover state is covered) */
+.app-v2 .v2-surface .hover\:bg-blue-50:hover,
+.app-v2 .v2-surface .hover\:bg-purple-50:hover {
+  background-color: hsl(var(--v2-navy) / 0.14);
+}
+.app-v2 .v2-surface .hover\:bg-blue-800:hover,
+.app-v2 .v2-surface .hover\:bg-purple-800:hover,
+.app-v2 .v2-surface .hover\:bg-indigo-700:hover {
+  background-color: hsl(218 56% 22%);
+}
+.app-v2 .v2-surface .hover\:text-indigo-800:hover {
+  color: hsl(218 56% 40%);
+}

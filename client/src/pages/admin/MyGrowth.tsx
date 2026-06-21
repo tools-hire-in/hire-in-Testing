@@ -67,7 +67,7 @@ export default function MyGrowth() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="v2-surface space-y-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-mygrowth-title">My Growth</h1>
           <p className="text-sm text-muted-foreground">Recognition, training, goals, check-ins, feedback, and reviews</p>

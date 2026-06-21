@@ -128,7 +128,7 @@ export function TeamReviewsContent() {
   }, {} as Record<string, TeamReview[]>);
 
   return (
-      <div className="space-y-6">
+      <div className="v2-surface space-y-6">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-team-reviews-title">Team Reviews</h1>
           <p className="text-muted-foreground">Review your direct reports' performance</p>

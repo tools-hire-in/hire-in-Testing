@@ -215,7 +215,7 @@ export default function TrainingProgress() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
+      <div className="v2-surface p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
