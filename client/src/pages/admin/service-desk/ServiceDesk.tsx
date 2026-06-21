@@ -3,10 +3,12 @@ import { useLocation } from "wouter";
 import {
   Key, FileText, Settings, ClipboardList,
   CheckCircle2, ExternalLink, Send, AlertCircle,
-  Clock,
+  Clock, LifeBuoy,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -471,6 +473,7 @@ interface HirdRequest {
 export default function ServiceDesk() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [activeTile, setActiveTile] = useState<Tile | null>(null);
 
@@ -503,10 +506,20 @@ export default function ServiceDesk() {
   return (
     <AdminLayout>
       <div className="space-y-6 max-w-3xl">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-service-desk-title">Service Desk</h1>
-          <p className="text-sm text-muted-foreground">Raise internal support requests — we'll take it from there.</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={LifeBuoy}
+            eyebrow="Service Desk"
+            title="Service Desk"
+            subtitle="Raise internal support requests — we'll take it from there."
+            testId="text-service-desk-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-service-desk-title">Service Desk</h1>
+            <p className="text-sm text-muted-foreground">Raise internal support requests — we'll take it from there.</p>
+          </div>
+        )}
 
         {/* Request type tiles */}
         <div>

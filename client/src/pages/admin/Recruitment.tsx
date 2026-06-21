@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Briefcase } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminJobsContent } from "./Jobs";
@@ -10,6 +12,7 @@ import { AdminApplicationsContent } from "./Applications";
 export default function Recruitment() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
@@ -37,25 +40,35 @@ export default function Recruitment() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-recruitment-title">
-            <Briefcase className="h-6 w-6 text-primary" />
-            Recruitment
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage job listings and candidate pipeline
-          </p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={Briefcase}
+            eyebrow="Recruitment"
+            title="Recruitment"
+            subtitle="Manage job listings and candidate pipeline"
+            testId="text-recruitment-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-recruitment-title">
+              <Briefcase className="h-6 w-6 text-primary" />
+              Recruitment
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Manage job listings and candidate pipeline
+            </p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-recruitment">
           <TabsList>
             <TabsTrigger value="jobs" data-testid="tab-jobs">Job Listings</TabsTrigger>
             <TabsTrigger value="applications" data-testid="tab-applications">Candidate Pipeline</TabsTrigger>
           </TabsList>
           <TabsContent value="jobs">
-            <AdminJobsContent />
+            <AdminJobsContent embedded />
           </TabsContent>
           <TabsContent value="applications">
-            <AdminApplicationsContent />
+            <AdminApplicationsContent embedded />
           </TabsContent>
         </Tabs>
       </div>

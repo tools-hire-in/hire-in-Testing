@@ -511,3 +511,20 @@
 .app-v2-header .v2-muted {
   color: hsl(var(--v2-text-secondary));
 }
+
+/* ------------------------------------------------------------
+   v2 content polish — applied to data-dense HR & Recruitment
+   surfaces. Content stays on the clean light tokens (readability);
+   these rules only brand the shared chrome bits (tab strips) so
+   pages feel consistent with the Command Center pilot.
+   ------------------------------------------------------------ */
+
+/* Branded active tab: navy fill, white label — consistent across
+   People & HR, Recruitment and other admin tab strips in v2. */
+.app-v2 [role="tab"][data-state="active"] {
+  background-color: hsl(var(--v2-navy));
+  color: #fff;
+}
+.app-v2 [role="tab"][data-state="active"] svg {
+  color: hsl(var(--v2-orange));
+}

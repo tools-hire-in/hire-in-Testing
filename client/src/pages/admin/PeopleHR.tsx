@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { Users as UsersIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import Users from "./Users";
 import ReportsCompliance from "./hr/ReportsCompliance";
@@ -25,6 +28,7 @@ function getTabFromSearch(): Tab {
 export default function PeopleHR() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [activeTab, setActiveTab] = useState<Tab>(getTabFromSearch);
 
   useEffect(() => {
@@ -53,10 +57,20 @@ export default function PeopleHR() {
   return (
     <AdminLayout>
       <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-peoplehr-title">People & HR</h1>
-          <p className="text-sm text-muted-foreground">User management, reports, training, regularizations, and settings</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={UsersIcon}
+            eyebrow="People & HR"
+            title="People & HR"
+            subtitle="User management, reports, training, regularizations, and settings"
+            testId="text-peoplehr-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-peoplehr-title">People & HR</h1>
+            <p className="text-sm text-muted-foreground">User management, reports, training, regularizations, and settings</p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-peoplehr">
           <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-3xl">
             <TabsTrigger value="users" data-testid="tab-users">User Management</TabsTrigger>

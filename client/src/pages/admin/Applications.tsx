@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
+import { useNewLook } from "@/hooks/use-new-look";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import type { Application } from "@shared/schema";
 
 type ApplicationWithJob = Application & {
@@ -59,9 +61,10 @@ const statusColors: Record<string, string> = {
   rejected: "bg-red-100 text-red-800",
 };
 
-export function AdminApplicationsContent() {
+export function AdminApplicationsContent({ embedded = false }: { embedded?: boolean }) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -159,10 +162,22 @@ export function AdminApplicationsContent() {
 
   return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Applications</h1>
-          <p className="text-muted-foreground">Review and manage job applications</p>
-        </div>
+        {newLook ? (
+          !embedded && (
+            <V2PageHeader
+              icon={Users}
+              eyebrow="Recruitment"
+              title="Applications"
+              subtitle="Review and manage job applications"
+              testId="text-page-title"
+            />
+          )
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Applications</h1>
+            <p className="text-muted-foreground">Review and manage job applications</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-4 flex-wrap">
           <Card>

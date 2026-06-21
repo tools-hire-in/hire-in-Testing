@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, FileText, FilePlus, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield } from "lucide-react";
+import { Loader2, FileText, FilePlus, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield, UserPlus } from "lucide-react";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -369,6 +371,7 @@ function UsersTab() {
 export default function NewHire() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [tab, setTab] = useState<string>(() => {
     try {
       const param = new URLSearchParams(window.location.search).get("tab");
@@ -409,10 +412,20 @@ export default function NewHire() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-new-hire-title">New Hire</h1>
-          <p className="text-muted-foreground">Manage offer letters and track new employee setup</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={UserPlus}
+            eyebrow="New Hire"
+            title="New Hire"
+            subtitle="Manage offer letters and track new employee setup"
+            testId="text-new-hire-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-new-hire-title">New Hire</h1>
+            <p className="text-muted-foreground">Manage offer letters and track new employee setup</p>
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList data-testid="tabs-new-hire" className="flex-wrap h-auto gap-1">

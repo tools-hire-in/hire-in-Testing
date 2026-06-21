@@ -52,6 +52,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useNewLook } from "@/hooks/use-new-look";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { usePermissions } from "@/hooks/use-permissions";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Job } from "@shared/schema";
@@ -88,9 +90,10 @@ const emptyFormData: JobFormData = {
   isHot: false,
 };
 
-export function AdminJobsContent() {
+export function AdminJobsContent({ embedded = false }: { embedded?: boolean }) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { can } = usePermissions();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -326,13 +329,24 @@ export function AdminJobsContent() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">Jobs</h1>
-            <p className="text-muted-foreground">
-              Manage job listings and upload new positions
-            </p>
-          </div>
-          <div className="flex gap-3 flex-wrap">
+          {newLook ? (
+            !embedded && (
+              <div>
+                <h1 className="text-3xl font-bold">Jobs</h1>
+                <p className="text-muted-foreground">
+                  Manage job listings and upload new positions
+                </p>
+              </div>
+            )
+          ) : (
+            <div>
+              <h1 className="text-3xl font-bold">Jobs</h1>
+              <p className="text-muted-foreground">
+                Manage job listings and upload new positions
+              </p>
+            </div>
+          )}
+          <div className="flex gap-3 flex-wrap md:ml-auto">
             <Button
               variant="outline"
               onClick={() => ceipalSyncMutation.mutate()}
