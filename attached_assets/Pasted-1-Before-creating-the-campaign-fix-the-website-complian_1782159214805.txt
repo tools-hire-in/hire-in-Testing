@@ -1,0 +1,21 @@
+1. Before creating the campaign: fix the website compliance pieces
+
+Zoom says your website and privacy policy are key parts of carrier vetting. If your website has any form that collects phone numbers, especially a Contact Us, Request a Quote, candidate inquiry, or job inquiry form, add this disclosure directly under the phone field or submit button:
+
+By providing a telephone number and submitting this form, you consent to receive SMS text messages from Hire’in Solutions related to your inquiry, application, interview coordination, credential/document follow-up, onboarding, or staffing support. Message frequency may vary. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help. Consent is not a condition of purchase or employment consideration. View our Privacy Policy.
+
+Also add a checkbox if possible:
+
+I consent to receive SMS messages from Hire’in Solutions for staffing-related communication, application follow-up, interview coordination, credential/document reminders, and onboarding support. Message frequency may vary. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help.
+
+Make the checkbox optional and unchecked by default.
+
+Your privacy policy must clearly say that mobile numbers and SMS consent are not shared or sold. Zoom specifically says the privacy policy must state that phone numbers and consent will not be shared with third-party providers, and it gives carve-out language for mobile information and opt-in consent. Use this language:
+
+No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All other categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties.
+
+For Hire’in, I would add one more staffing-safe clarification:
+
+Candidate profile, resume, credential, or application information may be shared with hiring clients or program partners only when separately authorized as part of the recruiting, staffing, or submission process. SMS opt-in consent is not transferable and does not authorize any third party to text the individual.
+
+Do this before submission because Zoom requires privacy-policy proof/screenshot showing the “does not share” statement, and it says the screenshot must be readable
