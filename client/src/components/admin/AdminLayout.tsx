@@ -1374,7 +1374,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   label: "Punch In, Punch Out & Breaks",
                   href: "/admin/my-desk",
                   desc: "My Desk → Time Card tab. Hit Punch In to start your day. Once punched in, you can log a Lunch break (30 min) and up to 2 Tea breaks (15 min each).",
-                  tip: "Punch in every working day — late arrivals are visible to your manager.",
+                  tip: "Try to punch in at the start of each working day — it keeps your hours accurate, and your manager can see your attendance.",
                   tipColor: "text-blue-600 dark:text-blue-400",
                   show: true,
                 },
