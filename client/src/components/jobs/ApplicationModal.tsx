@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { SmsDisclosure } from "@/components/forms/SmsDisclosure";
 import type { Job } from "@shared/schema";
 
 const formSchema = z.object({
@@ -337,9 +338,7 @@ export function ApplicationModal({ open, onOpenChange, job }: ApplicationModalPr
                 "Submit Application"
               )}
             </Button>
-            <p className="text-xs text-muted-foreground mt-2" data-testid="text-sms-disclosure">
-              By providing a telephone number and submitting this form you are consenting to be contacted by SMS text message. Message & data rates may apply. You can reply STOP to opt-out of further messaging.
-            </p>
+            <SmsDisclosure className="text-xs text-muted-foreground mt-2" />
           </form>
         </Form>
       </DialogContent>

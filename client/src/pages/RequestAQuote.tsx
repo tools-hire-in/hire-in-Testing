@@ -35,6 +35,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CONTACT } from "@/lib/constants";
+import { SmsDisclosure } from "@/components/forms/SmsDisclosure";
 
 const SERVICE_SCHEMA = {
   "@context": "https://schema.org",
@@ -470,6 +471,7 @@ export default function RequestAQuote() {
                         <p className="text-xs text-muted-foreground text-center">
                           By submitting this form you agree to be contacted by a Hire'in Solutions specialist. No upfront fees. No obligation.
                         </p>
+                        <SmsDisclosure className="text-xs text-muted-foreground text-center" />
                       </form>
                     </Form>
                   </CardContent>

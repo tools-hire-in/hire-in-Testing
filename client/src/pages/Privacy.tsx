@@ -30,7 +30,7 @@ export default function Privacy() {
           </p>
           <p>
             <strong>Document Version</strong><br />
-            Last Updated: April 15, 2026
+            Last Updated: June 22, 2026
           </p>
 
           <p>
@@ -186,6 +186,12 @@ export default function Privacy() {
           <p>
             <strong>Message Frequency & Rates:</strong> Message frequency varies based on your engagement with us. 
             Standard message and data rates may apply per your carrier.
+          </p>
+          <p>
+            Candidate profile, resume, credential, or application information may be shared with hiring clients 
+            or program partners only when separately authorized as part of the recruiting, staffing, or 
+            submission process. SMS opt-in consent is not transferable and does not authorize any third party 
+            to text the individual.
           </p>
           <p>
             For complete SMS terms including opt-in, HELP, and STOP instructions, see Section 6 (SMS and 

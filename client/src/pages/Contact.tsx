@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CONTACT, COMPANY } from "@/lib/constants";
+import { SmsDisclosure } from "@/components/forms/SmsDisclosure";
 
 const contactFormSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -285,9 +286,7 @@ export default function Contact() {
                               />
                             </FormControl>
                             <FormMessage />
-                            <p className="text-xs text-muted-foreground" data-testid="text-sms-disclosure">
-                              By providing a telephone number and submitting this form you are consenting to be contacted by SMS text message. Message & data rates may apply. You can reply STOP to opt-out of further messaging.
-                            </p>
+                            <SmsDisclosure />
                           </FormItem>
                         )}
                       />

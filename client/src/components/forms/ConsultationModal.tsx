@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { CTA_CONFIGS, type CTAType } from "@/lib/constants";
 import { apiRequest } from "@/lib/queryClient";
+import { SmsDisclosure } from "@/components/forms/SmsDisclosure";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -219,9 +220,7 @@ export function ConsultationModal({ open, onOpenChange, ctaType }: ConsultationM
                 "Send Message"
               )}
             </Button>
-            <p className="text-xs text-muted-foreground mt-2" data-testid="text-sms-disclosure">
-              By providing a telephone number and submitting this form you are consenting to be contacted by SMS text message. Message & data rates may apply. You can reply STOP to opt-out of further messaging.
-            </p>
+            <SmsDisclosure className="text-xs text-muted-foreground mt-2" />
           </form>
         </Form>
       </DialogContent>
