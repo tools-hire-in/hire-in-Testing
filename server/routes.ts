@@ -74,6 +74,7 @@ import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
+import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun } from "./salaryAdvanceRoutes";
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
@@ -2013,6 +2014,30 @@ export async function registerRoutes(
         action: "update_employment_status",
         changes: { employmentStatus, isActive, previousStatus: targetUser.employmentStatus },
       });
+
+      // Exit clause: flag outstanding salary advances for final-settlement recovery.
+      try {
+        if (employmentStatus === "relieved" || employmentStatus === "left_company") {
+          const advances = await storage.listSalaryAdvancesByRequester(userId);
+          for (const adv of advances) {
+            const outstanding = Number(adv.outstandingBalance || 0);
+            const recoverableStatuses = ["approved", "disbursed", "repaying"];
+            if (outstanding > 0 && recoverableStatuses.includes(adv.status) && !adv.exitRecoveryFlag) {
+              await storage.updateSalaryAdvance(adv.id, { exitRecoveryFlag: true });
+              await storage.addSalaryAdvanceAuditEntry({
+                advanceId: adv.id,
+                actorId: req.session.userId!,
+                action: "exit_recovery_flagged",
+                oldStatus: adv.status,
+                newStatus: adv.status,
+                metadata: { employmentStatus, outstandingBalance: outstanding.toFixed(2) },
+              });
+            }
+          }
+        }
+      } catch (flagErr) {
+        console.error("Failed to flag salary advances for exit recovery:", flagErr);
+      }
 
       res.json(updated);
     } catch (error) {
@@ -6759,7 +6784,8 @@ export async function registerRoutes(
         const effectivePresentDays = Number(row.presentDays) + Number(row.paidLeaves) + regionalHolidayDays;
         const newAbsentDays = Math.max(0, wDays - effectivePresentDays);
         const newDeductions = Math.round(newAbsentDays * dailyRate * 100) / 100;
-        const newNetPayable = Math.max(0, Math.round((gross - newDeductions) * 100) / 100);
+        const advanceRecovery = Number(row.advanceRecovery) || 0;
+        const newNetPayable = Math.max(0, Math.round((gross - newDeductions - advanceRecovery) * 100) / 100);
         const newAttendancePct = wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0;
 
         const captureIfChanged = (field: string, newVal: number) => {
@@ -6777,7 +6803,8 @@ export async function registerRoutes(
         // grossSalary or deductions changed without explicit netPayable override — compute it
         const gross = Number(row.grossSalary);
         const ded = Number(row.deductions);
-        const net = Math.max(0, Math.round((gross - ded) * 100) / 100);
+        const advanceRecovery = Number(row.advanceRecovery) || 0;
+        const net = Math.max(0, Math.round((gross - ded - advanceRecovery) * 100) / 100);
         adjustmentFields["netPayable"] = { oldValue: originalRow["netPayable"] ?? rows[rowIdx].netPayable, newValue: net };
         row.netPayable = net;
       }
@@ -6933,6 +6960,7 @@ export async function registerRoutes(
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
           deductions: String(row.deductions),
+          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
           netPayable: String(row.netPayable),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
@@ -6946,13 +6974,29 @@ export async function registerRoutes(
         upsertedCount++;
       }
 
+      // Apply scheduled salary-advance recoveries for this run (idempotent: only
+      // 'scheduled' repayments for this year/month are marked deducted).
+      let advancesRecovered = 0;
+      try {
+        advancesRecovered = await applyAdvanceRecoveriesForRun({
+          year: run.year,
+          month: run.month,
+          salaryRunId: run.id,
+          rows: rows.map((r: any) => ({ email: r.email, advanceRecovery: Number(r.advanceRecovery || 0) })),
+          userEmailMap,
+          actorId,
+        });
+      } catch (recErr) {
+        console.error("Salary advance recovery failed during run approve:", recErr);
+      }
+
       await storage.createAuditLog({
         action: "salary_report_approved",
         actorId,
-        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount },
+        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount, advancesRecovered },
       });
 
-      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount });
+      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount, advancesRecovered });
     } catch (error) {
       console.error("Failed to approve salary run:", error);
       res.status(500).json({ error: "Failed to approve and send salary report" });
@@ -7016,6 +7060,7 @@ export async function registerRoutes(
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
           deductions: String(row.deductions),
+          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
           netPayable: String(row.netPayable),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
@@ -7097,6 +7142,7 @@ export async function registerRoutes(
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
           deductions: String(row.deductions),
+          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
           netPayable: String(row.netPayable),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
@@ -15306,6 +15352,7 @@ export async function registerRoutes(
   registerAttendanceReportRoutes(app);
   registerReleaseNotesRoutes(app);
   registerHelpDeskRoutes(app);
+  registerSalaryAdvanceRoutes(app);
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
 

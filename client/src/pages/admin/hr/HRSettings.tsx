@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
@@ -118,6 +119,150 @@ function TrainingSettingsSection() {
         {!enabled && !isLoading && (
           <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700">
             Training module is currently <strong>in review mode</strong> — only admins, HR, and managers can access it.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SalaryAdvancePolicyShape {
+  enabled: boolean;
+  maxAdvancePctOfNet: number;
+  exceptionCeilingPct: number;
+  defaultMaxMonths: number;
+  managerMaxMonths: number;
+  ceoMaxMonths: number;
+  requireProbationComplete: boolean;
+  minTenureMonths: number;
+  oneActiveAdvanceOnly: boolean;
+}
+
+function SalaryAdvancePolicySection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<SalaryAdvancePolicyShape | null>(null);
+
+  const { data: policy, isLoading } = useQuery<SalaryAdvancePolicyShape>({
+    queryKey: ["/api/salary-advances/policy"],
+    enabled: isHrOrAbove,
+  });
+
+  useEffect(() => {
+    if (policy && !form) setForm(policy);
+  }, [policy]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: SalaryAdvancePolicyShape) => {
+      const res = await apiRequest("PUT", "/api/salary-advances/policy", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/policy"] });
+      toast({ title: "Salary advance policy saved" });
+      setEditing(false);
+    },
+    onError: () => toast({ title: "Failed to save policy", variant: "destructive" }),
+  });
+
+  if (!isHrOrAbove) return null;
+
+  const setField = <K extends keyof SalaryAdvancePolicyShape>(key: K, value: SalaryAdvancePolicyShape[K]) =>
+    setForm(prev => (prev ? { ...prev, [key]: value } : prev));
+
+  const numFields: Array<{ key: keyof SalaryAdvancePolicyShape; label: string; hint: string; min: number; max: number }> = [
+    { key: "maxAdvancePctOfNet", label: "Standard Cap (% of net salary)", hint: "Above this, an exception is required", min: 0, max: 100 },
+    { key: "exceptionCeilingPct", label: "Absolute Ceiling (% of net salary)", hint: "Hard upper limit even with exception", min: 0, max: 200 },
+    { key: "defaultMaxMonths", label: "Default Max Repayment Months", hint: "Standard installment limit", min: 1, max: 36 },
+    { key: "managerMaxMonths", label: "Manager Max Repayment Months", hint: "Cap a manager may approve", min: 1, max: 36 },
+    { key: "ceoMaxMonths", label: "Super Admin Max Repayment Months", hint: "Cap on final approval", min: 1, max: 36 },
+    { key: "minTenureMonths", label: "Minimum Tenure (months)", hint: "0 = no tenure requirement", min: 0, max: 120 },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CheckSquare className="h-4 w-4" />
+            Salary Advance Policy
+          </CardTitle>
+          {!editing && (
+            <Button size="sm" variant="outline" onClick={() => { setEditing(true); if (policy) setForm(policy); }} data-testid="button-edit-advance-policy">
+              Edit
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading || !form ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : editing ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label>Feature Enabled</Label>
+                <p className="text-xs text-muted-foreground">When off, employees cannot submit new advance requests</p>
+              </div>
+              <Switch checked={form.enabled} onCheckedChange={(v) => setField("enabled", v)} data-testid="switch-advance-enabled" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {numFields.map(f => (
+                <div className="space-y-2" key={String(f.key)}>
+                  <Label>{f.label}</Label>
+                  <Input
+                    type="number"
+                    min={f.min}
+                    max={f.max}
+                    value={String(form[f.key] as number)}
+                    onChange={(e) => setField(f.key, (parseInt(e.target.value, 10) || 0) as any)}
+                    data-testid={`input-advance-${String(f.key)}`}
+                  />
+                  <p className="text-xs text-muted-foreground">{f.hint}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label>Require Probation Complete</Label>
+                <p className="text-xs text-muted-foreground">Warn when a probationary employee requests an advance</p>
+              </div>
+              <Switch checked={form.requireProbationComplete} onCheckedChange={(v) => setField("requireProbationComplete", v)} data-testid="switch-advance-probation" />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label>One Active Advance Only</Label>
+                <p className="text-xs text-muted-foreground">Warn when the employee already has an open advance</p>
+              </div>
+              <Switch checked={form.oneActiveAdvanceOnly} onCheckedChange={(v) => setField("oneActiveAdvanceOnly", v)} data-testid="switch-advance-one-active" />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => form && saveMutation.mutate(form)} disabled={saveMutation.isPending} data-testid="button-save-advance-policy">
+                {saveMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button variant="outline" onClick={() => { setEditing(false); if (policy) setForm(policy); }}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono" data-testid="text-advance-enabled">{form.enabled ? "On" : "Off"}</p>
+              <p className="text-xs text-muted-foreground mt-1">Feature</p>
+            </div>
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono">{form.maxAdvancePctOfNet}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Standard cap</p>
+            </div>
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono">{form.exceptionCeilingPct}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Ceiling</p>
+            </div>
+            <div className="p-3 bg-muted/40 rounded-lg text-center">
+              <p className="text-2xl font-bold font-mono">{form.defaultMaxMonths}/{form.managerMaxMonths}/{form.ceoMaxMonths}</p>
+              <p className="text-xs text-muted-foreground mt-1">Months: default/mgr/admin</p>
+            </div>
           </div>
         )}
       </CardContent>
@@ -2899,6 +3044,8 @@ function AttendanceExceptionThresholdsSection() {
 export default function HRSettings() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { isEnabled } = useFeatureFlags();
+  const salaryAdvanceEnabled = isEnabled("salary_advance_enabled");
   const { toast } = useToast();
 
   const [showLeaveType, setShowLeaveType] = useState(false);
@@ -3228,6 +3375,7 @@ const NAV_GROUPS = [
     { id: "holidays", label: "Holidays" },
     { id: "balance-adjustments", label: "Balance Adjustments", hrOnly: true },
     { id: "attendance-policy", label: "Attendance Policy" },
+    { id: "salary-advance-policy", label: "Salary Advance Policy", hrOnly: true },
     { id: "shifts", label: "Shifts" },
   ]},
   { group: "People & Access", items: [
@@ -3834,6 +3982,7 @@ const NAV_GROUPS = [
               <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.group}</p>
               {group.items
                 .filter((item: any) => !(item as any).hrOnly || isHrOrAbove)
+                .filter((item: any) => item.id !== "salary-advance-policy" || salaryAdvanceEnabled)
                 .map((item: any) => (
                 <button
                   key={item.id}
@@ -4211,6 +4360,17 @@ const NAV_GROUPS = [
             <p className="text-muted-foreground text-sm">Configure regularisation and attendance rules</p>
           </div>
               <RegularizationPolicySection />
+            </>
+          )}
+
+          {/* Salary Advance Policy */}
+          {activeSection === "salary-advance-policy" && salaryAdvanceEnabled && (
+            <>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-section-salary-advance-policy">Salary Advance Policy</h1>
+            <p className="text-muted-foreground text-sm">Configure caps, repayment limits, and eligibility for salary advance requests</p>
+          </div>
+              <SalaryAdvancePolicySection />
             </>
           )}
 

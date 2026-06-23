@@ -18,6 +18,7 @@ interface SalarySlip {
   basicSalary: string;
   grossSalary: string;
   deductions: string;
+  salaryAdvanceRecovery?: string | null;
   netPayable: string;
   totalWorkingDays: number;
   daysPresent: number;
@@ -135,6 +136,7 @@ function generateSlipHTML(slip: SlipDetail): string {
       <tr><td>Basic Salary</td><td class="amount">${formatCurrency(slip.basicSalary)}</td></tr>
       <tr><td>Gross Salary</td><td class="amount">${formatCurrency(slip.grossSalary)}</td></tr>
       <tr><td>Deductions (Unauthorized Absences)</td><td class="amount">- ${formatCurrency(slip.deductions)}</td></tr>
+      ${parseFloat(slip.salaryAdvanceRecovery || "0") > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.salaryAdvanceRecovery || "0")}</td></tr>` : ""}
       <tr class="total-row"><td>Net Payable</td><td class="amount">${formatCurrency(slip.netPayable)}</td></tr>
     </table>
   </div>
@@ -275,6 +277,17 @@ export default function SalarySlips() {
                         - {formatCurrency(slip.deductions)}
                       </span>
                     </div>
+                    {parseFloat(slip.salaryAdvanceRecovery || "0") > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                          <TrendingDown className="h-3.5 w-3.5" />
+                          Salary Advance Recovery
+                        </span>
+                        <span className="text-sm font-medium font-mono text-amber-600 dark:text-amber-400" data-testid={`text-advance-recovery-${slip.id}`}>
+                          - {formatCurrency(slip.salaryAdvanceRecovery || "0")}
+                        </span>
+                      </div>
+                    )}
                     <div className="border-t pt-2 flex items-center justify-between">
                       <span className="text-sm font-semibold">Net Payable</span>
                       <span className="text-base font-bold font-mono" data-testid={`text-net-${slip.id}`}>

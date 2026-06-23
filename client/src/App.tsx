@@ -56,6 +56,7 @@ const HRLeaveApprovals = lazy(() => import("@/pages/admin/hr/LeaveApprovals"));
 const HRSettings = lazy(() => import("@/pages/admin/hr/HRSettings"));
 const OrgChart = lazy(() => import("@/pages/admin/hr/OrgChart"));
 const SalarySlips = lazy(() => import("@/pages/admin/hr/SalarySlips"));
+const SalaryAdvance = lazy(() => import("@/pages/admin/SalaryAdvance"));
 const MyDocuments = lazy(() => import("@/pages/admin/hr/MyDocuments"));
 const HRTools = lazy(() => import("@/pages/admin/hr/HRTools"));
 const MyTraining = lazy(() => import("@/pages/admin/hr/MyTraining"));
@@ -224,6 +225,7 @@ function PublicRouter() {
       <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
       <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
       <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>
@@ -339,6 +341,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
       <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
       <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>

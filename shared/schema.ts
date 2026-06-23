@@ -272,6 +272,7 @@ export const salarySlips = pgTable("salary_slips", {
   daysAbsent: integer("days_absent").notNull().default(0),
   approvedLeaves: numeric("approved_leaves").notNull().default("0"),
   lopLeaves: numeric("lop_leaves").default("0"),
+  salaryAdvanceRecovery: numeric("salary_advance_recovery").notNull().default("0"),
   totalHours: numeric("total_hours").notNull().default("0"),
   attendancePercentage: numeric("attendance_percentage").notNull().default("0"),
   generatedAt: timestamp("generated_at").defaultNow(),
@@ -2737,6 +2738,174 @@ export type InternalRequestApproval = typeof internalRequestApprovals.$inferSele
 export type InsertInternalRequestApproval = z.infer<typeof insertInternalRequestApprovalSchema>;
 export type InternalRequestAuditLog = typeof internalRequestAuditLog.$inferSelect;
 export type InsertInternalRequestAuditLog = z.infer<typeof insertInternalRequestAuditLogSchema>;
+
+// ==========================================
+// SALARY ADVANCE REQUEST TABLES
+// ==========================================
+
+// Lifecycle: pending_manager -> pending_final (manager approved) -> approved
+// (final approved, schedule generated) -> disbursed -> repaying -> closed.
+// Side states: rejected, cancelled (by employee while pending), returned
+// (sent back to employee for clarification).
+export const salaryAdvanceStatusEnum = pgEnum("salary_advance_status", [
+  "pending_manager",
+  "pending_final",
+  "approved",
+  "disbursed",
+  "repaying",
+  "closed",
+  "rejected",
+  "cancelled",
+  "returned",
+]);
+
+export const salaryAdvanceRepaymentStatusEnum = pgEnum("salary_advance_repayment_status", [
+  "scheduled",
+  "deducted",
+  "waived",
+]);
+
+export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestNumber: varchar("request_number").notNull().unique(),
+  requesterId: varchar("requester_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  requestedAmount: numeric("requested_amount").notNull(),
+  reason: text("reason").notNull(),
+  status: salaryAdvanceStatusEnum("status").notNull().default("pending_manager"),
+  // Approval / repayment plan
+  approvedAmount: numeric("approved_amount"),
+  repaymentMonths: integer("repayment_months"),
+  monthlyDeduction: numeric("monthly_deduction"),
+  repaymentStartYear: integer("repayment_start_year"),
+  repaymentStartMonth: integer("repayment_start_month"),
+  // Exception handling (advance beyond default cap)
+  isException: boolean("is_exception").notNull().default(false),
+  exceptionReason: text("exception_reason"),
+  // Manager stage
+  managerApprovedBy: varchar("manager_approved_by").references(() => adminUsers.id),
+  managerApprovedAt: timestamp("manager_approved_at"),
+  managerNote: text("manager_note"),
+  // Final (super admin) stage
+  finalApprovedBy: varchar("final_approved_by").references(() => adminUsers.id),
+  finalApprovedAt: timestamp("final_approved_at"),
+  finalNote: text("final_note"),
+  // Disbursement (accounts)
+  disbursedBy: varchar("disbursed_by").references(() => adminUsers.id),
+  disbursedAt: timestamp("disbursed_at"),
+  // Rejection / return
+  rejectedBy: varchar("rejected_by").references(() => adminUsers.id),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  returnNote: text("return_note"),
+  // Repayment tracking
+  totalRepaid: numeric("total_repaid").notNull().default("0"),
+  outstandingBalance: numeric("outstanding_balance").notNull().default("0"),
+  closedAt: timestamp("closed_at"),
+  // Exit handling — flagged when an employee with an outstanding advance exits
+  exitRecoveryFlag: boolean("exit_recovery_flag").notNull().default(false),
+  // Snapshot of the policy at the time of the request (for audit)
+  policySnapshot: jsonb("policy_snapshot"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const salaryAdvanceRepayments = pgTable("salary_advance_repayments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  advanceId: varchar("advance_id").notNull().references(() => salaryAdvanceRequests.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  installmentNo: integer("installment_no").notNull(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  scheduledAmount: numeric("scheduled_amount").notNull(),
+  status: salaryAdvanceRepaymentStatusEnum("status").notNull().default("scheduled"),
+  deductedAmount: numeric("deducted_amount"),
+  deductedAt: timestamp("deducted_at"),
+  salaryRunId: varchar("salary_run_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_advance_repayment_period").on(table.advanceId, table.year, table.month),
+]);
+
+export const salaryAdvanceAuditLog = pgTable("salary_advance_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  advanceId: varchar("advance_id").notNull().references(() => salaryAdvanceRequests.id),
+  actorId: varchar("actor_id").notNull().references(() => adminUsers.id),
+  action: varchar("action").notNull(),
+  oldStatus: varchar("old_status"),
+  newStatus: varchar("new_status"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const salaryAdvanceRequestsRelations = relations(salaryAdvanceRequests, ({ one, many }) => ({
+  requester: one(adminUsers, { fields: [salaryAdvanceRequests.requesterId], references: [adminUsers.id], relationName: "advanceRequester" }),
+  manager: one(adminUsers, { fields: [salaryAdvanceRequests.managerId], references: [adminUsers.id], relationName: "advanceManager" }),
+  repayments: many(salaryAdvanceRepayments),
+  auditLog: many(salaryAdvanceAuditLog),
+}));
+
+export const salaryAdvanceRepaymentsRelations = relations(salaryAdvanceRepayments, ({ one }) => ({
+  advance: one(salaryAdvanceRequests, { fields: [salaryAdvanceRepayments.advanceId], references: [salaryAdvanceRequests.id] }),
+  user: one(adminUsers, { fields: [salaryAdvanceRepayments.userId], references: [adminUsers.id], relationName: "advanceRepaymentUser" }),
+}));
+
+export const salaryAdvanceAuditLogRelations = relations(salaryAdvanceAuditLog, ({ one }) => ({
+  advance: one(salaryAdvanceRequests, { fields: [salaryAdvanceAuditLog.advanceId], references: [salaryAdvanceRequests.id] }),
+  actor: one(adminUsers, { fields: [salaryAdvanceAuditLog.actorId], references: [adminUsers.id], relationName: "advanceAuditActor" }),
+}));
+
+export const insertSalaryAdvanceRequestSchema = createInsertSchema(salaryAdvanceRequests).omit({
+  id: true,
+  requestNumber: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSalaryAdvanceRepaymentSchema = createInsertSchema(salaryAdvanceRepayments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSalaryAdvanceAuditLogSchema = createInsertSchema(salaryAdvanceAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SalaryAdvanceRequest = typeof salaryAdvanceRequests.$inferSelect;
+export type InsertSalaryAdvanceRequest = z.infer<typeof insertSalaryAdvanceRequestSchema>;
+export type SalaryAdvanceRepayment = typeof salaryAdvanceRepayments.$inferSelect;
+export type InsertSalaryAdvanceRepayment = z.infer<typeof insertSalaryAdvanceRepaymentSchema>;
+export type SalaryAdvanceAuditLog = typeof salaryAdvanceAuditLog.$inferSelect;
+export type InsertSalaryAdvanceAuditLog = z.infer<typeof insertSalaryAdvanceAuditLogSchema>;
+
+// Policy stored in system_settings under key `salary_advance_policy`.
+export interface SalaryAdvancePolicy {
+  enabled: boolean;
+  maxAdvancePctOfNet: number;
+  exceptionCeilingPct: number;
+  defaultMaxMonths: number;
+  managerMaxMonths: number;
+  ceoMaxMonths: number;
+  requireProbationComplete: boolean;
+  minTenureMonths: number;
+  oneActiveAdvanceOnly: boolean;
+}
+
+export const DEFAULT_SALARY_ADVANCE_POLICY: SalaryAdvancePolicy = {
+  enabled: true,
+  maxAdvancePctOfNet: 50,
+  exceptionCeilingPct: 80,
+  defaultMaxMonths: 6,
+  managerMaxMonths: 8,
+  ceoMaxMonths: 12,
+  requireProbationComplete: true,
+  minTenureMonths: 0,
+  oneActiveAdvanceOnly: true,
+};
+
+export const SALARY_ADVANCE_POLICY_KEY = "salary_advance_policy";
 
 // ==========================================
 // TRAVEL PAY CALCULATOR TABLES

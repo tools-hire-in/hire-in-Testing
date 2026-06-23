@@ -42,6 +42,7 @@ import {
   Calculator,
   Sparkles,
   ChevronDown,
+  Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -892,6 +893,21 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const salaryPendingCount = salaryRunPending?.count ?? 0;
 
+  // Salary advance pending approval badge (managers + final approver)
+  const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number }>({
+    queryKey: ["/api/salary-advances/stats"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/salary-advances/stats", { credentials: "include" });
+        if (!res.ok) return { pendingManager: 0, pendingFinal: 0, active: 0 };
+        return res.json();
+      } catch { return { pendingManager: 0, pendingFinal: 0, active: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && isEnabled("salary_advance_enabled") && ["manager", "admin", "super_admin"].includes(user?.role || ""),
+  });
+  const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0);
+
   const personalNavItems: NavItem[] = [
     {
       href: "/admin/profile",
@@ -906,6 +922,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["all"],
       badge: growthBadge > 0 ? growthBadge : undefined,
       badgeColor: (trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-500" : "bg-amber-500",
+    }] : []),
+    ...(isEnabled("salary_advance_enabled") ? [{
+      href: "/admin/salary-advance",
+      label: "Salary Advance",
+      icon: Wallet,
+      roles: ["all"],
+      badge: salaryAdvanceBadge > 0 ? salaryAdvanceBadge : undefined,
+      badgeColor: "bg-amber-500",
     }] : []),
   ];
 
@@ -977,6 +1001,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/service-desk") return location === "/admin/service-desk" || location.startsWith("/admin/service-desk");
     if (href === "/admin/profile") return location === "/admin/profile" || location.startsWith("/admin/profile");
     if (href === "/admin/growth") return location === "/admin/growth" || location.startsWith("/admin/growth") || location.startsWith("/admin/performance") || location.startsWith("/admin/hr/my-training");
+    if (href === "/admin/salary-advance") return location === "/admin/salary-advance" || location.startsWith("/admin/salary-advance");
     if (href === "/admin/hr/my-team") return location === "/admin/hr/my-team" || location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/hr/team-attendance") || location.startsWith("/admin/hr/leave-approvals") || location.startsWith("/admin/hr/training-progress");
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
     if (href === "/admin/travel-calculator") return location.startsWith("/admin/travel-calculator");

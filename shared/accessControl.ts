@@ -244,6 +244,12 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "helpDesk.queue": ["super_admin", "admin", "hr", "operations"],
   "helpDesk.resolve": ["super_admin", "admin", "hr", "operations"],
   "helpDesk.approve": ["super_admin", "admin", "hr", "operations", "manager"],
+  "salaryAdvance.create": ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"],
+  "salaryAdvance.viewOwn": ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"],
+  "salaryAdvance.managerApprove": ["super_admin", "admin", "hr", "manager"],
+  "salaryAdvance.finalApprove": ["super_admin"],
+  "salaryAdvance.accounts": ["super_admin", "admin", "hr", "finance"],
+  "salaryAdvance.policy.manage": ["super_admin", "admin", "hr"],
 };
 
 // ============================================================================

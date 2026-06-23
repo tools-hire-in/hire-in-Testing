@@ -18,6 +18,9 @@ import {
   pendingChanges,
   regionalHolidaySelections,
   salarySlips,
+  salaryAdvanceRequests,
+  salaryAdvanceRepayments,
+  salaryAdvanceAuditLog,
   leaveAdjustments,
   employeeDocuments,
   employeeBankDetails,
@@ -72,6 +75,12 @@ import {
   type InsertRegionalHolidaySelection,
   type SalarySlip,
   type InsertSalarySlip,
+  type SalaryAdvanceRequest,
+  type InsertSalaryAdvanceRequest,
+  type SalaryAdvanceRepayment,
+  type InsertSalaryAdvanceRepayment,
+  type SalaryAdvanceAuditLog,
+  type InsertSalaryAdvanceAuditLog,
   type LeaveAdjustment,
   type InsertLeaveAdjustment,
   type EmployeeDocument,
@@ -577,6 +586,24 @@ export interface IStorage {
   getInternalRequestAuditLog(requestId: string): Promise<InternalRequestAuditLog[]>;
   getHirdStats(userId: string, role: string): Promise<{ open: number; pendingApproval: number; resolved: number; total: number }>;
   getHirdOpenCount(): Promise<number>;
+
+  // Salary advances
+  createSalaryAdvanceWithNumber(data: InsertSalaryAdvanceRequest): Promise<SalaryAdvanceRequest>;
+  getSalaryAdvance(id: string): Promise<SalaryAdvanceRequest | undefined>;
+  listSalaryAdvancesByRequester(userId: string): Promise<SalaryAdvanceRequest[]>;
+  listSalaryAdvancesForManager(managerId: string): Promise<SalaryAdvanceRequest[]>;
+  listSalaryAdvancesByStatus(statuses: string[]): Promise<SalaryAdvanceRequest[]>;
+  listActiveSalaryAdvances(): Promise<SalaryAdvanceRequest[]>;
+  getActiveAdvanceForUser(userId: string): Promise<SalaryAdvanceRequest | undefined>;
+  updateSalaryAdvance(id: string, updates: Partial<SalaryAdvanceRequest>): Promise<SalaryAdvanceRequest | undefined>;
+  addSalaryAdvanceAuditEntry(data: InsertSalaryAdvanceAuditLog): Promise<SalaryAdvanceAuditLog>;
+  getSalaryAdvanceAuditLog(advanceId: string): Promise<SalaryAdvanceAuditLog[]>;
+  createSalaryAdvanceRepayments(rows: InsertSalaryAdvanceRepayment[]): Promise<SalaryAdvanceRepayment[]>;
+  getSalaryAdvanceRepayments(advanceId: string): Promise<SalaryAdvanceRepayment[]>;
+  getScheduledRepaymentsForMonth(year: number, month: number): Promise<SalaryAdvanceRepayment[]>;
+  markRepaymentDeducted(id: string, deductedAmount: string, salaryRunId: string | null): Promise<void>;
+  rescheduleRepayment(id: string, year: number, month: number): Promise<void>;
+  getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }>;
 }
 
 export type PublicInsightArticle = StudioArticle & {
@@ -4551,6 +4578,137 @@ export class DatabaseStorage implements IStorage {
       .from(internalRequests)
       .where(sql`${internalRequests.status} NOT IN ('closed', 'rejected')`);
     return result?.count ?? 0;
+  }
+
+  // ==========================================
+  // SALARY ADVANCES
+  // ==========================================
+
+  async createSalaryAdvanceWithNumber(data: InsertSalaryAdvanceRequest): Promise<SalaryAdvanceRequest> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(987654322)`);
+      const year = new Date().getFullYear();
+      const prefix = `ADV-${year}-`;
+      const result = await tx
+        .select({ requestNumber: salaryAdvanceRequests.requestNumber })
+        .from(salaryAdvanceRequests)
+        .where(sql`${salaryAdvanceRequests.requestNumber} LIKE ${prefix + "%"}`)
+        .orderBy(desc(salaryAdvanceRequests.requestNumber))
+        .limit(1);
+      const requestNumber = result.length > 0
+        ? `${prefix}${String(parseInt(result[0].requestNumber.split("-").pop() || "0", 10) + 1).padStart(5, "0")}`
+        : `${prefix}00001`;
+      const [row] = await tx.insert(salaryAdvanceRequests).values({ ...data, requestNumber } as any).returning();
+      return row;
+    });
+  }
+
+  async getSalaryAdvance(id: string): Promise<SalaryAdvanceRequest | undefined> {
+    const [row] = await db.select().from(salaryAdvanceRequests).where(eq(salaryAdvanceRequests.id, id));
+    return row;
+  }
+
+  async listSalaryAdvancesByRequester(userId: string): Promise<SalaryAdvanceRequest[]> {
+    return db.select().from(salaryAdvanceRequests)
+      .where(eq(salaryAdvanceRequests.requesterId, userId))
+      .orderBy(desc(salaryAdvanceRequests.createdAt));
+  }
+
+  async listSalaryAdvancesForManager(managerId: string): Promise<SalaryAdvanceRequest[]> {
+    return db.select().from(salaryAdvanceRequests)
+      .where(eq(salaryAdvanceRequests.managerId, managerId))
+      .orderBy(desc(salaryAdvanceRequests.createdAt));
+  }
+
+  async listSalaryAdvancesByStatus(statuses: string[]): Promise<SalaryAdvanceRequest[]> {
+    if (statuses.length === 0) return [];
+    return db.select().from(salaryAdvanceRequests)
+      .where(inArray(salaryAdvanceRequests.status, statuses as any))
+      .orderBy(desc(salaryAdvanceRequests.createdAt));
+  }
+
+  async listActiveSalaryAdvances(): Promise<SalaryAdvanceRequest[]> {
+    return db.select().from(salaryAdvanceRequests)
+      .where(inArray(salaryAdvanceRequests.status, ["approved", "disbursed", "repaying"] as any))
+      .orderBy(desc(salaryAdvanceRequests.createdAt));
+  }
+
+  async getActiveAdvanceForUser(userId: string): Promise<SalaryAdvanceRequest | undefined> {
+    const [row] = await db.select().from(salaryAdvanceRequests)
+      .where(and(
+        eq(salaryAdvanceRequests.requesterId, userId),
+        inArray(salaryAdvanceRequests.status, ["pending_manager", "pending_final", "approved", "disbursed", "repaying", "returned"] as any),
+      ))
+      .orderBy(desc(salaryAdvanceRequests.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async updateSalaryAdvance(id: string, updates: Partial<SalaryAdvanceRequest>): Promise<SalaryAdvanceRequest | undefined> {
+    const [row] = await db.update(salaryAdvanceRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(salaryAdvanceRequests.id, id))
+      .returning();
+    return row;
+  }
+
+  async addSalaryAdvanceAuditEntry(data: InsertSalaryAdvanceAuditLog): Promise<SalaryAdvanceAuditLog> {
+    const [row] = await db.insert(salaryAdvanceAuditLog).values(data as any).returning();
+    return row;
+  }
+
+  async getSalaryAdvanceAuditLog(advanceId: string): Promise<SalaryAdvanceAuditLog[]> {
+    return db.select().from(salaryAdvanceAuditLog)
+      .where(eq(salaryAdvanceAuditLog.advanceId, advanceId))
+      .orderBy(asc(salaryAdvanceAuditLog.createdAt));
+  }
+
+  async createSalaryAdvanceRepayments(rows: InsertSalaryAdvanceRepayment[]): Promise<SalaryAdvanceRepayment[]> {
+    if (rows.length === 0) return [];
+    return db.insert(salaryAdvanceRepayments).values(rows as any).returning();
+  }
+
+  async getSalaryAdvanceRepayments(advanceId: string): Promise<SalaryAdvanceRepayment[]> {
+    return db.select().from(salaryAdvanceRepayments)
+      .where(eq(salaryAdvanceRepayments.advanceId, advanceId))
+      .orderBy(asc(salaryAdvanceRepayments.installmentNo));
+  }
+
+  async getScheduledRepaymentsForMonth(year: number, month: number): Promise<SalaryAdvanceRepayment[]> {
+    return db.select().from(salaryAdvanceRepayments)
+      .where(and(
+        eq(salaryAdvanceRepayments.year, year),
+        eq(salaryAdvanceRepayments.month, month),
+        eq(salaryAdvanceRepayments.status, "scheduled" as any),
+      ));
+  }
+
+  async markRepaymentDeducted(id: string, deductedAmount: string, salaryRunId: string | null): Promise<void> {
+    await db.update(salaryAdvanceRepayments)
+      .set({ status: "deducted" as any, deductedAmount, deductedAt: new Date(), salaryRunId })
+      .where(eq(salaryAdvanceRepayments.id, id));
+  }
+
+  async rescheduleRepayment(id: string, year: number, month: number): Promise<void> {
+    await db.update(salaryAdvanceRepayments)
+      .set({ year, month })
+      .where(eq(salaryAdvanceRepayments.id, id));
+  }
+
+  async getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }> {
+    const isFinal = ["super_admin", "admin"].includes(role);
+    const managerRows = await db.select().from(salaryAdvanceRequests)
+      .where(and(eq(salaryAdvanceRequests.managerId, userId), eq(salaryAdvanceRequests.status, "pending_manager" as any)));
+    const finalRows = isFinal
+      ? await db.select().from(salaryAdvanceRequests).where(eq(salaryAdvanceRequests.status, "pending_final" as any))
+      : [];
+    const activeRows = await db.select({ count: sql<number>`count(*)::int` }).from(salaryAdvanceRequests)
+      .where(inArray(salaryAdvanceRequests.status, ["approved", "disbursed", "repaying"] as any));
+    return {
+      pendingManager: managerRows.length,
+      pendingFinal: finalRows.length,
+      active: activeRows[0]?.count ?? 0,
+    };
   }
 
 }

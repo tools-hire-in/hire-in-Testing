@@ -23,4 +23,5 @@
 - [HIRD needs_info flow](hird-needs-info-flow.md) — return/respond audit actions returned_for_info & responded_to_info; respond restores priorStatus from latest return's metadata.
 - [App redesign v2 seam](v2-redesign-seam.md) — opt-in newLook flag; v2 tokens scoped to .app-v2 re-map shadcn --sidebar* so existing Sidebar renders navy; content tokens untouched; flag-OFF=classic.
 - [v2-surface content recolor](v2-surface-content-recolor.md) — add `v2-surface` to leaf content root; `.app-v2 .v2-surface` CSS remaps cool families→navy (status colors kept); (0,3,0) beats dark: too; analytics needs explicit brand hex.
+- [Salary advance recovery](salary-advance-recovery.md) — payroll recovery reconciles against capped run-row amount, oldest-first across all advances; shortfalls carry forward to next free month; enum has no partial status.
 - [Boot stability & restart-loop fix](boot-stability.md) — open port before DB ensure work (never await ensure before listen); one shared bounded pool; uncaughtException=shutdown, unhandledRejection=keep-alive.

@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { adminUsers, attendance, leaveRequests, holidays, departments, leaveBalances } from "@shared/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { adminUsers, attendance, leaveRequests, holidays, departments, leaveBalances, salaryAdvanceRepayments, salaryAdvanceRequests } from "@shared/schema";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 
 interface EmployeeReportRow {
   employeeName: string;
@@ -19,6 +19,9 @@ interface EmployeeReportRow {
   attendancePercentage: number;
   grossSalary: number;
   deductions: number;
+  // Salary advance installment recovered from this month's pay (scheduled, not yet
+  // deducted at report-generation time). Subtracted from netPayable.
+  advanceRecovery: number;
   netPayable: number;
 }
 
@@ -94,7 +97,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
   const daysInMonth = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments, allLeaveBalances] = await Promise.all([
+  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments, allLeaveBalances, advanceRepayments] = await Promise.all([
     db.select().from(adminUsers).where(eq(adminUsers.isActive, true)),
     db.select().from(attendance).where(and(gte(attendance.date, startDate), lte(attendance.date, endDate))),
     db.select().from(leaveRequests).where(
@@ -107,7 +110,32 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     db.select().from(holidays).where(and(gte(holidays.date, startDate), lte(holidays.date, endDate))),
     db.select().from(departments),
     db.select().from(leaveBalances).where(eq(leaveBalances.year, year)),
+    // Only recover repayments whose advance has actually been disbursed —
+    // never deduct against an approved-but-not-yet-disbursed advance.
+    db.select({
+      userId: salaryAdvanceRepayments.userId,
+      scheduledAmount: salaryAdvanceRepayments.scheduledAmount,
+    })
+      .from(salaryAdvanceRepayments)
+      .innerJoin(salaryAdvanceRequests, eq(salaryAdvanceRepayments.advanceId, salaryAdvanceRequests.id))
+      .where(
+        and(
+          eq(salaryAdvanceRepayments.year, year),
+          eq(salaryAdvanceRepayments.month, month),
+          eq(salaryAdvanceRepayments.status, "scheduled"),
+          inArray(salaryAdvanceRequests.status, ["disbursed", "repaying"]),
+        )
+      ),
   ]);
+
+  // Sum scheduled advance recovery per employee for this month.
+  const advanceRecoveryByUser = new Map<string, number>();
+  for (const rep of advanceRepayments) {
+    advanceRecoveryByUser.set(
+      rep.userId,
+      (advanceRecoveryByUser.get(rep.userId) || 0) + Number(rep.scheduledAmount || 0),
+    );
+  }
 
   const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
   const holidayDates = new Set(allHolidays.filter(h => h.type === "public" || h.type === "mandatory").map(h => h.date));
@@ -197,7 +225,14 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
 
     const dailyRate = workingDays > 0 ? monthlySalary / workingDays : 0;
     const deductions = absentDays * dailyRate;
-    const netPayable = Math.max(0, monthlySalary - deductions);
+    const netBeforeAdvance = Math.max(0, monthlySalary - deductions);
+    // Recover the scheduled advance installment, capped at what's left after
+    // attendance deductions so net pay never goes negative.
+    const advanceRecovery = Math.min(
+      Math.round((advanceRecoveryByUser.get(user.id) || 0) * 100) / 100,
+      netBeforeAdvance,
+    );
+    const netPayable = Math.max(0, netBeforeAdvance - advanceRecovery);
 
     const row: EmployeeReportRow = {
       employeeName: `${user.firstName} ${user.lastName}`,
@@ -216,6 +251,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
       attendancePercentage,
       grossSalary: monthlySalary,
       deductions: Math.round(deductions * 100) / 100,
+      advanceRecovery: Math.round(advanceRecovery * 100) / 100,
       netPayable: Math.round(netPayable * 100) / 100,
     };
 
@@ -241,12 +277,12 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
   const csvHeaders = [
     "Employee Name", "Email", "Designation", "Department", "Salary",
     "Working Days", "Present Days", "Absent Days", "Paid Leaves", "LOP Leaves (Unpaid)", "Holidays",
-    "Total Hours", "Attendance %", "Gross Salary", "Deductions", "Net Payable"
+    "Total Hours", "Attendance %", "Gross Salary", "Deductions", "Salary Advance Recovery", "Net Payable"
   ];
   const csvRows = rows.map(r => [
     `"${r.employeeName}"`, `"${r.email}"`, `"${r.designation}"`, `"${r.department}"`,
     r.salary, r.workingDays, r.presentDays, r.absentDays, r.paidLeaves, r.lopLeaves, r.holidays,
-    r.totalHours, r.attendancePercentage, r.grossSalary, r.deductions, r.netPayable
+    r.totalHours, r.attendancePercentage, r.grossSalary, r.deductions, r.advanceRecovery, r.netPayable
   ].join(","));
   const csv = [csvHeaders.join(","), ...csvRows].join("\n");
 

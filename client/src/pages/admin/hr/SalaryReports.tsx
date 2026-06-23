@@ -34,6 +34,7 @@ interface EmployeeReportRow {
   attendancePercentage: number;
   grossSalary: number;
   deductions: number;
+  advanceRecovery: number;
   netPayable: number;
 }
 
@@ -428,7 +429,8 @@ function RowEditPanel({
   };
 
   const effectiveDeductions = deductionsAuto ? derivedDeductions : (parseFloat(deductions) || 0);
-  const liveNet = Math.max(0, Math.round((gross - effectiveDeductions) * 100) / 100);
+  const liveAdvanceRecovery = Number(row.advanceRecovery) || 0;
+  const liveNet = Math.max(0, Math.round((gross - effectiveDeductions - liveAdvanceRecovery) * 100) / 100);
   const liveAbsentDays = deductionsAuto ? derivedAbsentDays : Math.max(0, wDays - effectivePresentDays);
   const liveAttendancePct = deductionsAuto ? derivedAttendancePct : (wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0);
 
@@ -482,6 +484,12 @@ function RowEditPanel({
             className="mt-1 h-8 text-sm"
             data-testid="input-edit-deductions"
           />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Advance Recovery (₹)</Label>
+          <div className="mt-1 h-8 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-medium text-purple-600 dark:text-purple-400" data-testid="text-live-advance-recovery">
+            {fmt(liveAdvanceRecovery)}
+          </div>
         </div>
         <div>
           <Label className="text-xs text-muted-foreground">Net Payable (auto)</Label>
@@ -591,6 +599,7 @@ function ApprovalTable({
   const fmt = (v: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
   const totalPayable = rows.reduce((s, r) => s + Number(r.netPayable), 0);
   const totalDeductions = rows.reduce((s, r) => s + Number(r.deductions), 0);
+  const totalAdvanceRecovery = rows.reduce((s, r) => s + Number(r.advanceRecovery || 0), 0);
 
   if (isLoading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
@@ -620,7 +629,7 @@ function ApprovalTable({
         </div>
       )}
       {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-muted/40 rounded-lg p-3">
           <p className="text-xs text-muted-foreground">Employees</p>
           <p className="text-xl font-bold mt-0.5">{rows.length}</p>
@@ -632,6 +641,10 @@ function ApprovalTable({
         <div className="bg-muted/40 rounded-lg p-3">
           <p className="text-xs text-muted-foreground">Total Deductions</p>
           <p className="text-xl font-bold mt-0.5 text-red-600 dark:text-red-400">{fmt(totalDeductions)}</p>
+        </div>
+        <div className="bg-muted/40 rounded-lg p-3" data-testid="card-total-advance-recovery">
+          <p className="text-xs text-muted-foreground">Advance Recovery</p>
+          <p className="text-xl font-bold mt-0.5 text-purple-600 dark:text-purple-400">{fmt(totalAdvanceRecovery)}</p>
         </div>
         <div className={`rounded-lg p-3 ${adjustedCount > 0 ? "bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800" : "bg-muted/40"}`}>
           <p className="text-xs text-muted-foreground">Adjusted Rows</p>
@@ -651,6 +664,7 @@ function ApprovalTable({
                 <th className="text-right py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Paid Leaves</th>
                 <th className="text-right py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Gross</th>
                 <th className="text-right py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Deductions</th>
+                <th className="text-right py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Advance Recovery</th>
                 <th className="text-right py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Net Payable</th>
                 <th className="text-center py-2.5 px-3 font-medium text-muted-foreground whitespace-nowrap text-xs">Edit</th>
               </tr>
@@ -701,6 +715,7 @@ function ApprovalTable({
                       <td className="py-2 px-3 text-right">{row.paidLeaves}</td>
                       <td className="py-2 px-3 text-right">{fmt(row.grossSalary)}</td>
                       <td className="py-2 px-3 text-right text-red-600 dark:text-red-400">{fmt(row.deductions)}</td>
+                      <td className={`py-2 px-3 text-right ${Number(row.advanceRecovery) > 0 ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"}`} data-testid={`text-advance-recovery-${idx}`}>{fmt(Number(row.advanceRecovery) || 0)}</td>
                       <td className="py-2 px-3 text-right font-semibold">{fmt(row.netPayable)}</td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -730,7 +745,7 @@ function ApprovalTable({
                     </tr>
                     {isEditing && (
                       <tr key={`${row.email}-edit`} className="border-t">
-                        <td colSpan={8} className="px-3 py-3">
+                        <td colSpan={9} className="px-3 py-3">
                           <RowEditPanel
                             row={row}
                             saving={adjustMutation.isPending}
@@ -1654,6 +1669,7 @@ export function SalaryReportsContent() {
                         <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">LOP</th>
                         <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Hours</th>
                         <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Attendance %</th>
+                        <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Advance Recovery</th>
                         <th className="text-right py-3 px-2 font-medium text-muted-foreground whitespace-nowrap">Net Payable</th>
                       </tr>
                     </thead>
@@ -1670,6 +1686,7 @@ export function SalaryReportsContent() {
                           <td className={`py-2 px-2 text-right font-medium ${row.lopLeaves > 0 ? "text-amber-600 dark:text-amber-400" : ""}`} data-testid={`text-lop-leaves-${idx}`}>{row.lopLeaves}</td>
                           <td className="py-2 px-2 text-right">{row.totalHours}</td>
                           <td className="py-2 px-2 text-right">{row.attendancePercentage}%</td>
+                          <td className={`py-2 px-2 text-right whitespace-nowrap ${Number(row.advanceRecovery) > 0 ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"}`} data-testid={`text-preview-advance-recovery-${idx}`}>{formatCurrency(Number(row.advanceRecovery) || 0)}</td>
                           <td className="py-2 px-2 text-right font-medium whitespace-nowrap">{formatCurrency(row.netPayable)}</td>
                         </tr>
                       ))}
