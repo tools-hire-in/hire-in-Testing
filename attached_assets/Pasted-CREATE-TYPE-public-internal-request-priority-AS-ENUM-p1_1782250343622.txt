@@ -1,0 +1,318 @@
+CREATE TYPE "public"."internal_request_priority" AS ENUM('p1', 'p2', 'p3', 'p4');
+CREATE TYPE "public"."internal_request_status" AS ENUM('pending_approval', 'assigned', 'in_progress', 'needs_info', 'resolved', 'closed', 'rejected');
+CREATE TYPE "public"."internal_request_type" AS ENUM('access', 'hr', 'ops', 'general');
+CREATE TYPE "public"."salary_advance_repayment_status" AS ENUM('scheduled', 'deducted', 'waived');
+CREATE TYPE "public"."salary_advance_status" AS ENUM('pending_manager', 'pending_final', 'approved', 'disbursed', 'repaying', 'closed', 'rejected', 'cancelled', 'returned');
+CREATE TYPE "public"."travel_compliance_status" AS ENUM('compliant', 'over_cap', 'override_pending', 'override_approved');
+CREATE TYPE "public"."travel_quote_status" AS ENUM('draft', 'submitted', 'approved', 'rejected');
+ALTER TYPE "public"."offer_letter_addendum_status" ADD VALUE 'expired';
+ALTER TYPE "public"."regularization_status" ADD VALUE 'returned';
+CREATE TABLE "gsa_rate_snapshots" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"zip" varchar NOT NULL,
+	"county" varchar,
+	"state" varchar,
+	"city" varchar,
+	"fiscal_year" integer NOT NULL,
+	"month" integer NOT NULL,
+	"lodging_rate" numeric NOT NULL,
+	"mie_rate" numeric NOT NULL,
+	"first_last_day_mie" numeric NOT NULL,
+	"snapshot_date" timestamp DEFAULT now(),
+	"source_version" varchar,
+	"is_cached" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "travel_margin_floors" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"role_type" varchar NOT NULL,
+	"red_threshold_pct" numeric NOT NULL,
+	"yellow_threshold_pct" numeric NOT NULL,
+	"payroll_burden_pct" numeric DEFAULT '18.8' NOT NULL,
+	"default_ot_multiplier" numeric DEFAULT '1.5' NOT NULL,
+	"default_callback_rate" numeric DEFAULT '0' NOT NULL,
+	"default_holiday_rate" numeric DEFAULT '0' NOT NULL,
+	"default_on_call_rate" numeric DEFAULT '0' NOT NULL,
+	"default_vms_fee_pct" numeric DEFAULT '3' NOT NULL,
+	"updated_at" timestamp DEFAULT now(),
+	"updated_by" varchar,
+	CONSTRAINT "travel_margin_floors_role_type_unique" UNIQUE("role_type")
+);
+CREATE TABLE "travel_quotes" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"recruiter_id" varchar NOT NULL,
+	"candidate_name" varchar NOT NULL,
+	"facility_client_name" varchar NOT NULL,
+	"label" varchar,
+	"assignment_zip" varchar NOT NULL,
+	"state" varchar,
+	"county" varchar,
+	"city" varchar,
+	"role_type" varchar DEFAULT 'healthcare_travel' NOT NULL,
+	"weeks_in_assignment" integer DEFAULT 13 NOT NULL,
+	"month" integer NOT NULL,
+	"year" integer NOT NULL,
+	"away_days" integer DEFAULT 5 NOT NULL,
+	"scheduled_hours" numeric DEFAULT '36' NOT NULL,
+	"w2_hourly" numeric NOT NULL,
+	"ot_multiplier" numeric DEFAULT '1.5' NOT NULL,
+	"total_hours" numeric DEFAULT '36' NOT NULL,
+	"master_bill_rate" numeric NOT NULL,
+	"ot_bill_rate" numeric,
+	"client_ot_multiplier" numeric DEFAULT '1.5' NOT NULL,
+	"vms_fee_pct" numeric DEFAULT '3' NOT NULL,
+	"orientation_hours_total" numeric DEFAULT '0' NOT NULL,
+	"orientation_hours_billable" numeric DEFAULT '0' NOT NULL,
+	"orientation_hours_free" numeric DEFAULT '0' NOT NULL,
+	"orientation_pay_rate" numeric,
+	"orientation_ot_multiplier" numeric DEFAULT '1' NOT NULL,
+	"completion_bonus" numeric DEFAULT '0' NOT NULL,
+	"daily_mie" numeric,
+	"daily_lodging" numeric,
+	"decreased_stipend_override" numeric,
+	"payroll_burden_pct" numeric DEFAULT '18.8' NOT NULL,
+	"on_call_rate" numeric DEFAULT '0' NOT NULL,
+	"callback_rate" numeric DEFAULT '0' NOT NULL,
+	"holiday_rate" numeric DEFAULT '0' NOT NULL,
+	"status" "travel_quote_status" DEFAULT 'draft' NOT NULL,
+	"gsa_snapshot_id" varchar,
+	"compliance_override_by" varchar,
+	"compliance_override_reason" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "travel_quote_outputs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"quote_id" varchar NOT NULL,
+	"weekly_taxable" numeric,
+	"weekly_non_taxable" numeric,
+	"weekly_gross" numeric,
+	"hourly_taxable" numeric,
+	"hourly_blended" numeric,
+	"ot_rate" numeric,
+	"wage_payable_weekly" numeric,
+	"payroll_taxes_weekly" numeric,
+	"non_taxable_weekly" numeric,
+	"orientation_revenue" numeric,
+	"orientation_candidate_cost" numeric,
+	"orientation_net" numeric,
+	"total_billing_weekly" numeric,
+	"total_billing_contract" numeric,
+	"total_expense_weekly" numeric,
+	"total_expense_contract" numeric,
+	"gross_profit_weekly" numeric,
+	"net_margin_per_hour" numeric,
+	"net_margin_per_week" numeric,
+	"net_margin_per_contract" numeric,
+	"net_margin_pct" numeric,
+	"stipend_compliance_status" "travel_compliance_status",
+	"margin_status" varchar,
+	"calculated_at" timestamp DEFAULT now(),
+	CONSTRAINT "travel_quote_outputs_quote_id_unique" UNIQUE("quote_id")
+);
+CREATE TABLE "attendance_escalation_log" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"employee_id" varchar NOT NULL,
+	"month" varchar(7) NOT NULL,
+	"tier" integer NOT NULL,
+	"count_at_trigger" integer NOT NULL,
+	"notified_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "internal_request_audit_log" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_id" varchar NOT NULL,
+	"actor_id" varchar NOT NULL,
+	"action" varchar NOT NULL,
+	"old_status" varchar,
+	"new_status" varchar,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "internal_request_approvals" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_id" varchar NOT NULL,
+	"approver_id" varchar NOT NULL,
+	"decision" varchar NOT NULL,
+	"reason" text,
+	"decided_at" timestamp DEFAULT now()
+);
+CREATE TABLE "internal_request_comments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_id" varchar NOT NULL,
+	"author_id" varchar NOT NULL,
+	"body" text NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "release_notes" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"version" varchar,
+	"title" varchar,
+	"body" text,
+	"changelog_input" text,
+	"sent_channels" text[] DEFAULT '{}',
+	"sent_at" timestamp,
+	"sent_by_user_id" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "salary_advance_audit_log" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"advance_id" varchar NOT NULL,
+	"actor_id" varchar NOT NULL,
+	"action" varchar NOT NULL,
+	"old_status" varchar,
+	"new_status" varchar,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "salary_advance_repayments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"advance_id" varchar NOT NULL,
+	"user_id" varchar NOT NULL,
+	"installment_no" integer NOT NULL,
+	"year" integer NOT NULL,
+	"month" integer NOT NULL,
+	"scheduled_amount" numeric NOT NULL,
+	"status" "salary_advance_repayment_status" DEFAULT 'scheduled' NOT NULL,
+	"deducted_amount" numeric,
+	"deducted_at" timestamp,
+	"salary_run_id" varchar,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "internal_requests" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_number" varchar NOT NULL,
+	"requester_id" varchar NOT NULL,
+	"requested_for_id" varchar,
+	"type" "internal_request_type" NOT NULL,
+	"title" varchar NOT NULL,
+	"description" text NOT NULL,
+	"priority" "internal_request_priority" DEFAULT 'p3' NOT NULL,
+	"status" "internal_request_status" DEFAULT 'pending_approval' NOT NULL,
+	"manager_id" varchar,
+	"assigned_to_id" varchar,
+	"department_id" varchar,
+	"needed_by_date" date,
+	"template_data" jsonb,
+	"attachment_url" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "internal_requests_request_number_unique" UNIQUE("request_number")
+);
+CREATE TABLE "salary_advance_requests" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_number" varchar NOT NULL,
+	"requester_id" varchar NOT NULL,
+	"manager_id" varchar,
+	"requested_amount" numeric NOT NULL,
+	"reason" text NOT NULL,
+	"status" "salary_advance_status" DEFAULT 'pending_manager' NOT NULL,
+	"approved_amount" numeric,
+	"repayment_months" integer,
+	"monthly_deduction" numeric,
+	"repayment_start_year" integer,
+	"repayment_start_month" integer,
+	"is_exception" boolean DEFAULT false NOT NULL,
+	"exception_reason" text,
+	"manager_approved_by" varchar,
+	"manager_approved_at" timestamp,
+	"manager_note" text,
+	"final_approved_by" varchar,
+	"final_approved_at" timestamp,
+	"final_note" text,
+	"disbursed_by" varchar,
+	"disbursed_at" timestamp,
+	"rejected_by" varchar,
+	"rejected_at" timestamp,
+	"rejection_reason" text,
+	"return_note" text,
+	"total_repaid" numeric DEFAULT '0' NOT NULL,
+	"outstanding_balance" numeric DEFAULT '0' NOT NULL,
+	"closed_at" timestamp,
+	"exit_recovery_flag" boolean DEFAULT false NOT NULL,
+	"policy_snapshot" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "salary_advance_requests_request_number_unique" UNIQUE("request_number")
+);
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_plan_id_fkey";
+ALTER TABLE "performance_goals" DROP CONSTRAINT "performance_goals_plan_id_fkey";
+DROP INDEX "hr_letters_reference_number_idx";
+DROP INDEX "break_records_attendance_idx";
+DROP INDEX "break_records_user_date_idx";
+DROP INDEX "idx_policy_ack_user_type";
+DROP INDEX "idx_att_reg_date";
+DROP INDEX "idx_att_reg_employee_id";
+DROP INDEX "idx_att_reg_status";
+DROP INDEX "goal_milestones_goal_id_idx";
+DROP INDEX "idx_att_report_mgr_approvals_run";
+DROP INDEX "idx_plan_goal_templates_type_role";
+DROP INDEX "idx_plan_goal_templates_unique";
+DROP INDEX "idx_plan_acks_plan_id";
+DROP INDEX "idx_plan_acks_user_id";
+DROP INDEX "idx_employee_plans_employee";
+DROP INDEX "studio_generations_article_idx";
+DROP INDEX "studio_generations_user_idx";
+DROP INDEX "idx_att_report_entries_manager";
+DROP INDEX "idx_att_report_entries_run";
+DROP INDEX "idx_att_report_edits_run";
+DROP INDEX "idx_att_report_edits_status";
+DROP INDEX "idx_signature_records_doc";
+DROP INDEX "idx_signature_records_ref";
+DROP INDEX "studio_article_versions_article_idx";
+DROP INDEX "card_templates_default_idx";
+DROP INDEX "studio_review_assignments_article_idx";
+DROP INDEX "studio_articles_project_idx";
+DROP INDEX "studio_articles_status_idx";
+DROP INDEX "studio_prompt_templates_global_key";
+ALTER TABLE "employee_plans" ALTER COLUMN "employee_id" SET NOT NULL;
+ALTER TABLE "admin_users" ADD COLUMN "preferences" jsonb;
+ALTER TABLE "attendance" ADD COLUMN "exception_status" varchar;
+ALTER TABLE "attendance" ADD COLUMN "exception_standard_hours" numeric(5, 2);
+ALTER TABLE "attendance" ADD COLUMN "exception_comment" text;
+ALTER TABLE "attendance" ADD COLUMN "exception_resolved_by" varchar;
+ALTER TABLE "attendance" ADD COLUMN "exception_resolved_at" timestamp;
+ALTER TABLE "salary_slips" ADD COLUMN "salary_advance_recovery" numeric DEFAULT '0' NOT NULL;
+ALTER TABLE "shifts" ADD COLUMN "us_coverage_dst" varchar;
+ALTER TABLE "shifts" ADD COLUMN "us_coverage_std" varchar;
+ALTER TABLE "shifts" ADD COLUMN "updated_at" timestamp DEFAULT now();
+ALTER TABLE "attendance_regularizations" ADD COLUMN "manager_adjusted_punch_in" timestamp;
+ALTER TABLE "attendance_regularizations" ADD COLUMN "manager_adjusted_punch_out" timestamp;
+ALTER TABLE "attendance_regularizations" ADD COLUMN "return_comment" text;
+ALTER TABLE "attendance_regularizations" ADD COLUMN "attachment_url" text;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "expires_at" timestamp;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "reminder_sent_at" timestamp;
+ALTER TABLE "offer_letters" ADD COLUMN "reminder_sent_at" timestamp;
+ALTER TABLE "travel_margin_floors" ADD CONSTRAINT "travel_margin_floors_updated_by_admin_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "travel_quotes" ADD CONSTRAINT "travel_quotes_compliance_override_by_admin_users_id_fk" FOREIGN KEY ("compliance_override_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "travel_quotes" ADD CONSTRAINT "travel_quotes_gsa_snapshot_id_gsa_rate_snapshots_id_fk" FOREIGN KEY ("gsa_snapshot_id") REFERENCES "public"."gsa_rate_snapshots"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "travel_quotes" ADD CONSTRAINT "travel_quotes_recruiter_id_admin_users_id_fk" FOREIGN KEY ("recruiter_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "travel_quote_outputs" ADD CONSTRAINT "travel_quote_outputs_quote_id_travel_quotes_id_fk" FOREIGN KEY ("quote_id") REFERENCES "public"."travel_quotes"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_escalation_log" ADD CONSTRAINT "attendance_escalation_log_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_audit_log" ADD CONSTRAINT "internal_request_audit_log_actor_id_admin_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_audit_log" ADD CONSTRAINT "internal_request_audit_log_request_id_internal_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."internal_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_approvals" ADD CONSTRAINT "internal_request_approvals_approver_id_admin_users_id_fk" FOREIGN KEY ("approver_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_approvals" ADD CONSTRAINT "internal_request_approvals_request_id_internal_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."internal_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_comments" ADD CONSTRAINT "internal_request_comments_author_id_admin_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_request_comments" ADD CONSTRAINT "internal_request_comments_request_id_internal_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."internal_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "release_notes" ADD CONSTRAINT "release_notes_sent_by_user_id_admin_users_id_fk" FOREIGN KEY ("sent_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_audit_log" ADD CONSTRAINT "salary_advance_audit_log_actor_id_admin_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_audit_log" ADD CONSTRAINT "salary_advance_audit_log_advance_id_salary_advance_requests_id_" FOREIGN KEY ("advance_id") REFERENCES "public"."salary_advance_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_repayments" ADD CONSTRAINT "salary_advance_repayments_advance_id_salary_advance_requests_id" FOREIGN KEY ("advance_id") REFERENCES "public"."salary_advance_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_repayments" ADD CONSTRAINT "salary_advance_repayments_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_assigned_to_id_admin_users_id_fk" FOREIGN KEY ("assigned_to_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_requested_for_id_admin_users_id_fk" FOREIGN KEY ("requested_for_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_requester_id_admin_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_disbursed_by_admin_users_id_fk" FOREIGN KEY ("disbursed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_final_approved_by_admin_users_id_fk" FOREIGN KEY ("final_approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_manager_approved_by_admin_users_id_fk" FOREIGN KEY ("manager_approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_rejected_by_admin_users_id_fk" FOREIGN KEY ("rejected_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_requester_id_admin_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE UNIQUE INDEX "uq_gsa_snapshot_zip_fy_month" ON "gsa_rate_snapshots" USING btree ("zip","fiscal_year","month");
+CREATE UNIQUE INDEX "uq_att_escalation_tier" ON "attendance_escalation_log" USING btree ("employee_id","month","tier");
+CREATE UNIQUE INDEX "uq_advance_repayment_period" ON "salary_advance_repayments" USING btree ("advance_id","year","month");
+ALTER TABLE "attendance" ADD CONSTRAINT "attendance_exception_resolved_by_admin_users_id_fk" FOREIGN KEY ("exception_resolved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" DROP COLUMN "offer_letter_id";
+ALTER TABLE "employee_plans" DROP COLUMN "acknowledged_name";
