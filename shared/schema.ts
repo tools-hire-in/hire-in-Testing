@@ -2880,6 +2880,28 @@ export type InsertSalaryAdvanceRepayment = z.infer<typeof insertSalaryAdvanceRep
 export type SalaryAdvanceAuditLog = typeof salaryAdvanceAuditLog.$inferSelect;
 export type InsertSalaryAdvanceAuditLog = z.infer<typeof insertSalaryAdvanceAuditLogSchema>;
 
+// Attendance escalation dedup log — created by a startup ensure-block in server/index.ts.
+// Declared here so db:push recognizes it as an existing table (not an orphan/rename).
+// One row per (employee, month, tier).
+export const attendanceEscalationLog = pgTable("attendance_escalation_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  month: varchar("month", { length: 7 }).notNull(),
+  tier: integer("tier").notNull(),
+  countAtTrigger: integer("count_at_trigger").notNull(),
+  notifiedAt: timestamp("notified_at").notNull().defaultNow(),
+}, (table) => ({
+  uqTier: uniqueIndex("uq_att_escalation_tier").on(table.employeeId, table.month, table.tier),
+}));
+
+export const insertAttendanceEscalationLogSchema = createInsertSchema(attendanceEscalationLog).omit({
+  id: true,
+  notifiedAt: true,
+});
+
+export type AttendanceEscalationLog = typeof attendanceEscalationLog.$inferSelect;
+export type InsertAttendanceEscalationLog = z.infer<typeof insertAttendanceEscalationLogSchema>;
+
 // Policy stored in system_settings under key `salary_advance_policy`.
 export interface SalaryAdvancePolicy {
   enabled: boolean;
