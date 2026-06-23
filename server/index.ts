@@ -6,7 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { checkAndAutoCreateRun } from "./attendanceReport";
-import { db, runMigrations } from "./db";
+import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
@@ -19,6 +19,29 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// ── Crash safety ──────────────────────────────────────────────────────────────
+// A single unhandled promise rejection (e.g. a transient DB blip in a background
+// job) is usually recoverable and must NOT take production down — log and keep
+// running. An uncaughtException, by contrast, can leave the process in an
+// undefined state, so we log it and initiate a controlled graceful shutdown
+// (drain in-flight requests, then exit) rather than continuing in a bad state.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection (kept alive):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception (shutting down):", err);
+  gracefulShutdown("uncaughtException");
+});
+
+// ── Liveness probe ────────────────────────────────────────────────────────────
+// Registered before body parsers, session, and all other middleware so it can
+// never be blocked by a saturated DB pool or slow startup work. The deployment
+// healthcheck should target this (or the DB-free `/`), so a closed/slow port
+// during boot doesn't recycle the instance.
+app.get("/healthz", (_req, res) => {
+  res.status(200).type("text/plain").send("ok");
+});
 
 app.use(
   express.json({
@@ -1893,7 +1916,10 @@ async function ensureHealthcarePlansTables() {
   }
 }
 
-(async () => {
+// All schema "ensure" / seed / backfill work. Runs AFTER the HTTP port is open
+// (see bootstrap below) so the deployment healthcheck never sees a closed port
+// during boot. These blocks are idempotent, so running them post-listen is safe.
+async function runStartupTasks() {
   try {
     await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
     log("Ensured deleted_at column exists on admin_users");
@@ -2797,8 +2823,6 @@ async function ensureHealthcarePlansTables() {
     console.error("Travel pay calculator tables migration error:", err);
   }
 
-  await registerRoutes(httpServer, app);
-
   try {
     const { hydrateAccessControl } = await import("./accessControlService");
     await hydrateAccessControl();
@@ -2806,6 +2830,20 @@ async function ensureHealthcarePlansTables() {
   } catch (err) {
     console.error("Access control hydration error (non-fatal):", err);
   }
+
+  // Cron/scheduled jobs start only after schema is ensured so they query
+  // tables that are guaranteed to exist.
+  startScheduler();
+  log("Background startup tasks complete");
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+// Open the HTTP port as fast as possible: register routes, the error handler,
+// and the static/vite layer, then listen. The heavy schema "ensure"/seed/
+// backfill work runs in the background AFTER the port is open, so the deployment
+// healthcheck never sees a closed port and the boot can't stall behind DB work.
+(async () => {
+  await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -2843,7 +2881,40 @@ async function ensureHealthcarePlansTables() {
     },
     () => {
       log(`serving on port ${port}`);
-      startScheduler();
+      // Fire the heavy startup work in the background; never block the open port.
+      runStartupTasks().catch((err) => {
+        console.error("Background startup tasks failed:", err);
+      });
     },
   );
 })();
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+// On deploy-time SIGTERM, stop accepting new connections and drain in-flight
+// requests before exiting so users aren't cut off mid-request. A hard timeout
+// guarantees the process still exits if a connection hangs.
+let shuttingDown = false;
+function gracefulShutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log(`Received ${signal}, draining in-flight requests before exit...`);
+
+  const forceExit = setTimeout(() => {
+    console.error("Graceful shutdown timed out; forcing exit.");
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+
+  httpServer.close(() => {
+    log("HTTP server closed.");
+    pool
+      .end()
+      .catch((err) => console.error("Error closing DB pool:", err))
+      .finally(() => {
+        clearTimeout(forceExit);
+        process.exit(0);
+      });
+  });
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { Request, Response, NextFunction, Express } from "express";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { adminUsers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { resolveRoles } from "@shared/accessControl";
@@ -40,8 +40,11 @@ export function setupSession(app: Express) {
   const sessionTtlSeconds = 30 * 60; // 30 minutes in seconds
   const sessionTtlMs = sessionTtlSeconds * 1000; // 30 minutes in milliseconds (for cookie)
   const pgStore = connectPg(session);
+  // Reuse the app's single bounded pool (server/db.ts) instead of opening a
+  // second unbounded pool. A shift-start login burst hits the session store
+  // hard; sharing one bounded pool prevents connection exhaustion.
   const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
+    pool,
     createTableIfMissing: false,
     ttl: sessionTtlSeconds,
     tableName: "sessions",

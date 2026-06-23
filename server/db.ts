@@ -12,7 +12,22 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Single shared connection pool for the whole app (and the session store, which
+// imports this pool — see server/auth.ts). Bounding `max` here prevents a
+// shift-start login burst from opening unbounded connections and exhausting
+// Postgres' connection limit (which previously caused 500s on the root path).
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
+
+// Never let a background idle-client error crash the process.
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle Postgres client:", err);
+});
+
 export const db = drizzle(pool, { schema });
 
 export async function runMigrations(): Promise<void> {
