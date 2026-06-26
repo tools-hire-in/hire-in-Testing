@@ -24,6 +24,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescrip
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { LetterGenerator } from "@/components/hr/LetterGenerator";
 import { LetterPreview } from "@/components/hr/LetterPreview";
+import { LettersDashboard } from "@/components/hr/LettersDashboard";
+import { LetterTemplatesSection } from "@/components/hr/LetterTemplatesSection";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "@/components/hr/AnnexureEditor";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -3886,6 +3888,23 @@ export default function HRTools() {
     );
   }
 
+  const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+
+  const validTabs = ["salary-slip", "letter-generator", "letters", "policy-signoffs", ...(isAdmin ? ["templates"] : [])];
+  let initialTab = "salary-slip";
+  try {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab && validTabs.includes(tab)) initialTab = tab;
+  } catch {}
+
+  const handleTabChange = (value: string) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", value);
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -3894,7 +3913,7 @@ export default function HRTools() {
           <p className="text-muted-foreground">Generate salary slips and HR letters</p>
         </div>
 
-        <Tabs defaultValue="salary-slip" className="space-y-6">
+        <Tabs defaultValue={initialTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList data-testid="tabs-hr-tools" className="flex-wrap h-auto gap-1">
             <TabsTrigger value="salary-slip" data-testid="tab-salary-slip">
               <Receipt className="h-4 w-4 mr-2" />
@@ -3904,6 +3923,12 @@ export default function HRTools() {
               <ScrollText className="h-4 w-4 mr-2" />
               Letter Generator
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="templates" data-testid="tab-templates">
+                <FileText className="h-4 w-4 mr-2" />
+                Templates
+              </TabsTrigger>
+            )}
             <TabsTrigger value="letters" data-testid="tab-letters">
               <FileStack className="h-4 w-4 mr-2" />
               Letters
@@ -3921,6 +3946,12 @@ export default function HRTools() {
           <TabsContent value="letter-generator">
             <LetterGenerator />
           </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="templates">
+              <LetterTemplatesSection />
+            </TabsContent>
+          )}
 
           <TabsContent value="letters">
             <OfferLettersDashboard />
