@@ -394,6 +394,7 @@ export interface IStorage {
   createAddendum(data: InsertOfferLetterAddendum): Promise<OfferLetterAddendum>;
   getAddendumsForOffer(offerLetterId: string): Promise<OfferLetterAddendum[]>;
   getStandaloneAddendums(): Promise<OfferLetterAddendum[]>;
+  getAllAddendums(): Promise<OfferLetterAddendum[]>;
   getAddendumByToken(token: string): Promise<OfferLetterAddendum | undefined>;
   getAddendum(id: string): Promise<OfferLetterAddendum | undefined>;
   updateAddendumStatus(id: string, updates: Partial<OfferLetterAddendum>): Promise<OfferLetterAddendum | undefined>;
@@ -2770,6 +2771,11 @@ export class DatabaseStorage implements IStorage {
   async getStandaloneAddendums(): Promise<OfferLetterAddendum[]> {
     return db.select().from(offerLetterAddendums)
       .where(eq(offerLetterAddendums.isStandalone, true))
+      .orderBy(desc(offerLetterAddendums.createdAt));
+  }
+
+  async getAllAddendums(): Promise<OfferLetterAddendum[]> {
+    return db.select().from(offerLetterAddendums)
       .orderBy(desc(offerLetterAddendums.createdAt));
   }
 

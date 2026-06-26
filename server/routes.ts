@@ -8854,6 +8854,17 @@ export async function registerRoutes(
     }
   });
 
+  // All addendums (linked + standalone) for the unified Letters hub
+  app.get("/api/hr/tools/addendums/all", requireAuth, requirePermission("hr.tools.addendums.standalone.get", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const addendums = await storage.getAllAddendums();
+      res.json(addendums);
+    } catch (error) {
+      console.error("List all addendums error:", error);
+      res.status(500).json({ error: "Failed to fetch addendums" });
+    }
+  });
+
   // My pending addendums — addendums sent to the logged-in employee awaiting their acceptance
   app.get("/api/hr/tools/addendums/my-pending", requireAuth, async (req: Request, res: Response) => {
     try {

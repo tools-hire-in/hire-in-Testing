@@ -5,7 +5,7 @@ import {
   Wrench, FileText, Receipt, Download, Loader2, User, Building, Search,
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
-  ChevronDown, ChevronUp, RefreshCw, ArrowRight,
+  ChevronDown, ChevronUp, RefreshCw, ArrowRight, RotateCcw,
   Plus, Trash2, Laptop, Shield, BookOpen,
 } from "lucide-react";
 import { PolicySignoffsContent } from "./PolicySignoffs";
@@ -23,13 +23,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { LetterGenerator } from "@/components/hr/LetterGenerator";
-import { LettersDashboard } from "@/components/hr/LettersDashboard";
+import { LetterPreview } from "@/components/hr/LetterPreview";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "@/components/hr/AnnexureEditor";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { numberToWords } from "@/lib/numberToWords";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { AdminUsersResponse } from "@shared/schema";
+import type { AdminUsersResponse, HrLetter } from "@shared/schema";
+import { TEMPLATE_LABELS } from "@shared/hrLetterConstants";
 import { renderOfferClause, OFFER_CLAUSE_DEFAULT_TEXT, renderAddendumClause, ADDENDUM_CLAUSE_DEFAULT_TEXT } from "@shared/performanceClauses";
 
 const MONTH_NAMES = [
@@ -1468,6 +1469,15 @@ const ADDENDUM_STATUS_BADGES: Record<string, { label: string; className: string 
   cancelled: { label: "Cancelled", className: "bg-red-100 text-red-600 line-through" },
 };
 
+const HR_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  draft: { label: "Draft", className: "bg-gray-100 text-gray-600" },
+  pending_approval: { label: "Pending Approval", className: "bg-orange-50 text-[#F47C20]" },
+  approved: { label: "Approved", className: "bg-blue-100 text-blue-700" },
+  issued: { label: "Issued", className: "bg-green-100 text-green-700" },
+  reissued: { label: "Reissued", className: "bg-amber-100 text-amber-700" },
+  revoked: { label: "Revoked", className: "bg-red-100 text-red-600 line-through" },
+};
+
 function AddendumCountBadge({ letterId, onClick }: { letterId: string; onClick: () => void }) {
   const { data: addendums } = useQuery<any[]>({
     queryKey: ["/api/hr/tools/offer-letters", letterId, "addendums"],
@@ -1640,6 +1650,15 @@ export function OfferLettersDashboard() {
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
   const [countersignModal, setCountersignModal] = useState<any>(null);
   const [viewLetterModal, setViewLetterModal] = useState<any>(null);
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [hrViewLetter, setHrViewLetter] = useState<HrLetter | null>(null);
+  const [hrRevokeDialog, setHrRevokeDialog] = useState<HrLetter | null>(null);
+  const [hrRevokeReason, setHrRevokeReason] = useState("");
+  const [hrReissueDialog, setHrReissueDialog] = useState<HrLetter | null>(null);
+  const [hrReissueReason, setHrReissueReason] = useState("");
+  const [hrEmailDialog, setHrEmailDialog] = useState<HrLetter | null>(null);
+  const [hrEmailCc, setHrEmailCc] = useState("");
   const viewModalAnnexureInitials = useMemo<Record<string, string>>(() => {
     const raw = viewLetterModal?.annexureInitials;
     if (!Array.isArray(raw)) return {};
@@ -1784,6 +1803,7 @@ export function OfferLettersDashboard() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       const addendumResult = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters", addendumDialog.id, "addendums"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/all"] });
       setExpandedOfferIds(prev => { const next = new Set(prev); next.add(addendumDialog.id); return next; });
       toast({ title: "Addendum created and sent!", description: "The candidate has been emailed a link to sign." });
 
@@ -1824,8 +1844,13 @@ export function OfferLettersDashboard() {
     queryKey: ["/api/hr/tools/offer-letters"],
   });
 
-  const { data: standaloneAddendums } = useQuery<any[]>({
-    queryKey: ["/api/hr/tools/addendums/standalone"],
+  const { data: allAddendums } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/addendums/all"],
+  });
+
+  const { data: hrLetters } = useQuery<HrLetter[]>({
+    queryKey: ["/api/hr/letters"],
+    enabled: !!user && ["hr", "admin", "super_admin"].includes(user.role ?? ""),
   });
 
   const { data: standaloneUsersData } = useQuery<{ users: any[]; counts?: any } | any[]>({
@@ -1957,7 +1982,7 @@ export function OfferLettersDashboard() {
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       const result = await res.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/all"] });
       toast({ title: "Standalone addendum created and sent!", description: "The employee has been emailed a link to sign." });
 
       if (selectedStandaloneEmployeeId && standaloneAnnexures.length > 0) {
@@ -2056,6 +2081,69 @@ export function OfferLettersDashboard() {
     onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
   });
 
+  const hrRevokeMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await apiRequest("POST", `/api/hr/letters/${id}/revoke`, { revokeReason: reason });
+    },
+    onSuccess: () => {
+      toast({ title: "Letter revoked" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
+      setHrRevokeDialog(null);
+      setHrRevokeReason("");
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const hrReissueMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await apiRequest("POST", `/api/hr/letters/${id}/reissue`, { reissueReason: reason });
+    },
+    onSuccess: () => {
+      toast({ title: "Letter re-issued", description: "A corrected letter has been issued with the employee's current data." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
+      setHrReissueDialog(null);
+      setHrReissueReason("");
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const hrEmailMutation = useMutation({
+    mutationFn: async ({ id, ccEmails }: { id: string; ccEmails?: string }) => {
+      const res = await apiRequest("POST", `/api/hr/letters/${id}/email`, ccEmails ? { ccEmails } : undefined);
+      return res.json();
+    },
+    onSuccess: (data: { sentTo: string }) => {
+      toast({ title: "Email sent", description: `Letter emailed to ${data.sentTo}` });
+      setHrEmailDialog(null);
+      setHrEmailCc("");
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const addendumResend = async (addendum: any) => {
+    const url = addendum.isStandalone
+      ? `/api/hr/tools/addendums/${addendum.id}/send`
+      : `/api/hr/tools/offer-letters/${addendum.offerLetterId}/addendums/${addendum.id}/send`;
+    const res = await apiRequest("POST", url);
+    if (res.ok) toast({ title: "Addendum email resent" });
+    else toast({ title: "Failed to resend", variant: "destructive" });
+  };
+
+  const addendumCancel = async (addendum: any) => {
+    const url = addendum.isStandalone
+      ? `/api/hr/tools/addendums/${addendum.id}/cancel`
+      : `/api/hr/tools/offer-letters/${addendum.offerLetterId}/addendums/${addendum.id}/cancel`;
+    const res = await apiRequest("POST", url);
+    if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/all"] }); toast({ title: "Addendum cancelled" }); }
+    else toast({ title: "Failed to cancel", variant: "destructive" });
+  };
+
+  const addendumCountersign = async (addendum: any) => {
+    const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/countersign`);
+    if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/all"] }); toast({ title: "Addendum counter-signed" }); }
+    else toast({ title: "Failed to counter-sign", variant: "destructive" });
+  };
+
   const handleStartOnboarding = async () => {
     if (!hireInEmail || !hireInEmail.endsWith("@hire-in.com")) {
       toast({ title: "Email must end with @hire-in.com", variant: "destructive" });
@@ -2098,12 +2186,111 @@ export function OfferLettersDashboard() {
   const isHrOrAdmin = user && ["hr", "admin", "super_admin"].includes(user.role ?? "");
   const canApproveOfferLetter = user?.role === "super_admin";
   const pendingLetters = letters?.filter((l: any) => l.status === "pending_approval") ?? [];
-  const ACTIVE_STATUSES = ["sent", "viewed", "accepted", "countersigned", "onboarded"];
-  const CLOSED_STATUSES = ["rejected", "cancelled", "expired"];
-  const filteredLetters =
-    activeFilter === "pending_approval" ? pendingLetters
-    : activeFilter === "closed" ? (letters ?? []).filter((l: any) => CLOSED_STATUSES.includes(l.status))
-    : (letters ?? []).filter((l: any) => ACTIVE_STATUSES.includes(l.status));
+  const statusBucket = (s: string): string => {
+    if (["pending_approval", "draft"].includes(s)) return "needs_approval";
+    if (["countersigned", "onboarded"].includes(s)) return "signed";
+    if (["rejected", "cancelled", "expired", "revoked"].includes(s)) return "closed";
+    return "active";
+  };
+
+  const ts = (v: any): number => { const t = v ? new Date(v).getTime() : 0; return isNaN(t) ? 0 : t; };
+
+  type UnifiedRow = {
+    key: string;
+    kind: "offer" | "addendum" | "standalone_addendum" | "hr_letter";
+    typeValue: string;
+    typeLabel: string;
+    subLabel: string;
+    name: string;
+    meta: string;
+    status: string;
+    bucket: string;
+    statusLabel: string;
+    statusClass: string;
+    reference: string;
+    sortDate: number;
+    dateLabel: string;
+    raw: any;
+  };
+
+  const rows: UnifiedRow[] = [];
+
+  (letters ?? []).forEach((l: any) => {
+    const si = STATUS_BADGES[l.status] || STATUS_BADGES.sent;
+    rows.push({
+      key: `offer-${l.id}`,
+      kind: "offer",
+      typeValue: "offer_letter",
+      typeLabel: "Offer Letter",
+      subLabel: "",
+      name: l.candidateName,
+      meta: [l.designation, l.departmentName].filter(Boolean).join(" · ") || (l.candidatePersonalEmail || "—"),
+      status: l.status,
+      bucket: statusBucket(l.status),
+      statusLabel: si.label,
+      statusClass: si.className,
+      reference: "—",
+      sortDate: ts(l.createdAt),
+      dateLabel: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—",
+      raw: l,
+    });
+  });
+
+  (allAddendums ?? []).forEach((a: any) => {
+    const si = ADDENDUM_STATUS_BADGES[a.status] || ADDENDUM_STATUS_BADGES.sent;
+    const manual = (a.manualEmployeeData as any) || {};
+    rows.push({
+      key: `addendum-${a.id}`,
+      kind: a.isStandalone ? "standalone_addendum" : "addendum",
+      typeValue: a.isStandalone ? "standalone_addendum" : "addendum",
+      typeLabel: a.isStandalone ? "Standalone · Addendum" : "Addendum",
+      subLabel: ADDENDUM_TYPE_LABELS[a.addendumType] || a.addendumType || "",
+      name: a.candidateName,
+      meta: [manual.designation, manual.department].filter(Boolean).join(" · ") || "—",
+      status: a.status,
+      bucket: statusBucket(a.status),
+      statusLabel: si.label,
+      statusClass: si.className,
+      reference: a.referenceNumber || "—",
+      sortDate: ts(a.createdAt || a.issuedAt),
+      dateLabel: a.issuedAt ? new Date(a.issuedAt).toLocaleDateString() : (a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—"),
+      raw: a,
+    });
+  });
+
+  (hrLetters ?? []).forEach((h: any) => {
+    const sc = HR_STATUS_CONFIG[h.status] || HR_STATUS_CONFIG.draft;
+    rows.push({
+      key: `hr-${h.id}`,
+      kind: "hr_letter",
+      typeValue: h.templateType,
+      typeLabel: TEMPLATE_LABELS[h.templateType] || h.templateType,
+      subLabel: "",
+      name: h.employeeName,
+      meta: [h.employeeCode, h.designation].filter(Boolean).join(" · ") || "—",
+      status: h.status,
+      bucket: statusBucket(h.status),
+      statusLabel: sc.label,
+      statusClass: sc.className,
+      reference: h.referenceNumber || "—",
+      sortDate: ts(h.createdAt || h.issueDate),
+      dateLabel: h.issueDate || (h.createdAt ? new Date(h.createdAt).toLocaleDateString() : "—"),
+      raw: h,
+    });
+  });
+
+  const unifiedRows = rows
+    .filter((r) => typeFilter === "all" || r.typeValue === typeFilter)
+    .filter((r) => statusFilter === "all" || r.bucket === statusFilter)
+    .sort((a, b) => b.sortDate - a.sortDate);
+
+  const TYPE_FILTER_OPTIONS: { value: string; label: string }[] = [
+    { value: "all", label: "All Types" },
+    { value: "offer_letter", label: "Offer Letter" },
+    { value: "addendum", label: "Addendum" },
+    { value: "standalone_addendum", label: "Standalone Addendum" },
+    ...Object.entries(TEMPLATE_LABELS).map(([k, v]) => ({ value: k, label: v as string })),
+  ];
 
   return (
     <div className="space-y-5">
@@ -2111,7 +2298,7 @@ export function OfferLettersDashboard() {
         <div>
           <h2 className="text-lg font-semibold text-[#1F3A6E]" data-testid="text-letters-heading">Letters</h2>
           <p className="text-sm text-muted-foreground">
-            Review, approve, and counter-sign offer letters and standalone addendums.
+            All offer letters, addendums, and HR letters in one place.
           </p>
         </div>
         {isHrOrAdmin && (
@@ -2128,68 +2315,31 @@ export function OfferLettersDashboard() {
         )}
       </div>
 
-      {isHrOrAdmin && (
-        <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/40 p-1" role="tablist">
-          <button
-            type="button"
-            onClick={() => setActiveFilter("active")}
-            data-testid="filter-tab-active"
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeFilter === "active"
-                ? "bg-white text-[#1F3A6E] shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Active
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("pending_approval")}
-            data-testid="filter-tab-pending"
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeFilter === "pending_approval"
-                ? "bg-white text-[#F47C20] shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Needs Approval
-            {pendingLetters.length > 0 && (
-              <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full ${activeFilter === "pending_approval" ? "bg-[#F47C20] text-white" : "bg-orange-100 text-[#F47C20]"}`}>
-                {pendingLetters.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("closed")}
-            data-testid="filter-tab-closed"
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeFilter === "closed"
-                ? "bg-white text-muted-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Closed
-          </button>
-        </div>
-      )}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-full sm:w-56" data-testid="select-type-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {TYPE_FILTER_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-44" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="needs_approval">Needs Approval</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="signed">Signed</SelectItem>
+            <SelectItem value="closed">Closed</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-      {(!filteredLetters || filteredLetters.length === 0) ? (
+      {unifiedRows.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-1" data-testid="text-no-offers">
-              {activeFilter === "pending_approval" ? "No Pending Approvals"
-                : activeFilter === "closed" ? "No Closed Letters"
-                : "No Active Letters"}
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              {activeFilter === "pending_approval"
-                ? "All offer letters have been reviewed."
-                : activeFilter === "closed"
-                ? "Rejected, cancelled, and expired letters will appear here."
-                : "Send your first offer letter from the \"New Offer Letter\" tab."}
-            </p>
+            <h3 className="text-lg font-medium mb-1" data-testid="text-no-letters">No Letters Found</h3>
+            <p className="text-muted-foreground text-sm">Try changing the type or status filter.</p>
           </CardContent>
         </Card>
       ) : (
@@ -2199,305 +2349,149 @@ export function OfferLettersDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="text-left px-4 py-3 font-semibold">Candidate</th>
-                    <th className="text-left px-4 py-3 font-semibold">Personal Email</th>
-                    <th className="text-left px-4 py-3 font-semibold">Designation</th>
-                    <th className="text-left px-4 py-3 font-semibold">Department</th>
-                    <th className="text-left px-4 py-3 font-semibold">Status</th>
-                    <th className="text-left px-4 py-3 font-semibold">Sent</th>
-                    <th className="text-left px-4 py-3 font-semibold">Sent By</th>
-                    <th className="text-left px-4 py-3 font-semibold">Hire-in Email</th>
-                    <th className="text-right px-4 py-3 font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLetters.map((letter: any) => {
-                    const statusInfo = STATUS_BADGES[letter.status] || STATUS_BADGES.sent;
-                    const StatusIcon = statusInfo.icon;
-                    const isExpanded = expandedOfferIds.has(letter.id);
-                    const canHaveAddendum = letter.status === "countersigned" || letter.status === "onboarded";
-                    const isPending = letter.status === "pending_approval";
-                    return (
-                      <>
-                        <tr key={letter.id} className={`border-b transition-colors hover:bg-muted/20 ${isPending ? "bg-orange-50/60" : ""}`} data-testid={`row-offer-${letter.id}`}>
-                          <td className="px-4 py-3 font-medium text-[#1F3A6E]" data-testid={`text-candidate-${letter.id}`}>
-                            <div className="flex items-center gap-2">
-                              {canHaveAddendum && (
-                                <button
-                                  onClick={() => toggleAddendumRow(letter.id)}
-                                  className="text-muted-foreground hover:text-foreground transition-colors"
-                                  data-testid={`button-toggle-addendums-${letter.id}`}
-                                  title="Toggle addendums"
-                                >
-                                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                </button>
-                              )}
-                              <span>{letter.candidateName}</span>
-                              {canHaveAddendum && (
-                                <AddendumCountBadge letterId={letter.id} onClick={() => toggleAddendumRow(letter.id)} />
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{letter.candidatePersonalEmail}</td>
-                          <td className="px-4 py-3">{letter.designation}</td>
-                          <td className="px-4 py-3">{letter.departmentName || "—"}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusInfo.className}`}
-                              data-testid={`badge-status-${letter.id}`}
-                            >
-                              <StatusIcon className="h-3 w-3" />
-                              {statusInfo.label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {letter.createdAt ? new Date(letter.createdAt).toLocaleDateString() : "—"}
-                          </td>
-                          <td className="px-4 py-3">{letter.creatorName}</td>
-                          <td className="px-4 py-3">{letter.hireInEmail || "—"}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-1 flex-wrap justify-end">
-                              {letter.status !== "cancelled" && letter.status !== "expired" && letter.status !== "rejected" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setViewLetterModal(letter)}
-                                  data-testid={`button-view-letter-${letter.id}`}
-                                >
-                                  <FileSearch className="h-4 w-4 mr-1" />
-                                  View
-                                </Button>
-                              )}
-                              {isPending && canApproveOfferLetter && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                    onClick={() => approveMutation.mutate(letter.id)}
-                                    disabled={approveMutation.isPending}
-                                    data-testid={`button-approve-${letter.id}`}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => { setRejectDialog(letter); setRejectReason(""); }}
-                                    disabled={rejectMutation.isPending}
-                                    data-testid={`button-reject-${letter.id}`}
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                              {(letter.status === "sent" || letter.status === "viewed") && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => cancelMutation.mutate(letter.id)}
-                                  disabled={cancelMutation.isPending}
-                                  data-testid={`button-cancel-${letter.id}`}
-                                >
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Cancel
-                                </Button>
-                              )}
-                              {letter.status === "accepted" && isHrOrAdmin && (
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={() => {
-                                      setCountersignModal(letter);
-                                      setCounterSignedName("Alina Carter");
-                                      setCounterSignedDate(new Date().toISOString().split("T")[0]);
-                                    }}
-                                    data-testid={`button-countersign-${letter.id}`}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Counter Sign
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => cancelMutation.mutate(letter.id)}
-                                    disabled={cancelMutation.isPending}
-                                    data-testid={`button-cancel-${letter.id}`}
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )}
-                              {letter.status === "countersigned" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => { setOnboardingModal(letter); setHireInEmail(""); }}
-                                  data-testid={`button-onboard-${letter.id}`}
-                                >
-                                  <UserPlus className="h-4 w-4 mr-1" />
-                                  Onboard
-                                </Button>
-                              )}
-                              {letter.status === "onboarded" && letter.resultingUserId && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setLocation(`/admin/users`)}
-                                  data-testid={`button-view-employee-${letter.id}`}
-                                >
-                                  <ExternalLink className="h-4 w-4 mr-1" />
-                                  Employee
-                                </Button>
-                              )}
-                              {canHaveAddendum && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                                  onClick={() => {
-                                    resetAddendumForm();
-                                    setAddendumDialog(letter);
-                                  }}
-                                  data-testid={`button-add-addendum-${letter.id}`}
-                                >
-                                  <FilePlus className="h-4 w-4 mr-1" />
-                                  Addendum
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {isExpanded && <AddendumSubRow letter={letter} />}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {standaloneAddendums && standaloneAddendums.length > 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="flex items-center gap-2 p-4 border-b">
-              <FilePlus className="h-4 w-4 text-purple-600" />
-              <span className="font-semibold text-sm">Standalone Addendums</span>
-              <Badge variant="secondary" className="ml-1 bg-purple-100 text-purple-800 border-purple-200">
-                Legacy / No Parent Offer Letter
-              </Badge>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="text-left px-4 py-3 font-semibold">Employee</th>
+                    <th className="text-left px-4 py-3 font-semibold">Name</th>
                     <th className="text-left px-4 py-3 font-semibold">Type</th>
-                    <th className="text-left px-4 py-3 font-semibold">Effective Date</th>
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
-                    <th className="text-left px-4 py-3 font-semibold">Issued</th>
+                    <th className="text-left px-4 py-3 font-semibold">Reference</th>
+                    <th className="text-left px-4 py-3 font-semibold">Date</th>
                     <th className="text-right px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {standaloneAddendums.map((addendum: any) => {
-                    const statusInfo = ADDENDUM_STATUS_BADGES[addendum.status] || ADDENDUM_STATUS_BADGES.sent;
+                  {unifiedRows.map((row) => {
+                    const isPending = row.status === "pending_approval";
                     return (
-                      <tr key={addendum.id} className="border-b transition-colors hover:bg-muted/20" data-testid={`row-standalone-${addendum.id}`}>
+                      <tr key={row.key} className={`border-b transition-colors hover:bg-muted/20 ${isPending ? "bg-orange-50/60" : ""}`} data-testid={`row-letter-${row.key}`}>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-[#1F3A6E]">{addendum.candidateName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {(addendum.manualEmployeeData as any)?.designation || "—"}
-                            {(addendum.manualEmployeeData as any)?.department ? ` · ${(addendum.manualEmployeeData as any).department}` : ""}
+                          <div className="font-medium text-[#1F3A6E]" data-testid={`text-name-${row.key}`}>{row.name}</div>
+                          <div className="text-xs text-muted-foreground">{row.meta}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-medium" data-testid={`text-type-${row.key}`}>{row.typeLabel}</span>
+                            {row.subLabel && <span className="text-[11px] text-muted-foreground">{row.subLabel}</span>}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium">{ADDENDUM_TYPE_LABELS[addendum.addendumType] || addendum.addendumType}</span>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-300 text-purple-700">Standalone</Badge>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{addendum.effectiveDate || "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`}>
-                            {statusInfo.label}
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${row.statusClass}`} data-testid={`badge-status-${row.key}`}>
+                            {row.statusLabel}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {addendum.issuedAt ? new Date(addendum.issuedAt).toLocaleDateString() : "—"}
-                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.reference}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{row.dateLabel}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 flex-wrap justify-end">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={() => setViewAddendum(addendum)}
-                              data-testid={`button-view-standalone-${addendum.id}`}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={() => window.open(`/api/hr/tools/addendums/${addendum.id}/download`, "_blank")}
-                              data-testid={`button-download-standalone-${addendum.id}`}
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              DOCX
-                            </Button>
-                            {addendum.status === "sent" && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-xs"
-                                  onClick={async () => {
-                                    const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/send`);
-                                    if (res.ok) toast({ title: "Addendum email resent" });
-                                    else toast({ title: "Failed to resend", variant: "destructive" });
-                                  }}
-                                  data-testid={`button-resend-standalone-${addendum.id}`}
-                                >
-                                  <RefreshCw className="h-3 w-3 mr-1" />
-                                  Resend
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-xs text-destructive hover:text-destructive"
-                                  onClick={async () => {
-                                    const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/cancel`);
-                                    if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] }); toast({ title: "Addendum cancelled" }); }
-                                    else toast({ title: "Failed to cancel", variant: "destructive" });
-                                  }}
-                                  data-testid={`button-cancel-standalone-${addendum.id}`}
-                                >
-                                  <XCircle className="h-3 w-3 mr-1" />
-                                  Cancel
-                                </Button>
-                              </>
-                            )}
-                            {addendum.status === "accepted" && isHrOrAdmin && (
-                              <Button
-                                size="sm"
-                                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
-                                onClick={async () => {
-                                  const res = await apiRequest("POST", `/api/hr/tools/addendums/${addendum.id}/countersign`);
-                                  if (res.ok) { queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/addendums/standalone"] }); toast({ title: "Addendum counter-signed" }); }
-                                  else toast({ title: "Failed to counter-sign", variant: "destructive" });
-                                }}
-                                data-testid={`button-countersign-standalone-${addendum.id}`}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Counter-Sign
-                              </Button>
-                            )}
+                            {row.kind === "offer" && (() => {
+                              const letter = row.raw;
+                              const canHaveAddendum = letter.status === "countersigned" || letter.status === "onboarded";
+                              return (
+                                <>
+                                  {letter.status !== "cancelled" && letter.status !== "expired" && letter.status !== "rejected" && (
+                                    <Button size="sm" variant="outline" onClick={() => setViewLetterModal(letter)} data-testid={`button-view-letter-${letter.id}`}>
+                                      <FileSearch className="h-4 w-4 mr-1" /> View
+                                    </Button>
+                                  )}
+                                  {isPending && canApproveOfferLetter && (
+                                    <>
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => approveMutation.mutate(letter.id)} disabled={approveMutation.isPending} data-testid={`button-approve-${letter.id}`}>
+                                        <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                                      </Button>
+                                      <Button size="sm" variant="destructive" onClick={() => { setRejectDialog(letter); setRejectReason(""); }} disabled={rejectMutation.isPending} data-testid={`button-reject-${letter.id}`}>
+                                        <XCircle className="h-4 w-4 mr-1" /> Reject
+                                      </Button>
+                                    </>
+                                  )}
+                                  {(letter.status === "sent" || letter.status === "viewed") && (
+                                    <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate(letter.id)} disabled={cancelMutation.isPending} data-testid={`button-cancel-${letter.id}`}>
+                                      <XCircle className="h-4 w-4 mr-1" /> Cancel
+                                    </Button>
+                                  )}
+                                  {letter.status === "accepted" && isHrOrAdmin && (
+                                    <>
+                                      <Button size="sm" onClick={() => { setCountersignModal(letter); setCounterSignedName("Alina Carter"); setCounterSignedDate(new Date().toISOString().split("T")[0]); }} data-testid={`button-countersign-${letter.id}`}>
+                                        <CheckCircle className="h-4 w-4 mr-1" /> Counter Sign
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate(letter.id)} disabled={cancelMutation.isPending} data-testid={`button-cancel-${letter.id}`}>
+                                        <XCircle className="h-4 w-4 mr-1" /> Cancel
+                                      </Button>
+                                    </>
+                                  )}
+                                  {letter.status === "countersigned" && (
+                                    <Button size="sm" onClick={() => { setOnboardingModal(letter); setHireInEmail(""); }} data-testid={`button-onboard-${letter.id}`}>
+                                      <UserPlus className="h-4 w-4 mr-1" /> Onboard
+                                    </Button>
+                                  )}
+                                  {letter.status === "onboarded" && letter.resultingUserId && (
+                                    <Button size="sm" variant="outline" onClick={() => setLocation(`/admin/users`)} data-testid={`button-view-employee-${letter.id}`}>
+                                      <ExternalLink className="h-4 w-4 mr-1" /> Employee
+                                    </Button>
+                                  )}
+                                  {canHaveAddendum && (
+                                    <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => { resetAddendumForm(); setAddendumDialog(letter); }} data-testid={`button-add-addendum-${letter.id}`}>
+                                      <FilePlus className="h-4 w-4 mr-1" /> Addendum
+                                    </Button>
+                                  )}
+                                </>
+                              );
+                            })()}
+
+                            {(row.kind === "addendum" || row.kind === "standalone_addendum") && (() => {
+                              const addendum = row.raw;
+                              const dlUrl = addendum.isStandalone
+                                ? `/api/hr/tools/addendums/${addendum.id}/download`
+                                : `/api/hr/tools/offer-letters/${addendum.offerLetterId}/addendums/${addendum.id}/download`;
+                              return (
+                                <>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setViewAddendum(addendum)} data-testid={`button-view-addendum-${addendum.id}`}>
+                                    <Eye className="h-3 w-3 mr-1" /> View
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(dlUrl, "_blank")} data-testid={`button-download-addendum-${addendum.id}`}>
+                                    <Download className="h-3 w-3 mr-1" /> DOCX
+                                  </Button>
+                                  {addendum.status === "sent" && (
+                                    <>
+                                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => addendumResend(addendum)} data-testid={`button-resend-addendum-${addendum.id}`}>
+                                        <RefreshCw className="h-3 w-3 mr-1" /> Resend
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => addendumCancel(addendum)} data-testid={`button-cancel-addendum-${addendum.id}`}>
+                                        <XCircle className="h-3 w-3 mr-1" /> Cancel
+                                      </Button>
+                                    </>
+                                  )}
+                                  {addendum.status === "accepted" && isHrOrAdmin && (
+                                    <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => addendumCountersign(addendum)} data-testid={`button-countersign-addendum-${addendum.id}`}>
+                                      <CheckCircle className="h-3 w-3 mr-1" /> Counter-Sign
+                                    </Button>
+                                  )}
+                                </>
+                              );
+                            })()}
+
+                            {row.kind === "hr_letter" && (() => {
+                              const letter = row.raw as HrLetter;
+                              return (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => { setHrViewLetter(letter); }} data-testid={`button-view-hr-${letter.id}`}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => window.open(`/api/hr/letters/${letter.id}/download`, "_blank")} data-testid={`button-download-hr-${letter.id}`}>
+                                    <Download className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => window.open(`/api/hr/letters/${letter.id}/download?inline=1`, "_blank")} data-testid={`button-print-hr-${letter.id}`}>
+                                    <Printer className="h-4 w-4 text-slate-600" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => { setHrEmailDialog(letter); setHrEmailCc(""); }} disabled={hrEmailMutation.isPending} data-testid={`button-email-hr-${letter.id}`}>
+                                    <Mail className="h-4 w-4 text-blue-600" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => setHrReissueDialog(letter)} data-testid={`button-reissue-hr-${letter.id}`}>
+                                    <RotateCcw className="h-4 w-4 text-amber-600" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => setHrRevokeDialog(letter)} data-testid={`button-revoke-hr-${letter.id}`}>
+                                    <XCircle className="h-4 w-4 text-red-600" />
+                                  </Button>
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -3767,6 +3761,94 @@ export function OfferLettersDashboard() {
 
         </SheetContent>
       </Sheet>
+
+      <Sheet open={!!hrViewLetter} onOpenChange={(open) => { if (!open) setHrViewLetter(null); }}>
+        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{hrViewLetter ? (TEMPLATE_LABELS[hrViewLetter.templateType] || hrViewLetter.templateType) : "Letter"}</SheetTitle>
+            <SheetDescription>{hrViewLetter?.referenceNumber}</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            {hrViewLetter && <LetterPreview letter={hrViewLetter} />}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={!!hrRevokeDialog} onOpenChange={(open) => { if (!open) { setHrRevokeDialog(null); setHrRevokeReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke Letter</DialogTitle>
+            <DialogDescription>This marks the letter as revoked. Provide a reason for the audit trail.</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Reason for revoking…"
+            value={hrRevokeReason}
+            onChange={(e) => setHrRevokeReason(e.target.value)}
+            data-testid="input-hr-revoke-reason"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setHrRevokeDialog(null); setHrRevokeReason(""); }} data-testid="button-cancel-hr-revoke">Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!hrRevokeReason.trim() || hrRevokeMutation.isPending}
+              onClick={() => hrRevokeDialog && hrRevokeMutation.mutate({ id: hrRevokeDialog.id, reason: hrRevokeReason })}
+              data-testid="button-confirm-hr-revoke"
+            >
+              {hrRevokeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!hrReissueDialog} onOpenChange={(open) => { if (!open) { setHrReissueDialog(null); setHrReissueReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Re-issue Letter</DialogTitle>
+            <DialogDescription>Issues a corrected letter using the employee's current data. Provide a reason for the audit trail.</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Reason for re-issuing…"
+            value={hrReissueReason}
+            onChange={(e) => setHrReissueReason(e.target.value)}
+            data-testid="input-hr-reissue-reason"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setHrReissueDialog(null); setHrReissueReason(""); }} data-testid="button-cancel-hr-reissue">Cancel</Button>
+            <Button
+              disabled={!hrReissueReason.trim() || hrReissueMutation.isPending}
+              onClick={() => hrReissueDialog && hrReissueMutation.mutate({ id: hrReissueDialog.id, reason: hrReissueReason })}
+              data-testid="button-confirm-hr-reissue"
+            >
+              {hrReissueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Re-issue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!hrEmailDialog} onOpenChange={(open) => { if (!open) { setHrEmailDialog(null); setHrEmailCc(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Email Letter</DialogTitle>
+            <DialogDescription>Send this letter to the employee. Optionally CC additional recipients (comma-separated).</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="cc@example.com, another@example.com"
+            value={hrEmailCc}
+            onChange={(e) => setHrEmailCc(e.target.value)}
+            data-testid="input-hr-email-cc"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setHrEmailDialog(null); setHrEmailCc(""); }} data-testid="button-cancel-hr-email">Cancel</Button>
+            <Button
+              disabled={hrEmailMutation.isPending}
+              onClick={() => hrEmailDialog && hrEmailMutation.mutate({ id: hrEmailDialog.id, ccEmails: hrEmailCc.trim() || undefined })}
+              data-testid="button-confirm-hr-email"
+            >
+              {hrEmailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Email"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -3841,7 +3923,7 @@ export default function HRTools() {
           </TabsContent>
 
           <TabsContent value="letters">
-            <LettersDashboard />
+            <OfferLettersDashboard />
           </TabsContent>
 
           <TabsContent value="policy-signoffs">
