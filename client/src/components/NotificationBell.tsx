@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, Check, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ interface Notification {
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const [, setLocation] = useLocation();
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -120,6 +122,11 @@ export function NotificationBell() {
               onClick={() => {
                 if (!n.isRead) {
                   markReadMutation.mutate(n.id);
+                }
+                const link = (n.metadata as Record<string, unknown> | null)?.link;
+                if (typeof link === "string" && link) {
+                  setOpen(false);
+                  setLocation(link);
                 }
               }}
               data-testid={`notification-item-${n.id}`}

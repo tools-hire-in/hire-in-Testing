@@ -2539,6 +2539,61 @@ export async function sendManagerRegularizationDigestEmail(options: {
   }
 }
 
+export async function sendManagerRegularizationSubmittedEmail(options: {
+  to: string;
+  managerName: string;
+  employeeName: string;
+  attendanceDate: string;
+  requestType: string;
+  reason: string;
+  reviewUrl: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const typeLabel = REQUEST_TYPE_DISPLAY[options.requestType] ?? options.requestType.replace(/_/g, " ");
+    const msg: any = {
+      to: options.to,
+      from: { email: fromEmail, name: "Hire'in HR" },
+      subject: `Regularization Request: ${options.employeeName} — ${options.attendanceDate}`,
+      html: `
+        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+          <div style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);padding:28px 32px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">Hire'in Solutions</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:13px;">New Attendance Correction Request</p>
+          </div>
+          <div style="padding:28px 32px;">
+            <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi ${options.managerName},</p>
+            <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+              <strong>${options.employeeName}</strong> has submitted an attendance regularization request that requires your review.
+            </p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:18px;margin-bottom:20px;">
+              <table style="width:100%;font-size:14px;border-collapse:collapse;">
+                <tr><td style="color:#64748b;padding:4px 0;width:40%;">Employee</td><td style="color:#1e293b;font-weight:500;">${options.employeeName}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Date</td><td style="color:#1e293b;font-weight:500;">${options.attendanceDate}</td></tr>
+                <tr><td style="color:#64748b;padding:4px 0;">Type</td><td style="color:#1e293b;font-weight:500;">${typeLabel}</td></tr>
+                ${options.reason ? `<tr><td style="color:#64748b;padding:4px 0;vertical-align:top;">Reason</td><td style="color:#1e293b;font-weight:500;">${options.reason}</td></tr>` : ""}
+              </table>
+            </div>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${options.reviewUrl}" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">Review Request</a>
+            </div>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Hire'in Solutions. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.managerName},\n\n${options.employeeName} has submitted an attendance regularization request requiring your review.\n\nDate: ${options.attendanceDate}\nType: ${typeLabel}${options.reason ? `\nReason: ${options.reason}` : ""}\n\nReview here: ${options.reviewUrl}${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    console.error("sendManagerRegularizationSubmittedEmail error:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export interface AnnouncementBlock {
   icon: string;
   title: string;

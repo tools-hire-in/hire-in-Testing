@@ -4836,6 +4836,70 @@ export async function registerRoutes(
       });
 
       res.status(201).json(request);
+
+      // Best-effort: notify the reporting manager (or HR fallback) about the new
+      // pending regularization request. Never block / fail the submission.
+      const reviewPath = "/admin/hr/my-team?tab=regularizations";
+      const reviewUrl = `${req.protocol}://${req.get("host")}${reviewPath}`;
+      (async () => {
+        try {
+          const employee = await storage.getAdminUser(userId);
+          if (!employee) return;
+          const employeeName = `${employee.firstName} ${employee.lastName}`;
+
+          // Resolve the approver(s): the direct reporting manager, or fall back to
+          // HR users so the request is never silently dropped.
+          let approvers: { id: string; firstName: string; lastName: string; email?: string | null }[] = [];
+          if (employee.managerId) {
+            const mgr = await storage.getAdminUser(employee.managerId);
+            if (mgr && !mgr.deletedAt) {
+              approvers = [{ id: mgr.id, firstName: mgr.firstName, lastName: mgr.lastName, email: mgr.email }];
+            }
+          }
+          if (approvers.length === 0) {
+            const all = await storage.getAdminUsers();
+            const active = all.filter(u => !u.deletedAt);
+            let fallback = active.filter(u => u.role === "hr");
+            if (fallback.length === 0) fallback = active.filter(u => u.role === "super_admin" || u.role === "admin");
+            approvers = fallback.map(u => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email }));
+          }
+          if (approvers.length === 0) return;
+
+          let notificationsEnabled = true;
+          try {
+            const setting = await storage.getSystemSetting("feature_flags");
+            const flags = (setting?.value as Record<string, boolean>) || {};
+            notificationsEnabled = flags.notifications_enabled !== false;
+          } catch { /* default enabled */ }
+
+          const { sendManagerRegularizationSubmittedEmail } = await import("./email");
+          for (const approver of approvers) {
+            if (notificationsEnabled) {
+              await storage.createNotification({
+                userId: approver.id,
+                type: "regularization_pending",
+                title: "New Regularization Request",
+                message: `${employeeName} submitted an attendance correction for ${attendanceDate}.`,
+                isRead: false,
+                metadata: { requestId: request.id, employeeName, attendanceDate, requestType, link: reviewPath },
+              });
+            }
+            if (approver.email) {
+              sendManagerRegularizationSubmittedEmail({
+                to: approver.email,
+                managerName: `${approver.firstName} ${approver.lastName}`,
+                employeeName,
+                attendanceDate,
+                requestType,
+                reason,
+                reviewUrl,
+              }).catch(console.error);
+            }
+          }
+        } catch (bgErr) {
+          console.error("Background regularization notification failed:", bgErr);
+        }
+      })();
     } catch (error) {
       console.error("Regularization submit error:", error);
       res.status(500).json({ error: "Failed to submit regularization request" });

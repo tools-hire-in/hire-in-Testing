@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Sparkles,
   AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import { BreakChips, type BreakStatus } from "./CommandCenter";
 
 const TARGET_HOURS = 9;
@@ -176,6 +178,8 @@ export default function CommandCenterV2() {
 
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
   const isResolverRole = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
+
+  const pendingRegularizationCount = usePendingRegularizationCount(isAuthenticated && isManagerRole);
 
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
@@ -581,7 +585,22 @@ export default function CommandCenterV2() {
             onClick={() => setLocation("/admin/hr/my-team?tab=leave-approvals")}
             testId="ccv2-approvals"
           />
-        ) : (
+        ) : null}
+
+        {/* Pending attendance regularizations (manager/HR) */}
+        {isManagerRole && (
+          <StatTile
+            icon={ClipboardList}
+            label="Regularizations"
+            value={`${pendingRegularizationCount ?? 0}`}
+            hint={(pendingRegularizationCount ?? 0) > 0 ? "corrections to review" : "all clear"}
+            tone={(pendingRegularizationCount ?? 0) > 0 ? "amber" : "default"}
+            onClick={() => setLocation("/admin/hr/my-team?tab=regularizations")}
+            testId="ccv2-regularizations"
+          />
+        )}
+
+        {!isManagerRole && (
           <StatTile
             icon={FileCheck}
             label="My Requests"
