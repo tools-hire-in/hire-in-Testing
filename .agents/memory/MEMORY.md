@@ -25,3 +25,4 @@
 - [v2-surface content recolor](v2-surface-content-recolor.md) — add `v2-surface` to leaf content root; `.app-v2 .v2-surface` CSS remaps cool families→navy (status colors kept); (0,3,0) beats dark: too; analytics needs explicit brand hex.
 - [Salary advance recovery](salary-advance-recovery.md) — payroll recovery reconciles against capped run-row amount, oldest-first across all advances; shortfalls carry forward to next free month; enum has no partial status.
 - [Boot stability & restart-loop fix](boot-stability.md) — open port before DB ensure work (never await ensure before listen); one shared bounded pool; uncaughtException=shutdown, unhandledRejection=keep-alive.
+- [My Team nav flattening](my-team-nav-flatten.md) — /admin/hr/my-team uses sidebar sub-nav (TeamSection) not horizontal tabs; child destinations may keep ONE internal tab level (MyTeam keeps Team/Corrections/Plans).

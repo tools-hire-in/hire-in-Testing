@@ -43,6 +43,8 @@ import {
   Sparkles,
   ChevronDown,
   Wallet,
+  Timer,
+  CalendarCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -286,6 +288,206 @@ function CommandCenterSection({
               isActive={isNavActive(serviceDeskItem)}
               isLocked={isComplianceLocked}
             />
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
+}
+
+const MY_TEAM_SUB_ITEMS = [
+  { label: "Team", tab: null, icon: Users },
+  { label: "Attendance", tab: "attendance", icon: Clock },
+  { label: "Exceptions", tab: "exceptions", icon: AlertTriangle },
+  { label: "Overtime", tab: "overtime", icon: Timer },
+  { label: "Leave Approvals", tab: "leave-approvals", icon: CalendarCheck },
+  { label: "Training", tab: "training-progress", icon: GraduationCap },
+  { label: "Month Approval", tab: "attendance-approval", icon: ClipboardCheck },
+  { label: "Req. Approvals", tab: "approvals", icon: ClipboardList },
+] as const;
+
+function TeamSection({
+  hasTeamAccess,
+  hasNewHireAccess,
+  isNavActive,
+  isComplianceLocked,
+  location,
+  myTeamBadge,
+  exceptionCount,
+  leaveApprovalsCount,
+  trainingReqBadge,
+  pendingRegCount,
+}: {
+  hasTeamAccess: boolean;
+  hasNewHireAccess: boolean;
+  isNavActive: (item: NavItem) => boolean;
+  isComplianceLocked: boolean;
+  location: string;
+  myTeamBadge: number;
+  exceptionCount: number;
+  leaveApprovalsCount: number;
+  trainingReqBadge: number;
+  pendingRegCount: number;
+}) {
+  const { open } = useSidebar();
+
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_team_section_open");
+      if (stored === null) return location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/new-hire");
+      return stored !== "false";
+    } catch { return true; }
+  });
+
+  useEffect(() => {
+    if ((location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/new-hire")) && !expanded) {
+      setExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem("admin_team_section_open", String(next)); } catch {}
+  };
+
+  if (!hasTeamAccess && !hasNewHireAccess) return null;
+
+  const newHireItem: NavItem = { href: "/admin/new-hire", label: "New Hire", icon: UserPlus, roles: [] };
+
+  const isMyTeamActive = location.startsWith("/admin/hr/my-team");
+
+  // Resolve the active section from ?tab=, normalizing legacy nested aliases.
+  const activeTab = (() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t === "exception-review") return "exceptions";
+      if (t === "overtime-alerts") return "overtime";
+      if (t === "team-attendance") return "attendance";
+      return t;
+    } catch { return null; }
+  })();
+
+  const isSubItemActive = (tab: string | null) => {
+    if (!isMyTeamActive) return false;
+    // The "Team" destination owns the default view plus MyTeam's own internal tabs.
+    if (tab === null) return !activeTab || activeTab === "overview" || activeTab === "corrections" || activeTab === "plans";
+    return activeTab === tab;
+  };
+
+  const subBadge = (tab: string | null): { count: number; color: string } | null => {
+    if (tab === "exceptions" && exceptionCount > 0) return { count: exceptionCount, color: "bg-amber-500" };
+    if (tab === "leave-approvals" && leaveApprovalsCount > 0) return { count: leaveApprovalsCount, color: "bg-blue-500" };
+    if (tab === "training-progress" && trainingReqBadge > 0) return { count: trainingReqBadge, color: "bg-amber-500" };
+    if (tab === null && pendingRegCount > 0) return { count: pendingRegCount, color: "bg-orange-500" };
+    return null;
+  };
+
+  if (!open) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {hasTeamAccess && (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isMyTeamActive} tooltip="My Team" className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}>
+                  <Link href="/admin/hr/my-team">
+                    <Users className="h-4 w-4 shrink-0" />
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {hasNewHireAccess && (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isNavActive(newHireItem)} tooltip="New Hire" className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}>
+                  <Link href="/admin/new-hire">
+                    <UserPlus className="h-4 w-4 shrink-0" />
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase hover:text-muted-foreground transition-colors"
+        data-testid="button-team-section-toggle"
+      >
+        <span className="flex items-center gap-1.5">
+          <Users className="h-3 w-3" />
+          Team
+        </span>
+        <ChevronRight className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`} />
+      </button>
+      {expanded && (
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {hasTeamAccess && (
+              <>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isSubItemActive(null)}
+                    className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                    data-testid="nav-item-my-team"
+                  >
+                    <Link href="/admin/hr/my-team" className="flex items-center gap-2 w-full">
+                      <Users className="h-4 w-4 shrink-0" />
+                      <span className="flex-1">My Team</span>
+                      {myTeamBadge > 0 && (
+                        <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-white bg-blue-500">
+                          {myTeamBadge > 9 ? "9+" : myTeamBadge}
+                        </span>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                {/* My Team sub-nav — single level, replaces in-page nested tabs */}
+                <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
+                  {MY_TEAM_SUB_ITEMS.map(({ label, tab, icon: Icon }) => {
+                    const href = tab ? `/admin/hr/my-team?tab=${tab}` : "/admin/hr/my-team";
+                    const isActive = isSubItemActive(tab as string | null);
+                    const badge = subBadge(tab as string | null);
+                    return (
+                      <Link
+                        key={label}
+                        href={href}
+                        className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                          isActive
+                            ? "bg-accent text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                        } ${isComplianceLocked ? "opacity-40 pointer-events-none" : ""}`}
+                        data-testid={`nav-myteam-sub-${tab ?? "team"}`}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1">{label}</span>
+                        {badge && (
+                          <span className={`ml-auto text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center text-white ${badge.color}`}>
+                            {badge.count > 9 ? "9+" : badge.count}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {hasNewHireAccess && (
+              <NavItemButton
+                item={newHireItem}
+                isActive={isNavActive(newHireItem)}
+                isLocked={isComplianceLocked}
+              />
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       )}
@@ -960,7 +1162,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const exceptionCount = exceptionCountData?.count ?? 0;
 
   // Combined My Team badge: leave approvals + training requests + pending exceptions.
-  // Pending regularizations get their own distinct indicator (see teamNavItems regCount)
+  // Pending regularizations get their own distinct indicator on the Team sub-item
   // so they appear/disappear independently of leave/training signals.
   const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge + exceptionCount;
 
@@ -1036,24 +1238,6 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["all"],
       badge: salaryAdvanceBadge > 0 ? salaryAdvanceBadge : undefined,
       badgeColor: "bg-amber-500",
-    }] : []),
-  ];
-
-  const teamNavItems: NavItem[] = [
-    ...(hasTeamAccess ? [{
-      href: "/admin/hr/my-team",
-      label: "Team",
-      icon: Users,
-      roles: ["super_admin", "admin", "hr", "operations", "manager"],
-      badge: myTeamBadge > 0 ? myTeamBadge : undefined,
-      badgeColor: trainingReqBadge > 0 ? "bg-amber-500" : "bg-blue-500",
-      regCount: pendingRegCount,
-    }] : []),
-    ...(hasNewHireAccess ? [{
-      href: "/admin/new-hire",
-      label: "New Hire",
-      icon: UserPlus,
-      roles: ["super_admin", "admin", "hr", "operations", "manager"],
     }] : []),
   ];
 
@@ -1224,26 +1408,19 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 </SidebarGroupContent>
               </SidebarGroup>
 
-              {/* TEAM section — manager, operations, hr, admin, super_admin */}
-              {teamNavItems.length > 0 && (
-                <SidebarGroup>
-                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
-                    Team
-                  </SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {teamNavItems.map((item) => (
-                        <NavItemButton
-                          key={item.href}
-                          item={item}
-                          isActive={isNavActive(item)}
-                          isLocked={isComplianceLocked && item.href !== "/admin/growth" && item.href !== "/admin/profile"}
-                        />
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              )}
+              {/* TEAM — collapsible section with single-level sub-pages */}
+              <TeamSection
+                hasTeamAccess={hasTeamAccess}
+                hasNewHireAccess={hasNewHireAccess}
+                isNavActive={isNavActive}
+                isComplianceLocked={isComplianceLocked}
+                location={location}
+                myTeamBadge={myTeamBadge}
+                exceptionCount={exceptionCount}
+                leaveApprovalsCount={leaveApprovalsCount ?? 0}
+                trainingReqBadge={trainingReqBadge}
+                pendingRegCount={pendingRegCount}
+              />
 
               {/* ORGANISATION section — role-filtered items */}
               {orgNavItems.length > 0 && (

@@ -124,10 +124,15 @@ interface AttendanceException {
   createdAt: string;
 }
 
-export default function TeamAttendance() {
+export default function TeamAttendance({ view }: { view?: "attendance" | "exceptions" | "overtime" } = {}) {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
+  const currentView: "attendance" | "exceptions" | "overtime" =
+    view ?? (activeTab === "exceptions" ? "exceptions" : activeTab === "overtime" ? "overtime" : "attendance");
+  // When embedded (view set), only the attendance view shows the date header + summary cards.
+  const showHeader = view ? view === "attendance" : true;
+  const tabsValue = view ? (view === "attendance" ? "overview" : view) : activeTab;
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [memberMonth, setMemberMonth] = useState(() => {
@@ -145,14 +150,14 @@ export default function TeamAttendance() {
 
   const { data, isLoading } = useQuery<TeamAttendanceResponse>({
     queryKey: ["/api/hr/attendance/my-team", { date: selectedDate }],
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && showHeader,
   });
 
   const isToday = selectedDate === new Date().toISOString().split("T")[0];
 
   const { data: teamBreakStatus } = useQuery<TeamBreakStatus>({
     queryKey: ["/api/hr/attendance/breaks/team-status"],
-    enabled: isAuthenticated && isToday,
+    enabled: isAuthenticated && isToday && showHeader,
     refetchInterval: 30000,
   });
 
@@ -194,7 +199,7 @@ export default function TeamAttendance() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: isAuthenticated && activeTab === "exceptions",
+    enabled: isAuthenticated && currentView === "exceptions",
   });
 
   const { data: overtimeAlerts } = useQuery<Array<{ id: string; message: string; metadata: any; createdAt: string; isRead: boolean }>>({
@@ -205,7 +210,7 @@ export default function TeamAttendance() {
       return res.json();
     },
     refetchInterval: 60000,
-    enabled: isAuthenticated && activeTab === "overtime",
+    enabled: isAuthenticated && currentView === "overtime",
   });
 
   const [praisingAlert, setPraisingAlert] = useState<{ id: string; employeeId: string; employeeName: string } | null>(null);
@@ -334,6 +339,8 @@ export default function TeamAttendance() {
   return (
     <AdminLayout>
       <div className="space-y-6">
+        {showHeader && (
+        <>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-team-attendance-title">Team Attendance</h1>
@@ -413,8 +420,11 @@ export default function TeamAttendance() {
             </Card>
           )}
         </div>
+        </>
+        )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={tabsValue} onValueChange={setActiveTab} className="w-full">
+          {!view && (
           <TabsList className="h-auto flex flex-wrap gap-1 mb-4">
             <TabsTrigger value="overview" data-testid="tab-team-overview">Team Attendance</TabsTrigger>
             <TabsTrigger value="exceptions" data-testid="tab-exception-review">
@@ -429,6 +439,7 @@ export default function TeamAttendance() {
               Overtime Alerts
             </TabsTrigger>
           </TabsList>
+          )}
 
           {/* Tab 1: Today's Attendance */}
           <TabsContent value="overview">
