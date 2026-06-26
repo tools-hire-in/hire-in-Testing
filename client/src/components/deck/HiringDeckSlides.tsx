@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 import { useCompanyProfile } from "@/hooks/use-company-profile";
+import { FederalCredentialsBar } from "./FederalCredentials";
 import worldMapImage from "@assets/worldMap_cropped.png";
 
 const NAVY = "#1F3A6E";
@@ -728,6 +729,7 @@ function Slide11Connect() {
             </div>
           </div>
         </div>
+        <FederalCredentialsBar />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 24px", background: "rgba(255,255,255,0.04)", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <HISLogo size={22} light />

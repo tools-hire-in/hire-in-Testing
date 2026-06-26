@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 import { useCompanyProfile } from "@/hooks/use-company-profile";
+import { FederalCredentialsBar } from "./FederalCredentials";
 
 const NAVY = "#1F3A6E";
 const NAVY2 = "#162D57";
@@ -639,6 +640,7 @@ function Slide11Contact() {
           </div>
         </div>
       </div>
+      <FederalCredentialsBar />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 36px", background: "rgba(255,255,255,0.05)", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <HISLogo size={22} light />
