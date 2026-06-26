@@ -2986,17 +2986,6 @@ export async function registerRoutes(
 
       const record = await storage.updateAttendance(existing.id, updatePayload);
 
-      if (logoutException) {
-        await recordAttendanceException({
-          employeeId: userId,
-          managerId: currentUser?.managerId ?? null,
-          action: logoutException.action,
-          changes: { date: existing.date, punchOut: punchOut.toISOString(), totalHours },
-          title: logoutException.title,
-          message: logoutException.message,
-        });
-      }
-
       // Auto-create attendance exception row when punch-out produces a short_day
       if (updatedStatus === "short_day") {
         const stdHoursSetting = await storage.getSystemSetting("standard_shift_hours").catch(() => null);
