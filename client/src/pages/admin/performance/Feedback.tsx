@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -146,17 +145,27 @@ export default function Feedback() {
 
         <Card>
           <CardContent className="pt-6">
-            <Tabs value={tab} onValueChange={setTab}>
-              <TabsList data-testid="tabs-feedback">
-                <TabsTrigger value="received" data-testid="tab-received">
-                  Received ({receivedFeedback?.length || 0})
-                </TabsTrigger>
-                <TabsTrigger value="sent" data-testid="tab-sent">
-                  Sent ({sentFeedback?.length || 0})
-                </TabsTrigger>
-              </TabsList>
+            <div className="flex items-center gap-2" data-testid="tabs-feedback">
+              <Button
+                size="sm"
+                variant={tab === "received" ? "default" : "outline"}
+                onClick={() => setTab("received")}
+                data-testid="tab-received"
+              >
+                Received ({receivedFeedback?.length || 0})
+              </Button>
+              <Button
+                size="sm"
+                variant={tab === "sent" ? "default" : "outline"}
+                onClick={() => setTab("sent")}
+                data-testid="tab-sent"
+              >
+                Sent ({sentFeedback?.length || 0})
+              </Button>
+            </div>
 
-              <TabsContent value="received" className="mt-4">
+            {tab === "received" && (
+              <div className="mt-4">
                 {loadingReceived ? (
                   <div className="space-y-2">
                     {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
@@ -171,9 +180,11 @@ export default function Feedback() {
                     <p className="text-muted-foreground">No feedback received yet</p>
                   </div>
                 )}
-              </TabsContent>
+              </div>
+            )}
 
-              <TabsContent value="sent" className="mt-4">
+            {tab === "sent" && (
+              <div className="mt-4">
                 {loadingSent ? (
                   <div className="space-y-2">
                     {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
@@ -188,8 +199,8 @@ export default function Feedback() {
                     <p className="text-muted-foreground">No feedback sent yet</p>
                   </div>
                 )}
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
           </CardContent>
         </Card>
 

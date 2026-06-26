@@ -387,7 +387,7 @@ function RegularizationPolicySection() {
   );
 }
 
-function PerformanceSettingsSection() {
+export function PerformanceSettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
@@ -2182,10 +2182,11 @@ const ROLE_SLUG_LABELS: Record<string, string> = {
   foundation_to_senior: "Foundation → Senior Recruiter",
 };
 
-function GoalTemplatesSection() {
+export function GoalTemplatesSection() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const canManage = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const canView = canManage || user?.role === "manager";
   const [filterPlanType, setFilterPlanType] = useState("probation");
   const [filterRole, setFilterRole] = useState("all");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2204,7 +2205,7 @@ function GoalTemplatesSection() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: isHrOrAbove,
+    enabled: canView,
   });
 
   const updateMutation = useMutation({
@@ -2233,7 +2234,7 @@ function GoalTemplatesSection() {
     onError: () => toast({ title: "Delete failed", variant: "destructive" }),
   });
 
-  if (!isHrOrAbove) return null;
+  if (!canView) return null;
 
   const filtered = templates.filter(t =>
     (filterPlanType === "all" || t.plan_type === filterPlanType) &&
@@ -2260,9 +2261,11 @@ function GoalTemplatesSection() {
             <FileText className="h-4 w-4" />
             Healthcare Goal Templates
           </CardTitle>
-          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-goal-template">
-            <Plus className="h-4 w-4 mr-1" /> Add Template
-          </Button>
+          {canManage && (
+            <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-goal-template">
+              <Plus className="h-4 w-4 mr-1" /> Add Template
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -2419,34 +2422,44 @@ function GoalTemplatesSection() {
                           <span className="text-xs font-mono">{t.sort_order}</span>
                         </td>
                         <td className="py-2 px-2">
-                          <Switch
-                            checked={t.is_active}
-                            onCheckedChange={v => updateMutation.mutate({ id: t.id, body: { is_active: v } })}
-                            data-testid={`switch-template-active-${t.id}`}
-                          />
+                          {canManage ? (
+                            <Switch
+                              checked={t.is_active}
+                              onCheckedChange={v => updateMutation.mutate({ id: t.id, body: { is_active: v } })}
+                              data-testid={`switch-template-active-${t.id}`}
+                            />
+                          ) : (
+                            <Badge variant={t.is_active ? "secondary" : "outline"} className="text-[10px] h-4 px-1">
+                              {t.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          )}
                         </td>
                         <td className="py-2 px-2">
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0"
-                              onClick={() => startEdit(t)}
-                              data-testid={`button-edit-template-${t.id}`}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                              onClick={() => deleteMutation.mutate(t.id)}
-                              disabled={deleteMutation.isPending}
-                              data-testid={`button-delete-template-${t.id}`}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
+                          {canManage ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => startEdit(t)}
+                                data-testid={`button-edit-template-${t.id}`}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                onClick={() => deleteMutation.mutate(t.id)}
+                                disabled={deleteMutation.isPending}
+                                data-testid={`button-delete-template-${t.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                       </>
                     )}
@@ -4151,16 +4164,6 @@ export default function HRSettings({ group }: { group?: string }) {
             </>
           )}
 
-          {activeSection === "performance" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-performance">Performance Management</h1>
-            <p className="text-muted-foreground text-sm">Configure performance reviews and goals</p>
-          </div>
-              <PerformanceSettingsSection />
-            </>
-          )}
-
           {activeSection === "rayo-academy" && (
             <>
           <div>
@@ -4198,16 +4201,6 @@ export default function HRSettings({ group }: { group?: string }) {
             <p className="text-muted-foreground text-sm">Manage HR letter and amendment templates</p>
           </div>
               <LetterTemplatesSection />
-            </>
-          )}
-
-          {activeSection === "goal-templates" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-goal-templates">Goal Templates</h1>
-            <p className="text-muted-foreground text-sm">Configure goal and OKR templates</p>
-          </div>
-              <GoalTemplatesSection />
             </>
           )}
 

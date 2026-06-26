@@ -5,30 +5,80 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAuth } from "@/hooks/use-auth";
 import MyTraining from "./hr/MyTraining";
-import Goals from "./performance/Goals";
+import { MyGoalsContent } from "./performance/MyGoals";
+import { TeamGoalsContent } from "./performance/TeamGoals";
 import PerformanceCheckIns from "./performance/CheckIns";
 import PerformanceFeedback from "./performance/Feedback";
-import Reviews from "./performance/Reviews";
+import { MyReviewsContent } from "./performance/MyReviews";
+import { TeamReviewsContent } from "./performance/TeamReviews";
 import PraiseBoard from "./performance/PraiseBoard";
 import MyPlanView from "./hr/MyPlanView";
+import { PerformanceSettingsSection, GoalTemplatesSection } from "./hr/HRSettings";
 
-const BASE_TABS = ["praise", "training", "goals", "check-ins", "feedback", "reviews"] as const;
-type BaseTab = typeof BASE_TABS[number];
-type Tab = BaseTab | "my-plan";
-const ALL_TABS = [...BASE_TABS, "my-plan"] as const;
+const MANAGER_ROLES = ["super_admin", "admin", "hr", "manager"];
 
-function getTabFromSearch(hasPlan: boolean): Tab {
+type Tab =
+  | "praise"
+  | "training"
+  | "my-goals"
+  | "team-goals"
+  | "check-ins"
+  | "feedback"
+  | "my-reviews"
+  | "team-reviews"
+  | "settings"
+  | "my-plan";
+
+// Map legacy / retired deep-link params onto the flattened tab set.
+function aliasTab(raw: string): string {
+  switch (raw) {
+    case "goals":
+      return "my-goals";
+    case "reviews":
+      return "my-reviews";
+    case "performance":
+    case "goal-templates":
+    case "templates":
+      return "settings";
+    default:
+      return raw;
+  }
+}
+
+function getAllowedTabs(isManager: boolean, hasPlan: boolean): Tab[] {
+  const tabs: Tab[] = ["praise", "training", "my-goals"];
+  if (isManager) tabs.push("team-goals");
+  tabs.push("check-ins", "feedback", "my-reviews");
+  if (isManager) tabs.push("team-reviews");
+  if (isManager) tabs.push("settings");
+  if (hasPlan) tabs.push("my-plan");
+  return tabs;
+}
+
+// Fall back to the closest visible tab when a requested tab is not allowed.
+function resolveTab(raw: string, allowed: Tab[]): Tab {
+  if (allowed.includes(raw as Tab)) return raw as Tab;
+  switch (raw) {
+    case "team-goals":
+      return "my-goals";
+    case "team-reviews":
+      return "my-reviews";
+    default:
+      return "praise";
+  }
+}
+
+function getTabFromSearch(): string {
   try {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "my-plan" && !hasPlan) return "praise";
-    if (tab && ALL_TABS.includes(tab as Tab)) return tab as Tab;
+    if (tab) return aliasTab(tab);
   } catch {}
   return "praise";
 }
 
 export default function MyGrowth() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const { data: myPlanData, isLoading: planLoading } = useQuery<any | null>({
     queryKey: ["/api/hr/my-plan"],
@@ -36,21 +86,28 @@ export default function MyGrowth() {
     staleTime: 1000 * 60 * 2,
   });
 
-  const hasPlan = !planLoading && myPlanData !== null && myPlanData !== undefined
-    && myPlanData?.plan?.department_scope === "healthcare";
+  const hasPlan =
+    !planLoading &&
+    myPlanData !== null &&
+    myPlanData !== undefined &&
+    myPlanData?.plan?.department_scope === "healthcare";
 
-  const [activeTab, setActiveTab] = useState<Tab>(() => getTabFromSearch(false));
+  const isManager = MANAGER_ROLES.includes(user?.role || "");
+  const allowedTabs = getAllowedTabs(isManager, hasPlan);
+
+  // Hold the raw (alias-resolved) requested tab; validate against role/plan once known.
+  const [activeTab, setActiveTab] = useState<Tab>(() => getTabFromSearch() as Tab);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
 
-  // Once we know plan status, correct the active tab if needed
+  // Once role + plan status are known, fall back if the active tab isn't allowed.
   useEffect(() => {
-    if (!planLoading && activeTab === "my-plan" && !hasPlan) {
-      setActiveTab("praise");
-    }
-  }, [planLoading, hasPlan, activeTab]);
+    if (authLoading || planLoading) return;
+    setActiveTab((prev) => (allowedTabs.includes(prev) ? prev : resolveTab(prev, allowedTabs)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, planLoading, isManager, hasPlan]);
 
   if (authLoading || !isAuthenticated) return null;
 
@@ -73,35 +130,63 @@ export default function MyGrowth() {
           <p className="text-sm text-muted-foreground">Recognition, training, goals, check-ins, feedback, and reviews</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-mygrowth">
-          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-2xl">
+          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-3xl">
             <TabsTrigger value="praise" data-testid="tab-praise">🏅 Praise</TabsTrigger>
             <TabsTrigger value="training" data-testid="tab-training">Training</TabsTrigger>
-            <TabsTrigger value="goals" data-testid="tab-goals">Goals</TabsTrigger>
+            <TabsTrigger value="my-goals" data-testid="tab-my-goals">My Goals</TabsTrigger>
+            {isManager && (
+              <TabsTrigger value="team-goals" data-testid="tab-team-goals">Team Goals</TabsTrigger>
+            )}
             <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-Ins</TabsTrigger>
             <TabsTrigger value="feedback" data-testid="tab-feedback">Feedback</TabsTrigger>
-            <TabsTrigger value="reviews" data-testid="tab-reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="my-reviews" data-testid="tab-my-reviews">My Reviews</TabsTrigger>
+            {isManager && (
+              <TabsTrigger value="team-reviews" data-testid="tab-team-reviews">Team Reviews</TabsTrigger>
+            )}
+            {isManager && (
+              <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
+            )}
             {hasPlan && (
               <TabsTrigger value="my-plan" data-testid="tab-my-plan">My Plan</TabsTrigger>
             )}
           </TabsList>
+
           <TabsContent value="praise" className="mt-4">
             <PraiseBoard />
           </TabsContent>
           <TabsContent value="training" className="mt-4">
             <MyTraining />
           </TabsContent>
-          <TabsContent value="goals" className="mt-4">
-            <Goals />
+          <TabsContent value="my-goals" className="mt-4">
+            <MyGoalsContent />
           </TabsContent>
+          {isManager && (
+            <TabsContent value="team-goals" className="mt-4">
+              <TeamGoalsContent />
+            </TabsContent>
+          )}
           <TabsContent value="check-ins" className="mt-4">
             <PerformanceCheckIns />
           </TabsContent>
           <TabsContent value="feedback" className="mt-4">
             <PerformanceFeedback />
           </TabsContent>
-          <TabsContent value="reviews" className="mt-4">
-            <Reviews />
+          <TabsContent value="my-reviews" className="mt-4">
+            <MyReviewsContent />
           </TabsContent>
+          {isManager && (
+            <TabsContent value="team-reviews" className="mt-4">
+              <TeamReviewsContent />
+            </TabsContent>
+          )}
+          {isManager && (
+            <TabsContent value="settings" className="mt-4">
+              <div className="space-y-4 max-w-5xl">
+                <PerformanceSettingsSection />
+                <GoalTemplatesSection />
+              </div>
+            </TabsContent>
+          )}
           {hasPlan && (
             <TabsContent value="my-plan" className="mt-4">
               <MyPlanView />

@@ -30,7 +30,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import {
   Select,
@@ -724,13 +723,23 @@ export function MyGoalsContent() {
           </Card>
         </div>
 
-        <Tabs value={filter} onValueChange={setFilter}>
-          <TabsList data-testid="tabs-goal-filter">
-            <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
-            <TabsTrigger value="active" data-testid="tab-active">Active</TabsTrigger>
-            <TabsTrigger value="completed" data-testid="tab-completed">Completed</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2" data-testid="tabs-goal-filter">
+          {([
+            { value: "all", label: "All" },
+            { value: "active", label: "Active" },
+            { value: "completed", label: "Completed" },
+          ] as const).map((f) => (
+            <Button
+              key={f.value}
+              size="sm"
+              variant={filter === f.value ? "default" : "outline"}
+              onClick={() => setFilter(f.value)}
+              data-testid={`tab-${f.value}`}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
 
         {isLoading ? (
           <div className="space-y-4">

@@ -293,8 +293,8 @@ function PublicRouter() {
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
       <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
-      <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=goals" />}</Route>
-      <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=reviews" />}</Route>
+      <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
+      <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
 
       <Route component={NotFound} />
     </Switch>
@@ -412,8 +412,8 @@ function EmployeeRouter() {
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
       <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
-      <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=goals" />}</Route>
-      <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=reviews" />}</Route>
+      <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
+      <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
 
       <Route component={NotFound} />
     </Switch>

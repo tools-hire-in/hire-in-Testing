@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -668,19 +667,29 @@ export default function CheckIns() {
           </Card>
         </div>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList data-testid="tabs-checkin-filter">
-            <TabsTrigger value="upcoming" data-testid="tab-upcoming">
-              <Clock className="h-4 w-4 mr-1" />
-              Upcoming ({upcoming.length})
-            </TabsTrigger>
-            <TabsTrigger value="past" data-testid="tab-past">
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Past ({past.length})
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex items-center gap-2" data-testid="tabs-checkin-filter">
+          <Button
+            size="sm"
+            variant={tab === "upcoming" ? "default" : "outline"}
+            onClick={() => setTab("upcoming")}
+            data-testid="tab-upcoming"
+          >
+            <Clock className="h-4 w-4 mr-1" />
+            Upcoming ({upcoming.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={tab === "past" ? "default" : "outline"}
+            onClick={() => setTab("past")}
+            data-testid="tab-past"
+          >
+            <CheckCircle2 className="h-4 w-4 mr-1" />
+            Past ({past.length})
+          </Button>
+        </div>
 
-          <TabsContent value="upcoming" className="mt-4">
+        {tab === "upcoming" && (
+          <div className="mt-4">
             {isLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -716,9 +725,11 @@ export default function CheckIns() {
                   ))}
               </div>
             )}
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="past" className="mt-4">
+        {tab === "past" && (
+          <div className="mt-4">
             {isLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -750,8 +761,8 @@ export default function CheckIns() {
                   ))}
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
 
         <CreateCheckInDialog
           open={createOpen}
