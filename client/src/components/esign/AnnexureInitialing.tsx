@@ -16,6 +16,9 @@ const POLICY_ANNEXURE_LABELS: Record<string, string> = {
   attendance_policy: "Annexure B — Attendance & Regularization Policy",
   code_of_conduct: "Annexure C — Code of Conduct",
   nda: "Annexure D — Confidentiality & Non-Disclosure Agreement",
+  marketing_nda: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
+  marketing_content_policy: "Annexure F — Marketing, Social Media & Content Policy",
+  marketing_code_of_conduct: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
 };
 
 export interface AnnexureInitialingProps {

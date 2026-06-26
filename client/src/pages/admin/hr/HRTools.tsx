@@ -1357,7 +1357,7 @@ export function OfferLetterGenerator() {
           <div>
             <p className="text-sm font-medium mb-0.5">Policy Annexures</p>
             <p className="text-xs text-muted-foreground mb-3">
-              Select policies to append as Annexures A–D in the DOCX. The candidate will be asked to acknowledge them at acceptance.
+              Select policies to append as Annexures A–G in the DOCX. The candidate will be asked to acknowledge them at acceptance.
             </p>
             <div className="space-y-2">
               {([
@@ -1365,6 +1365,9 @@ export function OfferLetterGenerator() {
                 { key: "attendance_policy", label: "Annexure B — Attendance & Regularization Policy" },
                 { key: "code_of_conduct", label: "Annexure C — Code of Conduct" },
                 { key: "nda", label: "Annexure D — Confidentiality & Non-Disclosure Agreement" },
+                { key: "marketing_nda", label: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement" },
+                { key: "marketing_content_policy", label: "Annexure F — Marketing, Social Media & Content Policy" },
+                { key: "marketing_code_of_conduct", label: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards" },
               ] as const).map(({ key, label }) => (
                 <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
                   <input

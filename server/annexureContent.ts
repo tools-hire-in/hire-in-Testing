@@ -5,7 +5,7 @@ export interface PolicyAnnexure {
   body: string;
 }
 
-export const POLICY_ANNEXURE_KEYS = ["leave_policy", "attendance_policy", "code_of_conduct", "nda"] as const;
+export const POLICY_ANNEXURE_KEYS = ["leave_policy", "attendance_policy", "code_of_conduct", "nda", "marketing_nda", "marketing_content_policy", "marketing_code_of_conduct"] as const;
 export type PolicyAnnexureKey = typeof POLICY_ANNEXURE_KEYS[number];
 
 export const POLICY_ANNEXURES: Record<PolicyAnnexureKey, PolicyAnnexure> = {
@@ -461,6 +461,168 @@ I acknowledge that I have read and understood this Confidentiality and Non-Discl
 
 I agree to comply with this Agreement during and after my employment/engagement with Hire'in Solutions.`,
   },
+
+  marketing_nda: {
+    key: "marketing_nda",
+    label: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
+    title: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
+    body: `Hire'in Solutions
+Annexure E – Marketing & Social Media Confidentiality, NDA & IP Agreement
+Applicable to: Marketing, brand, social media, influencer, creator, content, PR, email, blog, website, video, design, and campaign team members working for or on behalf of Hire'in Solutions and its portfolio brands.
+
+This Agreement is entered into between the Company and the Team Member named on the cover page. It applies during employment/engagement and after separation, as permitted by applicable law.
+
+1. Purpose and scope
+The Team Member may receive access to non-public information relating to Hire'in, ProKred, portfolio brands, clients, candidates, employees, partners, software, product launches, marketing plans, campaigns, social media credentials, pricing, strategy, and business operations. This Agreement protects that information and confirms ownership of work product created for the Company.
+
+2. Confidential Information
+Confidential Information includes any non-public information disclosed directly or indirectly, whether written, verbal, visual, digital, or inferred from access, including:
+product roadmaps, unreleased features, SaaS launch plans, business plans, pricing, packaging, GTM strategy, investor/partner material, and internal decision-making;
+marketing strategies, content calendars, campaign briefs, drafts, prompts, brand positioning, design systems, creative concepts, taglines, scripts, content pillars, audience strategy, and launch assets;
+client, candidate, employee, vendor, partner, lead, prospect, and contact information;
+login credentials, social media account access, analytics, ad accounts, automation tools, CRM/ATS data, email marketing systems, and internal tools;
+documents, resumes, credentials, contracts, financials, compensation data, performance information, and operational processes;
+AI prompts, proprietary workflows, templates, SOPs, checklists, product demos, screenshots, unreleased UI, source files, and internal communications.
+
+3. Team Member obligations
+Use limitation: Use Confidential Information only for authorized Company work.
+No disclosure: Do not disclose, publish, forward, screenshot, upload, copy, export, or discuss Confidential Information with anyone outside the Company without written approval.
+Need-to-know access: Do not share internal information with coworkers or contractors unless they are authorized and need it for assigned work.
+No personal storage: Do not save Company information to personal drives, personal email, personal messaging apps, or personal devices unless approved.
+Protection: Use reasonable care to protect Company information, including strong passwords, MFA, secure devices, and approved tools.
+Incident reporting: Immediately report suspected loss, unauthorized access, phishing, credential compromise, accidental disclosure, or social media account issues.
+No personal benefit: Do not use Company information for personal branding, portfolio, side projects, competing work, or outside clients without written approval.
+
+4. Social media and public communication confidentiality
+No Company initiative, client/candidate information, internal meeting insight, unreleased product feature, campaign idea, screenshot, founder quote, brand strategy, or internal result may be posted publicly or privately without written approval. This includes LinkedIn, Instagram, Facebook, X/Twitter, WhatsApp, Discord, Reddit, portfolio websites, creator profiles, and case studies.
+
+5. AI tools and third-party platforms
+The Team Member must not enter Confidential Information, client/candidate information, credentials, internal strategy, unpublished campaign plans, private source documents, screenshots, or proprietary prompts into public AI tools, social media tools, design platforms, or third-party systems unless the Company has approved that tool and the specific use case.
+
+6. Work Product and intellectual property
+All work created, developed, drafted, designed, edited, researched, conceptualized, posted, scheduled, or delivered by the Team Member for the Company is Company work product. This includes posts, captions, reels, scripts, blogs, images, campaigns, prompts, design files, templates, videos, ad copy, calendars, strategy notes, analytics reports, and derivative works.
+To the fullest extent permitted by law, the Team Member assigns to the Company all rights, title, and interest in such work product, including copyrights, moral rights waivers where legally permitted, trade secrets, know-how, and other intellectual property rights. No separate payment is due for such assignment beyond agreed compensation unless required by law or a separate written agreement.
+
+7. Portfolio use and attribution
+The Team Member may not use Company work, client/candidate examples, unreleased concepts, ProKred/Hire'in strategy, analytics, screenshots, or campaign performance in any portfolio, resume case study, public post, interview assignment, freelance pitch, or personal brand content without prior written approval from the Company.
+
+8. Return and deletion
+Upon request or separation, the Team Member must return or delete all Company information, files, documents, credentials, notes, copies, drafts, screenshots, recordings, and work product from all personal devices, accounts, drives, tools, and storage locations, and certify completion if requested.
+
+9. Non-solicitation and conflict of interest
+During employment/engagement and for the period permitted by applicable law after separation, the Team Member must not use Company information or relationships to solicit Company clients, candidates, employees, contractors, vendors, partners, prospects, or brand collaborators for personal or competing business purposes. The Team Member must disclose outside work, freelance projects, creator partnerships, or conflicts that may overlap with Company business, clients, campaigns, or competitors.
+
+10. Remedies
+Unauthorized disclosure or misuse may cause serious harm. The Company may seek available remedies, including injunctive relief, recovery of damages, return/deletion of materials, disciplinary action, termination, and other remedies available under applicable law.
+
+11. Survival
+Confidentiality, IP ownership, return/deletion, non-use, portfolio restriction, and related obligations survive the end of employment/engagement.
+
+12. Governing law
+This Agreement will be governed by the laws and jurisdiction stated in the employment/engagement agreement or as determined by the Company's legal entity and applicable law. Insert final jurisdiction after counsel review: [Insert governing law and dispute forum].
+
+Acknowledged and agreed.`,
+  },
+
+  marketing_content_policy: {
+    key: "marketing_content_policy",
+    label: "Annexure F — Marketing, Social Media & Content Policy",
+    title: "Annexure F — Marketing, Social Media & Content Policy",
+    body: `Hire'in Solutions
+Annexure F – Marketing, Social Media & Content Policy
+
+1. Policy purpose
+This policy applies to all marketing, brand, social media, influencer, creator, content, PR, email, blog, website, video, design, and campaign work performed for the Company and its portfolio brands.
+
+2. Brand and content approval rules
+All external content must follow approved brand positioning, tone, values, compliance guidance, and leadership direction.
+No post, campaign, article, reel, carousel, press note, ad, email, or public comment may be published without approval from the assigned reviewer or leadership.
+Healthcare, staffing, credentialing, compliance, security, privacy, and SaaS claims must be reviewed carefully. Do not make unsupported legal, medical, compliance, HIPAA, TJC, security, or performance claims.
+Avoid absolute statements such as “guaranteed compliance,” “fully HIPAA compliant” unless approved by legal/leadership. Prefer risk-aware phrasing such as “supports audit readiness,” “designed to reduce document-control risk,” or “built with security-first controls.”
+Do not publish client, candidate, employee, recruiter, salary, placement, margin, internal performance, or private company information without written approval.
+
+3. Content workflow
+Brief: Understand objective, audience, channel, offer, CTA, brand, and approval owner.
+Draft: Create original content with clear source references where factual claims are made.
+Review: Submit drafts for review before posting or scheduling.
+Approve: Only approved content may be published or sent.
+Publish: Use approved Company accounts and approved tools only.
+Measure: Track performance, engagement, reach, clicks, readership, and learnings as requested.
+Archive: Maintain approved copies, campaign notes, asset links, and performance snapshots in Company-approved storage.
+
+4. Social media account conduct
+Company accounts, passwords, MFA devices, page roles, ad accounts, and analytics access must be treated as confidential and used only for approved work.
+Do not change account ownership, admin roles, handles, bios, passwords, recovery email/phone, ad billing, or integrations without approval.
+Do not respond to sensitive comments, complaints, legal threats, media inquiries, client disputes, candidate complaints, or security/privacy concerns without approval.
+Do not delete comments, messages, posts, analytics, or campaign history unless authorized.
+No personal opinions, political/religious commentary, offensive language, discriminatory content, harassment, or unapproved humor from Company accounts.
+
+5. Personal social media and influencer activity
+The Team Member may maintain personal social media accounts. However, personal accounts must not disclose Company Confidential Information, imply unauthorized representation, use Company intellectual property without approval, or discuss clients/candidates/internal plans. If Company asks the Team Member to appear in or promote content using a personal creator profile, the scope, content, approvals, usage rights, and any compensation/boosting arrangements should be documented separately.
+
+6. AI-assisted content rules
+AI may be used only for approved drafting, ideation, grammar, formatting, or research support.
+Do not input Confidential Information, client/candidate data, credentials, resumes, strategy docs, pricing, internal screenshots, proprietary prompts, or unreleased product information into unapproved AI tools.
+All AI-assisted content must be reviewed by a human before use. The Team Member is responsible for accuracy, originality, tone, and compliance.
+Do not copy third-party copyrighted content, competitor copy, influencer scripts, or source material without permission or proper transformation and approval.
+
+7. Content standards
+Content must be truthful, professional, respectful, non-discriminatory, and aligned with Company values.
+Content must not mislead candidates, clients, healthcare professionals, partners, or the public.
+Use only licensed, Company-owned, approved, or properly attributed assets. Do not use random internet images, music, templates, or fonts in violation of license terms.
+Avoid publishing sensitive or regulated claims without approval.
+Respect privacy, confidentiality, and dignity of candidates, clients, employees, healthcare workers, and partners.
+
+8. Violations
+Violations may result in content removal, access restriction, disciplinary action, termination, legal action, or other remedies available under Company policy and applicable law.
+
+Acknowledged and agreed.`,
+  },
+
+  marketing_code_of_conduct: {
+    key: "marketing_code_of_conduct",
+    label: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
+    title: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
+    body: `Hire'in Solutions
+Annexure G – Marketing Code of Conduct, Data Security & Professional Standards
+
+1. Professional conduct
+Act with honesty, integrity, accountability, respect, and professionalism.
+Represent the Company responsibly in internal and external communication.
+Respect managers, team members, candidates, clients, partners, creators, and vendors.
+Avoid harassment, discrimination, retaliation, bullying, intimidation, or unprofessional conduct.
+Meet commitments, communicate blockers early, and maintain reliable responsiveness during working hours.
+
+2. Security and access
+Use only approved email, storage, communication, design, social media, and project tools for Company work.
+Use strong passwords and MFA wherever available. Do not share passwords or OTPs.
+Do not use unauthorized personal accounts, drives, WhatsApp groups, or consumer tools to store or transfer Company data.
+Lock devices when away. Keep devices updated with reasonable security protections.
+Immediately report phishing, suspicious links, account lockouts, lost devices, accidental disclosure, or unauthorized access.
+
+3. Data handling
+Access only information needed for assigned work.
+Do not download/export bulk data unless authorized.
+Do not copy sensitive information into content drafts, AI tools, personal notes, or external platforms.
+Do not use client/candidate/employee data in examples, mocks, screenshots, testimonials, or case studies without written approval and required redaction/consent.
+Use approved redaction or anonymization before sharing examples internally or externally.
+
+4. Conflict of interest
+The Team Member must disclose outside employment, freelance work, brand collaborations, influencer partnerships, affiliate promotions, consulting, or creator commitments that could conflict with Company work, overlap with Company clients/competitors, or affect availability, neutrality, or confidentiality.
+
+5. Communications and approvals
+Do not speak on behalf of the Company to media, clients, candidates, vendors, partners, or public audiences unless authorized.
+Escalate legal, compliance, security, privacy, public relations, or candidate/client complaint matters to leadership.
+Use professional written communication and avoid commitments that have not been approved.
+
+6. Attendance, responsiveness, and remote work
+The Team Member is expected to remain responsive during agreed working hours, attend scheduled meetings, update tasks, meet timelines, and communicate availability or blockers in advance. Remote work does not reduce confidentiality, productivity, conduct, or security obligations.
+
+7. Disciplinary action
+Failure to follow this Code may result in coaching, warning, access restriction, compensation review impact, termination, legal action, or other action depending on severity and applicable law.
+
+Acknowledged and agreed.`,
+  },
 };
 
 export const POLICY_ANNEXURE_LABELS: Record<PolicyAnnexureKey, string> = {
@@ -468,4 +630,7 @@ export const POLICY_ANNEXURE_LABELS: Record<PolicyAnnexureKey, string> = {
   attendance_policy: "Annexure B — Attendance & Regularization Policy",
   code_of_conduct: "Annexure C — Code of Conduct",
   nda: "Annexure D — Confidentiality & Non-Disclosure Agreement",
+  marketing_nda: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
+  marketing_content_policy: "Annexure F — Marketing, Social Media & Content Policy",
+  marketing_code_of_conduct: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
 };
