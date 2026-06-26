@@ -95,6 +95,7 @@ const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"))
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
+const Communications = lazy(() => import("@/pages/admin/Communications"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -225,6 +226,9 @@ function PublicRouter() {
       {/* Travel Pay Calculator */}
       <Route path="/admin/travel-calculator">{() => <Suspense fallback={<AdminFallback />}><TravelCalculator /></Suspense>}</Route>
 
+      {/* Communications — What's New + Release Notes */}
+      <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
+
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
       <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
@@ -343,6 +347,9 @@ function EmployeeRouter() {
 
       {/* Travel Pay Calculator */}
       <Route path="/admin/travel-calculator">{() => <Suspense fallback={<AdminFallback />}><TravelCalculator /></Suspense>}</Route>
+
+      {/* Communications — What's New + Release Notes */}
+      <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
 
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>

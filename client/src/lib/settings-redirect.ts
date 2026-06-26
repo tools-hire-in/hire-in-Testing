@@ -31,6 +31,8 @@ const LEGACY_SETTINGS_TAB_ALIASES: Record<string, string> = {
 export const RELOCATED_SETTINGS_TABS: Record<string, string> = {
   "balance-adjustments": "/admin/hr/people?tab=balance-adjustments",
   "letter-templates": "/admin/hr/tools?tab=templates",
+  "whats-new": "/admin/communications?tab=whats-new",
+  "release-notes": "/admin/communications?tab=release-notes",
 };
 
 // Returns the new home for a relocated Settings tab, or null if not relocated.

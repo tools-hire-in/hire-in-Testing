@@ -45,6 +45,14 @@ test("redirects relocated tabs to their new home", () => {
     resolveSettingsRedirect("?tab=letter-templates"),
     "/admin/hr/tools?tab=templates",
   );
+  assert.equal(
+    resolveSettingsRedirect("?tab=whats-new"),
+    "/admin/communications?tab=whats-new",
+  );
+  assert.equal(
+    resolveSettingsRedirect("?tab=release-notes"),
+    "/admin/communications?tab=release-notes",
+  );
 });
 
 test("relocatedSettingsTabTarget resolves relocated tabs and ignores others", () => {
@@ -57,6 +65,14 @@ test("relocatedSettingsTabTarget resolves relocated tabs and ignores others", ()
     relocatedSettingsTabTarget("letter-templates"),
     "/admin/hr/tools?tab=templates",
   );
+  assert.equal(
+    relocatedSettingsTabTarget("whats-new"),
+    "/admin/communications?tab=whats-new",
+  );
+  assert.equal(
+    relocatedSettingsTabTarget("release-notes"),
+    "/admin/communications?tab=release-notes",
+  );
   assert.equal(relocatedSettingsTabTarget("leave-types"), null);
   assert.equal(relocatedSettingsTabTarget("departments"), null);
   assert.equal(relocatedSettingsTabTarget(null), null);
@@ -67,8 +83,6 @@ test("relocatedSettingsTabTarget resolves relocated tabs and ignores others", ()
 test("falls back to default page for removed and unknown tabs", () => {
   for (const tab of [
     "performance",
-    "whats-new",
-    "release-notes",
     "goal-templates",
     "nonexistent",
   ]) {

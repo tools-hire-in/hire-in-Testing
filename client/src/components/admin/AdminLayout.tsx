@@ -1270,6 +1270,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badge: peopleHRBadge > 0 ? peopleHRBadge : undefined,
       badgeColor: "bg-amber-500",
     }] : []),
+    ...(hasHRAccess ? [{
+      href: "/admin/communications",
+      label: "Communications",
+      icon: Megaphone,
+      roles: ["super_admin", "admin", "hr"],
+    }] : []),
     ...(hasFinanceAccess ? [{
       href: "/admin/finance",
       label: "Finance & Contracts",
@@ -1303,6 +1309,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/hr/my-team") return location === "/admin/hr/my-team" || location.startsWith("/admin/hr/my-team") || location.startsWith("/admin/hr/team-attendance") || location.startsWith("/admin/hr/leave-approvals") || location.startsWith("/admin/hr/training-progress");
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
     if (href === "/admin/travel-calculator") return location.startsWith("/admin/travel-calculator");
+    if (href === "/admin/communications") return location === "/admin/communications" || location.startsWith("/admin/communications");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training");
     if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
