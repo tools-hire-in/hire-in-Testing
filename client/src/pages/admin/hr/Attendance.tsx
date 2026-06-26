@@ -737,7 +737,7 @@ function GracePeriodUsageTab({ userRole }: { userRole: string }) {
   );
 }
 
-export default function Attendance() {
+export default function Attendance({ view }: { view?: "attendance" | "grace" } = {}) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -755,6 +755,13 @@ export default function Attendance() {
   const validTabs = ["attendance", ...(canSeeGrace ? ["grace"] : [])];
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "attendance";
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // When embedded in My Desk, the parent provides a single-level `view` so this
+  // page renders exactly one section without its own (nested) tab bar.
+  const embedded = view !== undefined;
+  const effectiveTab = embedded
+    ? (view === "grace" && canSeeGrace ? "grace" : "attendance")
+    : activeTab;
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -896,13 +903,15 @@ export default function Attendance() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <PillTabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
-          <PillTabsList>
-            <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
-            {canSeeGrace && (
-              <PillTabsTrigger value="grace" data-testid="tab-grace">Grace Period Usage</PillTabsTrigger>
-            )}
-          </PillTabsList>
+        <PillTabs value={effectiveTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
+          {!embedded && (
+            <PillTabsList>
+              <PillTabsTrigger value="attendance" data-testid="tab-attendance">My Attendance</PillTabsTrigger>
+              {canSeeGrace && (
+                <PillTabsTrigger value="grace" data-testid="tab-grace">Grace Period Usage</PillTabsTrigger>
+              )}
+            </PillTabsList>
+          )}
 
           <PillTabsContent value="attendance">
             <div className="space-y-4 max-w-xl">

@@ -117,14 +117,29 @@ const TAB_LABELS: Record<string, string> = {
   accrual: "Accrual",
 };
 
-export default function LeaveManagement() {
+const INNER_TO_DESK: Record<string, string> = {
+  balance: "leave-balance",
+  apply: "apply-leave",
+  history: "leave-history",
+  accrual: "accrual",
+};
+
+export default function LeaveManagement({ view }: { view?: "balance" | "apply" | "history" | "accrual" } = {}) {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState("balance");
+  // When embedded in My Desk, the parent provides a single-level `view`; this page
+  // then renders exactly one section without its own (nested) tab bar, and any
+  // cross-section navigation is promoted to the parent's `?tab=` router.
+  const embedded = view !== undefined;
+  const [activeTab, setActiveTab] = useState(view ?? "balance");
+  const goTab = (t: "balance" | "apply" | "history" | "accrual") => {
+    if (embedded) setLocation(`/admin/my-desk?tab=${INNER_TO_DESK[t] ?? t}`);
+    else setActiveTab(t);
+  };
 
   const applyFormInit = {
     leaveTypeId: "",
@@ -237,7 +252,7 @@ export default function LeaveManagement() {
       setOtherReasonText("");
       setLwpWarning(null);
       setSplitPaidDays(null);
-      setActiveTab("history");
+      goTab("history");
       toast({ title: "Leave Applied", description: "Your leave request has been submitted for approval." });
     },
     onError: async (err: unknown) => {
@@ -413,33 +428,37 @@ export default function LeaveManagement() {
       <div className="space-y-5 max-w-4xl">
         {/* Custom tab bar — year selector kept inline (name/CTC header removed; parent provides page context) */}
         <div>
-          <div className="flex items-center justify-between border-b border-border" data-testid="tabs-leave-management">
-            <div className="flex">
-              {(["balance", "apply", "history", "accrual"] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  data-testid={`tab-${tab}`}
-                  className={
-                    activeTab === tab
-                      ? "px-4 py-2.5 text-sm font-semibold border border-b-0 border-border rounded-t-md -mb-px bg-background text-foreground"
-                      : "px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  }
-                >
-                  {TAB_LABELS[tab]}
-                </button>
-              ))}
-            </div>
-            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-              <SelectTrigger className="w-[100px] h-8 mb-1.5" data-testid="select-leave-year">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+          <div className={`flex items-center ${embedded ? "justify-end" : "justify-between border-b border-border"}`} data-testid="tabs-leave-management">
+            {!embedded && (
+              <div className="flex">
+                {(["balance", "apply", "history", "accrual"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    data-testid={`tab-${tab}`}
+                    className={
+                      activeTab === tab
+                        ? "px-4 py-2.5 text-sm font-semibold border border-b-0 border-border rounded-t-md -mb-px bg-background text-foreground"
+                        : "px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    }
+                  >
+                    {TAB_LABELS[tab]}
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+            {(!embedded || activeTab === "balance" || activeTab === "accrual") && (
+              <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+                <SelectTrigger className="w-[100px] h-8 mb-1.5" data-testid="select-leave-year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="pt-5">
@@ -631,7 +650,7 @@ export default function LeaveManagement() {
                     <Button
                       className="w-full mt-4"
                       size="lg"
-                      onClick={() => setActiveTab("apply")}
+                      onClick={() => goTab("apply")}
                       data-testid="button-apply-leave-cta"
                     >
                       <CalendarCheck className="h-4 w-4 mr-2" />
@@ -993,7 +1012,7 @@ export default function LeaveManagement() {
                     <CardContent className="py-12 text-center">
                       <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
                       <p className="text-muted-foreground">No leave requests for {selectedYear}.</p>
-                      <Button variant="outline" className="mt-4" onClick={() => setActiveTab("apply")} data-testid="button-apply-now">
+                      <Button variant="outline" className="mt-4" onClick={() => goTab("apply")} data-testid="button-apply-now">
                         Apply for Leave
                       </Button>
                     </CardContent>

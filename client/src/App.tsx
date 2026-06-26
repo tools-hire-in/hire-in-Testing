@@ -99,8 +99,13 @@ const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
   "time-card": "time-card",
-  leaves: "time-off",
-  "time-off": "time-off",
+  grace: "grace",
+  leaves: "leave-balance",
+  "time-off": "leave-balance",
+  "leave-balance": "leave-balance",
+  "apply-leave": "apply-leave",
+  "leave-history": "leave-history",
+  accrual: "accrual",
   holidays: "leave-calendar",
   "leave-calendar": "leave-calendar",
   regularizations: "regularizations",
@@ -223,7 +228,7 @@ function PublicRouter() {
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
       <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
-      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=time-off" />}</Route>
+      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=leave-balance" />}</Route>
       <Route path="/admin/hr/holidays">{() => <Redirect to="/admin/my-desk?tab=leave-calendar" />}</Route>
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/my-desk?tab=regularizations" />}</Route>
 
@@ -342,7 +347,7 @@ function EmployeeRouter() {
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
       <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
-      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=time-off" />}</Route>
+      <Route path="/admin/hr/leaves">{() => <Redirect to="/admin/my-desk?tab=leave-balance" />}</Route>
       <Route path="/admin/hr/holidays">{() => <Redirect to="/admin/my-desk?tab=leave-calendar" />}</Route>
       <Route path="/admin/hr/tickets">{() => <Redirect to="/admin/my-desk?tab=regularizations" />}</Route>
 

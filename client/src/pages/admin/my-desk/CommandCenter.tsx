@@ -473,7 +473,7 @@ export default function CommandCenter() {
                   variant="ghost"
                   size="sm"
                   className="w-full text-xs h-7 text-muted-foreground"
-                  onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+                  onClick={() => setLocation("/admin/my-desk?tab=apply-leave")}
                   data-testid="cc-link-view-leaves"
                 >
                   + Apply Leave
@@ -511,7 +511,7 @@ export default function CommandCenter() {
                     variant="ghost"
                     size="sm"
                     className="w-full text-xs h-7 text-muted-foreground"
-                    onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+                    onClick={() => setLocation("/admin/my-desk?tab=leave-history")}
                     data-testid="cc-link-view-requests"
                   >
                     View History →

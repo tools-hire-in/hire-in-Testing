@@ -570,7 +570,7 @@ export default function CommandCenterV2() {
                   .join(" · ")
               : "days available"
           }
-          onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+          onClick={() => setLocation("/admin/my-desk?tab=leave-balance")}
           testId="ccv2-leave"
         />
 
@@ -608,7 +608,7 @@ export default function CommandCenterV2() {
             value={`${stats?.pendingLeaveRequests ?? 0}`}
             hint={(stats?.pendingLeaveRequests ?? 0) > 0 ? "leave requests pending" : "all clear"}
             tone={(stats?.pendingLeaveRequests ?? 0) > 0 ? "amber" : "default"}
-            onClick={() => setLocation("/admin/my-desk?tab=time-off")}
+            onClick={() => setLocation("/admin/my-desk?tab=leave-history")}
             testId="ccv2-my-requests"
           />
         )}

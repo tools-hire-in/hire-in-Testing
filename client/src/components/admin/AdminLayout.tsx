@@ -126,10 +126,16 @@ interface AdminLayoutProps {
 const MY_DESK_SUB_ITEMS = [
   { label: "Dashboard", tab: null, icon: LayoutDashboard },
   { label: "Time Card", tab: "time-card", icon: Clock },
-  { label: "Time Off", tab: "time-off", icon: CalendarOff },
+  { label: "Grace Usage", tab: "grace", icon: AlertTriangle, graceOnly: true },
+  { label: "Leave Balance", tab: "leave-balance", icon: Wallet },
+  { label: "Apply Leave", tab: "apply-leave", icon: CalendarOff },
+  { label: "Leave History", tab: "leave-history", icon: FileText },
+  { label: "Accrual", tab: "accrual", icon: BarChart3 },
   { label: "Leave Calendar", tab: "leave-calendar", icon: CalendarDays },
   { label: "Regularizations", tab: "regularizations", icon: ClipboardList },
 ] as const;
+
+const GRACE_ROLES = ["hr", "admin", "super_admin", "manager"];
 
 function CommandCenterSection({
   isNavActive,
@@ -137,12 +143,14 @@ function CommandCenterSection({
   location,
   myDeskBadge,
   serviceDeskBadge,
+  canSeeGrace,
 }: {
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
   location: string;
   myDeskBadge: number;
   serviceDeskBadge: number;
+  canSeeGrace: boolean;
 }) {
   const { open } = useSidebar();
 
@@ -245,7 +253,7 @@ function CommandCenterSection({
 
             {/* My Desk sub-nav — always visible */}
             <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
-              {MY_DESK_SUB_ITEMS.map(({ label, tab, icon: Icon }) => {
+              {MY_DESK_SUB_ITEMS.filter((i) => !("graceOnly" in i && i.graceOnly) || canSeeGrace).map(({ label, tab, icon: Icon }) => {
                 const href = tab ? `/admin/my-desk?tab=${tab}` : "/admin/my-desk";
                 const isActive = isSubItemActive(tab as string | null);
                 const locked = isComplianceLocked && tab !== null;
@@ -1387,6 +1395,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 location={location}
                 myDeskBadge={myPendingLeavesCount ?? 0}
                 serviceDeskBadge={serviceDeskOpenCount ?? 0}
+                canSeeGrace={GRACE_ROLES.includes(user?.role || "")}
               />
 
               {/* PERSONAL section — visible to all */}

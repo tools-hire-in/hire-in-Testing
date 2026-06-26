@@ -14,15 +14,38 @@ const Attendance = lazy(() => import("@/pages/admin/hr/Attendance"));
 const LeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
 const HolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
 
-const TABS = ["time-card", "time-off", "leave-calendar", "regularizations"] as const;
+const TABS = [
+  "time-card",
+  "grace",
+  "leave-balance",
+  "apply-leave",
+  "leave-history",
+  "accrual",
+  "leave-calendar",
+  "regularizations",
+] as const;
 type Tab = typeof TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
   "time-card": "Time Card",
-  "time-off": "Time Off",
+  "grace": "Grace Usage",
+  "leave-balance": "Leave Balance",
+  "apply-leave": "Apply Leave",
+  "leave-history": "Leave History",
+  "accrual": "Accrual",
   "leave-calendar": "Leave Calendar",
   "regularizations": "Regularizations",
 };
+
+// Retired (nested) params → new single-level destinations, for old deep-links.
+const LEGACY_TAB_MAP: Record<string, Tab> = {
+  "time-off": "leave-balance",
+  "leaves": "leave-balance",
+  "attendance": "time-card",
+  "holidays": "leave-calendar",
+};
+
+const GRACE_ROLES = ["hr", "admin", "super_admin", "manager"];
 
 function TabFallback() {
   return (
@@ -42,6 +65,8 @@ export default function MyDesk() {
   const { toast } = useToast();
   const { enabled: newLook } = useNewLook();
 
+  const canSeeGrace = GRACE_ROLES.includes(user?.role || "");
+
   const activeTab: Tab | null = useMemo(() => {
     try {
       const tab = new URLSearchParams(search).get("tab");
@@ -49,6 +74,34 @@ export default function MyDesk() {
     } catch {}
     return null;
   }, [search]);
+
+  // Normalize retired/nested deep-links to their new single-level destinations.
+  // e.g. ?tab=time-off → ?tab=leave-balance, ?tab=time-card&att=grace → ?tab=grace,
+  // and strip any leftover inner ?att= param.
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(search);
+      const tab = sp.get("tab");
+      const att = sp.get("att");
+      let target: Tab | null = null;
+      if (tab === "time-card" && att === "grace") target = "grace";
+      else if (tab && LEGACY_TAB_MAP[tab]) target = LEGACY_TAB_MAP[tab];
+      if (target) {
+        setLocation(`/admin/my-desk?tab=${target}`);
+      } else if (att) {
+        sp.delete("att");
+        const qs = sp.toString();
+        setLocation(`/admin/my-desk${qs ? `?${qs}` : ""}`);
+      }
+    } catch {}
+  }, [search, setLocation]);
+
+  // Employees can't reach the Grace Usage view — bounce to Time Card.
+  useEffect(() => {
+    if (activeTab === "grace" && !canSeeGrace) {
+      setLocation("/admin/my-desk?tab=time-card");
+    }
+  }, [activeTab, canSeeGrace, setLocation]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -100,12 +153,32 @@ export default function MyDesk() {
 
           {activeTab === "time-card" && !isComplianceLocked && (
             <Suspense fallback={<TabFallback />}>
-              <Attendance />
+              <Attendance view="attendance" />
             </Suspense>
           )}
-          {activeTab === "time-off" && !isComplianceLocked && (
+          {activeTab === "grace" && !isComplianceLocked && canSeeGrace && (
             <Suspense fallback={<TabFallback />}>
-              <LeaveManagement />
+              <Attendance view="grace" />
+            </Suspense>
+          )}
+          {activeTab === "leave-balance" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <LeaveManagement view="balance" />
+            </Suspense>
+          )}
+          {activeTab === "apply-leave" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <LeaveManagement view="apply" />
+            </Suspense>
+          )}
+          {activeTab === "leave-history" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <LeaveManagement view="history" />
+            </Suspense>
+          )}
+          {activeTab === "accrual" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <LeaveManagement view="accrual" />
             </Suspense>
           )}
           {activeTab === "leave-calendar" && !isComplianceLocked && (
