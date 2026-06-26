@@ -1,11 +1,9 @@
-import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Shield, CheckCircle, AlertTriangle, Clock, RefreshCw, Download, Moon, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -301,7 +299,6 @@ function NightShiftConsentsTable({ consents }: { consents: NightShiftConsent[] }
 
 export function PolicyComplianceContent() {
   const { toast } = useToast();
-  const [subTab, setSubTab] = useState("matrix");
 
   const { data, isLoading, refetch } = useQuery<PolicyComplianceData>({
     queryKey: ["/api/onboarding/policy-compliance"],
@@ -368,47 +365,42 @@ export function PolicyComplianceContent() {
         </div>
       </div>
 
-      <Tabs value={subTab} onValueChange={setSubTab}>
-        <TabsList>
-          <TabsTrigger value="matrix" data-testid="tab-policy-matrix">
-            <Shield className="h-4 w-4 mr-1.5" />
-            Policy Matrix
-          </TabsTrigger>
-          <TabsTrigger value="night-shift" data-testid="tab-night-shift">
-            <Moon className="h-4 w-4 mr-1.5" />
-            Night Shift Consents
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="matrix" className="mt-4">
-          {isLoading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : data ? (
-            <PolicyMatrix data={data} />
-          ) : null}
-        </TabsContent>
-
-        <TabsContent value="night-shift" className="mt-4">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300">
-              <Clock className="h-4 w-4 shrink-0" />
-              <span>
-                Night Shift Consent is required annually (12-month validity) for Female employees.
-                Alerts are sent 30 days (to HR) and 14 days (to employee) before expiry.
-              </span>
-            </div>
-            {nightShiftLoading ? (
-              <div className="space-y-3">
-                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : nightShiftConsents ? (
-              <NightShiftConsentsTable consents={nightShiftConsents} />
-            ) : null}
+      <section className="space-y-3" data-testid="section-policy-matrix">
+        <h3 className="text-base font-semibold flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary" />
+          Policy Matrix
+        </h3>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
           </div>
-        </TabsContent>
-      </Tabs>
+        ) : data ? (
+          <PolicyMatrix data={data} />
+        ) : null}
+      </section>
+
+      <section className="space-y-3" data-testid="section-night-shift">
+        <h3 className="text-base font-semibold flex items-center gap-2">
+          <Moon className="h-4 w-4 text-primary" />
+          Night Shift Consents
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>
+              Night Shift Consent is required annually (12-month validity) for Female employees.
+              Alerts are sent 30 days (to HR) and 14 days (to employee) before expiry.
+            </span>
+          </div>
+          {nightShiftLoading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : nightShiftConsents ? (
+            <NightShiftConsentsTable consents={nightShiftConsents} />
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }

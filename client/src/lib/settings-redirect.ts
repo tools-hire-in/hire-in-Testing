@@ -26,12 +26,28 @@ const LEGACY_SETTINGS_TAB_ALIASES: Record<string, string> = {
   attendance: "attendance-policy",
 };
 
+// Tabs that have been relocated out of Settings to another page. Old deep-links
+// should land on their new home rather than the Settings default.
+export const RELOCATED_SETTINGS_TABS: Record<string, string> = {
+  "balance-adjustments": "/admin/hr/people?tab=balance-adjustments",
+};
+
+// Returns the new home for a relocated Settings tab, or null if not relocated.
+// Used both by the legacy /admin/settings redirect and by the grouped
+// HRSettings page (where a stale ?tab= would otherwise silently fall back).
+export function relocatedSettingsTabTarget(tab: string | null | undefined): string | null {
+  if (!tab) return null;
+  return RELOCATED_SETTINGS_TABS[tab] ?? null;
+}
+
 export function resolveSettingsRedirect(search: string): string {
   let tab: string | null = null;
   try {
     tab = new URLSearchParams(search).get("tab");
   } catch {}
   if (!tab) return DEFAULT_SETTINGS_PATH;
+  const relocated = relocatedSettingsTabTarget(tab);
+  if (relocated) return relocated;
   const resolved = LEGACY_SETTINGS_TAB_ALIASES[tab] ?? tab;
   const group = SETTINGS_TAB_TO_GROUP[resolved];
   if (group) return `/admin/settings/${group}?tab=${resolved}`;

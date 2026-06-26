@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveSettingsRedirect, DEFAULT_SETTINGS_PATH } from "./settings-redirect.ts";
+import {
+  resolveSettingsRedirect,
+  relocatedSettingsTabTarget,
+  DEFAULT_SETTINGS_PATH,
+} from "./settings-redirect.ts";
 
 test("maps retained tabs to their new group + tab", () => {
   assert.equal(
@@ -32,9 +36,28 @@ test("resolves legacy aliases", () => {
   );
 });
 
-test("falls back to default page for relocated/removed and unknown tabs", () => {
+test("redirects relocated tabs to their new home", () => {
+  assert.equal(
+    resolveSettingsRedirect("?tab=balance-adjustments"),
+    "/admin/hr/people?tab=balance-adjustments",
+  );
+});
+
+test("relocatedSettingsTabTarget resolves relocated tabs and ignores others", () => {
+  // Used by grouped HRSettings (e.g. /admin/settings/leave-attendance?tab=...)
+  assert.equal(
+    relocatedSettingsTabTarget("balance-adjustments"),
+    "/admin/hr/people?tab=balance-adjustments",
+  );
+  assert.equal(relocatedSettingsTabTarget("leave-types"), null);
+  assert.equal(relocatedSettingsTabTarget("departments"), null);
+  assert.equal(relocatedSettingsTabTarget(null), null);
+  assert.equal(relocatedSettingsTabTarget(undefined), null);
+  assert.equal(relocatedSettingsTabTarget(""), null);
+});
+
+test("falls back to default page for removed and unknown tabs", () => {
   for (const tab of [
-    "balance-adjustments",
     "performance",
     "whats-new",
     "release-notes",

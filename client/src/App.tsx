@@ -254,9 +254,9 @@ function PublicRouter() {
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
-      <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
-      <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
-      <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
+      <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=salary" />}</Route>
+      <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=compliance" />}</Route>
+      <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=audit" />}</Route>
 
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>
@@ -373,9 +373,9 @@ function EmployeeRouter() {
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
 
       {/* Legacy redirect patterns */}
-      <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
-      <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
-      <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=reports" />}</Route>
+      <Route path="/admin/hr/salary-reports">{() => <Redirect to="/admin/hr/people?tab=salary" />}</Route>
+      <Route path="/admin/hr/document-compliance">{() => <Redirect to="/admin/hr/people?tab=compliance" />}</Route>
+      <Route path="/admin/audit-logs">{() => <Redirect to="/admin/hr/people?tab=audit" />}</Route>
 
       {/* Finance & Contracts */}
       <Route path="/admin/finance">{() => <Suspense fallback={<AdminFallback />}><ContractsHub /></Suspense>}</Route>

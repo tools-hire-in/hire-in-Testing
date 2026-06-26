@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,10 +65,9 @@ function tierBadge(tier: number) {
   return null;
 }
 
-export default function AttendanceExceptions() {
+export default function AttendanceExceptions({ view = "exceptions" }: { view?: "exceptions" | "risk-summary" }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("all-exceptions");
   const [statusFilter, setStatusFilter] = useState("all");
   const [deptFilter, setDeptFilter] = useState("all");
   const [startDate, setStartDate] = useState(() => {
@@ -94,6 +92,7 @@ export default function AttendanceExceptions() {
 
   const { data: exceptions, isLoading: excLoading } = useQuery<AttendanceException[]>({
     queryKey: ["/api/attendance/exceptions/all", statusFilter, startDate, endDate, deptFilter],
+    enabled: view === "exceptions",
     queryFn: async () => {
       const res = await fetch(`/api/attendance/exceptions/all?${queryParams}`, { credentials: "include" });
       if (!res.ok) return [];
@@ -103,6 +102,7 @@ export default function AttendanceExceptions() {
 
   const { data: riskSummary, isLoading: riskLoading } = useQuery<RiskSummary>({
     queryKey: ["/api/attendance/risk-summary", riskTierFilter],
+    enabled: view === "risk-summary",
     queryFn: async () => {
       const params = new URLSearchParams();
       if (riskTierFilter !== "all") params.set("tierFilter", riskTierFilter);
@@ -139,27 +139,10 @@ export default function AttendanceExceptions() {
     resolveMutation.mutate({ id: resolving.id, disposition: resolveForm.disposition, comment: resolveForm.comment });
   };
 
-  const pendingCount = exceptions?.filter(e => e.status === "pending").length ?? 0;
-
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap gap-1 h-auto">
-          <TabsTrigger value="all-exceptions" data-testid="tab-all-exceptions">
-            All Exceptions
-            {pendingCount > 0 && (
-              <span className="ml-1.5 bg-amber-500 text-white text-xs rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">
-                {pendingCount > 99 ? "99+" : pendingCount}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="risk-summary" data-testid="tab-risk-summary">
-            Attendance Risk Summary
-          </TabsTrigger>
-        </TabsList>
-
-        {/* All Exceptions Tab */}
-        <TabsContent value="all-exceptions" className="mt-4 space-y-4">
+      {view === "exceptions" && (
+        <div className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Status</Label>
@@ -266,10 +249,11 @@ export default function AttendanceExceptions() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        {/* Risk Summary Tab */}
-        <TabsContent value="risk-summary" className="mt-4 space-y-4">
+      {view === "risk-summary" && (
+        <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Filter by Tier:</span>
@@ -357,8 +341,8 @@ export default function AttendanceExceptions() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       {/* Resolve Dialog (HR override) */}
       <Dialog open={!!resolving} onOpenChange={open => !open && setResolving(null)}>
