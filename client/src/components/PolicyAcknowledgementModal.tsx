@@ -132,7 +132,7 @@ export function PolicyAcknowledgementModal() {
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">Policy v{policyConfig?.policyVersion ?? "2"}</span>
             <a
-              href="/admin/settings?tab=attendance"
+              href="/admin/settings/leave-attendance?tab=attendance-policy"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-primary underline underline-offset-2 hover:opacity-80"

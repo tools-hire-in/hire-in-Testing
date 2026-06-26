@@ -9,12 +9,11 @@ import { useAuth } from "@/hooks/use-auth";
 import Users from "./Users";
 import ReportsCompliance from "./hr/ReportsCompliance";
 import TrainingManagement from "./hr/TrainingManagement";
-import HRSettings from "./hr/HRSettings";
 import RegularizationsPanel from "./hr/RegularizationsPanel";
 import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
 import AttendanceExceptions from "./hr/AttendanceExceptions";
 
-const TABS = ["users", "reports", "training", "regularizations", "plans", "exceptions", "settings"] as const;
+const TABS = ["users", "reports", "training", "regularizations", "plans", "exceptions"] as const;
 type Tab = typeof TABS[number];
 
 function getTabFromSearch(): Tab {
@@ -62,13 +61,13 @@ export default function PeopleHR() {
             icon={UsersIcon}
             eyebrow="People & HR"
             title="People & HR"
-            subtitle="User management, reports, training, regularizations, and settings"
+            subtitle="User management, reports, training, and regularizations"
             testId="text-peoplehr-title"
           />
         ) : (
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-peoplehr-title">People & HR</h1>
-            <p className="text-sm text-muted-foreground">User management, reports, training, regularizations, and settings</p>
+            <p className="text-sm text-muted-foreground">User management, reports, training, and regularizations</p>
           </div>
         )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-peoplehr">
@@ -83,7 +82,6 @@ export default function PeopleHR() {
             {["super_admin", "admin", "hr"].includes(user?.role || "") && (
               <TabsTrigger value="exceptions" data-testid="tab-exceptions">Att. Exceptions</TabsTrigger>
             )}
-            <TabsTrigger value="settings" data-testid="tab-hr-settings">Settings</TabsTrigger>
           </TabsList>
           <TabsContent value="users" className="mt-4">
             <Users />
@@ -111,9 +109,6 @@ export default function PeopleHR() {
               </div>
             </TabsContent>
           )}
-          <TabsContent value="settings" className="mt-4">
-            <HRSettings />
-          </TabsContent>
         </Tabs>
       </div>
     </AdminLayout>

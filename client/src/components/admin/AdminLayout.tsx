@@ -422,6 +422,112 @@ function ContentStudioSection({
   );
 }
 
+function SettingsSection({
+  hasSettingsAccess,
+  isNavActive,
+  isComplianceLocked,
+  location,
+}: {
+  hasSettingsAccess: boolean;
+  isNavActive: (item: NavItem) => boolean;
+  isComplianceLocked: boolean;
+  location: string;
+}) {
+  const { open } = useSidebar();
+
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_settings_section_open");
+      if (stored === null) return location.startsWith("/admin/settings");
+      return stored !== "false";
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (location.startsWith("/admin/settings") && !expanded) {
+      setExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem("admin_settings_section_open", String(next)); } catch {}
+  };
+
+  if (!hasSettingsAccess) return null;
+
+  const settingsSubItems: NavItem[] = [
+    { href: "/admin/settings/leave-attendance", label: "Leave & Attendance", icon: CalendarDays, roles: [] },
+    { href: "/admin/settings/people-access", label: "People & Access", icon: Network, roles: [] },
+    { href: "/admin/settings/company", label: "Company", icon: Briefcase, roles: [] },
+    { href: "/admin/settings/features", label: "Features", icon: Sparkles, roles: [] },
+    { href: "/admin/settings/system", label: "System", icon: Monitor, roles: [] },
+  ];
+
+  const isSettingsActive = location.startsWith("/admin/settings");
+
+  if (!open) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={isSettingsActive}
+                tooltip="Settings"
+                className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+              >
+                <Link href="/admin/settings/leave-attendance">
+                  <Settings className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase hover:text-muted-foreground transition-colors"
+        data-testid="button-settings-section-toggle"
+      >
+        <span>Settings</span>
+        <ChevronRight
+          className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
+      {expanded && (
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {settingsSubItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isNavActive(item)}
+                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                  data-testid={`nav-item-${item.label.toLowerCase().replace(/[&\s]+/g, "-")}`}
+                >
+                  <Link href={item.href} className="flex items-center gap-2 w-full">
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
+}
+
 function SidebarCollapseToggle() {
   const { open, toggleSidebar } = useSidebar();
   return (
@@ -1006,7 +1112,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/recruitment") return location === "/admin/recruitment" || location.startsWith("/admin/recruitment") || location === "/admin" || location.startsWith("/admin/jobs") || location.startsWith("/admin/applications") || location.startsWith("/admin/contacts");
     if (href === "/admin/travel-calculator") return location.startsWith("/admin/travel-calculator");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
-    if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training") || location.startsWith("/admin/hr/settings");
+    if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training");
+    if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/studio") return location === "/admin/studio";
@@ -1170,6 +1277,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 isComplianceLocked={isComplianceLocked}
                 location={location}
                 cmReviewCount={cmReviewCount}
+              />
+
+              {/* SETTINGS — collapsible section with sub-category pages */}
+              <SettingsSection
+                hasSettingsAccess={hasHRAccess}
+                isNavActive={isNavActive}
+                isComplianceLocked={isComplianceLocked}
+                location={location}
               />
 
               {/* Bottom actions */}

@@ -3041,11 +3041,75 @@ function AttendanceExceptionThresholdsSection() {
   );
 }
 
-export default function HRSettings() {
+export type SettingsGroupKey =
+  | "leave-attendance"
+  | "people-access"
+  | "company"
+  | "features"
+  | "system";
+
+interface SettingsGroupItem {
+  id: string;
+  label: string;
+  hrOnly?: boolean;
+  salaryFlag?: boolean;
+}
+
+// NOTE: keep client/src/lib/settings-redirect.ts (SETTINGS_TAB_TO_GROUP) in
+// sync with the group/item ids below — it maps legacy ?tab= deep links to the
+// new per-group routes.
+export const SETTINGS_GROUPS: Record<
+  SettingsGroupKey,
+  { label: string; description: string; items: SettingsGroupItem[] }
+> = {
+  "leave-attendance": {
+    label: "Leave & Attendance",
+    description: "Leave types, holidays, attendance policy, shifts, and salary advance",
+    items: [
+      { id: "leave-types", label: "Leave Types" },
+      { id: "holidays", label: "Holidays" },
+      { id: "attendance-policy", label: "Attendance Policy" },
+      { id: "shifts", label: "Shifts" },
+      { id: "salary-advance-policy", label: "Salary Advance", hrOnly: true, salaryFlag: true },
+    ],
+  },
+  "people-access": {
+    label: "People & Access",
+    description: "Departments and role-based access control",
+    items: [
+      { id: "departments", label: "Departments" },
+      { id: "access-control", label: "Access Control" },
+    ],
+  },
+  company: {
+    label: "Company",
+    description: "Company identity and branding",
+    items: [{ id: "company-profile", label: "Company Profile" }],
+  },
+  features: {
+    label: "Features",
+    description: "Feature flags, training, and external integrations",
+    items: [
+      { id: "feature-flags", label: "Feature Flags" },
+      { id: "training", label: "Training & Onboarding" },
+      { id: "rayo-academy", label: "Rayo Academy" },
+    ],
+  },
+  system: {
+    label: "System",
+    description: "Data maintenance and correction utilities",
+    items: [{ id: "data-maintenance", label: "Data Maintenance" }],
+  },
+};
+
+export default function HRSettings({ group }: { group?: string }) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { isEnabled } = useFeatureFlags();
   const salaryAdvanceEnabled = isEnabled("salary_advance_enabled");
+  const groupKey: SettingsGroupKey =
+    group && group in SETTINGS_GROUPS ? (group as SettingsGroupKey) : "leave-attendance";
+  const groupDef = SETTINGS_GROUPS[groupKey];
   const { toast } = useToast();
 
   const [showLeaveType, setShowLeaveType] = useState(false);
@@ -3071,7 +3135,13 @@ export default function HRSettings() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [adjForm, setAdjForm] = useState({ userId: "", leaveTypeId: "", adjustmentDays: "", reason: "", year: String(new Date().getFullYear()) });
   const [adjHistoryYear, setAdjHistoryYear] = useState(String(new Date().getFullYear()));
-  const [activeSection, setActiveSection] = useState("leave-types");
+  const [activeSection, setActiveSection] = useState<string>(() => {
+    try {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (tab && groupDef.items.some((i) => i.id === tab)) return tab;
+    } catch {}
+    return groupDef.items[0].id;
+  });
 
   const { data: leaveTypes, isLoading: ltLoading } = useQuery<LeaveType[]>({
     queryKey: ["/api/hr/leave-types"],
@@ -3325,6 +3395,34 @@ export default function HRSettings() {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
 
+  const visibleItems = groupDef.items.filter(
+    (it) => (!it.hrOnly || isHrOrAbove) && (!it.salaryFlag || salaryAdvanceEnabled),
+  );
+
+  // When the group (route) changes, snap the active section to the URL's ?tab=
+  // (if valid for this group) or the first visible item.
+  useEffect(() => {
+    let tab: string | null = null;
+    try {
+      tab = new URLSearchParams(window.location.search).get("tab");
+    } catch {}
+    if (tab && visibleItems.some((i) => i.id === tab)) {
+      setActiveSection(tab);
+    } else if (!visibleItems.some((i) => i.id === activeSection)) {
+      setActiveSection(visibleItems[0]?.id ?? groupDef.items[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupKey, salaryAdvanceEnabled, isHrOrAbove]);
+
+  const handleSectionChange = (id: string) => {
+    setActiveSection(id);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", id);
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+  };
+
   if (authLoading || !isAuthenticated) return null;
 
   const openLeaveTypeForm = (lt?: LeaveType) => {
@@ -3368,41 +3466,6 @@ export default function HRSettings() {
     }
     setShowDepartment(true);
   };
-
-const NAV_GROUPS = [
-  { group: "Leave & Attendance", items: [
-    { id: "leave-types", label: "Leave Types" },
-    { id: "holidays", label: "Holidays" },
-    { id: "balance-adjustments", label: "Balance Adjustments", hrOnly: true },
-    { id: "attendance-policy", label: "Attendance Policy" },
-    { id: "salary-advance-policy", label: "Salary Advance Policy", hrOnly: true },
-    { id: "shifts", label: "Shifts" },
-  ]},
-  { group: "People & Access", items: [
-    { id: "departments", label: "Departments" },
-    { id: "access-control", label: "Access Control" },
-  ]},
-  { group: "Company", items: [
-    { id: "company-profile", label: "Company Profile" },
-  ]},
-  { group: "Features", items: [
-    { id: "feature-flags", label: "Feature Flags" },
-    { id: "training", label: "Training & Onboarding" },
-    { id: "performance", label: "Performance Management" },
-    { id: "rayo-academy", label: "Rayo Academy" },
-  ]},
-  { group: "Communications", items: [
-    { id: "whats-new", label: "What's New" },
-    { id: "release-notes", label: "Release Notes" },
-  ]},
-  { group: "Templates", items: [
-    { id: "letter-templates", label: "Letter Templates" },
-    { id: "goal-templates", label: "Goal Templates" },
-  ]},
-  { group: "Data", items: [
-    { id: "data-maintenance", label: "Data Maintenance" },
-  ]},
-] as const;
 
   return (
     <AdminLayout>
@@ -3967,43 +4030,38 @@ const NAV_GROUPS = [
           </DialogContent>
         </Dialog>
 
-      {/* Two-column settings layout */}
-      <div className="flex -mx-6 -mt-6 min-h-screen">
-        {/* Left nav sidebar */}
-        <nav className="w-52 shrink-0 border-r bg-muted/30 overflow-y-auto sticky top-0 self-start" style={{minHeight: "calc(100vh - 64px)"}}>
-          <div className="p-3 border-b">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Settings className="h-3.5 w-3.5" />
-              Settings
-            </p>
-          </div>
-          {NAV_GROUPS.map(group => (
-            <div key={group.group} className="px-2 pt-4 pb-1">
-              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group.group}</p>
-              {group.items
-                .filter((item: any) => !(item as any).hrOnly || isHrOrAbove)
-                .filter((item: any) => item.id !== "salary-advance-policy" || salaryAdvanceEnabled)
-                .map((item: any) => (
-                <button
-                  key={item.id}
-                  data-testid={`nav-${item.id}`}
-                  onClick={() => setActiveSection(item.id)}
-                  className={cn(
-                    "w-full text-left px-3 py-1.5 text-sm rounded-md mb-0.5 transition-colors",
-                    activeSection === item.id
-                      ? "bg-primary text-primary-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
+      {/* Settings sub-category page: header + single row of tabs */}
+      <div className="space-y-6 v2-surface">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-settings-group-title">
+            <Settings className="h-5 w-5" />
+            {groupDef.label}
+          </h1>
+          <p className="text-muted-foreground text-sm">{groupDef.description}</p>
+        </div>
 
-        {/* Right content panel */}
-        <div className="flex-1 p-6 space-y-6 min-w-0">
+        {visibleItems.length > 1 && (
+          <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1 max-w-full" data-testid="tabs-settings-sections">
+            {visibleItems.map((item) => (
+              <button
+                key={item.id}
+                data-testid={`nav-${item.id}`}
+                onClick={() => handleSectionChange(item.id)}
+                className={cn(
+                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                  activeSection === item.id
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Active section content */}
+        <div className="space-y-6 min-w-0">
 
           {/* Leave Types */}
           {activeSection === "leave-types" && (

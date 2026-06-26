@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
+import { resolveSettingsRedirect } from "@/lib/settings-redirect";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -116,6 +117,14 @@ function HRTabRedirect() {
   return null;
 }
 
+function LegacySettingsRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(resolveSettingsRedirect(window.location.search));
+  }, []);
+  return null;
+}
+
 function AdminFallback() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
@@ -222,7 +231,10 @@ function PublicRouter() {
       <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
       <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
       <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
-      <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
+      {/* Settings — promoted to top-level nav with per-sub-category routes */}
+      <Route path="/admin/settings/:group">{(params) => <Suspense fallback={<AdminFallback />}><HRSettings group={params.group} /></Suspense>}</Route>
+      <Route path="/admin/settings">{() => <LegacySettingsRedirect />}</Route>
+      <Route path="/admin/hr/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
       <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
       <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
@@ -338,7 +350,10 @@ function EmployeeRouter() {
       <Route path="/admin/hr/profile">{() => <Suspense fallback={<AdminFallback />}><HRProfile /></Suspense>}</Route>
       <Route path="/admin/hr/team-attendance">{() => <Suspense fallback={<AdminFallback />}><TeamAttendance /></Suspense>}</Route>
       <Route path="/admin/hr/leave-approvals">{() => <Suspense fallback={<AdminFallback />}><HRLeaveApprovals /></Suspense>}</Route>
-      <Route path="/admin/hr/settings">{() => <Suspense fallback={<AdminFallback />}><HRSettings /></Suspense>}</Route>
+      {/* Settings — promoted to top-level nav with per-sub-category routes */}
+      <Route path="/admin/settings/:group">{(params) => <Suspense fallback={<AdminFallback />}><HRSettings group={params.group} /></Suspense>}</Route>
+      <Route path="/admin/settings">{() => <LegacySettingsRedirect />}</Route>
+      <Route path="/admin/hr/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
       <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
       <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
