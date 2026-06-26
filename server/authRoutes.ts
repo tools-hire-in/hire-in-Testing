@@ -76,15 +76,10 @@ export function registerAuthRoutes(app: Express) {
         role: user.role,
       });
 
-      res.json({
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        isActive: user.isActive,
-        totpEnabled: user.totpEnabled,
-      });
+      // Return the same shape as GET /api/auth/me (including preferences) so the
+      // client caches a full user object and the new-look opt-in persists.
+      const currentUser = await getCurrentUser(req);
+      res.json(currentUser);
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed" });
@@ -258,7 +253,10 @@ export function registerAuthRoutes(app: Express) {
         lastName: newUser.lastName!,
       }).catch((err) => console.error("Background welcome email error:", err));
 
-      res.status(201).json(newUser);
+      // Return the same shape as GET /api/auth/me (including preferences) so the
+      // client caches a full user object consistent with the auth query.
+      const currentUser = await getCurrentUser(req);
+      res.status(201).json(currentUser);
     } catch (error) {
       console.error("Setup error:", error);
       res.status(500).json({ message: "Setup failed" });
