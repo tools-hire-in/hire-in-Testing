@@ -1462,7 +1462,7 @@ const ADDENDUM_TYPE_LABELS: Record<string, string> = {
 
 const ADDENDUM_STATUS_BADGES: Record<string, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-gray-100 text-gray-600" },
-  sent: { label: "Sent", className: "bg-blue-100 text-blue-700" },
+  sent: { label: "Pending Signature", className: "bg-amber-100 text-amber-800" },
   accepted: { label: "Accepted", className: "bg-green-100 text-green-700" },
   countersigned: { label: "Countersigned", className: "bg-emerald-100 text-emerald-700" },
   cancelled: { label: "Cancelled", className: "bg-red-100 text-red-600 line-through" },
@@ -1694,6 +1694,7 @@ export function OfferLettersDashboard() {
   const [countersigning, setCountersigning] = useState(false);
   const [expandedOfferIds, setExpandedOfferIds] = useState<Set<string>>(new Set());
   const [addendumDialog, setAddendumDialog] = useState<any>(null);
+  const [viewAddendum, setViewAddendum] = useState<any>(null);
   const [standaloneDialog, setStandaloneDialog] = useState(false);
   const [standaloneAnnexures, setStandaloneAnnexures] = useState<AnnexureItem[]>([]);
   const [standaloneForm, setStandaloneForm] = useState({
@@ -2434,6 +2435,16 @@ export function OfferLettersDashboard() {
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs"
+                              onClick={() => setViewAddendum(addendum)}
+                              data-testid={`button-view-standalone-${addendum.id}`}
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
                               onClick={() => window.open(`/api/hr/tools/addendums/${addendum.id}/download`, "_blank")}
                               data-testid={`button-download-standalone-${addendum.id}`}
                             >
@@ -2533,6 +2544,204 @@ export function OfferLettersDashboard() {
               Reject Offer Letter
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewAddendum} onOpenChange={(open) => { if (!open) setViewAddendum(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {viewAddendum && (() => {
+            const a = viewAddendum;
+            const med = (a.manualEmployeeData && typeof a.manualEmployeeData === "object") ? a.manualEmployeeData as Record<string, any> : {};
+            const statusInfo = ADDENDUM_STATUS_BADGES[a.status] || ADDENDUM_STATUS_BADGES.sent;
+            const ccList: string[] = a.ccEmails ? String(a.ccEmails).split(",").map((e: string) => e.trim()).filter(Boolean) : [];
+            const rows: Array<{ label: string; oldVal: string; newVal: string }> = [];
+            if (a.addendumType === "salary_revision" || a.addendumType === "combined") {
+              if (a.oldSalary || a.newSalary) rows.push({
+                label: "Annual CTC",
+                oldVal: a.oldSalary ? `${a.oldSalary}${a.oldSalaryInWords ? ` (${a.oldSalaryInWords})` : ""}` : "—",
+                newVal: a.newSalary ? `${a.newSalary}${a.newSalaryInWords ? ` (${a.newSalaryInWords})` : ""}` : "—",
+              });
+            }
+            if (a.addendumType === "role_change" || a.addendumType === "combined") {
+              if (a.oldDesignation || a.newDesignation) rows.push({ label: "Designation / Title", oldVal: a.oldDesignation || "—", newVal: a.newDesignation || "—" });
+              if (a.oldDepartment || a.newDepartment) rows.push({ label: "Department", oldVal: a.oldDepartment || "—", newVal: a.newDepartment || "—" });
+            }
+            if (a.addendumType === "probation_extension") {
+              if (a.oldConfirmationDate || a.newConfirmationDate) rows.push({ label: "Confirmation Date", oldVal: a.oldConfirmationDate || "—", newVal: a.newConfirmationDate || "—" });
+            }
+            const deviceItems: Array<{ description?: string; serialNumber?: string; assetTag?: string; condition?: string }> = Array.isArray(a.deviceItems) ? a.deviceItems : [];
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <span>{ADDENDUM_TYPE_LABELS[a.addendumType] || a.addendumType}</span>
+                    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.className}`} data-testid="text-view-addendum-status">
+                      {statusInfo.label}
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription>
+                    Amendment letter for <strong>{a.candidateName}</strong>
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm bg-muted/30 rounded-md p-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground block">Employee</span>
+                      <span className="font-medium" data-testid="text-view-employee">{a.candidateName}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block">Effective Date</span>
+                      <span className="font-medium" data-testid="text-view-effective-date">{a.effectiveDate || "—"}</span>
+                    </div>
+                    {(med.designation || med.department) && (
+                      <div>
+                        <span className="text-xs text-muted-foreground block">Designation / Dept</span>
+                        <span className="font-medium">{med.designation || "—"}{med.department ? ` · ${med.department}` : ""}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs text-muted-foreground block">Issued</span>
+                      <span className="font-medium">{a.issuedAt ? new Date(a.issuedAt).toLocaleDateString() : "—"}</span>
+                    </div>
+                  </div>
+
+                  {(rows.length > 0 || deviceItems.length > 0 || a.customClauseTitle || a.customClauseText) && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#1F3A6E] mb-2">Amendment Details</h4>
+                      {rows.length > 0 && (
+                        <div className="overflow-x-auto rounded-md border">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                                <th className="text-left p-2 font-semibold">Field</th>
+                                <th className="text-left p-2 font-semibold">Previous</th>
+                                <th className="text-left p-2 font-semibold">New</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((r, i) => (
+                                <tr key={i} className="border-t" data-testid={`row-view-term-${i}`}>
+                                  <td className="p-2 font-medium">{r.label}</td>
+                                  <td className="p-2 text-muted-foreground">{r.oldVal}</td>
+                                  <td className="p-2 font-semibold text-green-700">{r.newVal}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {a.addendumType === "device_allocation" && (
+                        <div className="overflow-x-auto rounded-md border mt-2">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                                <th className="text-left p-2 font-semibold w-10">#</th>
+                                <th className="text-left p-2 font-semibold">Item</th>
+                                <th className="text-left p-2 font-semibold">Asset Tag / Serial</th>
+                                <th className="text-left p-2 font-semibold">Condition</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {deviceItems.length === 0 ? (
+                                <tr><td colSpan={4} className="p-3 text-center text-muted-foreground">No devices listed</td></tr>
+                              ) : deviceItems.map((d, i) => (
+                                <tr key={i} className="border-t" data-testid={`row-view-device-${i}`}>
+                                  <td className="p-2 text-center text-muted-foreground">{i + 1}</td>
+                                  <td className="p-2 font-medium">{d.description || "—"}</td>
+                                  <td className="p-2 text-muted-foreground font-mono text-xs">{d.assetTag || d.serialNumber || "—"}</td>
+                                  <td className="p-2 text-muted-foreground">{d.condition || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {(a.customClauseTitle || a.customClauseText) && (
+                        <div className="mt-2 rounded-md border p-3 text-sm">
+                          {a.customClauseTitle && <p className="font-semibold text-[#1F3A6E] mb-1">{a.customClauseTitle}</p>}
+                          {a.customClauseText && <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{a.customClauseText}</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {a.reason && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#1F3A6E] mb-1">Reason</h4>
+                      <p className="text-sm text-muted-foreground">{a.reason}</p>
+                    </div>
+                  )}
+
+                  {ccList.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#1F3A6E] mb-1">CC Recipients</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ccList.map((e, i) => (
+                          <Badge key={i} variant="outline" className="text-xs" data-testid={`badge-view-cc-${i}`}>{e}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-md border p-3 text-sm space-y-2">
+                    <h4 className="text-sm font-semibold text-[#1F3A6E]">Signature Status</h4>
+                    {a.acceptedAt ? (
+                      <div className="space-y-1" data-testid="text-view-employee-signature">
+                        <div className="flex items-center gap-2 text-green-700">
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="font-medium">Signed by employee</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground pl-6">
+                          {a.acceptedName ? <div>Signed as: <span className="font-medium text-foreground">{a.acceptedName}</span></div> : null}
+                          <div>On: {new Date(a.acceptedAt).toLocaleString()}</div>
+                          {a.authCode ? <div>Auth code: <code className="font-mono">{a.authCode}</code></div> : null}
+                        </div>
+                      </div>
+                    ) : a.status === "cancelled" ? (
+                      <p className="text-xs text-muted-foreground">This amendment was cancelled.</p>
+                    ) : (
+                      <div className="flex items-center gap-2 text-amber-700" data-testid="text-view-pending-signature">
+                        <Clock className="h-4 w-4" />
+                        <span className="font-medium">Pending employee signature</span>
+                      </div>
+                    )}
+
+                    {a.counterSignedAt ? (
+                      <div className="space-y-1 border-t pt-2" data-testid="text-view-countersignature">
+                        <div className="flex items-center gap-2 text-emerald-700">
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="font-medium">Counter-signed by HR</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground pl-6">
+                          {a.hrManagerName ? <div>By: <span className="font-medium text-foreground">{a.hrManagerName}</span></div> : null}
+                          <div>On: {new Date(a.counterSignedAt).toLocaleString()}</div>
+                          {a.counterAuthCode ? <div>Auth code: <code className="font-mono">{a.counterAuthCode}</code></div> : null}
+                        </div>
+                      </div>
+                    ) : a.acceptedAt ? (
+                      <div className="flex items-center gap-2 text-amber-700 border-t pt-2">
+                        <Clock className="h-4 w-4" />
+                        <span className="font-medium">Awaiting HR counter-signature</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(`/api/hr/tools/addendums/${a.id}/download`, "_blank")}
+                    data-testid="button-view-download-docx"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download DOCX
+                  </Button>
+                  <Button onClick={() => setViewAddendum(null)} data-testid="button-view-close">Close</Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

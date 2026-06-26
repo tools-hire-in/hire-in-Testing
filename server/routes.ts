@@ -49,7 +49,7 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
 import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -9175,22 +9175,47 @@ export async function registerRoutes(
         ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
         : [];
 
-      const emailResult = await sendAddendumEmail({
-        to: toEmail,
-        candidateName: addendum.candidateName,
-        addendumType: addendum.addendumType,
-        acceptUrl,
-        cc: storedCcEmails.length > 0 ? storedCcEmails : undefined,
-      });
+      // A draft being sent for the first time gets the original issuance email.
+      // A pending (already-sent, not yet signed) addendum gets a reminder-styled
+      // nudge with the days-remaining / expiry framing instead.
+      const isReminder = addendum.status === "sent" && !addendum.acceptedAt;
+      let emailResult: { success: boolean; error?: string };
+      if (isReminder) {
+        const expiresAt = addendum.expiresAt ? new Date(addendum.expiresAt) : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 7);
+          return d;
+        })();
+        const daysLeft = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        emailResult = await sendAddendumReminderEmail({
+          to: toEmail,
+          candidateName: addendum.candidateName,
+          addendumType: addendum.addendumType,
+          acceptUrl,
+          expiresAt,
+          daysLeft,
+          cc: storedCcEmails.length > 0 ? storedCcEmails : undefined,
+        });
+      } else {
+        emailResult = await sendAddendumEmail({
+          to: toEmail,
+          candidateName: addendum.candidateName,
+          addendumType: addendum.addendumType,
+          acceptUrl,
+          cc: storedCcEmails.length > 0 ? storedCcEmails : undefined,
+        });
+      }
 
       if (addendum.status === "draft") {
         await storage.updateAddendumStatus(addendum.id, { status: "sent" });
+      } else if (isReminder && emailResult.success) {
+        await storage.updateAddendumStatus(addendum.id, { reminderSentAt: new Date() });
       }
 
       await storage.createAuditLog({
-        action: "standalone_addendum_resent",
+        action: isReminder ? "standalone_addendum_reminder_sent" : "standalone_addendum_resent",
         actorId: req.session.userId!,
-        changes: { addendumId: addendum.id, emailSent: emailResult.success },
+        changes: { addendumId: addendum.id, emailSent: emailResult.success, reminder: isReminder },
       });
 
       res.json({ success: emailResult.success, error: emailResult.success ? undefined : emailResult.error });

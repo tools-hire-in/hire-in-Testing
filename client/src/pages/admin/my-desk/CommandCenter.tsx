@@ -105,6 +105,19 @@ export default function CommandCenter() {
     enabled: isAuthenticated,
   });
 
+  const { data: pendingAddendums } = useQuery<{ id: string; token: string; addendumType: string; candidateName: string; effectiveDate: string | null }[]>({
+    queryKey: ["/api/hr/tools/addendums/my-pending"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/tools/addendums/my-pending", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 120000,
+  });
+
   const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
     queryKey: ["/api/onboarding/my-training-alerts"],
     queryFn: async () => {
@@ -262,6 +275,34 @@ export default function CommandCenter() {
           {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
         </p>
       </div>
+
+      {/* Pending addendum signature alert */}
+      {(pendingAddendums?.length ?? 0) > 0 && (pendingAddendums || []).map((a) => {
+        const typeLabel = a.addendumType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return (
+          <Alert
+            key={a.id}
+            className="flex items-center justify-between gap-4 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+            data-testid={`cc-addendum-alert-${a.id}`}
+          >
+            <div className="flex items-center gap-3">
+              <FileCheck className="h-5 w-5 shrink-0 text-amber-600" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                You have an amendment letter to sign: <strong>{typeLabel}</strong>
+              </AlertDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => window.open(`/addendum/${a.token}`, "_blank")}
+              className="shrink-0"
+              data-testid={`cc-link-sign-addendum-${a.id}`}
+            >
+              Review &amp; Sign
+            </Button>
+          </Alert>
+        );
+      })}
 
       {/* Training alert */}
       {(trainingAlerts?.total ?? 0) > 0 && (
