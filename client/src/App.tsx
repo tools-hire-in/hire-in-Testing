@@ -61,7 +61,6 @@ const SalaryAdvance = lazy(() => import("@/pages/admin/SalaryAdvance"));
 const MyDocuments = lazy(() => import("@/pages/admin/hr/MyDocuments"));
 const HRTools = lazy(() => import("@/pages/admin/hr/HRTools"));
 const MyTraining = lazy(() => import("@/pages/admin/hr/MyTraining"));
-const TrainingManagement = lazy(() => import("@/pages/admin/hr/TrainingManagement"));
 const TeamAttendance = lazy(() => import("@/pages/admin/hr/TeamAttendance"));
 const TrainingProgress = lazy(() => import("@/pages/admin/hr/TrainingProgress"));
 const ReportsCompliance = lazy(() => import("@/pages/admin/hr/ReportsCompliance"));
@@ -250,7 +249,7 @@ function PublicRouter() {
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
       <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>
-      <Route path="/admin/hr/training">{() => <Suspense fallback={<AdminFallback />}><TrainingManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/training">{() => <Redirect to="/admin/growth?tab=training-mgmt" />}</Route>
       <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
       <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
       <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>
@@ -372,7 +371,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
       <Route path="/admin/hr/my-training">{() => <Suspense fallback={<AdminFallback />}><MyTraining /></Suspense>}</Route>
-      <Route path="/admin/hr/training">{() => <Suspense fallback={<AdminFallback />}><TrainingManagement /></Suspense>}</Route>
+      <Route path="/admin/hr/training">{() => <Redirect to="/admin/growth?tab=training-mgmt" />}</Route>
       <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
       <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
       <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>

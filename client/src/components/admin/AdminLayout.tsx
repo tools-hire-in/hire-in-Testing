@@ -1252,10 +1252,11 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   // so they appear/disappear independently of leave/training signals.
   const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge + exceptionCount;
 
-  // People & HR badge: endorsements + training requests actionable by HR/admin/super_admin
-  // (HR/admin/super_admin access training request management from People & HR → Training)
+  // Training-request management moved to Growth & Learning → Training Mgmt, so its
+  // actionable badge now surfaces on the Growth nav item (see growthBadge usage).
   const peopleHRTrainingBadge = ["hr", "admin", "super_admin"].includes(userRole) ? trainingReqBadge : 0;
-  const peopleHRBadge = (pendingEndorseCount ?? 0) + peopleHRTrainingBadge;
+  // People & HR badge: endorsements only.
+  const peopleHRBadge = (pendingEndorseCount ?? 0);
 
   // HIRD open ticket badge for resolver roles
   const { data: hirdOpenData } = useQuery<{ count: number }>({
@@ -1314,7 +1315,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "Growth & Learning",
       icon: GraduationCap,
       roles: ["all"],
-      badge: growthBadge > 0 ? growthBadge : undefined,
+      badge: (growthBadge + peopleHRTrainingBadge) > 0 ? (growthBadge + peopleHRTrainingBadge) : undefined,
       badgeColor: (trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-500" : "bg-amber-500",
     }] : []),
     ...(isEnabled("salary_advance_enabled") ? [{
@@ -1389,7 +1390,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/travel-calculator") return location.startsWith("/admin/travel-calculator");
     if (href === "/admin/communications") return location === "/admin/communications" || location.startsWith("/admin/communications");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
-    if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports") || location.startsWith("/admin/hr/training");
+    if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports");
     if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");

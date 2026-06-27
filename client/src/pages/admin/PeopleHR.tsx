@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Users as UsersIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { useNewLook } from "@/hooks/use-new-look";
@@ -11,9 +12,7 @@ import { SalaryReportsContent } from "./hr/SalaryReports";
 import { DocumentComplianceContent } from "./hr/DocumentCompliance";
 import { PolicyComplianceContent } from "./hr/PolicyCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
-import TrainingManagement from "./hr/TrainingManagement";
 import RegularizationsPanel from "./hr/RegularizationsPanel";
-import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
 import AttendanceExceptions from "./hr/AttendanceExceptions";
 import BalanceAdjustments from "./hr/BalanceAdjustments";
 import {
@@ -22,8 +21,11 @@ import {
   isHrRole,
   isTabVisibleForRole,
   parsePeopleHrTab,
+  relocatedGrowthTab,
   visibleTabDefsForRole,
 } from "@/lib/people-hr-tabs";
+
+type EscalationView = "exceptions" | "risk-summary";
 
 export default function PeopleHR() {
   const [, setLocation] = useLocation();
@@ -36,12 +38,23 @@ export default function PeopleHR() {
 
   const visibleTabs = visibleTabDefsForRole(role);
 
+  // Tabs that moved to Growth & Learning — redirect old deep links there.
+  const relocated = relocatedGrowthTab(window.location.search);
+  useEffect(() => {
+    if (relocated) {
+      setLocation(`/admin/growth?tab=${relocated}`);
+    }
+  }, [relocated, setLocation]);
+
   // Parse the deep-linked tab without depending on role, so a role-gated tab
   // (e.g. ?tab=balance-adjustments) is preserved through the auth-loading
   // phase. Role visibility is enforced once auth resolves (effect below).
   const [activeTab, setActiveTab] = useState<PeopleHrTab>(
     () => parsePeopleHrTab(window.location.search) ?? "users",
   );
+
+  // Sub-view inside the merged "Attendance Escalations" tab.
+  const [escalationView, setEscalationView] = useState<EscalationView>("exceptions");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -67,7 +80,7 @@ export default function PeopleHR() {
     }
   }, [authLoading, user, role, activeTab]);
 
-  if (authLoading || !isAuthenticated) return null;
+  if (authLoading || !isAuthenticated || relocated) return null;
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as PeopleHrTab);
@@ -88,13 +101,13 @@ export default function PeopleHR() {
             icon={UsersIcon}
             eyebrow="People & HR"
             title="People & HR"
-            subtitle="User management, balance adjustments, reports, training, and attendance"
+            subtitle="User management, balance adjustments, reports, and attendance escalations"
             testId="text-peoplehr-title"
           />
         ) : (
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-peoplehr-title">People & HR</h1>
-            <p className="text-sm text-muted-foreground">User management, balance adjustments, reports, training, and attendance</p>
+            <p className="text-sm text-muted-foreground">User management, balance adjustments, reports, and attendance escalations</p>
           </div>
         )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-peoplehr">
@@ -140,36 +153,42 @@ export default function PeopleHR() {
             </TabsContent>
           )}
 
-          <TabsContent value="training" className="mt-4">
-            <TrainingManagement />
-          </TabsContent>
-
           <TabsContent value="regularizations" className="mt-4">
             <RegularizationsPanel />
           </TabsContent>
 
           {isHR && (
-            <TabsContent value="plans" className="mt-4">
-              <HRPlansOverview />
-            </TabsContent>
-          )}
-
-          {isHR && (
-            <TabsContent value="exceptions" className="mt-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-1">Attendance Exceptions</h2>
-                <p className="text-sm text-muted-foreground mb-4">Review short-day exceptions across all teams.</p>
-                <AttendanceExceptions view="exceptions" />
-              </div>
-            </TabsContent>
-          )}
-
-          {isHR && (
-            <TabsContent value="risk-summary" className="mt-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-1">Attendance Risk Summary</h2>
-                <p className="text-sm text-muted-foreground mb-4">Monitor attendance risk and escalation tiers across all teams.</p>
-                <AttendanceExceptions view="risk-summary" />
+            <TabsContent value="escalations" className="mt-4">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold mb-1">Attendance Escalations</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Review day-to-day short-day exceptions and monthly attendance risk tiers across all teams.
+                  </p>
+                </div>
+                <div className="inline-flex rounded-md border bg-muted/30 p-1" role="tablist" data-testid="toggle-escalation-view">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={escalationView === "exceptions" ? "default" : "ghost"}
+                    className="h-7"
+                    onClick={() => setEscalationView("exceptions")}
+                    data-testid="button-escalation-exceptions"
+                  >
+                    Exceptions
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={escalationView === "risk-summary" ? "default" : "ghost"}
+                    className="h-7"
+                    onClick={() => setEscalationView("risk-summary")}
+                    data-testid="button-escalation-risk-summary"
+                  >
+                    Risk Summary
+                  </Button>
+                </div>
+                <AttendanceExceptions view={escalationView} />
               </div>
             </TabsContent>
           )}

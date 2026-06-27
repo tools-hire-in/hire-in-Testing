@@ -14,8 +14,11 @@ import { TeamReviewsContent } from "./performance/TeamReviews";
 import PraiseBoard from "./performance/PraiseBoard";
 import MyPlanView from "./hr/MyPlanView";
 import { PerformanceSettingsSection, GoalTemplatesSection } from "./hr/HRSettings";
+import TrainingManagement from "./hr/TrainingManagement";
+import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
 
 const MANAGER_ROLES = ["super_admin", "admin", "hr", "manager"];
+const HR_ADMIN_ROLES = ["super_admin", "admin", "hr"];
 
 type Tab =
   | "praise"
@@ -27,7 +30,9 @@ type Tab =
   | "my-reviews"
   | "team-reviews"
   | "settings"
-  | "my-plan";
+  | "my-plan"
+  | "training-mgmt"
+  | "employee-plans";
 
 // Map legacy / retired deep-link params onto the flattened tab set.
 function aliasTab(raw: string): string {
@@ -40,18 +45,27 @@ function aliasTab(raw: string): string {
     case "goal-templates":
     case "templates":
       return "settings";
+    // Relocated from People & HR.
+    case "training-management":
+      return "training-mgmt";
+    case "plans":
+    case "plans-overview":
+      return "employee-plans";
     default:
       return raw;
   }
 }
 
-function getAllowedTabs(isManager: boolean, hasPlan: boolean): Tab[] {
+function getAllowedTabs(isManager: boolean, isHrAdmin: boolean, hasPlan: boolean): Tab[] {
   const tabs: Tab[] = ["praise", "training", "my-goals"];
   if (isManager) tabs.push("team-goals");
   tabs.push("check-ins", "feedback", "my-reviews");
   if (isManager) tabs.push("team-reviews");
   if (isManager) tabs.push("settings");
   if (hasPlan) tabs.push("my-plan");
+  // Admin tools relocated from People & HR.
+  if (isHrAdmin) tabs.push("training-mgmt");
+  if (isManager) tabs.push("employee-plans");
   return tabs;
 }
 
@@ -63,9 +77,19 @@ function resolveTab(raw: string, allowed: Tab[]): Tab {
       return "my-goals";
     case "team-reviews":
       return "my-reviews";
+    case "training-mgmt":
+      return "training";
+    case "employee-plans":
+      return hasPlanFallback(allowed);
     default:
       return "praise";
   }
+}
+
+// When a non-manager lands on ?tab=employee-plans, prefer their own plan view
+// if available, else the praise board.
+function hasPlanFallback(allowed: Tab[]): Tab {
+  return allowed.includes("my-plan") ? "my-plan" : "praise";
 }
 
 function getTabFromSearch(): string {
@@ -93,7 +117,8 @@ export default function MyGrowth() {
     myPlanData?.plan?.department_scope === "healthcare";
 
   const isManager = MANAGER_ROLES.includes(user?.role || "");
-  const allowedTabs = getAllowedTabs(isManager, hasPlan);
+  const isHrAdmin = HR_ADMIN_ROLES.includes(user?.role || "");
+  const allowedTabs = getAllowedTabs(isManager, isHrAdmin, hasPlan);
 
   // Hold the raw (alias-resolved) requested tab; validate against role/plan once known.
   const [activeTab, setActiveTab] = useState<Tab>(() => getTabFromSearch() as Tab);
@@ -107,7 +132,7 @@ export default function MyGrowth() {
     if (authLoading || planLoading) return;
     setActiveTab((prev) => (allowedTabs.includes(prev) ? prev : resolveTab(prev, allowedTabs)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, planLoading, isManager, hasPlan]);
+  }, [authLoading, planLoading, isManager, isHrAdmin, hasPlan]);
 
   if (authLoading || !isAuthenticated) return null;
 
@@ -148,6 +173,12 @@ export default function MyGrowth() {
             )}
             {hasPlan && (
               <TabsTrigger value="my-plan" data-testid="tab-my-plan">My Plan</TabsTrigger>
+            )}
+            {isHrAdmin && (
+              <TabsTrigger value="training-mgmt" data-testid="tab-training-mgmt">Training Mgmt</TabsTrigger>
+            )}
+            {isManager && (
+              <TabsTrigger value="employee-plans" data-testid="tab-employee-plans">Employee Plans</TabsTrigger>
             )}
           </TabsList>
 
@@ -190,6 +221,16 @@ export default function MyGrowth() {
           {hasPlan && (
             <TabsContent value="my-plan" className="mt-4">
               <MyPlanView />
+            </TabsContent>
+          )}
+          {isHrAdmin && (
+            <TabsContent value="training-mgmt" className="mt-4">
+              <TrainingManagement />
+            </TabsContent>
+          )}
+          {isManager && (
+            <TabsContent value="employee-plans" className="mt-4">
+              <HRPlansOverview />
             </TabsContent>
           )}
         </Tabs>

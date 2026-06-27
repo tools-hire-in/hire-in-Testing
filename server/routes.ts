@@ -418,6 +418,69 @@ function parseDateString(dateStr: string, year: number): string | null {
   return null;
 }
 
+/**
+ * Ensure a probation-extension addendum is reflected as an employee_plans row so
+ * the extended employee surfaces in the Employee Plans dashboard. Without this,
+ * probation extensions generated via the Letter Generator never created a plan
+ * row, so extended employees were invisible there.
+ *
+ * Behaviour:
+ *  - Resolves an employee id (directly, or via an existing offer-letter-linked plan).
+ *  - Marks any open (pending/active) probation plan for that employee as extended.
+ *  - Inserts a new active probation plan covering the extension window, unless an
+ *    identical one already exists (idempotent against regenerated addendums).
+ * All failures are non-fatal — addendum creation must never be blocked by this.
+ */
+async function ensureProbationExtensionPlan(opts: {
+  employeeId?: string | null;
+  offerLetterId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  createdBy: string;
+}): Promise<void> {
+  let employeeId = opts.employeeId ?? null;
+  const { offerLetterId, createdBy } = opts;
+  const startDate = opts.startDate || new Date().toISOString().slice(0, 10);
+  const endDate = opts.endDate || null;
+  if (!endDate) return; // no extended confirmation date — nothing to plan
+
+  if (!employeeId && offerLetterId) {
+    const r = await db.execute(sql`
+      SELECT employee_id FROM employee_plans
+      WHERE offer_letter_id = ${offerLetterId} AND employee_id IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    employeeId = ((r.rows[0] as any)?.employee_id as string | undefined) ?? null;
+  }
+  if (!employeeId) return; // cannot link a plan without a system employee
+
+  // Close any currently-open probation plan as extended.
+  await db.execute(sql`
+    UPDATE employee_plans
+    SET status = 'extended', outcome = 'extended', updated_at = NOW()
+    WHERE employee_id = ${employeeId} AND plan_type = 'probation' AND status IN ('pending', 'active')
+  `);
+
+  // Idempotency: skip if an identical extension plan already exists.
+  const dup = await db.execute(sql`
+    SELECT id FROM employee_plans
+    WHERE employee_id = ${employeeId} AND plan_type = 'probation' AND end_date = ${endDate}
+    LIMIT 1
+  `);
+  if (dup.rows.length > 0) return;
+
+  const durationDays = Math.max(
+    0,
+    Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)),
+  );
+  await db.execute(sql`
+    INSERT INTO employee_plans
+      (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
+    VALUES
+      (${employeeId}, NULL, 'probation', 'healthcare', 'active', ${startDate}, ${endDate}, ${durationDays}, ${createdBy})
+  `);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -8824,6 +8887,19 @@ export async function registerRoutes(
         changes: { addendumId: addendum.id, offerId: offerLetter.id, addendumType, emailSent: emailResult.success },
       });
 
+      if (addendumType === "probation_extension") {
+        try {
+          await ensureProbationExtensionPlan({
+            offerLetterId: offerLetter.id,
+            startDate: effectiveDate,
+            endDate: newConfirmationDate,
+            createdBy: actorId,
+          });
+        } catch (planErr) {
+          console.error("[Addendum] probation plan upsert failed (non-fatal):", planErr);
+        }
+      }
+
       res.json({ ...addendum, emailSent: emailResult.success });
     } catch (error: any) {
       console.error("Create addendum error:", error?.message || error);
@@ -9285,6 +9361,19 @@ export async function registerRoutes(
         actorId,
         changes: { addendumId: addendum.id, employeeName, addendumType, emailSent: emailResult.success },
       });
+
+      if (addendumType === "probation_extension" && resolvedForEmployeeId) {
+        try {
+          await ensureProbationExtensionPlan({
+            employeeId: resolvedForEmployeeId,
+            startDate: effectiveDate,
+            endDate: newConfirmationDate,
+            createdBy: actorId,
+          });
+        } catch (planErr) {
+          console.error("[Standalone Addendum] probation plan upsert failed (non-fatal):", planErr);
+        }
+      }
 
       res.json({ ...addendum, emailSent: emailResult.success });
     } catch (error: any) {

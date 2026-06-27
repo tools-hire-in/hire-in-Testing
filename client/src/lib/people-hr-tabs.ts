@@ -5,11 +5,8 @@ export type PeopleHrTab =
   | "compliance"
   | "policy"
   | "audit"
-  | "training"
   | "regularizations"
-  | "plans"
-  | "exceptions"
-  | "risk-summary";
+  | "escalations";
 
 type TabGate = "all" | "hr" | "admin";
 
@@ -27,11 +24,8 @@ export const PEOPLE_HR_TAB_DEFS: PeopleHrTabDef[] = [
   { value: "compliance", label: "Document Compliance", testId: "tab-compliance", gate: "hr" },
   { value: "policy", label: "Policy Compliance", testId: "tab-policy", gate: "hr" },
   { value: "audit", label: "Audit Logs", testId: "tab-audit", gate: "admin" },
-  { value: "training", label: "Training Mgmt", testId: "tab-training-mgmt", gate: "all" },
   { value: "regularizations", label: "Regularizations", testId: "tab-regularizations", gate: "all" },
-  { value: "plans", label: "Plans Overview", testId: "tab-plans", gate: "hr" },
-  { value: "exceptions", label: "Att. Exceptions", testId: "tab-exceptions", gate: "hr" },
-  { value: "risk-summary", label: "Risk Summary", testId: "tab-risk-summary", gate: "hr" },
+  { value: "escalations", label: "Attendance Escalations", testId: "tab-escalations", gate: "hr" },
 ];
 
 const ALL_TAB_VALUES = PEOPLE_HR_TAB_DEFS.map((t) => t.value);
@@ -39,8 +33,19 @@ const ALL_TAB_VALUES = PEOPLE_HR_TAB_DEFS.map((t) => t.value);
 const DEFAULT_TAB: PeopleHrTab = "users";
 
 // Legacy ?tab= aliases from the old nested-tab layout.
+// `exceptions` and `risk-summary` were merged into the single "escalations" tab.
+// `training` and `plans` moved to Growth & Learning (handled via redirect in PeopleHR).
 export const PEOPLE_HR_LEGACY_TAB_ALIASES: Record<string, PeopleHrTab> = {
   reports: "salary",
+  exceptions: "escalations",
+  "risk-summary": "escalations",
+};
+
+// Legacy ?tab= values that have moved off the People & HR page entirely and must
+// redirect to another route (Growth & Learning). Maps old tab → Growth tab.
+export const PEOPLE_HR_RELOCATED_TABS: Record<string, string> = {
+  training: "training-mgmt",
+  plans: "employee-plans",
 };
 
 export function isAdminRole(role: string): boolean {
@@ -72,6 +77,17 @@ export function parsePeopleHrTab(search: string): PeopleHrTab | null {
     if (!raw) return null;
     const resolved = (PEOPLE_HR_LEGACY_TAB_ALIASES[raw] ?? raw) as PeopleHrTab;
     if (ALL_TAB_VALUES.includes(resolved)) return resolved;
+  } catch {}
+  return null;
+}
+
+// Returns the Growth tab a relocated People & HR ?tab= should redirect to, or
+// null if the current ?tab= is not a relocated one.
+export function relocatedGrowthTab(search: string): string | null {
+  try {
+    const raw = new URLSearchParams(search).get("tab");
+    if (!raw) return null;
+    return PEOPLE_HR_RELOCATED_TABS[raw] ?? null;
   } catch {}
   return null;
 }

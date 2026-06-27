@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isTabVisibleForRole,
   parsePeopleHrTab,
+  relocatedGrowthTab,
   resolvePeopleHrTab,
   visibleTabDefsForRole,
 } from "./people-hr-tabs.ts";
@@ -12,18 +13,32 @@ test("parsePeopleHrTab resolves valid tabs regardless of role", () => {
   assert.equal(parsePeopleHrTab("?tab=salary"), "salary");
   assert.equal(parsePeopleHrTab("?tab=compliance"), "compliance");
   assert.equal(parsePeopleHrTab("?tab=audit"), "audit");
-  assert.equal(parsePeopleHrTab("?tab=exceptions"), "exceptions");
-  assert.equal(parsePeopleHrTab("?tab=risk-summary"), "risk-summary");
+  assert.equal(parsePeopleHrTab("?tab=escalations"), "escalations");
+});
+
+test("parsePeopleHrTab merges exceptions + risk-summary into escalations", () => {
+  assert.equal(parsePeopleHrTab("?tab=exceptions"), "escalations");
+  assert.equal(parsePeopleHrTab("?tab=risk-summary"), "escalations");
 });
 
 test("parsePeopleHrTab maps the legacy reports alias to salary", () => {
   assert.equal(parsePeopleHrTab("?tab=reports"), "salary");
 });
 
-test("parsePeopleHrTab returns null for missing or unknown tabs", () => {
+test("parsePeopleHrTab returns null for missing, unknown, or relocated tabs", () => {
   assert.equal(parsePeopleHrTab(""), null);
   assert.equal(parsePeopleHrTab("?foo=bar"), null);
   assert.equal(parsePeopleHrTab("?tab=nonexistent"), null);
+  // training + plans moved to Growth & Learning — no longer People & HR tabs.
+  assert.equal(parsePeopleHrTab("?tab=training"), null);
+  assert.equal(parsePeopleHrTab("?tab=plans"), null);
+});
+
+test("relocatedGrowthTab points moved tabs at the Growth equivalents", () => {
+  assert.equal(relocatedGrowthTab("?tab=training"), "training-mgmt");
+  assert.equal(relocatedGrowthTab("?tab=plans"), "employee-plans");
+  assert.equal(relocatedGrowthTab("?tab=salary"), null);
+  assert.equal(relocatedGrowthTab(""), null);
 });
 
 test("isTabVisibleForRole enforces gating", () => {
@@ -34,9 +49,12 @@ test("isTabVisibleForRole enforces gating", () => {
   // admin-gated
   assert.equal(isTabVisibleForRole("audit", "admin"), true);
   assert.equal(isTabVisibleForRole("audit", "hr"), false);
+  // escalations is hr-gated
+  assert.equal(isTabVisibleForRole("escalations", "hr"), true);
+  assert.equal(isTabVisibleForRole("escalations", "operations"), false);
   // open to all
   assert.equal(isTabVisibleForRole("users", "operations"), true);
-  assert.equal(isTabVisibleForRole("training", "manager"), true);
+  assert.equal(isTabVisibleForRole("regularizations", "operations"), true);
 });
 
 test("resolvePeopleHrTab keeps a deep-linked tab the role can see", () => {
@@ -44,6 +62,7 @@ test("resolvePeopleHrTab keeps a deep-linked tab the role can see", () => {
   assert.equal(resolvePeopleHrTab("?tab=salary", "super_admin"), "salary");
   assert.equal(resolvePeopleHrTab("?tab=audit", "admin"), "audit");
   assert.equal(resolvePeopleHrTab("?tab=reports", "hr"), "salary");
+  assert.equal(resolvePeopleHrTab("?tab=exceptions", "hr"), "escalations");
 });
 
 test("resolvePeopleHrTab falls back to users when the role cannot see the tab", () => {
@@ -55,12 +74,16 @@ test("resolvePeopleHrTab falls back to users when the role cannot see the tab", 
 
 test("visibleTabDefsForRole returns the right tab sets", () => {
   const opsTabs = visibleTabDefsForRole("operations").map((t) => t.value);
-  assert.deepEqual(opsTabs, ["users", "training", "regularizations"]);
+  assert.deepEqual(opsTabs, ["users", "regularizations"]);
 
   const hrTabs = visibleTabDefsForRole("hr").map((t) => t.value);
   assert.ok(hrTabs.includes("balance-adjustments"));
   assert.ok(hrTabs.includes("salary"));
+  assert.ok(hrTabs.includes("escalations"));
   assert.ok(!hrTabs.includes("audit"));
+  // moved out of People & HR
+  assert.ok(!hrTabs.includes("training" as any));
+  assert.ok(!hrTabs.includes("plans" as any));
 
   const adminTabs = visibleTabDefsForRole("admin").map((t) => t.value);
   assert.ok(adminTabs.includes("audit"));
