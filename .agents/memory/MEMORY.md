@@ -28,3 +28,4 @@
 - [Boot stability & restart-loop fix](boot-stability.md) — open port before DB ensure work (never await ensure before listen); one shared bounded pool; uncaughtException=shutdown, unhandledRejection=keep-alive.
 - [My Team nav flattening](my-team-nav-flatten.md) — /admin/hr/my-team uses sidebar sub-nav (TeamSection) not horizontal tabs; child destinations may keep ONE internal tab level (MyTeam keeps Team/Corrections/Plans).
 - [Employee Plans data source](employee-plans-data-source.md) — employee_plans only seeded at offer-acceptance; /api/hr/plans returns ALL statuses; "one plan" is a data issue not a filter bug.
+- [Guided onboarding checklist](guided-onboarding-checklist.md) — non-blocking new-hire checklist; annexure→policy bridge stops double-signing; computeOnboardingChecklist is the single source for endpoint/badges/cron.

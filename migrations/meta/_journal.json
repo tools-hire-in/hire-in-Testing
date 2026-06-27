@@ -134,6 +134,13 @@
       "when": 1781760000000,
       "tag": "0019_offer_letter_annexure_initials",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782000000000,
+      "tag": "0021_onboarding_checklist_fields",
+      "breakpoints": true
     }
   ]
 }

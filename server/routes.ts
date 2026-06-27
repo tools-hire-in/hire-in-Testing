@@ -9729,6 +9729,15 @@ export async function registerRoutes(
         onboardedBy: actorId,
       });
 
+      // Bridge policy annexures the candidate signed at offer acceptance into
+      // policy-track completions so they are never asked to re-sign them.
+      try {
+        const { bridgeAnnexuresForUser } = await import("./annexureBridge");
+        await bridgeAnnexuresForUser(newUser.id);
+      } catch (bridgeErr) {
+        console.error("Annexure bridge at onboarding failed (non-fatal):", bridgeErr);
+      }
+
       await storage.initializeEmployeeDocuments(newUser.id, newUser.employeeCategory ?? "experienced");
 
       const protocol = req.headers["x-forwarded-proto"] || "https";

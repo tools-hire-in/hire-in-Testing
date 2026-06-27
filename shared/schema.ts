@@ -55,6 +55,9 @@ export const adminUsers = pgTable("admin_users", {
   maternityLeaveEligible: boolean("maternity_leave_eligible").notNull().default(false),
   employmentType: varchar("employment_type"),
   employeeCategory: varchar("employee_category").default("experienced"),
+  // Self-service profile extras collected during guided onboarding.
+  linkedinUrl: varchar("linkedin_url"),
+  photoUrl: varchar("photo_url"),
   // Per-user UI preferences (e.g. { newLook: true } for the app redesign opt-in).
   preferences: jsonb("preferences"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1060,6 +1063,10 @@ export const learningTracks = pgTable("learning_tracks", {
   status: varchar("status").notNull().default("draft"), // draft | published | archived
   isPolicyTrack: boolean("is_policy_track").notNull().default(false),
   isUniversal: boolean("is_universal").notNull().default(false),
+  // Annexure key this policy track corresponds to (e.g. "leave_policy",
+  // "attendance_policy"). Used to bridge offer-acceptance annexure signatures
+  // into policy-track completions so employees never re-sign. Null = no annexure.
+  policyKey: varchar("policy_key"),
   versionNumber: integer("version_number").notNull().default(1),
   publishedAt: timestamp("published_at"),
   createdBy: varchar("created_by").references(() => adminUsers.id),

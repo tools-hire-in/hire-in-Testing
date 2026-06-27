@@ -1109,6 +1109,45 @@ export function startScheduler() {
     }
   });
 
+  // ─── Guided onboarding reminders (Task #630) ────────────────────────────────
+  // Weekly, Monday 10 AM IST: nudge active users who still have outstanding
+  // onboarding checklist items with a single in-app notification. Purely a
+  // nudge — never blocks anything. Respects the notifications_enabled flag.
+  cron.schedule("0 10 * * 1", async () => {
+    try {
+      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+      if (!flags?.notifications_enabled) return;
+
+      const { computeOnboardingChecklist } = await import("./onboardingChecklist");
+      const users = await db
+        .select({ id: adminUsers.id, role: adminUsers.role })
+        .from(adminUsers)
+        .where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
+
+      let reminded = 0;
+      for (const u of users) {
+        try {
+          const checklist = await computeOnboardingChecklist(u.id, u.role || "");
+          if (checklist.complete || checklist.counts.total <= 0) continue;
+          await storage.createNotification({
+            userId: u.id,
+            type: "onboarding_reminder",
+            title: "Finish setting up your account",
+            message: `You have ${checklist.counts.total} onboarding item${checklist.counts.total === 1 ? "" : "s"} left (${checklist.overallPct}% done). It only takes a minute — find them on your dashboard.`,
+            isRead: false,
+            metadata: { overallPct: checklist.overallPct, total: checklist.counts.total, pendingSections: checklist.pendingSections },
+          }).catch(console.error);
+          reminded++;
+        } catch (perUserErr) {
+          console.error(`[scheduler] Onboarding reminder failed for ${u.id}:`, perUserErr);
+        }
+      }
+      console.log(`[scheduler] Onboarding reminders: ${reminded} user(s) nudged.`);
+    } catch (err) {
+      console.error("[scheduler] Onboarding reminder sweep failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");

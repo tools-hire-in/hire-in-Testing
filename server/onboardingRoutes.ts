@@ -4,6 +4,7 @@ import {
   learningTracks, trackSections, sectionQuizQuestions, sectionQuizOptions,
   trackAssignments, sectionProgress, sectionAcknowledgements, trackCompletions, onboardingAuditEvents,
   systemSettings, trainingExtensionRequests, adminUsers, attendance, nightShiftConsents,
+  employeeBankDetails, employeeEmergencyContacts, employeeDocuments,
 } from "@shared/schema";
 import { eq, and, inArray, sql, isNull, lt, ne, desc, isNotNull } from "drizzle-orm";
 import { isRoleAllowed } from "@shared/accessControl";
@@ -11,6 +12,8 @@ import { storage } from "./storage";
 import { sendTrainingRequestEmail } from "./email";
 import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions, seedUniversalPolicies } from "./onboardingSeed";
+import { bridgeAnnexuresForUser } from "./annexureBridge";
+import { computeOnboardingChecklist } from "./onboardingChecklist";
 import {
   isRayoEnabled, getRayoTracks, getRayoUserAssignments, assignRayoTrack,
   getRayoTeamProgress, getRayoComplianceStatus, getRayoTrackProgress,
@@ -1951,6 +1954,10 @@ export function registerOnboardingRoutes(app: Express) {
     try {
       const userId = req.session.userId;
 
+      // Bridge any annexures signed at offer acceptance into policy-track
+      // completions first, so already-signed policies are never re-requested.
+      await bridgeAnnexuresForUser(userId);
+
       // Get all published policy tracks assigned to this user.
       // All roles (including admin/super_admin) must sign their assigned policy tracks.
       const assignments = await db.select({
@@ -2024,6 +2031,54 @@ export function registerOnboardingRoutes(app: Express) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to check policy gate status" });
+    }
+  });
+
+  // Unified guided-onboarding checklist for the current user.
+  // INFORMATIONAL ONLY — this never blocks Punch In/Out or any portal access.
+  // Drives the dashboard checklist card and nav badges.
+  app.get("/api/onboarding/checklist", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const result = await computeOnboardingChecklist(req.session.userId, req.session.role || "");
+      res.json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to load onboarding checklist" });
+    }
+  });
+
+  // Self-service profile extras collected during guided onboarding.
+  app.patch("/api/onboarding/my-profile", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const userId = req.session.userId;
+      const updates: Record<string, any> = {};
+
+      if (typeof req.body.linkedinUrl === "string") {
+        const v = req.body.linkedinUrl.trim();
+        if (v && !/^https?:\/\//i.test(v)) {
+          return res.status(400).json({ error: "LinkedIn URL must start with http:// or https://" });
+        }
+        updates.linkedinUrl = v || null;
+      }
+      if (typeof req.body.photoUrl === "string") {
+        updates.photoUrl = req.body.photoUrl.trim() || null;
+      }
+      if (typeof req.body.gender === "string" && req.body.gender.trim()) {
+        updates.gender = req.body.gender.trim();
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No valid fields to update" });
+      }
+
+      updates.updatedAt = new Date();
+      await db.update(adminUsers).set(updates).where(eq(adminUsers.id, userId));
+      res.json({ ok: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to update profile" });
     }
   });
 

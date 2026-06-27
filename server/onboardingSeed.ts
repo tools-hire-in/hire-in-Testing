@@ -2553,6 +2553,16 @@ async function insertSectionWithQuiz(
   );
 }
 
+// Maps a universal policy-track title to the offer-acceptance annexure key it
+// corresponds to. Tracks whose content was already signed as an annexure during
+// offer acceptance are bridged so the employee never re-signs. Tracks not listed
+// here (Shift Setup Guide, Punch In/Out Guide) have no annexure equivalent and
+// must still be signed in the portal.
+export const POLICY_TRACK_ANNEXURE_KEY: Record<string, string> = {
+  "Break & Leave Policy": "leave_policy",
+  "Attendance Regularization Policy": "attendance_policy",
+};
+
 export async function seedUniversalPolicies(createdBy: string): Promise<{ created: string[]; skipped: string[]; assigned: number; assignSkipped: number }> {
   const universalTracks = [BREAK_LEAVE_POLICY, SHIFT_SETUP_GUIDE, PUNCH_IN_OUT_GUIDE, ATTENDANCE_REGULARIZATION_POLICY];
   const created: string[] = [];
@@ -2570,12 +2580,14 @@ export async function seedUniversalPolicies(createdBy: string): Promise<{ create
 
     let trackId: string;
 
+    const policyKey = POLICY_TRACK_ANNEXURE_KEY[trackSeed.title] ?? null;
+
     if (existing.length > 0) {
       skipped.push(trackSeed.title);
       trackId = existing[0].id;
       // Ensure the track is marked as universal and published
       await db.update(learningTracks)
-        .set({ isPolicyTrack: true, isUniversal: true, status: "published" })
+        .set({ isPolicyTrack: true, isUniversal: true, status: "published", policyKey })
         .where(eq(learningTracks.id, trackId));
     } else {
       const [track] = await db.insert(learningTracks).values({
@@ -2585,6 +2597,7 @@ export async function seedUniversalPolicies(createdBy: string): Promise<{ create
         status: "published",
         isPolicyTrack: true,
         isUniversal: true,
+        policyKey,
         publishedAt: new Date(),
         versionNumber: 1,
         createdBy,

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import OnboardingChecklist from "@/components/admin/OnboardingChecklist";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -437,6 +438,9 @@ export default function CommandCenter() {
       {punchedIn && (
         <BreakChips breakStatus={breakStatus ?? null} />
       )}
+
+      {/* ── Guided onboarding checklist (non-blocking; hides when complete) ── */}
+      <OnboardingChecklist />
 
       {/* ── Smart action cards row ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

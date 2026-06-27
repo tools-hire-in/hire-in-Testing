@@ -1036,11 +1036,31 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   const hasPendingPolicies = !isPolicyGateExempt && policyGateStatus?.hasPendingPolicies === true;
 
-  useEffect(() => {
-    if (hasPendingPolicies && !isOnPolicyGatePage && !userNeeds2FASetup) {
-      setLocation("/admin/policy-gate");
-    }
-  }, [hasPendingPolicies, isOnPolicyGatePage, userNeeds2FASetup, setLocation]);
+  // Guided onboarding (Task #630): signing policies is self-paced and never
+  // forced. The policy gate remains reachable from the dashboard checklist, but
+  // we no longer hard-redirect new hires there — Punch In/Out and navigation
+  // must stay unblocked.
+
+  // Onboarding checklist counts drive unobtrusive nav badges.
+  const { data: onboardingChecklist } = useQuery<{
+    complete: boolean;
+    counts: { personal: number; policies: number; total: number };
+  }>({
+    queryKey: ["/api/onboarding/checklist"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/onboarding/checklist", { credentials: "include" });
+        if (!res.ok) return { complete: true, counts: { personal: 0, policies: 0, total: 0 } };
+        return res.json();
+      } catch {
+        return { complete: true, counts: { personal: 0, policies: 0, total: 0 } };
+      }
+    },
+    refetchInterval: 300000,
+    enabled: !!user,
+  });
+  const onboardingPersonalBadge = onboardingChecklist?.counts?.personal ?? 0;
+  const onboardingPolicyBadge = onboardingChecklist?.counts?.policies ?? 0;
 
   useEffect(() => {
     if (isComplianceLocked && !isOnTrainingPage && !userNeeds2FASetup && !hasPendingPolicies) {
@@ -1317,13 +1337,15 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "Profile",
       icon: UserCircle,
       roles: ["all"],
+      badge: onboardingPersonalBadge > 0 ? onboardingPersonalBadge : undefined,
+      badgeColor: "bg-amber-500",
     },
     ...(hasGrowthAccess ? [{
       href: "/admin/growth",
       label: "Growth & Learning",
       icon: GraduationCap,
       roles: ["all"],
-      badge: (growthBadge + peopleHRTrainingBadge) > 0 ? (growthBadge + peopleHRTrainingBadge) : undefined,
+      badge: (growthBadge + peopleHRTrainingBadge + onboardingPolicyBadge) > 0 ? (growthBadge + peopleHRTrainingBadge + onboardingPolicyBadge) : undefined,
       badgeColor: (trainingAlerts?.overdue ?? 0) > 0 ? "bg-red-500" : "bg-amber-500",
     }] : []),
     ...(isEnabled("salary_advance_enabled") ? [{
