@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, FileText, FilePlus, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, UserCog, Search, Shield, UserPlus } from "lucide-react";
+import { Loader2, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, Search, Shield, UserPlus } from "lucide-react";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
@@ -370,24 +369,16 @@ function UsersTab() {
 
 export default function NewHire() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { enabled: newLook } = useNewLook();
-  const [tab, setTab] = useState<string>(() => {
-    try {
-      const param = new URLSearchParams(window.location.search).get("tab");
-      // Back-compat: the old single "offer-letters" tab is now split; default to the list.
-      if (!param || param === "offer-letters") return "letters";
-      return param;
-    } catch {
-      return "letters";
-    }
-  });
 
-  const { data: offerLetters } = useQuery<any[]>({
-    queryKey: ["/api/hr/tools/offer-letters"],
-    enabled: isAuthenticated,
-  });
-  const pendingCount = offerLetters?.filter((l: any) => l.status === "pending_approval").length ?? 0;
+  // Tab derives reactively from the URL (?tab=). The sidebar sub-nav owns navigation now.
+  const params = new URLSearchParams(search);
+  const rawTab = params.get("tab");
+  const editId = params.get("editId") || undefined;
+  // Back-compat: the old single "offer-letters" tab is now split; default to the list.
+  const tab = !rawTab || rawTab === "offer-letters" ? "letters" : rawTab;
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -402,12 +393,13 @@ export default function NewHire() {
 
   if (authLoading || !isAuthenticated) return null;
 
-  const handleTabChange = (t: string) => {
-    setTab(t);
-    const url = new URL(window.location.href);
-    t === "letters" ? url.searchParams.delete("tab") : url.searchParams.set("tab", t);
-    window.history.replaceState({}, "", url.toString());
+  const headers: Record<string, { title: string; subtitle: string }> = {
+    "new-offer-letter": { title: editId ? "Edit Offer Letter" : "New Offer Letter", subtitle: editId ? "Update the offer details and save your changes" : "Generate a new offer letter for a candidate" },
+    letters: { title: "Letters", subtitle: "Track and manage offer letters" },
+    onboarding: { title: "Onboarding", subtitle: "Track new employee setup and document status" },
+    users: { title: "Users", subtitle: "Manage employee accounts" },
   };
+  const header = headers[tab] ?? { title: "New Hire", subtitle: "Manage offer letters and track new employee setup" };
 
   return (
     <AdminLayout>
@@ -416,61 +408,21 @@ export default function NewHire() {
           <V2PageHeader
             icon={UserPlus}
             eyebrow="New Hire"
-            title="New Hire"
-            subtitle="Manage offer letters and track new employee setup"
+            title={header.title}
+            subtitle={header.subtitle}
             testId="text-new-hire-title"
           />
         ) : (
           <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-new-hire-title">New Hire</h1>
-            <p className="text-muted-foreground">Manage offer letters and track new employee setup</p>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-new-hire-title">{header.title}</h1>
+            <p className="text-muted-foreground">{header.subtitle}</p>
           </div>
         )}
 
-        <Tabs value={tab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList data-testid="tabs-new-hire" className="flex-wrap h-auto gap-1">
-            <TabsTrigger value="new-offer-letter" data-testid="tab-new-hire-new-offer">
-              <FilePlus className="h-4 w-4 mr-2" />
-              New Offer Letter
-            </TabsTrigger>
-            <TabsTrigger value="letters" data-testid="tab-new-hire-letters">
-              <FileText className="h-4 w-4 mr-2" />
-              Letters
-              {pendingCount > 0 && (
-                <span
-                  className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#F47C20] text-white"
-                  data-testid="badge-tab-pending"
-                >
-                  {pendingCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="onboarding" data-testid="tab-new-hire-onboarding">
-              <Users className="h-4 w-4 mr-2" />
-              Onboarding
-            </TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-new-hire-users">
-              <UserCog className="h-4 w-4 mr-2" />
-              Users
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="new-offer-letter">
-            <OfferLetterGenerator />
-          </TabsContent>
-
-          <TabsContent value="letters">
-            <OfferLettersDashboard />
-          </TabsContent>
-
-          <TabsContent value="onboarding">
-            <OnboardingTab />
-          </TabsContent>
-
-          <TabsContent value="users">
-            <UsersTab />
-          </TabsContent>
-        </Tabs>
+        {tab === "new-offer-letter" && <OfferLetterGenerator editId={editId} />}
+        {tab === "letters" && <OfferLettersDashboard />}
+        {tab === "onboarding" && <OnboardingTab />}
+        {tab === "users" && <UsersTab />}
       </div>
     </AdminLayout>
   );

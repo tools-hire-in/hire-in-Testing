@@ -6,7 +6,7 @@ import {
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
   ChevronDown, ChevronUp, RefreshCw, ArrowRight, RotateCcw,
-  Plus, Trash2, Laptop, Shield, BookOpen,
+  Plus, Trash2, Laptop, Shield, BookOpen, Pencil,
 } from "lucide-react";
 import { PolicySignoffsContent } from "./PolicySignoffs";
 import { Textarea } from "@/components/ui/textarea";
@@ -720,11 +720,20 @@ function getDefaultOfferData(): OfferFormData {
   };
 }
 
-export function OfferLetterGenerator() {
+export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [formData, setFormData] = useState<OfferFormData>(getDefaultOfferData());
   const [generating, setGenerating] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [editLoadedId, setEditLoadedId] = useState<string | null>(null);
+  const [editRejectionReason, setEditRejectionReason] = useState<string | null>(null);
+  const [editWasRejected, setEditWasRejected] = useState(false);
+
+  const { data: editLetters } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/offer-letters"],
+    enabled: !!editId,
+  });
 
   const { data: usersResp } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; isActive: boolean; designation: string | null; departmentId: string | null; salary: string | null; joiningDate: string | null }[]; counts: AdminUsersResponse["counts"] }>({
     queryKey: ["/api/admin/users", "all_non_deleted"],
@@ -805,6 +814,74 @@ export function OfferLetterGenerator() {
   const [showPreview, setShowPreview] = useState(false);
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
   const [policyAnnexures, setPolicyAnnexures] = useState<string[]>([]);
+
+  // Pre-fill the form when editing an existing pending/rejected offer letter.
+  useEffect(() => {
+    if (!editId) {
+      // Editing was cleared (navigated to a fresh "New Offer Letter") — reset once.
+      if (editLoadedId !== null) {
+        setEditLoadedId(null);
+        setEditRejectionReason(null);
+        setEditWasRejected(false);
+        setFormData(getDefaultOfferData());
+        setAnnexures([]);
+        setPolicyAnnexures([]);
+      }
+      return;
+    }
+    if (editLoadedId === editId) return;
+    const letter = editLetters?.find((l: any) => l.id === editId);
+    if (!letter) return;
+
+    const toIsoDate = (v: any): string => {
+      if (!v) return "";
+      const d = new Date(v);
+      if (isNaN(d.getTime())) return "";
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+
+    const split = !!(letter.probationSalary && letter.postProbationSalary);
+    setFormData({
+      candidateTitle: letter.candidateTitle || "Mr.",
+      candidateName: letter.candidateName || "",
+      candidatePersonalEmail: letter.candidatePersonalEmail || "",
+      ccEmails: letter.ccEmails || "",
+      candidateAddress: letter.candidateAddress || "",
+      designation: letter.designation || "",
+      subjectDesignation: letter.subjectDesignation || "",
+      reportingToUserId: letter.reportingToUserId || "",
+      departmentId: letter.departmentId || "",
+      gender: "",
+      employmentType: letter.employmentType || "Full-time / Regular",
+      attendanceExempt: false,
+      trainingExempt: false,
+      maternityLeaveEligible: false,
+      seedProbationPlan: !!letter.seedProbationPlan,
+      proposedStartDate: toIsoDate(letter.proposedStartDate),
+      salary: letter.salary ? parseFloat(letter.salary) : 0,
+      salaryInWords: letter.salaryInWords || "",
+      location: letter.location || "Delhi",
+      jurisdiction: letter.jurisdiction || "Delhi",
+      hrManagerName: letter.hrManagerName || "Alina Carter",
+      offerDate: toIsoDate(letter.offerDate) || new Date().toISOString().split("T")[0],
+      splitProbationSalary: split,
+      performanceProbationReview: !!letter.performanceProbationReview,
+      maxRevisionSalary: letter.maxRevisionSalary ? parseFloat(letter.maxRevisionSalary) : 0,
+      maxRevisionSalaryInWords: letter.maxRevisionSalaryInWords || "",
+      probationSalary: letter.probationSalary ? parseFloat(letter.probationSalary) : 0,
+      probationSalaryInWords: letter.probationSalaryInWords || "",
+      postProbationSalary: letter.postProbationSalary ? parseFloat(letter.postProbationSalary) : 0,
+      postProbationSalaryInWords: letter.postProbationSalaryInWords || "",
+      probationPeriodMonths: letter.probationPeriodMonths ?? 3,
+      extendedProbationMonths: letter.extendedProbationMonths ?? 0,
+    });
+    const rawAnn = Array.isArray(letter.annexureData) ? letter.annexureData : [];
+    setAnnexures(rawAnn.map((a: any) => ({ title: String(a.title ?? ""), body: String(a.body ?? "") })));
+    setPolicyAnnexures(Array.isArray(letter.policyAnnexures) ? letter.policyAnnexures : []);
+    setEditWasRejected(letter.status === "rejected");
+    setEditRejectionReason(letter.status === "rejected" ? (letter.approvalRejectionReason || null) : null);
+    setEditLoadedId(editId);
+  }, [editId, editLetters, editLoadedId]);
 
   const getReportingToName = () => {
     if (!formData.reportingToUserId) return "";
@@ -932,7 +1009,7 @@ export function OfferLetterGenerator() {
 
     setSending(true);
     try {
-      const res = await apiRequest("POST", "/api/hr/tools/offer-letters", {
+      const payload = {
         ...formData,
         salary: (formData.splitProbationSalary || formData.performanceProbationReview) ? null : (formData.salary ? String(formData.salary) : null),
         offerDate: formData.offerDate
@@ -953,7 +1030,29 @@ export function OfferLetterGenerator() {
         maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
         policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : undefined,
         seedProbationPlan: formData.seedProbationPlan,
-      });
+      };
+
+      // Edit mode: update the existing pending/rejected letter in place instead of creating a new one.
+      if (editId) {
+        const res = await apiRequest("PATCH", `/api/hr/tools/offer-letters/${editId}`, payload);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || err.error || "Failed to save changes");
+        }
+        const result = await res.json();
+        queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+        toast({
+          title: result.resubmitted ? "Offer letter resubmitted for approval" : "Offer letter updated",
+          description: result.resubmitted
+            ? "Your revised offer has been sent back to a super admin for approval."
+            : "Your changes have been saved.",
+        });
+        setShowPreview(false);
+        setLocation("/admin/new-hire?tab=letters");
+        return;
+      }
+
+      const res = await apiRequest("POST", "/api/hr/tools/offer-letters", payload);
 
       if (!res.ok) {
         const err = await res.json();
@@ -963,7 +1062,9 @@ export function OfferLetterGenerator() {
       const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
 
-      if (result.emailSent === false) {
+      if (result.pendingApproval) {
+        toast({ title: "Offer letter submitted for approval", description: "A super admin will review and approve it before it is sent to the candidate." });
+      } else if (result.emailSent === false) {
         toast({
           title: "Offer letter saved, but email delivery failed",
           description: `The offer letter was created but the email to ${formData.candidatePersonalEmail} could not be sent. Check server logs for details.`,
@@ -986,6 +1087,40 @@ export function OfferLetterGenerator() {
 
   return (
     <div className="space-y-6">
+      {editId && (
+        <Card className={editWasRejected ? "border-red-300 bg-red-50/60" : "border-orange-300 bg-orange-50/60"}>
+          <CardContent className="py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Pencil className={editWasRejected ? "h-5 w-5 text-red-600 mt-0.5" : "h-5 w-5 text-[#F47C20] mt-0.5"} />
+                <div>
+                  <p className="font-semibold text-sm" data-testid="text-edit-mode-heading">
+                    {editWasRejected ? "Editing a rejected offer letter" : "Editing a pending offer letter"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {editWasRejected
+                      ? "Make your changes and resubmit — it will go back to a super admin for approval."
+                      : "Make your changes and save — the offer stays in the approval queue."}
+                  </p>
+                  {editWasRejected && editRejectionReason && (
+                    <p className="mt-2 text-xs text-red-700 bg-red-100 rounded px-2 py-1.5" data-testid="text-edit-rejection-reason">
+                      <strong>Rejection reason:</strong> {editRejectionReason}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLocation("/admin/new-hire?tab=letters")}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -1435,8 +1570,8 @@ export function OfferLetterGenerator() {
               disabled={sending}
               data-testid="button-confirm-send"
             >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-              Confirm &amp; Send
+              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : (editId ? <CheckCircle className="h-4 w-4 mr-2" /> : <Send className="h-4 w-4 mr-2" />)}
+              {editId ? (editWasRejected ? "Save & Resubmit" : "Save Changes") : "Confirm & Send"}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -1649,7 +1784,7 @@ export function OfferLettersDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const [activeFilter, setActiveFilter] = useState<"active" | "pending_approval" | "closed">("active");
+  const [topTab, setTopTab] = useState<"active" | "completed" | "closed">("active");
   const [rejectDialog, setRejectDialog] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [onboardingModal, setOnboardingModal] = useState<any>(null);
@@ -2058,6 +2193,18 @@ export function OfferLettersDashboard() {
     onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
   });
 
+  const withdrawMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${id}/withdraw`);
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/tools/offer-letters"] });
+      toast({ title: "Offer letter withdrawn" });
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
   const approveMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest("PATCH", `/api/hr/tools/offer-letters/${id}/approve`);
@@ -2197,6 +2344,12 @@ export function OfferLettersDashboard() {
     if (["rejected", "cancelled", "expired", "revoked"].includes(s)) return "closed";
     return "active";
   };
+  // Top-level status tabs grouping (layered above the Type/Status dropdowns).
+  const topBucket = (s: string): "active" | "completed" | "closed" => {
+    if (["accepted", "countersigned", "onboarded", "issued", "delivered", "signed", "reissued"].includes(s)) return "completed";
+    if (["rejected", "cancelled", "expired", "revoked"].includes(s)) return "closed";
+    return "active";
+  };
 
   const ts = (v: any): number => { const t = v ? new Date(v).getTime() : 0; return isNaN(t) ? 0 : t; };
 
@@ -2284,7 +2437,14 @@ export function OfferLettersDashboard() {
     });
   });
 
+  const topTabCounts = {
+    active: rows.filter((r) => topBucket(r.status) === "active").length,
+    completed: rows.filter((r) => topBucket(r.status) === "completed").length,
+    closed: rows.filter((r) => topBucket(r.status) === "closed").length,
+  };
+
   const unifiedRows = rows
+    .filter((r) => topBucket(r.status) === topTab)
     .filter((r) => typeFilter === "all" || r.typeValue === typeFilter)
     .filter((r) => statusFilter === "all" || r.bucket === statusFilter)
     .sort((a, b) => b.sortDate - a.sortDate);
@@ -2319,6 +2479,35 @@ export function OfferLettersDashboard() {
           </Button>
         )}
       </div>
+
+      <Tabs value={topTab} onValueChange={(v) => setTopTab(v as "active" | "completed" | "closed")}>
+        <TabsList data-testid="tabs-letters-status">
+          <TabsTrigger value="active" data-testid="tab-letters-active">
+            Active
+            {topTabCounts.active > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#F47C20] text-white">
+                {topTabCounts.active}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="completed" data-testid="tab-letters-completed">
+            Completed
+            {topTabCounts.completed > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-muted text-muted-foreground">
+                {topTabCounts.completed}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="closed" data-testid="tab-letters-closed">
+            Rejected / Closed
+            {topTabCounts.closed > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-muted text-muted-foreground">
+                {topTabCounts.closed}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -2394,6 +2583,16 @@ export function OfferLettersDashboard() {
                                   {letter.status !== "cancelled" && letter.status !== "expired" && letter.status !== "rejected" && (
                                     <Button size="sm" variant="outline" onClick={() => setViewLetterModal(letter)} data-testid={`button-view-letter-${letter.id}`}>
                                       <FileSearch className="h-4 w-4 mr-1" /> View
+                                    </Button>
+                                  )}
+                                  {(letter.status === "pending_approval" || letter.status === "rejected") && (user?.role === "super_admin" || letter.createdBy === user?.id) && (
+                                    <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setLocation(`/admin/new-hire?tab=new-offer-letter&editId=${letter.id}`)} data-testid={`button-edit-letter-${letter.id}`}>
+                                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                                    </Button>
+                                  )}
+                                  {letter.status === "pending_approval" && (user?.role === "super_admin" || letter.createdBy === user?.id) && (
+                                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-red-700" onClick={() => { if (window.confirm(`Withdraw the offer letter for ${letter.candidateName}? It will be removed from the approval queue.`)) withdrawMutation.mutate(letter.id); }} disabled={withdrawMutation.isPending} data-testid={`button-withdraw-${letter.id}`}>
+                                      <RotateCcw className="h-4 w-4 mr-1" /> Withdraw
                                     </Button>
                                   )}
                                   {isPending && canApproveOfferLetter && (

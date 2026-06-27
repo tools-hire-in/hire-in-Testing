@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -8050,6 +8050,213 @@ export async function registerRoutes(
     }
   });
 
+  // Edit / resubmit an offer letter that is still pending approval or was rejected
+  app.patch("/api/hr/tools/offer-letters/:id", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const actorId = req.session.userId!;
+      const actorUser = await storage.getAdminUser(actorId);
+      const existing = await storage.getOfferLetter(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      // Only the original creator or a super_admin may edit
+      const isSuperAdmin = actorUser?.role === "super_admin";
+      if (!isSuperAdmin && existing.createdBy !== actorId) {
+        return res.status(403).json({ error: "You can only edit offer letters you created" });
+      }
+
+      // Editing is only permitted before the offer has been sent to the candidate
+      if (existing.status !== "pending_approval" && existing.status !== "rejected") {
+        return res.status(400).json({ error: "Only offer letters that are pending approval or rejected can be edited" });
+      }
+
+      const { candidateTitle, candidateName, candidatePersonalEmail, candidateAddress,
+        designation, subjectDesignation, reportingToUserId, departmentId,
+        employmentType, proposedStartDate, salary, salaryInWords,
+        location, jurisdiction, hrManagerName, offerDate, ccEmails,
+        probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
+        probationPeriodMonths, extendedProbationMonths,
+        performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords,
+        policyAnnexures, seedProbationPlan } = req.body;
+
+      if (!candidateName || !candidatePersonalEmail || !designation) {
+        return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
+      }
+
+      // Validate the performance-based probation review mode when selected
+      let renderedPerformanceClauseText: string | null = null;
+      if (performanceProbationReview) {
+        const pSal = parseFloat(probationSalary);
+        if (!probationSalary || isNaN(pSal) || pSal <= 0) {
+          return res.status(400).json({ error: "Probation salary must be a positive number for performance-based probation review" });
+        }
+        const pMonths = probationPeriodMonths ? parseInt(probationPeriodMonths) : 3;
+        if (isNaN(pMonths) || pMonths < 1 || pMonths > 6) {
+          return res.status(400).json({ error: "Probation duration must be between 1 and 6 months" });
+        }
+        if (maxRevisionSalary !== undefined && maxRevisionSalary !== null && maxRevisionSalary !== "") {
+          const mSal = parseFloat(maxRevisionSalary);
+          if (isNaN(mSal) || mSal <= 0) {
+            return res.status(400).json({ error: "Revision ceiling must be a positive number when provided" });
+          }
+        }
+        if (extendedProbationMonths !== undefined && extendedProbationMonths !== null && extendedProbationMonths !== "") {
+          const epMonths = parseInt(extendedProbationMonths);
+          if (isNaN(epMonths) || epMonths < 4 || epMonths > 12) {
+            return res.status(400).json({ error: "Extended probation duration must be between 4 and 12 months" });
+          }
+        }
+        const template = await getManagedClauseText(OFFER_CLAUSE_CATEGORY, OFFER_CLAUSE_KEY, OFFER_CLAUSE_DEFAULT_TEXT);
+        renderedPerformanceClauseText = renderOfferClause(template, {
+          probationSalary,
+          probationPeriodMonths,
+          maxRevisionSalary,
+          extendedProbationMonths,
+        });
+      }
+
+      // Validate probation salary fields when split compensation is used
+      const hasProbationFields = !performanceProbationReview && (probationSalary || postProbationSalary);
+      if (hasProbationFields) {
+        const pSal = parseFloat(probationSalary);
+        const ppSal = parseFloat(postProbationSalary);
+        if (!probationSalary || isNaN(pSal) || pSal <= 0) {
+          return res.status(400).json({ error: "Probation salary must be a positive number when using split compensation" });
+        }
+        if (!postProbationSalary || isNaN(ppSal) || ppSal <= 0) {
+          return res.status(400).json({ error: "Post-probation salary must be a positive number when using split compensation" });
+        }
+        if (ppSal <= pSal) {
+          return res.status(400).json({ error: "Post-probation salary should be greater than probation salary" });
+        }
+        if (!probationSalaryInWords || !postProbationSalaryInWords) {
+          return res.status(400).json({ error: "Salary in words is required for both probation and post-probation tiers" });
+        }
+        const pMonths = probationPeriodMonths ? parseInt(probationPeriodMonths) : 3;
+        if (isNaN(pMonths) || pMonths < 1 || pMonths > 6) {
+          return res.status(400).json({ error: "Probation duration must be between 1 and 6 months" });
+        }
+        if (extendedProbationMonths !== undefined && extendedProbationMonths !== null && extendedProbationMonths !== "") {
+          const epMonths = parseInt(extendedProbationMonths);
+          if (isNaN(epMonths) || epMonths < 4 || epMonths > 12) {
+            return res.status(400).json({ error: "Extended probation duration must be between 4 and 12 months" });
+          }
+        }
+      }
+
+      const rawOfferAnnexures = req.body.annexureData;
+      let offerAnnexures: Array<{ title: string; body: string }> | null = null;
+      if (Array.isArray(rawOfferAnnexures) && rawOfferAnnexures.length > 0) {
+        if (rawOfferAnnexures.length > 5) {
+          return res.status(400).json({ error: "A maximum of 5 annexures are allowed." });
+        }
+        for (const ann of rawOfferAnnexures) {
+          if (!ann.title?.trim()) {
+            return res.status(400).json({ error: "Each annexure must have a non-empty title." });
+          }
+        }
+        offerAnnexures = rawOfferAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body ?? "") }));
+      }
+
+      const wasRejected = existing.status === "rejected";
+
+      const updates: Partial<OfferLetter> = {
+        candidateTitle: candidateTitle || "Mr.",
+        candidateName,
+        candidatePersonalEmail: candidatePersonalEmail.toLowerCase(),
+        candidateAddress: candidateAddress || null,
+        designation,
+        subjectDesignation: subjectDesignation || designation,
+        reportingToUserId: reportingToUserId || null,
+        departmentId: departmentId || null,
+        employmentType: employmentType || "Full-time / Regular",
+        proposedStartDate: proposedStartDate || null,
+        salary: salary || null,
+        salaryInWords: salaryInWords || null,
+        location: location || "Delhi",
+        jurisdiction: jurisdiction || "Delhi",
+        hrManagerName: hrManagerName || null,
+        offerDate: offerDate || existing.offerDate,
+        ccEmails: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : (typeof ccEmails === "string" && ccEmails.trim() ? ccEmails.trim() : null),
+        annexureData: offerAnnexures,
+        probationSalary: probationSalary ? String(probationSalary) : null,
+        probationSalaryInWords: probationSalaryInWords || null,
+        postProbationSalary: postProbationSalary ? String(postProbationSalary) : null,
+        postProbationSalaryInWords: postProbationSalaryInWords || null,
+        probationPeriodMonths: probationPeriodMonths ? parseInt(probationPeriodMonths) : null,
+        extendedProbationMonths: extendedProbationMonths ? parseInt(extendedProbationMonths) : null,
+        performanceProbationReview: !!performanceProbationReview,
+        maxRevisionSalary: (performanceProbationReview && maxRevisionSalary) ? String(maxRevisionSalary) : null,
+        maxRevisionSalaryInWords: (performanceProbationReview && maxRevisionSalaryInWords) ? maxRevisionSalaryInWords : null,
+        performanceClauseText: renderedPerformanceClauseText,
+        policyAnnexures: Array.isArray(policyAnnexures) && policyAnnexures.length > 0 ? policyAnnexures : null,
+        seedProbationPlan: !!seedProbationPlan,
+      };
+
+      // Resubmitting a rejected letter returns it to the approval queue
+      if (wasRejected) {
+        updates.status = "pending_approval";
+        updates.approvalRejectionReason = null;
+      }
+
+      const updated = await storage.updateOfferLetter(req.params.id, updates);
+
+      // On resubmission, notify super_admins exactly like a fresh non-super_admin submission
+      if (wasRejected) {
+        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers.host || "localhost";
+        const reviewUrl = `${protocol}://${host}/admin/new-hire`;
+        const creator = existing.createdBy ? await storage.getAdminUser(existing.createdBy) : actorUser;
+        const creatorName = creator ? `${creator.firstName} ${creator.lastName}` : "A team member";
+        const creatorRole = creator?.role ?? "unknown";
+
+        const superAdminNotifyEmails = ["simranjeet@hire-in.com"];
+        await sendOfferLetterPendingApprovalEmail({
+          to: superAdminNotifyEmails,
+          managerName: `${creatorName} (${creatorRole})`,
+          candidateName,
+          designation,
+          salary: salary || null,
+          reviewUrl,
+        });
+
+        try {
+          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+          if (featureFlags.notifications_enabled) {
+            const allUsers = await storage.getAdminUsers();
+            const superAdmins = allUsers.filter(u => u.role === "super_admin" && u.isActive);
+            for (const sa of superAdmins) {
+              await storage.createNotification({
+                userId: sa.id,
+                type: "offer_letter_pending_approval",
+                title: "Offer Letter Resubmitted",
+                message: `${creatorName} revised and resubmitted an offer letter for ${candidateName} (${designation}) — awaiting your approval.`,
+                isRead: false,
+                metadata: { offerId: req.params.id, candidateName, designation },
+              });
+            }
+          }
+        } catch (notifErr) {
+          console.error("[OfferLetter] Resubmission notification error:", notifErr);
+        }
+      }
+
+      await storage.createAuditLog({
+        action: wasRejected ? "offer_letter_resubmitted" : "offer_letter_edited",
+        actorId,
+        changes: { offerId: req.params.id, candidateName, designation, email: candidatePersonalEmail, previousStatus: existing.status },
+      });
+
+      const { token: _token, ...offerLetterWithoutToken } = (updated || existing) as any;
+      return res.json({ ...offerLetterWithoutToken, resubmitted: wasRejected });
+    } catch (error: any) {
+      console.error("[OfferLetter] Edit error:", error?.message || error, error?.stack);
+      res.status(500).json({ error: "Failed to update offer letter", detail: error?.message });
+    }
+  });
+
   // List all offer letters
   app.get("/api/hr/tools/offer-letters", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
     try {
@@ -9736,6 +9943,40 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Cancel offer letter error:", error);
       res.status(500).json({ error: "Failed to cancel offer letter" });
+    }
+  });
+
+  // Withdraw/recall a pending_approval offer letter (creator or super admin). Sets status to
+  // 'cancelled' and pulls it out of the approval queue. No HR/approver notification is sent.
+  app.post("/api/hr/tools/offer-letters/:id/withdraw", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const actorId = req.session.userId!;
+      const isSuperAdmin = req.session.role === "super_admin";
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) {
+        return res.status(404).json({ error: "Offer letter not found" });
+      }
+
+      if (!isSuperAdmin && letter.createdBy !== actorId) {
+        return res.status(403).json({ error: "You can only withdraw offer letters you created" });
+      }
+
+      if (letter.status !== "pending_approval") {
+        return res.status(400).json({ error: `Cannot withdraw — offer status is '${letter.status}'` });
+      }
+
+      await storage.updateOfferLetter(letter.id, { status: "cancelled" });
+
+      await storage.createAuditLog({
+        action: "offer_letter_withdrawn",
+        actorId,
+        changes: { offerId: letter.id, candidateName: letter.candidateName },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Withdraw offer letter error:", error);
+      res.status(500).json({ error: "Failed to withdraw offer letter" });
     }
   });
 

@@ -45,6 +45,8 @@ import {
   Wallet,
   Timer,
   CalendarCheck,
+  FilePlus,
+  UserCog,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -314,6 +316,13 @@ const MY_TEAM_SUB_ITEMS = [
   { label: "Req. Approvals", tab: "approvals", icon: ClipboardList },
 ] as const;
 
+const NEW_HIRE_SUB_ITEMS = [
+  { label: "New Offer Letter", tab: "new-offer-letter", icon: FilePlus },
+  { label: "Letters", tab: null, icon: FileText },
+  { label: "Onboarding", tab: "onboarding", icon: Users },
+  { label: "Users", tab: "users", icon: UserCog },
+] as const;
+
 function TeamSection({
   hasTeamAccess,
   hasNewHireAccess,
@@ -325,6 +334,7 @@ function TeamSection({
   leaveApprovalsCount,
   trainingReqBadge,
   pendingRegCount,
+  pendingOfferCount,
 }: {
   hasTeamAccess: boolean;
   hasNewHireAccess: boolean;
@@ -336,6 +346,7 @@ function TeamSection({
   leaveApprovalsCount: number;
   trainingReqBadge: number;
   pendingRegCount: number;
+  pendingOfferCount: number;
 }) {
   const { open } = useSidebar();
 
@@ -389,6 +400,20 @@ function TeamSection({
     if (tab === "leave-approvals" && leaveApprovalsCount > 0) return { count: leaveApprovalsCount, color: "bg-blue-500" };
     if (tab === "training-progress" && trainingReqBadge > 0) return { count: trainingReqBadge, color: "bg-amber-500" };
     if (tab === null && pendingRegCount > 0) return { count: pendingRegCount, color: "bg-orange-500" };
+    return null;
+  };
+
+  const isNewHireActive = location.startsWith("/admin/new-hire");
+
+  const isNewHireSubActive = (tab: string | null) => {
+    if (!isNewHireActive) return false;
+    // The "Letters" destination owns the default view (incl. legacy "offer-letters" alias).
+    if (tab === null) return !activeTab || activeTab === "offer-letters";
+    return activeTab === tab;
+  };
+
+  const newHireSubBadge = (tab: string | null): { count: number; color: string } | null => {
+    if (tab === null && pendingOfferCount > 0) return { count: pendingOfferCount, color: "bg-[#F47C20]" };
     return null;
   };
 
@@ -490,11 +515,55 @@ function TeamSection({
             )}
 
             {hasNewHireAccess && (
-              <NavItemButton
-                item={newHireItem}
-                isActive={isNavActive(newHireItem)}
-                isLocked={isComplianceLocked}
-              />
+              <>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isNewHireSubActive(null)}
+                    className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                    data-testid="nav-item-new-hire"
+                  >
+                    <Link href="/admin/new-hire" className="flex items-center gap-2 w-full">
+                      <UserPlus className="h-4 w-4 shrink-0" />
+                      <span className="flex-1">New Hire</span>
+                      {pendingOfferCount > 0 && (
+                        <span className="ml-auto text-xs font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-white bg-[#F47C20]">
+                          {pendingOfferCount > 9 ? "9+" : pendingOfferCount}
+                        </span>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                {/* New Hire sub-nav — single level, replaces in-page horizontal tabs */}
+                <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
+                  {NEW_HIRE_SUB_ITEMS.map(({ label, tab, icon: Icon }) => {
+                    const href = tab ? `/admin/new-hire?tab=${tab}` : "/admin/new-hire";
+                    const isActive = isNewHireSubActive(tab as string | null);
+                    const badge = newHireSubBadge(tab as string | null);
+                    return (
+                      <Link
+                        key={label}
+                        href={href}
+                        className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                          isActive
+                            ? "bg-accent text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                        } ${isComplianceLocked ? "opacity-40 pointer-events-none" : ""}`}
+                        data-testid={`nav-newhire-sub-${tab ?? "letters"}`}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1">{label}</span>
+                        {badge && (
+                          <span className={`ml-auto text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center text-white ${badge.color}`}>
+                            {badge.count > 9 ? "9+" : badge.count}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </SidebarMenu>
         </SidebarGroupContent>
@@ -1153,6 +1222,15 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "")
   );
 
+  // Pending offer letters awaiting approval (New Hire > Letters badge)
+  const hasNewHireSidebarAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
+  const { data: offerLettersForBadge } = useQuery<any[]>({
+    queryKey: ["/api/hr/tools/offer-letters"],
+    refetchInterval: 60000,
+    enabled: !!user && hasNewHireSidebarAccess,
+  });
+  const pendingOfferCount = offerLettersForBadge?.filter((l: any) => l.status === "pending_approval").length ?? 0;
+
   // Pending attendance exceptions for manager/hr/admin
   const isExceptionRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(userRole);
   const { data: exceptionCountData } = useQuery<{ count: number }>({
@@ -1436,6 +1514,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 leaveApprovalsCount={leaveApprovalsCount ?? 0}
                 trainingReqBadge={trainingReqBadge}
                 pendingRegCount={pendingRegCount}
+                pendingOfferCount={pendingOfferCount}
               />
 
               {/* ORGANISATION section — role-filtered items */}
