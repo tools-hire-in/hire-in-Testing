@@ -3385,6 +3385,10 @@ export async function registerRoutes(
       });
       res.json(record);
     } catch (error) {
+      console.error(
+        `[PATCH /api/hr/attendance/${req.params.id}] failed to update attendance:`,
+        error instanceof Error ? `${error.message}\n${error.stack}` : error
+      );
       res.status(500).json({ error: "Failed to update attendance" });
     }
   });
@@ -5918,13 +5922,22 @@ export async function registerRoutes(
       const records = await storage.getAttendanceByUser(memberId, startDate, endDate);
       const member = await storage.getAdminUser(memberId);
 
-      // Enrich corrected records with corrector name
-      const correctorIds = [...new Set(records.filter(r => r.correctedById).map(r => r.correctedById!))];
+      // Enrich corrected records with corrector name. This is a non-critical
+      // enrichment: if it fails, still return the core attendance records (with
+      // correctedByName null) rather than 500-ing the whole read.
       const correctorMap = new Map<string, string>();
-      if (correctorIds.length > 0) {
-        const correctors = await db.select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
-          .from(adminUsers).where(inArray(adminUsers.id, correctorIds));
-        for (const c of correctors) correctorMap.set(c.id, `${c.firstName} ${c.lastName}`);
+      try {
+        const correctorIds = [...new Set(records.filter(r => r.correctedById).map(r => r.correctedById!))];
+        if (correctorIds.length > 0) {
+          const correctors = await db.select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+            .from(adminUsers).where(inArray(adminUsers.id, correctorIds));
+          for (const c of correctors) correctorMap.set(c.id, `${c.firstName} ${c.lastName}`);
+        }
+      } catch (enrichError) {
+        console.error(
+          `[hr/attendance/member/${memberId}/range] corrector-name enrichment failed (non-fatal):`,
+          enrichError instanceof Error ? `${enrichError.message}\n${enrichError.stack}` : enrichError
+        );
       }
 
       const enrichedRecords = records.map(r => ({
@@ -5940,6 +5953,10 @@ export async function registerRoutes(
         attendance: enrichedRecords
       });
     } catch (error) {
+      console.error(
+        `[hr/attendance/member/${req.params.memberId}/range] failed to fetch member attendance:`,
+        error instanceof Error ? `${error.message}\n${error.stack}` : error
+      );
       res.status(500).json({ error: "Failed to fetch member attendance" });
     }
   });
