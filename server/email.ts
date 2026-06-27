@@ -108,6 +108,113 @@ async function getUncachableSendGridClient() {
   };
 }
 
+// ==========================================
+// COMMUNICATIONS CONTROL CENTER — central send gateway
+// ==========================================
+// All automated/system-generated email routes through this gateway. It consults the
+// per-type policy (auto-send vs hold-for-approval) and either sends immediately +
+// logs a "sent" row, or holds the fully-rendered email as a "held" row for a Super
+// Admin to approve/reject from the Communications Control Center. Failures are logged
+// as "failed" rows. User-triggered transactional emails do NOT route through here.
+
+type AutomatedMsg = {
+  to: string | string[];
+  from?: any;
+  subject: string;
+  html?: string;
+  text?: string;
+  cc?: string | string[];
+};
+
+function toArray(v: string | string[] | undefined | null): string[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v.filter(Boolean) : [v].filter(Boolean);
+}
+
+export async function dispatchAutomatedEmail(
+  type: string,
+  sourceJob: string,
+  msg: AutomatedMsg,
+): Promise<{ success: boolean; held?: boolean; error?: string }> {
+  const { storage } = await import("./storage");
+  const recipients = toArray(msg.to);
+  const cc = toArray(msg.cc);
+
+  let policy: "auto" | "hold" = "auto";
+  try {
+    policy = await storage.getCommunicationPolicyFor(type);
+  } catch (err) {
+    console.error(`[communications] policy lookup failed for ${type}, defaulting to auto-send:`, err);
+  }
+
+  const baseLog = {
+    type,
+    sourceJob,
+    recipients,
+    cc,
+    subject: msg.subject,
+    bodyHtml: msg.html ?? null,
+    bodyText: msg.text ?? null,
+  };
+
+  if (policy === "hold") {
+    try {
+      await storage.createCommunicationLog({ ...baseLog, status: "held" } as any);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[communications] failed to write held log for ${type} — NOT queued, reporting failure:`, err);
+      return { success: false, error: `Failed to queue communication for approval: ${errMsg}` };
+    }
+    console.log(`[communications] ${type} HELD for approval (recipients: ${recipients.join(", ")})`);
+    return { success: true, held: true };
+  }
+
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    await client.send({ ...msg, from: msg.from ?? { email: fromEmail, name: "Alina Carter" } } as any);
+    await storage.createCommunicationLog({ ...baseLog, status: "sent", sentAt: new Date() } as any).catch((e) =>
+      console.error(`[communications] failed to write sent log for ${type}:`, e),
+    );
+    return { success: true };
+  } catch (error: any) {
+    const errMsg = error?.response?.body ? JSON.stringify(error.response.body) : (error?.message || "Unknown send error");
+    await storage.createCommunicationLog({ ...baseLog, status: "failed", error: errMsg } as any).catch((e) =>
+      console.error(`[communications] failed to write failed log for ${type}:`, e),
+    );
+    console.error(`[communications] ${type} send failed:`, errMsg);
+    return { success: false, error: error?.message };
+  }
+}
+
+// Re-send a previously-held communication exactly as it was rendered. Used by the
+// Communications Control Center approve action.
+export async function resendHeldCommunication(log: {
+  recipients: string[];
+  cc?: string[] | null;
+  subject: string;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg: any = {
+      to: log.recipients,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: log.subject,
+    };
+    if (log.cc && log.cc.length > 0) msg.cc = log.cc;
+    if (log.bodyHtml) msg.html = log.bodyHtml;
+    if (log.bodyText) msg.text = log.bodyText;
+    if (!msg.html && !msg.text) msg.text = log.subject;
+    await client.send(msg);
+    return { success: true };
+  } catch (error: any) {
+    const errMsg = error?.response?.body ? JSON.stringify(error.response.body) : (error?.message || "Unknown send error");
+    console.error("[communications] resend failed:", errMsg);
+    return { success: false, error: errMsg };
+  }
+}
+
 export async function sendInvitationEmail(options: {
   to: string;
   firstName: string;
@@ -571,9 +678,7 @@ export async function sendSalaryReportApprovalReminder(options: {
       `,
       text: `The salary report for ${options.monthName} ${options.year} is still pending approval. Please log in and approve it at ${options.portalUrl}/admin/hr/salary-reports${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    console.log(`Salary report approval reminder sent to ${options.to.join(", ")}`);
-    return { success: true };
+    return await dispatchAutomatedEmail("salary_report_reminder", "scheduler:salary_report_reminder", msg);
   } catch (error: any) {
     console.error("Failed to send salary report approval reminder:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -1224,9 +1329,7 @@ export async function sendOfferLetterReminderEmail(options: {
       `,
       text: `Hi ${options.candidateName},\n\nThis is a reminder that your offer letter for ${options.designation} is awaiting your signature.\n\nYou have ${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining — offer expires on ${expiryStr}.\n\nSign here: ${options.acceptUrl}${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    console.log(`Offer letter reminder sent to ${options.to}`);
-    return { success: true };
+    return await dispatchAutomatedEmail("offer_letter_reminder", "scheduler:signing_reminder", msg);
   } catch (error: any) {
     console.error("Failed to send offer letter reminder:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -1295,9 +1398,7 @@ export async function sendAddendumReminderEmail(options: {
       `,
       text: `Dear ${options.candidateName},\n\nThis is a reminder that your ${typeLabel} amendment letter is awaiting your signature.\n\nYou have ${options.daysLeft} day${options.daysLeft !== 1 ? "s" : ""} remaining — expires on ${expiryStr}.\n\nSign here: ${options.acceptUrl}${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    console.log(`Addendum reminder sent to ${options.to}`);
-    return { success: true };
+    return await dispatchAutomatedEmail("addendum_reminder", "scheduler:signing_reminder", msg);
   } catch (error: any) {
     console.error("Failed to send addendum reminder:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -2094,6 +2195,7 @@ export async function sendAttendanceApprovalRequestEmail(options: {
   year: number;
   deadlineAt: Date;
   approvalUrl: string;
+  policyType?: "attendance_approval_request" | "attendance_approval_reminder";
 }) {
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
@@ -2127,8 +2229,8 @@ export async function sendAttendanceApprovalRequestEmail(options: {
       `,
       text: `Hi ${options.managerName},\n\nYour team's attendance report for ${options.month} ${options.year} requires your review.\nDeadline: ${deadline} IST\n\nReview here: ${options.approvalUrl}${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    return { success: true };
+    const policyType = options.policyType ?? "attendance_approval_request";
+    return await dispatchAutomatedEmail(policyType, "scheduler:attendance_approval", msg);
   } catch (error: any) {
     console.error("sendAttendanceApprovalRequestEmail error:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -2205,8 +2307,7 @@ export async function sendAttendanceDeadlineExpiredEmail(options: {
       `,
       text: `The attendance approval deadline for ${options.month} ${options.year} has expired. Override required.\n\nOverride here: ${options.overrideUrl}${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    return { success: true };
+    return await dispatchAutomatedEmail("attendance_deadline_expired", "scheduler:attendance_deadline", msg);
   } catch (error: any) {
     console.error("sendAttendanceDeadlineExpiredEmail error:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -2531,8 +2632,7 @@ export async function sendManagerRegularizationDigestEmail(options: {
       text: `Dear ${options.managerName},\n\nYou have ${options.pendingRequests.length} pending regularization request(s) requiring your review before the salary run.\n\nReview here: ${options.reviewUrl}${SIGNOFF_TEXT}`,
     };
 
-    await client.send(msg);
-    return { success: true };
+    return await dispatchAutomatedEmail("regularization_digest", "scheduler:regularization_digest", msg);
   } catch (error: any) {
     console.error("sendManagerRegularizationDigestEmail error:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -2962,9 +3062,7 @@ export async function sendNewsletterNotificationEmail(options: {
       `,
       text: `New on Hire'in Insights: ${options.articleTitle}\n\n${options.articleExcerpt ? options.articleExcerpt + "\n\n" : ""}Read the article: ${options.articleUrl}${newsletterFooterText(options.to, options.unsubscribeUrl)}`,
     };
-    await client.send(msg);
-    console.log(`Newsletter notification email sent to ${options.to}`);
-    return { success: true };
+    return await dispatchAutomatedEmail("newsletter_notification", "newsletter:new_content", msg);
   } catch (error: any) {
     console.error("Failed to send newsletter notification email:", error?.response?.body || error.message);
     return { success: false, error: error.message };
@@ -3066,8 +3164,7 @@ export async function sendOvertimePraiseEmail(options: {
         </div>`,
       text: `Hi ${options.employeeFirstName},\n\nYour manager ${options.managerName} wanted to recognise your hard work:\n\n"${options.praiseNote}"\n\nKeep up the great work!${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    console.log(`[praise-email] Overtime praise email sent to ${options.to}`);
+    await dispatchAutomatedEmail("overtime_recognition", "scan:overtime_recognition", msg);
   } catch (err: any) {
     console.error("[praise-email] Failed to send overtime praise email:", err?.response?.body || err.message);
   }
@@ -3119,8 +3216,7 @@ export async function sendEscalationEmail(options: {
         </div>`,
       text: `Hi ${options.recipientName},\n\nAttendance ${label} for ${options.employeeName} in ${options.month}.\n\nShort/Late Days: ${options.count}\nTier: ${options.tier}\n\nPlease log in to review.${SIGNOFF_TEXT}`,
     };
-    await client.send(msg);
-    console.log(`[escalation-email] Tier ${options.tier} email sent to ${options.to}`);
+    await dispatchAutomatedEmail("attendance_escalation", "scan:attendance_escalation", msg);
   } catch (err: any) {
     console.error("[escalation-email] Failed to send escalation email:", err?.response?.body || err.message);
   }

@@ -556,7 +556,7 @@ function RayoAcademySettingsSection() {
   );
 }
 
-function FeatureFlagsSection() {
+export function FeatureFlagsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
@@ -2171,7 +2171,7 @@ function prettyFeatureLabel(key: string): string {
     .join(" › ");
 }
 
-function AccessControlSection() {
+export function AccessControlSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";

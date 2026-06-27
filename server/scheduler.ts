@@ -657,6 +657,7 @@ export function startScheduler() {
             year: run.year,
             deadlineAt: deadline,
             approvalUrl: `${appUrl}/admin/hr/my-team?tab=attendance-approval`,
+            policyType: "attendance_approval_reminder",
           }).catch(console.error);
 
           if (flags?.notifications_enabled) {

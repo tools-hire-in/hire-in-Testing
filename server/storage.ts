@@ -16,6 +16,7 @@ import {
   tickets,
   auditLogs,
   pendingChanges,
+  communicationsLog,
   regionalHolidaySelections,
   salarySlips,
   salaryAdvanceRequests,
@@ -71,6 +72,8 @@ import {
   type InsertAuditLog,
   type PendingChange,
   type InsertPendingChange,
+  type CommunicationLog,
+  type InsertCommunicationLog,
   type RegionalHolidaySelection,
   type InsertRegionalHolidaySelection,
   type SalarySlip,
@@ -151,6 +154,7 @@ import {
   type InternalRequestAuditLog,
   type InsertInternalRequestAuditLog,
 } from "@shared/schema";
+import { COMMUNICATION_POLICY_KEY, resolveCommunicationPolicy } from "@shared/communications";
 
 export interface StudioAnalytics {
   range: { dateFrom: string | null; dateTo: string | null };
@@ -339,6 +343,18 @@ export interface IStorage {
   countPendingChanges(status?: string): Promise<number>;
   approvePendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
   rejectPendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
+
+  // Communications Control Center
+  getCommunicationPolicy(): Promise<Record<string, "auto" | "hold">>;
+  getCommunicationPolicyFor(type: string): Promise<"auto" | "hold">;
+  setCommunicationPolicy(policy: Record<string, "auto" | "hold">, updatedBy?: string): Promise<Record<string, "auto" | "hold">>;
+  createCommunicationLog(entry: InsertCommunicationLog): Promise<CommunicationLog | undefined>;
+  getCommunicationLogs(filters?: { status?: string; type?: string; recipient?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<CommunicationLog[]>;
+  getCommunicationLog(id: string): Promise<CommunicationLog | undefined>;
+  countCommunications(status?: string): Promise<number>;
+  claimCommunicationForApproval(id: string, reviewerId: string, note?: string): Promise<CommunicationLog | undefined>;
+  markCommunicationFailed(id: string, error: string): Promise<void>;
+  rejectCommunication(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
 
   // Salary Slips
   getSalarySlipsByUser(userId: string, year?: number): Promise<SalarySlip[]>;
@@ -2498,6 +2514,130 @@ export class DatabaseStorage implements IStorage {
           field: change.field,
           note: note ?? null,
         },
+      });
+
+      return { ok: true };
+    });
+  }
+
+  // ==========================================
+  // COMMUNICATIONS CONTROL CENTER
+  // ==========================================
+  // Central activity log + held-for-approval queue for automated/system emails.
+  // Per-type policy (auto vs hold) is stored in system_settings.
+
+  async getCommunicationPolicy(): Promise<Record<string, "auto" | "hold">> {
+    const setting = await this.getSystemSetting(COMMUNICATION_POLICY_KEY);
+    return (setting?.value as Record<string, "auto" | "hold">) || {};
+  }
+
+  async getCommunicationPolicyFor(type: string): Promise<"auto" | "hold"> {
+    const policy = await this.getCommunicationPolicy();
+    return resolveCommunicationPolicy(policy, type);
+  }
+
+  async setCommunicationPolicy(
+    policy: Record<string, "auto" | "hold">,
+    updatedBy?: string,
+  ): Promise<Record<string, "auto" | "hold">> {
+    const setting = await this.upsertSystemSetting(COMMUNICATION_POLICY_KEY, policy, updatedBy);
+    if (updatedBy) {
+      await db.insert(auditLogs).values({
+        actorId: updatedBy,
+        action: "communication_policy_updated",
+        changes: { policy },
+      }).catch(() => {});
+    }
+    return (setting.value as Record<string, "auto" | "hold">) || {};
+  }
+
+  async createCommunicationLog(entry: InsertCommunicationLog): Promise<CommunicationLog | undefined> {
+    const [created] = await db.insert(communicationsLog).values(entry).returning();
+    return created;
+  }
+
+  async getCommunicationLogs(filters?: {
+    status?: string;
+    type?: string;
+    recipient?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<CommunicationLog[]> {
+    const conditions = [];
+    if (filters?.status) conditions.push(eq(communicationsLog.status, filters.status));
+    if (filters?.type) conditions.push(eq(communicationsLog.type, filters.type));
+    if (filters?.recipient) {
+      // Match against recipients or cc arrays (case-insensitive substring).
+      const needle = `%${filters.recipient.toLowerCase()}%`;
+      conditions.push(sql`(
+        EXISTS (SELECT 1 FROM unnest(${communicationsLog.recipients}) r WHERE lower(r) LIKE ${needle})
+        OR EXISTS (SELECT 1 FROM unnest(${communicationsLog.cc}) c WHERE lower(c) LIKE ${needle})
+      )`);
+    }
+    if (filters?.startDate) conditions.push(gte(communicationsLog.createdAt, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(communicationsLog.createdAt, filters.endDate));
+    return db.select().from(communicationsLog)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(communicationsLog.createdAt))
+      .limit(filters?.limit ?? 200);
+  }
+
+  async getCommunicationLog(id: string): Promise<CommunicationLog | undefined> {
+    const [row] = await db.select().from(communicationsLog).where(eq(communicationsLog.id, id));
+    return row;
+  }
+
+  async countCommunications(status: string = "held"): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(communicationsLog)
+      .where(eq(communicationsLog.status, status));
+    return result?.count ?? 0;
+  }
+
+  // Atomically claim a held communication for approval. The WHERE status='held'
+  // guard is a compare-and-swap: only one concurrent approver wins, the rest get
+  // undefined (already processed), preventing double-sends. Returns the claimed
+  // row (with bodies) so the caller can send it. If sending fails, the caller
+  // marks it failed via markCommunicationFailed.
+  async claimCommunicationForApproval(id: string, reviewerId: string, note?: string): Promise<CommunicationLog | undefined> {
+    const [claimed] = await db.update(communicationsLog)
+      .set({ status: "approved", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: note ?? null, sentAt: new Date(), error: null })
+      .where(and(eq(communicationsLog.id, id), eq(communicationsLog.status, "held")))
+      .returning();
+    if (claimed) {
+      await db.insert(auditLogs).values({
+        actorId: reviewerId,
+        action: "communication_approved",
+        changes: { communicationId: id, type: claimed.type, subject: claimed.subject, note: note ?? null },
+      }).catch(() => {});
+    }
+    return claimed;
+  }
+
+  async markCommunicationFailed(id: string, error: string): Promise<void> {
+    await db.update(communicationsLog)
+      .set({ status: "failed", error })
+      .where(eq(communicationsLog.id, id));
+  }
+
+  // Reject a held communication: discard it (no send) and audit the rejection.
+  async rejectCommunication(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }> {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.select().from(communicationsLog)
+        .where(eq(communicationsLog.id, id))
+        .for("update");
+      if (!row) return { ok: false, reason: "Communication not found" };
+      if (row.status !== "held") return { ok: false, reason: "Communication is not awaiting approval" };
+
+      await tx.update(communicationsLog)
+        .set({ status: "rejected", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: note ?? null })
+        .where(eq(communicationsLog.id, id));
+
+      await tx.insert(auditLogs).values({
+        actorId: reviewerId,
+        action: "communication_rejected",
+        changes: { communicationId: id, type: row.type, subject: row.subject, note: note ?? null },
       });
 
       return { ok: true };

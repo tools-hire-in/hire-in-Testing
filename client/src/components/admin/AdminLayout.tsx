@@ -1288,6 +1288,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const salaryPendingCount = salaryRunPending?.count ?? 0;
 
+  // Control Tower: communications awaiting approval (super-admin badge)
+  const { data: commsHeld } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/communications/count"],
+    refetchInterval: 60000,
+    enabled: !!user && user?.role === "super_admin",
+  });
+  const commsHeldCount = commsHeld?.count ?? 0;
+
   // Salary advance pending approval badge (managers + final approver)
   const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number }>({
     queryKey: ["/api/salary-advances/stats"],
@@ -1371,10 +1379,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["super_admin", "admin", "hr", "operations"],
     }] : []),
     ...(isSuperAdmin ? [{
-      href: "/admin/automated-changes",
-      label: "Automated Changes",
-      icon: ClipboardCheck,
+      href: "/admin/control-tower",
+      label: "Control Tower",
+      icon: ShieldCheck,
       roles: ["super_admin"],
+      badge: commsHeldCount > 0 ? commsHeldCount : undefined,
+      badgeColor: "bg-amber-500",
     }] : []),
   ];
 
@@ -1402,6 +1412,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
+    if (href === "/admin/control-tower") return location.startsWith("/admin/control-tower");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
     if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");

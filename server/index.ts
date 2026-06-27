@@ -2649,6 +2649,41 @@ async function runStartupTasks() {
     console.error("Pending changes table migration error:", err);
   }
 
+  // Communications log (Control Tower → Communications Control Center). Owns the
+  // table for environments that don't run drizzle push/migrations at boot.
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS communications_log (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        type VARCHAR NOT NULL,
+        source_job VARCHAR,
+        recipients TEXT[] NOT NULL DEFAULT ARRAY[]::text[],
+        cc TEXT[] NOT NULL DEFAULT ARRAY[]::text[],
+        subject TEXT NOT NULL,
+        body_html TEXT,
+        body_text TEXT,
+        status VARCHAR NOT NULL DEFAULT 'sent',
+        error TEXT,
+        reviewed_by VARCHAR REFERENCES admin_users(id),
+        reviewed_at TIMESTAMP,
+        review_note TEXT,
+        sent_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_communications_log_status
+        ON communications_log(status, created_at)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_communications_log_type
+        ON communications_log(type, created_at)
+    `);
+    log("Communications log table ensured");
+  } catch (err) {
+    console.error("Communications log table migration error:", err);
+  }
+
   // Release Notes table
   try {
     await db.execute(sql`

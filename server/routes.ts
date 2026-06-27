@@ -35,6 +35,7 @@ import {
   type StudioArticle,
   type StudioRoutingRules,
 } from "@shared/schema";
+import { COMMUNICATION_TYPES } from "@shared/communications";
 import { computeReadTime } from "@shared/studioContent";
 import { INSIGHT_REACTION_VALUES } from "@shared/insights";
 import {
@@ -11038,6 +11039,176 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Bulk reject pending changes error:", error);
       res.status(500).json({ error: "Failed to bulk reject proposals" });
+    }
+  });
+
+  // ==========================================
+  // COMMUNICATIONS CONTROL CENTER — Super Admin only
+  // ==========================================
+  // Visibility + governance over all automated/system email. Every automated send
+  // routes through email.ts dispatchAutomatedEmail, which consults per-type policy
+  // (auto-send vs hold-for-approval) and writes an activity-log row. Super Admins
+  // review the held queue here and approve (send + audit) or reject (discard + audit).
+
+  // Type registry + current policy (for the policy settings UI).
+  app.get("/api/admin/communications/types", requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const policy = await storage.getCommunicationPolicy();
+      res.json({ types: COMMUNICATION_TYPES, policy });
+    } catch (error) {
+      console.error("Communication types error:", error);
+      res.status(500).json({ error: "Failed to fetch communication types" });
+    }
+  });
+
+  // Update per-type policy (partial map merged over existing).
+  app.put("/api/admin/communications/policy", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const incoming = (req.body?.policy ?? {}) as Record<string, unknown>;
+      const validKeys = new Set(COMMUNICATION_TYPES.map((t) => t.key));
+      const existing = await storage.getCommunicationPolicy();
+      const merged: Record<string, "auto" | "hold"> = { ...existing };
+      for (const [key, value] of Object.entries(incoming)) {
+        if (!validKeys.has(key)) continue;
+        if (value !== "auto" && value !== "hold") continue;
+        merged[key] = value;
+      }
+      const saved = await storage.setCommunicationPolicy(merged, req.session.userId!);
+      res.json({ policy: saved });
+    } catch (error) {
+      console.error("Update communication policy error:", error);
+      res.status(500).json({ error: "Failed to update communication policy" });
+    }
+  });
+
+  // Count of communications awaiting approval (for the sidebar/landing badge).
+  app.get("/api/admin/communications/count", requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const count = await storage.countCommunications("held");
+      res.json({ count });
+    } catch (error) {
+      console.error("Communications count error:", error);
+      res.status(500).json({ error: "Failed to fetch communications count" });
+    }
+  });
+
+  // Activity log (filter by status/type). Default returns latest across all statuses.
+  app.get("/api/admin/communications", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const type = req.query.type ? String(req.query.type) : undefined;
+      const recipient = req.query.recipient ? String(req.query.recipient).trim() : undefined;
+      const limit = req.query.limit ? Math.min(500, Math.max(1, parseInt(String(req.query.limit), 10) || 200)) : 200;
+      const parseDate = (v: unknown): Date | undefined => {
+        if (!v) return undefined;
+        const d = new Date(String(v));
+        return isNaN(d.getTime()) ? undefined : d;
+      };
+      const startDate = parseDate(req.query.startDate);
+      // Inclusive end-of-day when only a date (no time) is supplied.
+      let endDate = parseDate(req.query.endDate);
+      if (endDate && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.endDate))) {
+        endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+      }
+      const logs = await storage.getCommunicationLogs({ status, type, recipient, startDate, endDate, limit });
+      res.json({ total: logs.length, logs });
+    } catch (error) {
+      console.error("Communications list error:", error);
+      res.status(500).json({ error: "Failed to fetch communications" });
+    }
+  });
+
+  // Approve a single held communication: re-send it, then mark approved + audit.
+  app.post("/api/admin/communications/:id/approve", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      // Atomic claim (compare-and-swap on status='held') prevents two concurrent
+      // approvers from double-sending the same email.
+      const claimed = await storage.claimCommunicationForApproval(req.params.id, req.session.userId!, req.body?.note);
+      if (!claimed) return res.status(409).json({ error: "Communication is not awaiting approval" });
+
+      const { resendHeldCommunication } = await import("./email");
+      const result = await resendHeldCommunication({
+        recipients: claimed.recipients ?? [],
+        cc: claimed.cc,
+        subject: claimed.subject,
+        bodyHtml: claimed.bodyHtml,
+        bodyText: claimed.bodyText,
+      });
+      if (!result.success) {
+        await storage.markCommunicationFailed(req.params.id, result.error ?? "Send failed");
+        return res.status(502).json({ error: result.error ?? "Failed to send communication" });
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Approve communication error:", error);
+      res.status(500).json({ error: "Failed to approve communication" });
+    }
+  });
+
+  // Reject a single held communication (discard + audit, no send).
+  app.post("/api/admin/communications/:id/reject", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const result = await storage.rejectCommunication(req.params.id, req.session.userId!, req.body?.note);
+      if (!result.ok) return res.status(409).json({ error: result.reason });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Reject communication error:", error);
+      res.status(500).json({ error: "Failed to reject communication" });
+    }
+  });
+
+  // Bulk approve held communications.
+  app.post("/api/admin/communications/bulk-approve", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      if (ids.length === 0) return res.status(400).json({ error: "No communication ids provided" });
+      const { resendHeldCommunication } = await import("./email");
+      let approved = 0;
+      const failures: { id: string; reason?: string }[] = [];
+      for (const id of ids) {
+        // Atomic claim per id — only the winner of the compare-and-swap sends.
+        const claimed = await storage.claimCommunicationForApproval(id, req.session.userId!, req.body?.note);
+        if (!claimed) {
+          failures.push({ id, reason: "Not awaiting approval" });
+          continue;
+        }
+        const result = await resendHeldCommunication({
+          recipients: claimed.recipients ?? [],
+          cc: claimed.cc,
+          subject: claimed.subject,
+          bodyHtml: claimed.bodyHtml,
+          bodyText: claimed.bodyText,
+        });
+        if (!result.success) {
+          await storage.markCommunicationFailed(id, result.error ?? "Send failed");
+          failures.push({ id, reason: result.error });
+          continue;
+        }
+        approved++;
+      }
+      res.json({ approved, failed: failures.length, failures });
+    } catch (error) {
+      console.error("Bulk approve communications error:", error);
+      res.status(500).json({ error: "Failed to bulk approve communications" });
+    }
+  });
+
+  // Bulk reject held communications.
+  app.post("/api/admin/communications/bulk-reject", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      if (ids.length === 0) return res.status(400).json({ error: "No communication ids provided" });
+      let rejected = 0;
+      const failures: { id: string; reason?: string }[] = [];
+      for (const id of ids) {
+        const result = await storage.rejectCommunication(id, req.session.userId!, req.body?.note);
+        if (result.ok) rejected++;
+        else failures.push({ id, reason: result.reason });
+      }
+      res.json({ rejected, failed: failures.length, failures });
+    } catch (error) {
+      console.error("Bulk reject communications error:", error);
+      res.status(500).json({ error: "Failed to bulk reject communications" });
     }
   });
 

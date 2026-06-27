@@ -2005,6 +2005,48 @@ export type PendingChange = typeof pendingChanges.$inferSelect;
 export type InsertPendingChange = z.infer<typeof insertPendingChangeSchema>;
 
 // ==========================================
+// COMMUNICATIONS LOG (Control Tower — Communications Control Center)
+// ==========================================
+// Every automated/system-generated email routes through the central send gateway,
+// which writes a row here. Per-type policy (auto-send vs hold-for-approval) lives in
+// system_settings under "communications_policy". Held rows can be approved (sent now)
+// or rejected (discarded) by a Super Admin from the Communications Control Center.
+export const communicationsLog = pgTable("communications_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Communication type key (see shared/communications.ts COMMUNICATION_TYPES)
+  type: varchar("type").notNull(),
+  // Which automated job/trigger produced this email (e.g. "scheduler:salary_report_reminder")
+  sourceJob: varchar("source_job"),
+  // Rendered email content so a held email can be sent later as-is
+  recipients: text("recipients").array().notNull().default(sql`ARRAY[]::text[]`),
+  cc: text("cc").array().notNull().default(sql`ARRAY[]::text[]`),
+  subject: text("subject").notNull(),
+  bodyHtml: text("body_html"),
+  bodyText: text("body_text"),
+  // "sent" | "held" | "approved" | "rejected" | "failed"
+  status: varchar("status").notNull().default("sent"),
+  error: text("error"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNote: text("review_note"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_communications_log_status").on(table.status, table.createdAt),
+  index("idx_communications_log_type").on(table.type, table.createdAt),
+]);
+
+export const insertCommunicationLogSchema = createInsertSchema(communicationsLog).omit({
+  id: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewNote: true,
+  createdAt: true,
+});
+export type CommunicationLog = typeof communicationsLog.$inferSelect;
+export type InsertCommunicationLog = z.infer<typeof insertCommunicationLogSchema>;
+
+// ==========================================
 
 export const roleSummaryTemplates = pgTable("role_summary_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

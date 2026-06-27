@@ -54,7 +54,7 @@ function formatDate(dateStr: string) {
   }
 }
 
-export default function AutomatedChanges() {
+export default function AutomatedChanges({ embedded = false }: { embedded?: boolean } = {}) {
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "rejected">("pending");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -165,8 +165,7 @@ export default function AutomatedChanges() {
 
   const isReadOnly = statusFilter !== "pending";
 
-  return (
-    <AdminLayout>
+  const content = (
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -332,6 +331,6 @@ export default function AutomatedChanges() {
           </div>
         )}
       </div>
-    </AdminLayout>
   );
+  return embedded ? content : <AdminLayout>{content}</AdminLayout>;
 }
