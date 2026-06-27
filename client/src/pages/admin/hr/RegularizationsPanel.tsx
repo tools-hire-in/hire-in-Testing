@@ -976,7 +976,24 @@ export default function RegularizationsPanel() {
   const [activeSection, setActiveSection] = useState<"requests" | "acks" | "settings">("requests");
   const [auditDetailId, setAuditDetailId] = useState<string | null>(null);
 
-  const canBulkOverride = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
+  const role = user?.role ?? "";
+  // HR-tier roles get the full toolkit (override, bulk override, policy config).
+  const isHrAdmin = ["super_admin", "admin", "hr"].includes(role);
+  // Managers can review/approve, but only on-time requests (before the cutoff day).
+  const isManager = role === "manager";
+  const canReview = isHrAdmin || isManager;
+  const canBulkOverride = isHrAdmin;
+
+  // Cutoff policy: managers may act only on requests dated on/before the cutoff
+  // day; later ones must be handled by HR/Admin via Override.
+  const { data: policyConfig } = useQuery<{ managerCutoffDay?: number }>({
+    queryKey: ["/api/hr/attendance/regularization/policy"],
+  });
+  const cutoffDay = policyConfig?.managerCutoffDay ?? 20;
+  const isWithinWindow = (r: RegularizationRequest) =>
+    Number(r.attendanceDate?.split("-")[2] ?? 0) <= cutoffDay;
+  // Whether the current viewer can act on this specific request right now.
+  const canActOn = (r: RegularizationRequest) => isHrAdmin || (isManager && isWithinWindow(r));
 
   const today = new Date();
   const todayDay = today.getDate();
@@ -1003,7 +1020,9 @@ export default function RegularizationsPanel() {
   });
 
   const pendingCount = (requests || []).filter(r => r.status === "pending").length;
-  const pendingFilteredIds = filtered.filter(r => r.status === "pending").map(r => r.id);
+  // Only requests the viewer can act on are selectable for bulk approve
+  // (managers cannot select past-cutoff requests).
+  const pendingFilteredIds = filtered.filter(r => r.status === "pending" && canActOn(r)).map(r => r.id);
   const allPendingSelected = pendingFilteredIds.length > 0 && pendingFilteredIds.every(id => selectedIds.has(id));
 
   function toggleSelect(id: string) {
@@ -1040,10 +1059,12 @@ export default function RegularizationsPanel() {
               Approve Selected ({selectedIds.size})
             </Button>
           )}
-          <Button size="sm" onClick={() => setShowOverride(true)} data-testid="button-direct-override">
-            <Pencil className="h-3.5 w-3.5 mr-1.5" />
-            Direct Override
-          </Button>
+          {isHrAdmin && (
+            <Button size="sm" onClick={() => setShowOverride(true)} data-testid="button-direct-override">
+              <Pencil className="h-3.5 w-3.5 mr-1.5" />
+              Direct Override
+            </Button>
+          )}
           {canBulkOverride && (
             <Button size="sm" variant="secondary" onClick={() => setShowBulkOverride(true)} data-testid="button-bulk-override">
               <Layers className="h-3.5 w-3.5 mr-1.5" />
@@ -1057,7 +1078,7 @@ export default function RegularizationsPanel() {
       <div className="flex gap-2 flex-wrap border-b pb-2">
         {[
           { key: "requests", label: "Requests", badge: pendingCount > 0 ? pendingCount : null },
-          { key: "settings", label: "Policy Settings" },
+          ...(isHrAdmin ? [{ key: "settings", label: "Policy Settings", badge: null }] : []),
         ].map(s => (
           <button
             key={s.key}
@@ -1181,7 +1202,7 @@ export default function RegularizationsPanel() {
                         return (
                           <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20" data-testid={`reg-row-${r.id}`}>
                             <td className="py-3 px-3">
-                              {isPending ? (
+                              {isPending && canActOn(r) ? (
                                 <Checkbox
                                   checked={selectedIds.has(r.id)}
                                   onCheckedChange={() => toggleSelect(r.id)}
@@ -1206,7 +1227,7 @@ export default function RegularizationsPanel() {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
-                                {isPending ? (
+                                {isPending && canActOn(r) ? (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1215,6 +1236,16 @@ export default function RegularizationsPanel() {
                                   >
                                     Review
                                   </Button>
+                                ) : isPending && isManager ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-0.5 whitespace-nowrap"
+                                    title={`Dated after the cutoff day (${cutoffDay}) — HR / Admin must Override this request`}
+                                    data-testid={`label-needs-hr-${r.id}`}
+                                  >
+                                    Needs HR / Admin
+                                  </span>
+                                ) : isPending ? (
+                                  <span className="text-xs text-muted-foreground">Awaiting review</span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">
                                     {r.reviewerName && `By ${r.reviewerName}`}

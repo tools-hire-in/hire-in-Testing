@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  externalRedirectForTab,
   isTabVisibleForRole,
   parsePeopleHrTab,
   relocatedGrowthTab,
@@ -54,7 +55,17 @@ test("isTabVisibleForRole enforces gating", () => {
   assert.equal(isTabVisibleForRole("escalations", "operations"), false);
   // open to all
   assert.equal(isTabVisibleForRole("users", "operations"), true);
-  assert.equal(isTabVisibleForRole("regularizations", "operations"), true);
+  // regularizations moved out of People & HR (now My Team → Corrections)
+  assert.equal(isTabVisibleForRole("regularizations" as any, "operations"), false);
+});
+
+test("externalRedirectForTab sends relocated tabs to their new route", () => {
+  assert.equal(
+    externalRedirectForTab("?tab=regularizations"),
+    "/admin/hr/my-team?tab=corrections",
+  );
+  assert.equal(externalRedirectForTab("?tab=users"), null);
+  assert.equal(externalRedirectForTab(""), null);
 });
 
 test("resolvePeopleHrTab keeps a deep-linked tab the role can see", () => {
@@ -74,7 +85,7 @@ test("resolvePeopleHrTab falls back to users when the role cannot see the tab", 
 
 test("visibleTabDefsForRole returns the right tab sets", () => {
   const opsTabs = visibleTabDefsForRole("operations").map((t) => t.value);
-  assert.deepEqual(opsTabs, ["users", "regularizations"]);
+  assert.deepEqual(opsTabs, ["users"]);
 
   const hrTabs = visibleTabDefsForRole("hr").map((t) => t.value);
   assert.ok(hrTabs.includes("balance-adjustments"));

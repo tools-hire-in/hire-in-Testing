@@ -5,7 +5,6 @@ export type PeopleHrTab =
   | "compliance"
   | "policy"
   | "audit"
-  | "regularizations"
   | "escalations";
 
 type TabGate = "all" | "hr" | "admin";
@@ -24,7 +23,6 @@ export const PEOPLE_HR_TAB_DEFS: PeopleHrTabDef[] = [
   { value: "compliance", label: "Document Compliance", testId: "tab-compliance", gate: "hr" },
   { value: "policy", label: "Policy Compliance", testId: "tab-policy", gate: "hr" },
   { value: "audit", label: "Audit Logs", testId: "tab-audit", gate: "admin" },
-  { value: "regularizations", label: "Regularizations", testId: "tab-regularizations", gate: "all" },
   { value: "escalations", label: "Attendance Escalations", testId: "tab-escalations", gate: "hr" },
 ];
 
@@ -46,6 +44,13 @@ export const PEOPLE_HR_LEGACY_TAB_ALIASES: Record<string, PeopleHrTab> = {
 export const PEOPLE_HR_RELOCATED_TABS: Record<string, string> = {
   training: "training-mgmt",
   plans: "employee-plans",
+};
+
+// Legacy ?tab= values that have moved to a fully different route. Maps the old
+// People & HR tab → the absolute destination URL. Regularizations now live in
+// My Team → Corrections.
+export const PEOPLE_HR_EXTERNAL_REDIRECTS: Record<string, string> = {
+  regularizations: "/admin/hr/my-team?tab=corrections",
 };
 
 export function isAdminRole(role: string): boolean {
@@ -88,6 +93,17 @@ export function relocatedGrowthTab(search: string): string | null {
     const raw = new URLSearchParams(search).get("tab");
     if (!raw) return null;
     return PEOPLE_HR_RELOCATED_TABS[raw] ?? null;
+  } catch {}
+  return null;
+}
+
+// Returns the absolute URL a relocated-off-page People & HR ?tab= should
+// redirect to (e.g. regularizations → My Team Corrections), or null otherwise.
+export function externalRedirectForTab(search: string): string | null {
+  try {
+    const raw = new URLSearchParams(search).get("tab");
+    if (!raw) return null;
+    return PEOPLE_HR_EXTERNAL_REDIRECTS[raw] ?? null;
   } catch {}
   return null;
 }

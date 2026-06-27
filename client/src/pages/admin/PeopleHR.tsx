@@ -12,11 +12,11 @@ import { SalaryReportsContent } from "./hr/SalaryReports";
 import { DocumentComplianceContent } from "./hr/DocumentCompliance";
 import { PolicyComplianceContent } from "./hr/PolicyCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
-import RegularizationsPanel from "./hr/RegularizationsPanel";
 import AttendanceExceptions from "./hr/AttendanceExceptions";
 import BalanceAdjustments from "./hr/BalanceAdjustments";
 import {
   type PeopleHrTab,
+  externalRedirectForTab,
   isAdminRole,
   isHrRole,
   isTabVisibleForRole,
@@ -45,6 +45,15 @@ export default function PeopleHR() {
       setLocation(`/admin/growth?tab=${relocated}`);
     }
   }, [relocated, setLocation]);
+
+  // Tabs that moved to a fully different route (e.g. Regularizations → My Team
+  // Corrections) — redirect old deep links there.
+  const externalRedirect = externalRedirectForTab(window.location.search);
+  useEffect(() => {
+    if (externalRedirect) {
+      setLocation(externalRedirect);
+    }
+  }, [externalRedirect, setLocation]);
 
   // Parse the deep-linked tab without depending on role, so a role-gated tab
   // (e.g. ?tab=balance-adjustments) is preserved through the auth-loading
@@ -80,7 +89,7 @@ export default function PeopleHR() {
     }
   }, [authLoading, user, role, activeTab]);
 
-  if (authLoading || !isAuthenticated || relocated) return null;
+  if (authLoading || !isAuthenticated || relocated || externalRedirect) return null;
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as PeopleHrTab);
@@ -152,10 +161,6 @@ export default function PeopleHR() {
               <AuditLogsContent />
             </TabsContent>
           )}
-
-          <TabsContent value="regularizations" className="mt-4">
-            <RegularizationsPanel />
-          </TabsContent>
 
           {isHR && (
             <TabsContent value="escalations" className="mt-4">

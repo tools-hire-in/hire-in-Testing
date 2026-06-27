@@ -595,7 +595,7 @@ export default function CommandCenterV2() {
             value={`${pendingRegularizationCount ?? 0}`}
             hint={(pendingRegularizationCount ?? 0) > 0 ? "corrections to review" : "all clear"}
             tone={(pendingRegularizationCount ?? 0) > 0 ? "amber" : "default"}
-            onClick={() => setLocation("/admin/hr/my-team?tab=regularizations")}
+            onClick={() => setLocation("/admin/hr/my-team?tab=corrections")}
             testId="ccv2-regularizations"
           />
         )}

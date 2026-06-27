@@ -4768,9 +4768,11 @@ export async function registerRoutes(
     try {
       const versionSetting = await storage.getSystemSetting("regularization_policy_version");
       const blackoutSetting = await storage.getSystemSetting("regularization_month_end_blackout_days");
+      const cutoffSetting = await storage.getSystemSetting("regularization_manager_cutoff_day");
       res.json({
         policyVersion: versionSetting ? String(versionSetting.value) : "2",
         monthEndBlackoutDays: blackoutSetting ? Number(blackoutSetting.value) : 3,
+        managerCutoffDay: cutoffSetting ? Number(cutoffSetting.value) : 20,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch policy" });
@@ -4896,7 +4898,7 @@ export async function registerRoutes(
 
       // Best-effort: notify the reporting manager (or HR fallback) about the new
       // pending regularization request. Never block / fail the submission.
-      const reviewPath = "/admin/hr/my-team?tab=regularizations";
+      const reviewPath = "/admin/hr/my-team?tab=corrections";
       const reviewUrl = `${req.protocol}://${req.get("host")}${reviewPath}`;
       (async () => {
         try {
