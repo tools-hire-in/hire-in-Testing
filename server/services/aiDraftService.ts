@@ -319,22 +319,50 @@ export interface ReleaseNotesResult {
   body: string;
 }
 
-export async function generateReleaseNotes(changelogInput: string): Promise<ReleaseNotesResult> {
+export async function generateReleaseNotes(
+  changelogInput: string,
+  mode: "release" | "digest" = "release",
+): Promise<ReleaseNotesResult> {
   const today = new Date();
   const dateStr = `v${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  const systemPrompt = `You are a warm, professional communications writer for Hire'in Solutions, an AI-powered staffing and talent acquisition firm. 
-Your job is to turn raw git commit messages into polished, user-friendly release notes.
-- Write in a clear, warm, and professional tone — accessible to non-technical HR staff.
-- Group related changes together where sensible.
-- Translate technical commit messages into plain-English benefits ("Fixed the attendance punch-in bug" → "Attendance is now more reliable — punch-ins save correctly every time").
-- Skip purely internal or trivial commits (dependency bumps, typos, etc.).
-- Infer a version string like "${dateStr}" from today's date if commits don't suggest one.
-- Keep the title punchy (max 8 words).
-- Body should be 2–5 short paragraphs or a short bulleted list.
-- Never mention file names, PR numbers, or technical jargon.`;
+  // Internal communication & security policy applied to BOTH modes.
+  const SECURITY_POLICY = `INTERNAL COMMUNICATION & SECURITY POLICY (must always follow):
+- Audience is non-technical employees. Write in warm, plain English about what people can now DO — benefits, not implementation.
+- NEVER include secrets, credentials, tokens, API keys, environment variable names, URLs, database details, or any sensitive configuration.
+- NEVER include file names, file paths, function names, table/column names, commit hashes, PR/ticket numbers, branch names, or internal jargon.
+- NEVER reveal security vulnerabilities, exploits, or how a flaw could be abused. Describe security/reliability fixes only in reassuring, high-level terms ("we made sign-in more secure").
+- Skip purely internal or trivial changes (dependency bumps, refactors, typos, build tooling).
+- Do not invent features that aren't supported by the input. If the input is thin, keep it short and honest.`;
 
-  const userPrompt = `Here are the recent git commits since the last release:\n\n${changelogInput || "(no commits found)"}\n\nPlease generate polished release notes from these.`;
+  let systemPrompt: string;
+  let userPrompt: string;
+
+  if (mode === "digest") {
+    systemPrompt = `You are a warm, professional communications writer for Hire'in Solutions, an AI-powered staffing and talent acquisition firm.
+Your job is to turn roughly a month of changes into a SINGLE consolidated "what's new this past month" digest for employees.
+${SECURITY_POLICY}
+DIGEST FORMAT:
+- This is a concise, benefit-led highlights reel — NOT an exhaustive changelog. Do not overwhelm the reader.
+- Organize by theme using these buckets where relevant: Attendance, Leave, Letters & Documents, Performance, Onboarding, Communications, and a final "Other improvements" catch-all.
+- Lead with the biggest, most useful headline features first; group smaller changes together briefly.
+- Aim for about 8–15 highlights total. Use short theme headings (e.g. a line like "Attendance") followed by 1–3 bullet points each.
+- Keep each bullet to one warm, plain-English sentence focused on the benefit.
+- Title should make clear this is a monthly catch-up (max 8 words).
+- Infer a version string like "${dateStr}" from today's date.`;
+    userPrompt = `Here are the changes from roughly the past month:\n\n${changelogInput || "(no changes provided)"}\n\nPlease produce one consolidated, themed, benefit-led monthly digest from these.`;
+  } else {
+    systemPrompt = `You are a warm, professional communications writer for Hire'in Solutions, an AI-powered staffing and talent acquisition firm.
+Your job is to turn a list of recent changes into polished, user-friendly release notes.
+${SECURITY_POLICY}
+RELEASE NOTE FORMAT:
+- Group related changes together where sensible.
+- Translate technical descriptions into plain-English benefits ("Fixed the attendance punch-in bug" → "Attendance is now more reliable — punch-ins save correctly every time").
+- Infer a version string like "${dateStr}" from today's date if the input doesn't suggest one.
+- Keep the title punchy (max 8 words).
+- Body should be 2–5 short paragraphs or a short bulleted list.`;
+    userPrompt = `Here are the recent changes since the last release:\n\n${changelogInput || "(no changes provided)"}\n\nPlease generate polished release notes from these.`;
+  }
 
   try {
     const completion = await openai.chat.completions.create({
