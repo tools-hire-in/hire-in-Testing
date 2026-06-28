@@ -47,7 +47,7 @@ interface EmployeePlan {
 // ─── Shared helper: insert plan-linked goals from template rows ───────────────
 // Called by both POST /api/hr/plans (auto-seed) and POST /api/performance/goals/batch
 // (manual plan-link). Keeps goal-creation logic in ONE canonical place.
-async function insertPlanGoalsFromTemplates(
+export async function insertPlanGoalsFromTemplates(
   planId: string,
   employeeId: string,
   managerId: string | null,
@@ -62,13 +62,118 @@ async function insertPlanGoalsFromTemplates(
         (employee_id, manager_id, title, description, category, plan_id, source_ref, start_date, target_date, weight)
       VALUES
         (${employeeId}, ${managerId}, ${tmpl.goal_title}, ${tmpl.goal_description ?? null},
-         ${tmpl.goal_category}, ${planId}, ${sourceRef}, ${startDate}, ${endDate}, 3)
+         ${normalizeGoalCategory(tmpl.goal_category)}, ${planId}, ${sourceRef}, ${startDate}, ${endDate}, 3)
     `);
   }
   return templates.length;
 }
 
-function generatePlanCheckIns(
+// plan_goal_templates.goal_category uses a richer vocabulary (e.g. "production")
+// than the performance_goals.category enum (individual|team|company|development).
+// Map template categories onto valid enum buckets so goal insertion never fails
+// on an out-of-enum value. "production"/output goals are individual-attributed.
+const GOAL_CATEGORY_ENUM = new Set(["individual", "team", "company", "development"]);
+export function normalizeGoalCategory(raw: string | null | undefined): string {
+  if (raw && GOAL_CATEGORY_ENUM.has(raw)) return raw;
+  if (raw === "production") return "individual";
+  return "individual";
+}
+
+// ─── Activation engine ───────────────────────────────────────────────────────
+// Instantiate a REAL, active, fully-tracked growth plan from a signed offer-letter
+// addendum that carries a 90-day growth-plan clause. Mirrors POST /api/hr/plans
+// exactly (active plan + SOP check-in schedule + template goals) so once created
+// the plan follows the normal SOP: day-before/same-day reminders, manager + HR
+// notifications, and escalations (driven by the scheduler off check_ins/plans).
+// Idempotent — a matching growth plan for the same employee + window is never
+// duplicated, so accept, countersign, and the startup backfill are all safe to
+// call repeatedly. This is the foundation for the broader "attach a plan to any
+// offer/addendum" system; today the only attachment signal is the growth clause.
+export async function ensureGrowthPlanFromAddendum(opts: {
+  employeeId?: string | null;
+  offerLetterId?: string | null;
+  effectiveDate?: string | null;
+  createdBy: string;
+  durationDays?: number;
+}): Promise<{ created: boolean; planId?: string; reason?: string }> {
+  let employeeId = opts.employeeId ?? null;
+  if (!employeeId && opts.offerLetterId) {
+    const r = await db.execute(sql`
+      SELECT employee_id FROM employee_plans
+      WHERE offer_letter_id = ${opts.offerLetterId} AND employee_id IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    employeeId = ((r.rows[0] as any)?.employee_id as string | undefined) ?? null;
+  }
+  if (!employeeId) return { created: false, reason: "no_employee" };
+
+  // Confirm employee exists and resolve their manager so escalations route per SOP.
+  const emp = await db.execute(sql`SELECT id, manager_id FROM admin_users WHERE id = ${employeeId} LIMIT 1`);
+  if (emp.rows.length === 0) return { created: false, reason: "employee_missing" };
+  const managerId = ((emp.rows[0] as any)?.manager_id as string | undefined) ?? null;
+
+  const startDate = (opts.effectiveDate && opts.effectiveDate.trim())
+    ? opts.effectiveDate.slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+  const durationDays = opts.durationDays ?? 90;
+  const endDate = new Date(new Date(startDate).getTime() + durationDays * 86400000)
+    .toISOString().slice(0, 10);
+
+  // Idempotency: same employee + growth + identical window already planned.
+  const dup = await db.execute(sql`
+    SELECT id FROM employee_plans
+    WHERE employee_id = ${employeeId} AND plan_type = 'growth'
+      AND start_date = ${startDate} AND end_date = ${endDate}
+    LIMIT 1
+  `);
+  if (dup.rows.length > 0) return { created: false, planId: (dup.rows[0] as any).id, reason: "exists" };
+
+  // Resolve the growth goal-template set. A salary-revision / promotion growth
+  // clause maps to the foundation->senior 90-day progression track; fall back to
+  // senior, then associate, then ANY active growth template so we never create a
+  // zero-goal plan.
+  const candidateSlugs = ["foundation_to_senior", "senior_recruiter", "associate_recruiter"];
+  let templates: PlanGoalTemplate[] = [];
+  for (const slug of candidateSlugs) {
+    const r = await db.execute(sql`
+      SELECT * FROM plan_goal_templates
+      WHERE plan_type = 'growth' AND role_slug = ${slug} AND is_active = true
+      ORDER BY sort_order ASC
+    `);
+    if (r.rows.length > 0) { templates = r.rows as PlanGoalTemplate[]; break; }
+  }
+  if (templates.length === 0) {
+    const r = await db.execute(sql`
+      SELECT * FROM plan_goal_templates
+      WHERE plan_type = 'growth' AND is_active = true
+      ORDER BY sort_order ASC
+    `);
+    templates = r.rows as PlanGoalTemplate[];
+  }
+  if (templates.length === 0) return { created: false, reason: "no_templates" };
+
+  // Create the ACTIVE plan, its SOP check-in schedule, and the template goals.
+  const result = await db.execute(sql`
+    INSERT INTO employee_plans (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
+    VALUES (${employeeId}, ${managerId}, 'growth'::employee_plan_type, 'healthcare'::employee_plan_dept_scope, 'active'::employee_plan_status, ${startDate}, ${endDate}, ${durationDays}, ${opts.createdBy})
+    RETURNING *
+  `);
+  const plan = result.rows[0] as EmployeePlan;
+
+  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, "growth", startDate, endDate);
+  for (const ci of checkInSchedule) {
+    await db.execute(sql`
+      INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+      VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId}, ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
+    `);
+  }
+
+  await insertPlanGoalsFromTemplates(plan.id, employeeId, managerId, startDate, endDate, templates);
+
+  return { created: true, planId: plan.id };
+}
+
+export function generatePlanCheckIns(
   planId: string,
   employeeId: string,
   managerId: string | null,
@@ -88,8 +193,11 @@ function generatePlanCheckIns(
   };
 
   if (planType === "probation") {
-    // Milestone reviews at days 15, 30, 60, 90
-    [15, 30, 60, 90].forEach(day => push(addDays(start, day), "milestone"));
+    // Eight formal probation check-ins per the 90-day framework:
+    // Day 1 (kickoff), 7 (early), 15, 30 (calibration), 45, 60 (consistency),
+    // 75, 90 (confirmation). All recorded as milestone check-ins so they appear
+    // on the timeline and the manager review surfaces.
+    [1, 7, 15, 30, 45, 60, 75, 90].forEach(day => push(addDays(start, day), "milestone"));
   } else if (planType === "pip") {
     // Weekly PIP review every 7 days for the full duration
     let cur = addDays(start, 7);
@@ -1421,11 +1529,14 @@ export function registerPerformanceRoutes(app: Express) {
     const userId = requireRole(req, res, "hr.planTemplates.post", ADMIN_ROLES);
     if (!userId) return;
     try {
-      const { plan_type, role_slug, goal_title, goal_category, goal_description, target_metric, sort_order } = req.body;
+      const { plan_type, role_slug, goal_title, goal_category, goal_description, target_metric, sort_order,
+        department, role, level, weight, milestone, is_universal, department_scope } = req.body;
       if (!plan_type || !role_slug || !goal_title) return res.status(400).json({ error: "plan_type, role_slug, and goal_title are required" });
       const result = await db.execute(sql`
-        INSERT INTO plan_goal_templates (plan_type, role_slug, department_scope, goal_title, goal_category, goal_description, target_metric, sort_order, is_active)
-        VALUES (${plan_type}::employee_plan_type, ${role_slug}, 'healthcare'::employee_plan_dept_scope, ${goal_title}, ${goal_category || "individual"}, ${goal_description || null}, ${target_metric || null}, ${sort_order ?? 0}, true)
+        INSERT INTO plan_goal_templates (plan_type, role_slug, department_scope, goal_title, goal_category, goal_description, target_metric, sort_order, is_active,
+          department, role, level, weight, milestone, is_universal)
+        VALUES (${plan_type}::employee_plan_type, ${role_slug}, ${(department_scope || "healthcare")}::employee_plan_dept_scope, ${goal_title}, ${goal_category || "individual"}, ${goal_description || null}, ${target_metric || null}, ${sort_order ?? 0}, true,
+          ${department ?? null}, ${role ?? null}, ${level ?? null}, ${weight ?? null}, ${milestone ?? null}, ${is_universal ?? false})
         RETURNING *
       `);
       await createAuditLog(userId, "plan_template_created", { goal_title, plan_type, role_slug });
@@ -1440,16 +1551,27 @@ export function registerPerformanceRoutes(app: Express) {
     const userId = requireRole(req, res, "hr.planTemplates.patch", ADMIN_ROLES);
     if (!userId) return;
     try {
-      const { goal_title, goal_description, target_metric, sort_order, is_active, goal_category } = req.body;
+      const body = req.body ?? {};
+      const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
+      const sets: any[] = [];
+      // Content fields: only overwrite when a non-null value is supplied (preserve existing on null/absent).
+      if (body.goal_title != null) sets.push(sql`goal_title = ${body.goal_title}`);
+      if (body.goal_description != null) sets.push(sql`goal_description = ${body.goal_description}`);
+      if (body.target_metric != null) sets.push(sql`target_metric = ${body.target_metric}`);
+      if (body.goal_category != null) sets.push(sql`goal_category = ${body.goal_category}`);
+      if (body.sort_order != null) sets.push(sql`sort_order = ${body.sort_order}`);
+      if (body.is_active != null) sets.push(sql`is_active = ${body.is_active}`);
+      if (body.is_universal != null) sets.push(sql`is_universal = ${body.is_universal}`);
+      // Matrix-key fields: honor explicit null so admins can unset department/role/level/weight/milestone.
+      if (has("department")) sets.push(sql`department = ${body.department ?? null}`);
+      if (has("role")) sets.push(sql`role = ${body.role ?? null}`);
+      if (has("level")) sets.push(sql`level = ${body.level ?? null}`);
+      if (has("weight")) sets.push(sql`weight = ${body.weight ?? null}`);
+      if (has("milestone")) sets.push(sql`milestone = ${body.milestone ?? null}`);
+      if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+      sets.push(sql`updated_at = NOW()`);
       const result = await db.execute(sql`
-        UPDATE plan_goal_templates SET
-          goal_title = COALESCE(${goal_title ?? null}, goal_title),
-          goal_description = COALESCE(${goal_description ?? null}, goal_description),
-          target_metric = COALESCE(${target_metric ?? null}, target_metric),
-          goal_category = COALESCE(${goal_category ?? null}, goal_category),
-          sort_order = COALESCE(${sort_order ?? null}, sort_order),
-          is_active = COALESCE(${is_active ?? null}, is_active),
-          updated_at = NOW()
+        UPDATE plan_goal_templates SET ${sql.join(sets, sql`, `)}
         WHERE id = ${req.params.id}
         RETURNING *
       `);
@@ -1475,6 +1597,71 @@ export function registerPerformanceRoutes(app: Express) {
     }
   });
 
+  // Probation scoring bands + pass-rule (read-only reference for HR/admin UI)
+  app.get("/api/hr/probation-scoring-bands", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.planTemplates.get", MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const bands = await db.execute(sql`
+        SELECT * FROM probation_scoring_bands
+        WHERE is_active = true
+        ORDER BY sort_order ASC, min_score DESC
+      `);
+
+      // probation_framework_db flag (default ON via `!== false`): when ON, the
+      // pass rule + Day-90 final weights are read from their dedicated DB tables;
+      // when OFF (revert), they come from the legacy system_settings JSON. The DB
+      // path also falls back to JSON defensively if the tables are unexpectedly
+      // empty, so the response shape is identical either way.
+      const flagRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'feature_flags' LIMIT 1`);
+      const rawFlags = (flagRow.rows[0] as any)?.value;
+      let flags: Record<string, any> = {};
+      if (typeof rawFlags === "string") { try { flags = JSON.parse(rawFlags); } catch { flags = {}; } }
+      else if (rawFlags && typeof rawFlags === "object") { flags = rawFlags; }
+      const useDb = flags.probation_framework_db !== false;
+
+      let passRule: any = null;
+      let finalWeights: any = null;
+
+      if (useDb) {
+        const wr = await db.execute(sql`
+          SELECT area, weight FROM probation_final_weights WHERE is_active = true ORDER BY sort_order ASC
+        `);
+        const pr = await db.execute(sql`
+          SELECT rule FROM probation_pass_rule WHERE is_active = true ORDER BY updated_at DESC LIMIT 1
+        `);
+        if (wr.rows.length > 0) finalWeights = (wr.rows as any[]).map(r => ({ area: r.area, weight: Number(r.weight) }));
+        if (pr.rows.length > 0) passRule = (pr.rows[0] as any).rule;
+      }
+
+      // Legacy JSON path: used when the flag is OFF, or as a defensive fallback
+      // when the DB tables are empty.
+      if (passRule == null || finalWeights == null) {
+        const settings = await db.execute(sql`
+          SELECT key, value FROM system_settings
+          WHERE key IN ('probation_pass_rule', 'probation_final_weights')
+        `);
+        const settingsMap: Record<string, any> = {};
+        for (const row of settings.rows as any[]) {
+          try { settingsMap[row.key] = JSON.parse(row.value); }
+          catch { settingsMap[row.key] = row.value; }
+        }
+        if (passRule == null) passRule = settingsMap["probation_pass_rule"] ?? null;
+        if (finalWeights == null) finalWeights = settingsMap["probation_final_weights"] ?? null;
+      }
+
+      res.json({
+        bands: bands.rows,
+        passRule: passRule ?? null,
+        finalWeights: finalWeights ?? null,
+        source: useDb ? "db" : "json",
+      });
+    } catch (error) {
+      console.error("Error fetching probation scoring bands:", error);
+      res.status(500).json({ error: "Failed to fetch probation scoring bands" });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // EMPLOYEE PLANS (Probation / Growth / PIP) CRUD API
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1489,17 +1676,19 @@ export function registerPerformanceRoutes(app: Express) {
       if (!employee_id || !plan_type || !start_date || !end_date || !duration_days) {
         return res.status(400).json({ error: "employee_id, plan_type, start_date, end_date, duration_days are required" });
       }
-      if (!role_slug) {
+      // role_slug is required to seed Growth/PIP goals. Probation derives its
+      // goals from the employee's department/role/level via the framework resolver.
+      if (!role_slug && plan_type !== "probation") {
         return res.status(400).json({ error: "role_slug is required to auto-seed goals from plan templates" });
       }
 
       // Verify employee exists
       const empResult = await db.execute(sql`
-        SELECT au.id, d.name as department_name FROM admin_users au
+        SELECT au.id, au.designation, d.name as department_name FROM admin_users au
         LEFT JOIN departments d ON au.department_id = d.id
         WHERE au.id = ${employee_id}
       `);
-      const empRow = empResult.rows[0] as { id: string; department_name: string | null } | undefined;
+      const empRow = empResult.rows[0] as { id: string; designation: string | null; department_name: string | null } | undefined;
       if (!empRow) return res.status(404).json({ error: "Employee not found" });
 
       // Managers can only create plans for their direct reports; admins/hr are unrestricted
@@ -1521,23 +1710,39 @@ export function registerPerformanceRoutes(app: Express) {
 
       // custom_goals: optional array of { title, description, category } from the manager-edited step-2 form
       const custom_goals: { title: string; description?: string; category?: string }[] | undefined = req.body.custom_goals;
-
-      // Pre-fetch templates (needed even when custom_goals provided, to validate role/plan combo exists)
-      const tmplResult = await db.execute(sql`
-        SELECT * FROM plan_goal_templates
-        WHERE plan_type = ${plan_type}::employee_plan_type
-          AND role_slug = ${role_slug}
-          AND is_active = true
-        ORDER BY sort_order ASC
-      `);
-      const planTemplates = tmplResult.rows as PlanGoalTemplate[];
-
-      // Determine which goals to seed: custom (if non-empty) or templates
       const useCustomGoals = Array.isArray(custom_goals) && custom_goals.length > 0;
-      if (!useCustomGoals && planTemplates.length === 0) {
-        return res.status(400).json({
-          error: `No active templates found for plan_type="${plan_type}" and role_slug="${role_slug}". Cannot create a zero-goal plan.`,
-        });
+
+      // Resolve the goals to pre-fill (skipped when manager supplied custom goals).
+      // Probation uses the cross-department framework resolver (universal goals +
+      // best-matching role/level milestone goals); Growth/PIP use legacy templates.
+      let planTemplates: PlanGoalTemplate[] = [];
+      let resolvedProbationGoals: { title: string; description: string | null; category: string }[] = [];
+      if (!useCustomGoals) {
+        if (plan_type === "probation") {
+          const { parseProbationKey, resolveProbationGoalTemplates } = await import("./probationTemplates");
+          const probationKey = parseProbationKey(empRow.designation, empRow.department_name);
+          const resolved = await resolveProbationGoalTemplates(probationKey, role_slug || null);
+          resolvedProbationGoals = resolved.map(g => ({ title: g.title, description: g.description, category: g.category }));
+          if (resolvedProbationGoals.length === 0) {
+            return res.status(400).json({
+              error: "No probation templates resolved for this employee's department/role/level. Cannot create a zero-goal plan.",
+            });
+          }
+        } else {
+          const tmplResult = await db.execute(sql`
+            SELECT * FROM plan_goal_templates
+            WHERE plan_type = ${plan_type}::employee_plan_type
+              AND role_slug = ${role_slug}
+              AND is_active = true
+            ORDER BY sort_order ASC
+          `);
+          planTemplates = tmplResult.rows as PlanGoalTemplate[];
+          if (planTemplates.length === 0) {
+            return res.status(400).json({
+              error: `No active templates found for plan_type="${plan_type}" and role_slug="${role_slug}". Cannot create a zero-goal plan.`,
+            });
+          }
+        }
       }
 
       // ── All validation passed — now execute writes ────────────────────────
@@ -1570,10 +1775,23 @@ export function registerPerformanceRoutes(app: Express) {
               (employee_id, manager_id, title, description, category, plan_id, source_ref, start_date, target_date, weight)
             VALUES
               (${employee_id}, ${manager_id || null}, ${g.title.trim()}, ${g.description?.trim() ?? null},
-               ${g.category || "individual"}, ${plan.id}, ${sourceRef}, ${start_date}, ${end_date}, 3)
+               ${normalizeGoalCategory(g.category)}, ${plan.id}, ${sourceRef}, ${start_date}, ${end_date}, 3)
           `);
         }
         goalsCreated = custom_goals!.filter(g => g.title?.trim()).length;
+      } else if (plan_type === "probation") {
+        const sourceRef = `plan:${plan.id}`;
+        for (const g of resolvedProbationGoals) {
+          if (!g.title?.trim()) continue;
+          await db.execute(sql`
+            INSERT INTO performance_goals
+              (employee_id, manager_id, title, description, category, plan_id, source_ref, start_date, target_date, weight)
+            VALUES
+              (${employee_id}, ${manager_id || null}, ${g.title.trim()}, ${g.description ?? null},
+               ${normalizeGoalCategory(g.category)}, ${plan.id}, ${sourceRef}, ${start_date}, ${end_date}, 3)
+          `);
+        }
+        goalsCreated = resolvedProbationGoals.filter(g => g.title?.trim()).length;
       } else {
         goalsCreated = await insertPlanGoalsFromTemplates(
           plan.id, employee_id, manager_id || null, start_date, end_date, planTemplates,
@@ -1682,10 +1900,17 @@ export function registerPerformanceRoutes(app: Express) {
           return res.status(403).json({ error: "Not authorized to view this plan" });
         }
       }
-      // Also return associated check-ins and goals
+      // Also return associated check-ins, goals, and coaching-log entries
       const checkInsResult = await db.execute(sql`SELECT * FROM check_ins WHERE plan_id = ${req.params.id} ORDER BY scheduled_date ASC`);
       const goalsResult = await db.execute(sql`SELECT * FROM performance_goals WHERE plan_id = ${req.params.id} ORDER BY created_at ASC`);
-      res.json({ plan, checkIns: checkInsResult.rows, goals: goalsResult.rows });
+      const coachingLogResult = await db.execute(sql`
+        SELECT cl.*, a.first_name || ' ' || a.last_name AS author_name
+        FROM coaching_log_entries cl
+        LEFT JOIN admin_users a ON cl.author_id = a.id
+        WHERE cl.plan_id = ${req.params.id}
+        ORDER BY cl.entry_date DESC, cl.created_at DESC
+      `);
+      res.json({ plan, checkIns: checkInsResult.rows, goals: goalsResult.rows, coachingLog: coachingLogResult.rows });
     } catch (error) {
       console.error("Error fetching employee plan:", error);
       res.status(500).json({ error: "Failed to fetch employee plan" });
@@ -1958,11 +2183,21 @@ export function registerPerformanceRoutes(app: Express) {
         LIMIT 4
       `);
 
+      // Coaching notes recorded by the manager/HR against this plan (read-only for the employee)
+      const coachingLogResult = await db.execute(sql`
+        SELECT cl.*, a.first_name || ' ' || a.last_name AS author_name
+        FROM coaching_log_entries cl
+        LEFT JOIN admin_users a ON cl.author_id = a.id
+        WHERE cl.plan_id = ${plan.id}
+        ORDER BY cl.entry_date DESC, cl.created_at DESC
+      `);
+
       res.json({
         plan,
         checkIns: checkInsResult.rows,
         goals: goalsResult.rows,
         weeklyUpdates: weeklyUpdatesResult.rows,
+        coachingLog: coachingLogResult.rows,
       });
     } catch (error) {
       console.error("Error fetching my plan:", error);
@@ -2104,6 +2339,95 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error posting weekly update:", error);
       res.status(500).json({ error: "Failed to post weekly update" });
+    }
+  });
+
+  // ─── Coaching log ─────────────────────────────────────────────────────────
+  // Managers/HR record ad-hoc coaching notes against an employee's plan.
+  // Distinct from scheduled milestone check-ins.
+
+  app.get("/api/hr/plans/:planId/coaching-log", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.coachingLog", MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+      if (planResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planResult.rows[0] as any;
+
+      // Object-level authorization: admins/HR see all; managers only their team
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getTeamMemberIds(userId);
+        if (!teamIds.includes(plan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized to view this coaching log" });
+        }
+      }
+
+      const result = await db.execute(sql`
+        SELECT cl.*, a.first_name || ' ' || a.last_name AS author_name
+        FROM coaching_log_entries cl
+        LEFT JOIN admin_users a ON cl.author_id = a.id
+        WHERE cl.plan_id = ${planId}
+        ORDER BY cl.entry_date DESC, cl.created_at DESC
+      `);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error fetching coaching log:", error);
+      res.status(500).json({ error: "Failed to fetch coaching log" });
+    }
+  });
+
+  app.post("/api/hr/plans/:planId/coaching-log", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.coachingLog", MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+      const entryDate = typeof req.body?.entryDate === "string" && req.body.entryDate
+        ? req.body.entryDate
+        : new Date().toISOString().split("T")[0];
+
+      if (note.length < 5) {
+        return res.status(400).json({ error: "Coaching note must be at least 5 characters" });
+      }
+
+      const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+      if (planResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planResult.rows[0] as any;
+
+      // Object-level authorization: admins/HR may log for anyone; managers only their team
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getTeamMemberIds(userId);
+        if (!teamIds.includes(plan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized to add to this coaching log" });
+        }
+      }
+
+      const inserted = await db.execute(sql`
+        INSERT INTO coaching_log_entries (plan_id, employee_id, author_id, note, entry_date)
+        VALUES (${planId}, ${plan.employee_id}, ${userId}, ${note}, ${entryDate})
+        RETURNING *
+      `);
+      const row = inserted.rows[0] as any;
+
+      const authorResult = await db.execute(sql`SELECT first_name || ' ' || last_name AS author_name FROM admin_users WHERE id = ${userId}`);
+      row.author_name = (authorResult.rows[0] as any)?.author_name ?? null;
+
+      await createAuditLog(userId, "plan_coaching_note_added", { planId, employeeId: plan.employee_id, id: row.id as string | undefined });
+
+      // Notify the employee that a coaching note was recorded (gated by plan-notification flag)
+      await notifyPlan(plan.employee_id, "coaching_note_added",
+        "New coaching note on your plan",
+        "Your manager added a coaching note to your plan.",
+        { planId, planType: plan.plan_type },
+      );
+
+      res.status(201).json(row);
+    } catch (error) {
+      console.error("Error adding coaching note:", error);
+      res.status(500).json({ error: "Failed to add coaching note" });
     }
   });
 }

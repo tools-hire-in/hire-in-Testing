@@ -28,4 +28,7 @@
 - [Boot stability & restart-loop fix](boot-stability.md) — open port before DB ensure work (never await ensure before listen); one shared bounded pool; uncaughtException=shutdown, unhandledRejection=keep-alive.
 - [My Team nav flattening](my-team-nav-flatten.md) — /admin/hr/my-team uses sidebar sub-nav (TeamSection) not horizontal tabs; child destinations may keep ONE internal tab level (MyTeam keeps Team/Corrections/Plans).
 - [Employee Plans data source](employee-plans-data-source.md) — employee_plans only seeded at offer-acceptance; /api/hr/plans returns ALL statuses; "one plan" is a data issue not a filter bug.
+- [Coaching log & probation check-ins](coaching-log-and-probation-checkins.md) — coaching_log_entries are ad-hoc notes (not timeline check-ins); probation cadence is 8 milestones Day 1/7/15/30/45/60/75/90.
+- [Growth plan activation engine](growth-plan-activation-engine.md) — signed growth-clause addendum → real tracked plan (accept/countersign/backfill, idempotent); goal_category enum trap (production→individual via normalizeGoalCategory).
 - [Guided onboarding checklist](guided-onboarding-checklist.md) — non-blocking new-hire checklist; annexure→policy bridge stops double-signing; computeOnboardingChecklist is the single source for endpoint/badges/cron.
+- [Probation framework templates](probation-framework-templates.md) — probation templates keyed by dept/role/level + universal goals; resolver in probationTemplates.ts; legacy healthcare role_slug templates untouched.

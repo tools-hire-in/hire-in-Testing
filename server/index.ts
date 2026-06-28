@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { registerRoutes } from "./routes";
+import { ensureGrowthPlanFromAddendum } from "./performanceRoutes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
@@ -1607,6 +1608,53 @@ async function ensureHealthcarePlansTables() {
       ON plan_goal_templates (plan_type, role_slug, goal_title)
     `);
 
+    // Probation framework (Task #631): structured department/role/level keying +
+    // goal weights/milestones on plan_goal_templates, and a scoring-bands table.
+    // These columns/table are also declared in shared/schema.ts (db:push owns them);
+    // ensured here so boot never depends on db:push having run first.
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS department VARCHAR`);
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS role VARCHAR`);
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS level VARCHAR`);
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS weight INTEGER`);
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS milestone VARCHAR`);
+    await db.execute(sql`ALTER TABLE plan_goal_templates ADD COLUMN IF NOT EXISTS is_universal BOOLEAN NOT NULL DEFAULT false`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS probation_scoring_bands (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        min_score INTEGER NOT NULL,
+        max_score INTEGER NOT NULL,
+        label VARCHAR NOT NULL,
+        meaning TEXT,
+        recommended_outcome TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    // Pass rule + Day-90 final weights now live in dedicated tables (uniform
+    // structured-DB style with scoring bands), not as system_settings JSON.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS probation_final_weights (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        area VARCHAR NOT NULL,
+        weight INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS probation_pass_rule (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        rule TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     // Allow employee_id to be null so a pending plan can be created at offer acceptance (before onboarding)
     await db.execute(sql`ALTER TABLE employee_plans ALTER COLUMN employee_id DROP NOT NULL`);
     // Track which offer letter this plan originated from (for lifecycle linking)
@@ -1932,6 +1980,270 @@ async function ensureHealthcarePlansTables() {
     log(`Plan goal templates seed: ${inserted} new rows inserted (${templates.length - inserted} already present)`);
   } catch (err) {
     console.error("Plan goal templates seed error (non-fatal):", err);
+  }
+}
+
+// Seed the cross-department probation framework (universal goals + role-specific
+// target library + scoring bands + pass rule), transcribed from the 90-Day
+// Probation Goals, Milestones & Check-In Framework doc. Idempotent, ON CONFLICT-safe,
+// plain ASCII. Does NOT touch existing healthcare templates (different role_slugs).
+async function seedProbationFramework() {
+  try {
+    log("Ensuring probation framework seed (universal goals, role library, scoring bands)...");
+
+    // ── Universal goals (Section 5) — apply to every probation plan ──────────
+    const universalGoals: { title: string; desc: string; metric: string; weight: number; sort: number }[] = [
+      { title: "Attendance and reliability", weight: 10, sort: 1,
+        desc: "Maintains approved core shift, communicates planned absences early, follows attendance and regularization process.",
+        metric: "Attendance records, manager notes, shift profile" },
+      { title: "Tool discipline", weight: 10, sort: 2,
+        desc: "Uses approved systems consistently; keeps ATS/CRM/portal notes current; does not rely on personal unmanaged storage for company/client data.",
+        metric: "ATS notes, ticket/access logs, document handling review" },
+      { title: "Communication", weight: 10, sort: 3,
+        desc: "Responds professionally, keeps manager informed, uses approved channels, provides clear status updates.",
+        metric: "Teams/email examples, daily/weekly updates" },
+      { title: "Process adherence", weight: 15, sort: 4,
+        desc: "Follows SOP, submission standards, QC expectations, escalation process, and documentation discipline.",
+        metric: "QC score, audit checks, manager review" },
+      { title: "Role output", weight: 40, sort: 5,
+        desc: "Meets role-specific production and milestone targets selected in the role scorecard.",
+        metric: "Dashboard, submissions, interviews, starts, deliverables" },
+      { title: "Values and ownership", weight: 15, sort: 6,
+        desc: "Demonstrates candidate-first mindset, transparency, digital safety, respect, accountability, and learning attitude.",
+        metric: "Manager notes, peer feedback, candidate/client feedback" },
+    ];
+
+    let uInserted = 0;
+    for (const g of universalGoals) {
+      const r = await db.execute(sql`
+        INSERT INTO plan_goal_templates
+          (plan_type, role_slug, department_scope, department, role, level, weight, milestone, is_universal,
+           goal_title, goal_category, goal_description, target_metric, sort_order, is_active)
+        VALUES
+          ('probation'::employee_plan_type, 'universal', 'healthcare'::employee_plan_dept_scope,
+           NULL, NULL, NULL, ${g.weight}, NULL, true,
+           ${g.title}, 'individual', ${g.desc}, ${g.metric}, ${g.sort}, true)
+        ON CONFLICT (plan_type, role_slug, goal_title) DO NOTHING
+      `);
+      if ((r.rowCount ?? 0) > 0) uInserted++;
+    }
+
+    // ── Role-specific target library (Section 8) ────────────────────────────
+    // role_slug values are distinct from legacy healthcare slugs so they never
+    // collide; selection logic matches on the role/level columns, not role_slug.
+    type RoleGoal = { milestone: "day_30" | "day_60" | "day_90"; title: string; desc: string; metric: string };
+    type RoleCard = { roleSlug: string; department: string | null; role: string; level: string; category: string; goals: RoleGoal[] };
+
+    const roleCards: RoleCard[] = [
+      // 8A. Healthcare / IT Recruiter - Associate or Junior (department-agnostic)
+      { roleSlug: "ta_recruiter_associate", department: null, role: "recruiter", level: "associate", category: "individual", goals: [
+        { milestone: "day_30", title: "Day 30 - Activity, quality and business outcome targets",
+          desc: "Activity: 80-120 sourced profiles; 25-35 qualified screens; 4-6 manager-approved submissions. Quality: 95% ATS notes complete; no preventable credential/must-have misses; professional communication. Business outcome: understands intake, sourcing, pre-screening, and submission packet expectations. Evidence: ATS activity, screen notes, submission tracker.",
+          metric: "80-120 sourced; 25-35 screens; 4-6 submissions" },
+        { milestone: "day_60", title: "Day 60 - Activity, quality and business outcome targets",
+          desc: "Activity: 180-250 sourced profiles cumulative; 60-75 screens; 12-18 cumulative submissions. Quality: submission acceptance/QC pass rate 80%+; follow-ups completed within agreed SLA. Business outcome: 1-2 interviews or strong active pipeline depending on role volume. Evidence: QC tracker, interview tracker, candidate follow-up logs.",
+          metric: "180-250 sourced; 60-75 screens; 12-18 submissions" },
+        { milestone: "day_90", title: "Day 90 - Activity, quality and business outcome targets",
+          desc: "Activity: 300-400 sourced profiles cumulative; 90-110 screens; 25-35 cumulative submissions. Quality: steady quality without constant rework; candidate status updated; aging pipeline managed. Business outcome: 1 start/offer OR documented interview-stage pipeline if market/client cycle is longer. Evidence: final dashboard, manager review, candidate notes.",
+          metric: "300-400 sourced; 90-110 screens; 25-35 submissions; 1 start/offer" },
+      ]},
+      // 8B. Healthcare / IT Recruiter - Senior Recruiter
+      { roleSlug: "ta_recruiter_senior", department: null, role: "recruiter", level: "senior", category: "individual", goals: [
+        { milestone: "day_30", title: "Day 30 - Activity, quality and business outcome targets",
+          desc: "Activity: 120-180 sourced profiles; 35-50 qualified screens; 8-10 manager/client-ready submissions. Quality: 85%+ QC pass; role calibration notes for each req; strong candidate ownership. Business outcome: can own assigned roles with limited daily handholding. Evidence: ATS, tracker, QC review.",
+          metric: "120-180 sourced; 35-50 screens; 8-10 submissions" },
+        { milestone: "day_60", title: "Day 60 - Activity, quality and business outcome targets",
+          desc: "Activity: 250-350 sourced profiles cumulative; 80-100 screens; 20-25 cumulative submissions. Quality: 80%+ submission acceptance; low rework; clear candidate compensation/location/schedule alignment. Business outcome: 2-4 interviews and at least one active offer/late-stage candidate where requisition volume supports it. Evidence: submittal/interview/offer tracker.",
+          metric: "250-350 sourced; 80-100 screens; 20-25 submissions" },
+        { milestone: "day_90", title: "Day 90 - Activity, quality and business outcome targets",
+          desc: "Activity: 400-550 sourced profiles cumulative; 125-150 screens; 35-45 cumulative submissions. Quality: consistent quality, clean documentation, candidate relationship follow-through. Business outcome: 1-2 starts/offers OR documented late-stage pipeline based on market cycle. Evidence: final scorecard, pipeline aging, manager notes.",
+          metric: "400-550 sourced; 125-150 screens; 35-45 submissions; 1-2 starts/offers" },
+      ]},
+      // 8C. Lead Recruiter / Assistant Manager
+      { roleSlug: "ta_lead_recruiter", department: null, role: "lead_recruiter", level: "lead", category: "team", goals: [
+        { milestone: "day_30", title: "Day 30 - Delivery, team enablement and process targets",
+          desc: "Individual delivery: meets Sr. Recruiter Day 30 baseline or agreed IC target. Team enablement: shadows team, understands desk economics, supports 1-2 junior recruiters. Quality/process: runs clean daily updates and flags blockers early. Evidence: team tracker, manager notes.",
+          metric: "Sr. Day 30 baseline; support 1-2 juniors" },
+        { milestone: "day_60", title: "Day 60 - Delivery, team enablement and process targets",
+          desc: "Individual delivery: maintains own production while improving team submission quality. Team enablement: provides coaching, reviews candidate packets, helps reduce rework. Quality/process: QC pass rate 85%+ for reviewed submissions; aging reqs reported weekly. Evidence: QC logs, coaching notes.",
+          metric: "QC pass 85%+; weekly aging-req report" },
+        { milestone: "day_90", title: "Day 90 - Delivery, team enablement and process targets",
+          desc: "Individual delivery: shows ownership of assigned reqs and recruiter outcomes. Team enablement: can run standup, assign priorities, mentor juniors, escalate bottlenecks. Quality/process: consistent reporting, reduced avoidable errors, improved interview conversion. Evidence: team performance trend, final review.",
+          metric: "Owns reqs + recruiter outcomes; runs standup" },
+      ]},
+      // 8D. Account Manager / Delivery Manager (serves Sales/BD/delivery)
+      { roleSlug: "ta_account_manager", department: null, role: "account_manager", level: "manager", category: "individual", goals: [
+        { milestone: "day_30", title: "Day 30 - Client ownership, delivery and communication targets",
+          desc: "Client/req ownership: understands active clients, priority reqs, rates, margins, submission rules, and escalation points. Delivery discipline: sets dashboard cadence; aligns recruiters to role priorities. Quality/communication: clear communication, no missed client updates, documented intake notes. Evidence: intake notes, client tracker.",
+          metric: "Full intake on active clients/reqs; dashboard cadence set" },
+        { milestone: "day_60", title: "Day 60 - Client ownership, delivery and communication targets",
+          desc: "Client/req ownership: owns weekly pipeline visibility and aging management. Delivery discipline: improves turnaround time and recruiter focus on high-value roles. Quality/communication: clean single-thread updates; accurate status changes (submitted/interview/offer/start). Evidence: pipeline report, manager review.",
+          metric: "Weekly pipeline visibility; accurate status changes" },
+        { milestone: "day_90", title: "Day 90 - Client ownership, delivery and communication targets",
+          desc: "Client/req ownership: can own assigned account/delivery pod with limited escalation. Delivery discipline: demonstrates measurable improvement in submission quality, interview movement, or starts. Quality/communication: maintains professional client/candidate/team communication. Evidence: final account review, pipeline metrics.",
+          metric: "Owns account/pod; measurable submission/interview/start gains" },
+      ]},
+      // 8E. HR / Operations / Admin
+      { roleSlug: "hr_operations", department: "hr_ops", role: "hr_ops", level: "all", category: "individual", goals: [
+        { milestone: "day_30", title: "Day 30 - Process, quality and business outcome targets",
+          desc: "Process: learns policies, employee records, onboarding checklist, ticket categories, attendance/regularization flow. Quality: 95% accuracy in assigned records; no missed confidential handling. Business outcome: can complete supervised onboarding/admin tasks. Evidence: completed checklists, manager review.",
+          metric: "95% record accuracy; supervised onboarding/admin tasks" },
+        { milestone: "day_60", title: "Day 60 - Process, quality and business outcome targets",
+          desc: "Process: owns recurring assigned tasks and ticket follow-ups. Quality: SLA adherence 85%+; documentation complete. Business outcome: reduces manager follow-up needed for routine work. Evidence: ticket logs, HR tracker.",
+          metric: "SLA adherence 85%+; complete documentation" },
+        { milestone: "day_90", title: "Day 90 - Process, quality and business outcome targets",
+          desc: "Process: runs assigned workflow independently with escalation judgment. Quality: SLA adherence 90%+; clean audit trail. Business outcome: reliable operations support with minimal rework. Evidence: final workflow audit.",
+          metric: "SLA adherence 90%+; independent workflow" },
+      ]},
+      // 8F. Marketing / Content / Social Media
+      { roleSlug: "marketing_content", department: "marketing", role: "marketing", level: "all", category: "individual", goals: [
+        { milestone: "day_30", title: "Day 30 - Output, quality and business outcome targets",
+          desc: "Output: understands brand voice, creates first content calendar, drafts 8-12 posts or equivalent assets. Quality: grammar, brand safety, compliance, and founder/company voice alignment. Business outcome: can produce supervised content without reputational risk. Evidence: content calendar, approved drafts.",
+          metric: "Content calendar; 8-12 drafted posts/assets" },
+        { milestone: "day_60", title: "Day 60 - Output, quality and business outcome targets",
+          desc: "Output: publishes/queues consistent weekly cadence; repurposes blogs/social/email as assigned. Quality: revision rate reduces; content is on-brand and usable. Business outcome: supports visibility for Hire'in and approved portfolio brands. Evidence: published links, metrics sheet.",
+          metric: "Consistent weekly cadence; lower revision rate" },
+        { milestone: "day_90", title: "Day 90 - Output, quality and business outcome targets",
+          desc: "Output: owns assigned content lane with calendar, metrics, and improvement ideas. Quality: consistent quality, safe claims, professional tone. Business outcome: can operate with clear brief and light review. Evidence: final portfolio, metrics review.",
+          metric: "Owns content lane; operates with light review" },
+      ]},
+    ];
+
+    let rInserted = 0;
+    for (const card of roleCards) {
+      let sort = 0;
+      for (const g of card.goals) {
+        sort += 1;
+        const r = await db.execute(sql`
+          INSERT INTO plan_goal_templates
+            (plan_type, role_slug, department_scope, department, role, level, weight, milestone, is_universal,
+             goal_title, goal_category, goal_description, target_metric, sort_order, is_active)
+          VALUES
+            ('probation'::employee_plan_type, ${card.roleSlug}, 'healthcare'::employee_plan_dept_scope,
+             ${card.department}, ${card.role}, ${card.level}, NULL, ${g.milestone}, false,
+             ${g.title}, ${card.category}, ${g.desc}, ${g.metric}, ${sort}, true)
+          ON CONFLICT (plan_type, role_slug, goal_title) DO NOTHING
+        `);
+        if ((r.rowCount ?? 0) > 0) rInserted++;
+      }
+    }
+
+    // ── Scoring bands (Section 7) — idempotent via NOT EXISTS on label ───────
+    const bands: { min: number; max: number; label: string; meaning: string; outcome: string; sort: number }[] = [
+      { min: 90, max: 100, label: "90-100", sort: 1,
+        meaning: "Strong performance; exceeds role expectations and shows ownership",
+        outcome: "Confirm employment; consider growth plan" },
+      { min: 80, max: 89, label: "80-89", sort: 2,
+        meaning: "Solid performance; meets expectations with minor coaching needs",
+        outcome: "Confirm employment with 30-day development goals" },
+      { min: 70, max: 79, label: "70-79", sort: 3,
+        meaning: "Borderline; some targets met but consistency or quality gaps remain",
+        outcome: "Extend probation or issue corrective plan" },
+      { min: 0, max: 69, label: "Below 70", sort: 4,
+        meaning: "Below expected level for role; output, quality, conduct, or reliability concerns",
+        outcome: "Role adjustment, compensation review, or end probation" },
+    ];
+    let bInserted = 0;
+    for (const b of bands) {
+      const r = await db.execute(sql`
+        INSERT INTO probation_scoring_bands (min_score, max_score, label, meaning, recommended_outcome, sort_order, is_active)
+        SELECT ${b.min}, ${b.max}, ${b.label}, ${b.meaning}, ${b.outcome}, ${b.sort}, true
+        WHERE NOT EXISTS (SELECT 1 FROM probation_scoring_bands WHERE label = ${b.label})
+      `);
+      if ((r.rowCount ?? 0) > 0) bInserted++;
+    }
+
+    // ── Pass rule + Day 90 final weights (Sections 7 & 12) in system_settings ─
+    const passRule = "Minimum 75 overall, no unresolved compliance/integrity issue, and no major recurring attendance or conduct concern. A manager may extend probation even with a passing score if role volume was insufficient to fairly assess the employee.";
+    const finalWeights = [
+      { area: "Role output", weight: 40 },
+      { area: "Quality and process adherence", weight: 25 },
+      { area: "Attendance, reliability, and communication", weight: 20 },
+      { area: "Values, ownership, and coachability", weight: 15 },
+    ];
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value) VALUES ('probation_pass_rule', ${JSON.stringify(passRule)}::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value) VALUES ('probation_final_weights', ${JSON.stringify(finalWeights)}::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+
+    // ── Same pass rule + final weights ALSO seeded into dedicated DB tables ────
+    // (probation_framework_db flag, default ON, reads these; JSON above is the
+    // revert fallback). Idempotent: seed weights only if the table is empty, and
+    // the single pass-rule row only if none exists.
+    for (let i = 0; i < finalWeights.length; i++) {
+      const w = finalWeights[i];
+      await db.execute(sql`
+        INSERT INTO probation_final_weights (area, weight, sort_order, is_active)
+        SELECT ${w.area}, ${w.weight}, ${i + 1}, true
+        WHERE NOT EXISTS (SELECT 1 FROM probation_final_weights WHERE area = ${w.area})
+      `);
+    }
+    await db.execute(sql`
+      INSERT INTO probation_pass_rule (rule, is_active)
+      SELECT ${passRule}, true
+      WHERE NOT EXISTS (SELECT 1 FROM probation_pass_rule WHERE is_active = true)
+    `);
+
+    log(`Probation framework seed: ${uInserted} universal, ${rInserted} role-library, ${bInserted} scoring bands inserted (rest already present)`);
+  } catch (err) {
+    console.error("Probation framework seed error (non-fatal):", err);
+  }
+}
+
+// Backfill: any offer-letter addendum that was already signed (accepted or
+// countersigned) with a 90-day growth-plan clause but never had its real growth
+// plan instantiated gets one now via the same activation engine the live accept/
+// countersign hooks use. Idempotent — re-runs are no-ops once the plan exists.
+// This is what brings already-signed growth plans (e.g. a salary-revision
+// addendum) "into effect" on the next deploy.
+async function backfillGrowthPlansFromAddendums() {
+  try {
+    const rows = (await db.execute(sql`
+      SELECT a.id, a.for_employee_id, a.offer_letter_id, a.effective_date,
+             COALESCE(a.issued_by, o.created_by) AS actor_id
+      FROM offer_letter_addendums a
+      LEFT JOIN offer_letters o ON a.offer_letter_id = o.id
+      WHERE a.include_growth_plan_clause = true
+        AND a.status IN ('accepted', 'countersigned')
+        AND a.for_employee_id IS NOT NULL
+    `)).rows as Array<{ id: string; for_employee_id: string; offer_letter_id: string | null; effective_date: string | null; actor_id: string | null }>;
+
+    if (rows.length === 0) return;
+
+    // Fallback actor for plans where neither the addendum issuer nor the parent
+    // offer creator is known (created_by is NOT NULL on employee_plans).
+    let fallbackActor: string | null = null;
+    const fb = await db.execute(sql`
+      SELECT id FROM admin_users
+      WHERE deleted_at IS NULL AND role IN ('super_admin', 'admin', 'hr')
+      ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END
+      LIMIT 1
+    `);
+    fallbackActor = ((fb.rows[0] as any)?.id as string | undefined) ?? null;
+
+    let created = 0;
+    for (const r of rows) {
+      const createdBy = r.actor_id ?? fallbackActor;
+      if (!createdBy) continue;
+      try {
+        const res = await ensureGrowthPlanFromAddendum({
+          employeeId: r.for_employee_id,
+          offerLetterId: r.offer_letter_id,
+          effectiveDate: r.effective_date,
+          createdBy,
+        });
+        if (res.created) created++;
+      } catch (e) {
+        console.error(`Growth-plan backfill failed for addendum ${r.id} (non-fatal):`, e);
+      }
+    }
+    if (created > 0) log(`Growth-plan backfill: activated ${created} growth plan(s) from already-signed addendums`);
+  } catch (err) {
+    console.error("Growth-plan backfill error (non-fatal):", err);
   }
 }
 
@@ -2739,6 +3051,8 @@ async function runStartupTasks() {
   );
 
   await ensureHealthcarePlansTables();
+  await seedProbationFramework();
+  await backfillGrowthPlansFromAddendums();
 
   // Travel Pay Calculator — enum types + tables (idempotent, matches shared/schema.ts exactly)
   try {

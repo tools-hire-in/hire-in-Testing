@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown, MessageSquarePlus } from "lucide-react";
 
 interface HRPlan {
   id: string;
@@ -42,10 +43,19 @@ interface HRPlan {
   created_at: string | null;
 }
 
+interface CoachingEntry {
+  id: string;
+  note: string;
+  entry_date: string;
+  author_name: string | null;
+  created_at: string | null;
+}
+
 interface PlanDetail {
   plan: HRPlan;
   goals: any[];
   checkIns: any[];
+  coachingLog?: CoachingEntry[];
 }
 
 const OUTCOME_OPTIONS: Record<string, { value: string; label: string; description: string }[]> = {
@@ -100,12 +110,77 @@ function compliancePct(completed: number, total: number): number {
   return total === 0 ? 0 : Math.round((completed / total) * 100);
 }
 
+function CoachingLogSection({ planId, entries }: { planId: string; entries: CoachingEntry[] }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [note, setNote] = useState("");
+
+  const addNote = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/hr/plans/${planId}/coaching-log`, { note: note.trim() }),
+    onSuccess: () => {
+      setNote("");
+      qc.invalidateQueries({ queryKey: ["/api/hr/plans", planId] });
+      toast({ title: "Coaching note added" });
+    },
+    onError: async (err: any) => {
+      let msg = "Failed to add coaching note";
+      try { const b = await err.response?.json?.(); msg = b?.error ?? msg; } catch {}
+      toast({ title: msg, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div data-testid="coaching-log-section">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <MessageSquarePlus className="h-3.5 w-3.5" />
+        Coaching Log ({entries.length})
+      </p>
+
+      <div className="space-y-2">
+        <Textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Record a coaching observation, correction, or guidance given to this employee…"
+          rows={3}
+          className="text-sm resize-none"
+          data-testid="textarea-coaching-note"
+        />
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            onClick={() => addNote.mutate()}
+            disabled={note.trim().length < 5 || addNote.isPending}
+            data-testid="button-add-coaching-note"
+          >
+            {addNote.isPending ? "Saving…" : "Add note"}
+          </Button>
+        </div>
+      </div>
+
+      {entries.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {entries.map(c => (
+            <div key={c.id} className="border rounded-lg p-2.5 text-xs space-y-1" data-testid={`row-coaching-${c.id}`}>
+              <div className="flex justify-between text-muted-foreground">
+                <span className="font-medium text-foreground">{c.author_name || "Manager"}</span>
+                <span>{formatDate(c.entry_date)}</span>
+              </div>
+              <p className="text-foreground whitespace-pre-wrap">{c.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlanDetailPanel({ detail, canClose, onClosePlan }: {
   detail: PlanDetail;
   canClose: boolean;
   onClosePlan: () => void;
 }) {
   const { plan, goals, checkIns } = detail;
+  const coachingLog = detail.coachingLog ?? [];
   const today = new Date().toISOString().split("T")[0];
   const pct = compliancePct(plan.completed_checkins, plan.total_checkins);
 
@@ -200,6 +275,10 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
           </div>
         </div>
       )}
+
+      <div className="pt-4 border-t">
+        <CoachingLogSection planId={plan.id} entries={coachingLog} />
+      </div>
 
       {canClose && (plan.status === "active" || plan.status === "pending") && (
         <div className="pt-4 border-t">

@@ -601,6 +601,11 @@ export function FeatureFlagsSection() {
       label: "New Look Rollout (master switch)",
       description: "Rollout gate for the redesigned portal (v2 shell + Command Center cockpit). When ON, users see a \"Try the new look\" option in their profile and can opt in individually; opted-in users get the new shell and cockpit. When OFF, the option is hidden and everyone sees the classic portal — use this as an instant kill-switch.",
     },
+    {
+      key: "probation_framework_db",
+      label: "Probation Framework from Database",
+      description: "When ON (default), the probation pass rule and Day-90 final weights are read from dedicated database tables (alongside the scoring bands) for a single, scalable source of truth. Turn OFF to instantly revert to the legacy settings-based values if anything looks wrong — no data is lost either way.",
+    },
   ];
 
   return (
@@ -1606,6 +1611,23 @@ interface PlanGoalTemplate {
   target_metric: string | null;
   sort_order: number;
   is_active: boolean;
+  department: string | null;
+  role: string | null;
+  level: string | null;
+  weight: number | null;
+  milestone: string | null;
+  is_universal: boolean;
+}
+
+interface ProbationScoringBand {
+  id: string;
+  min_score: number;
+  max_score: number;
+  label: string;
+  meaning: string | null;
+  recommended_outcome: string | null;
+  sort_order: number;
+  is_active: boolean;
 }
 
 const PLAN_TYPE_LABELS: Record<string, string> = {
@@ -1621,6 +1643,37 @@ const ROLE_SLUG_LABELS: Record<string, string> = {
   associate_manager: "Associate Manager",
   account_manager: "Account Manager",
   foundation_to_senior: "Foundation → Senior Recruiter",
+  universal: "Universal (all roles)",
+  ta_recruiter_associate: "Recruiter — Associate",
+  ta_recruiter_senior: "Recruiter — Senior",
+  ta_lead_recruiter: "Lead Recruiter / Asst. Manager",
+  ta_account_manager: "Account / Delivery Manager",
+  hr_operations: "HR / Operations / Admin",
+  marketing_content: "Marketing / Content / Social",
+};
+
+const DEPARTMENT_LABELS: Record<string, string> = {
+  healthcare: "Healthcare",
+  it: "IT",
+  engineering: "Engineering",
+  marketing: "Marketing",
+  sales_bd: "Sales / BD",
+  hr_ops: "HR / Operations",
+  professional_services: "Professional Services",
+};
+
+const LEVEL_LABELS: Record<string, string> = {
+  associate: "Associate",
+  senior: "Senior",
+  lead: "Lead",
+  manager: "Manager",
+  all: "All Levels",
+};
+
+const MILESTONE_LABELS: Record<string, string> = {
+  day_30: "Day 30",
+  day_60: "Day 60",
+  day_90: "Day 90",
 };
 
 export function GoalTemplatesSection() {
@@ -1630,6 +1683,8 @@ export function GoalTemplatesSection() {
   const canView = canManage || user?.role === "manager";
   const [filterPlanType, setFilterPlanType] = useState("probation");
   const [filterRole, setFilterRole] = useState("all");
+  const [filterDepartment, setFilterDepartment] = useState("all");
+  const [filterLevel, setFilterLevel] = useState("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<PlanGoalTemplate>>({});
   const [showAdd, setShowAdd] = useState(false);
@@ -1637,6 +1692,7 @@ export function GoalTemplatesSection() {
     plan_type: "probation", role_slug: "associate_recruiter",
     goal_title: "", goal_category: "individual",
     goal_description: "", target_metric: "", sort_order: "0",
+    department: "", role: "", level: "", weight: "", milestone: "", is_universal: false,
   });
 
   const { data: templates = [], isLoading, refetch } = useQuery<PlanGoalTemplate[]>({
@@ -1649,6 +1705,11 @@ export function GoalTemplatesSection() {
     enabled: canView,
   });
 
+  const { data: scoringData } = useQuery<{ bands: ProbationScoringBand[]; passRule: string | null; finalWeights: { area: string; weight: number }[] | null }>({
+    queryKey: ["/api/hr/probation-scoring-bands"],
+    enabled: canView,
+  });
+
   const updateMutation = useMutation({
     mutationFn: (data: { id: string; body: Partial<PlanGoalTemplate> }) =>
       apiRequest("PATCH", `/api/hr/plan-templates/${data.id}`, data.body),
@@ -1658,12 +1719,19 @@ export function GoalTemplatesSection() {
 
   const createMutation = useMutation({
     mutationFn: (data: typeof addForm) => apiRequest("POST", "/api/hr/plan-templates", {
-      ...data, sort_order: parseInt(data.sort_order, 10),
+      ...data,
+      sort_order: parseInt(data.sort_order, 10),
+      department: data.department || null,
+      role: data.role || null,
+      level: data.level || null,
+      weight: data.weight ? parseInt(data.weight, 10) : null,
+      milestone: data.milestone || null,
+      is_universal: data.is_universal,
     }),
     onSuccess: () => {
       refetch();
       setShowAdd(false);
-      setAddForm({ plan_type: "probation", role_slug: "associate_recruiter", goal_title: "", goal_category: "individual", goal_description: "", target_metric: "", sort_order: "0" });
+      setAddForm({ plan_type: "probation", role_slug: "associate_recruiter", goal_title: "", goal_category: "individual", goal_description: "", target_metric: "", sort_order: "0", department: "", role: "", level: "", weight: "", milestone: "", is_universal: false });
       toast({ title: "Template created" });
     },
     onError: () => toast({ title: "Create failed", variant: "destructive" }),
@@ -1679,7 +1747,9 @@ export function GoalTemplatesSection() {
 
   const filtered = templates.filter(t =>
     (filterPlanType === "all" || t.plan_type === filterPlanType) &&
-    (filterRole === "all" || t.role_slug === filterRole)
+    (filterRole === "all" || t.role_slug === filterRole) &&
+    (filterDepartment === "all" || (filterDepartment === "none" ? !t.department : t.department === filterDepartment)) &&
+    (filterLevel === "all" || (filterLevel === "none" ? !t.level : t.level === filterLevel))
   );
 
   function startEdit(t: PlanGoalTemplate) {
@@ -1691,6 +1761,12 @@ export function GoalTemplatesSection() {
       target_metric: t.target_metric || "",
       sort_order: t.sort_order,
       is_active: t.is_active,
+      weight: t.weight,
+      milestone: t.milestone,
+      department: t.department,
+      role: t.role,
+      level: t.level,
+      is_universal: t.is_universal,
     });
   }
 
@@ -1700,7 +1776,7 @@ export function GoalTemplatesSection() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            Healthcare Goal Templates
+            Plan Goal Templates
           </CardTitle>
           {canManage && (
             <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-goal-template">
@@ -1711,7 +1787,7 @@ export function GoalTemplatesSection() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Predefined goal templates loaded into annexures when creating Probation, Growth, or PIP plans for Healthcare team members.
+          Predefined goal templates loaded into annexures when creating Probation, Growth, or PIP plans. Probation templates are keyed by department, role, and level (universal goals always apply); Growth and PIP remain Healthcare-scoped.
         </p>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -1732,17 +1808,44 @@ export function GoalTemplatesSection() {
           <div className="flex items-center gap-2">
             <Label className="text-xs whitespace-nowrap">Role</Label>
             <Select value={filterRole} onValueChange={setFilterRole}>
-              <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-filter-role">
+              <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-filter-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
-                <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
-                <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
-                <SelectItem value="associate_manager">Associate Manager</SelectItem>
-                <SelectItem value="account_manager">Account Manager</SelectItem>
-                <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
+                {Object.entries(ROLE_SLUG_LABELS).map(([slug, label]) => (
+                  <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Department</Label>
+            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+              <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-filter-department">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                <SelectItem value="none">Any / Unset</SelectItem>
+                {Object.entries(DEPARTMENT_LABELS).map(([slug, label]) => (
+                  <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Level</Label>
+            <Select value={filterLevel} onValueChange={setFilterLevel}>
+              <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-filter-level">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Levels</SelectItem>
+                <SelectItem value="none">Unset</SelectItem>
+                {Object.entries(LEVEL_LABELS).map(([slug, label]) => (
+                  <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -1760,6 +1863,9 @@ export function GoalTemplatesSection() {
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="text-left py-2 px-2 font-medium">Goal Title</th>
                   <th className="text-left py-2 px-2 font-medium">Type / Role</th>
+                  <th className="text-left py-2 px-2 font-medium">Dept / Level</th>
+                  <th className="text-left py-2 px-2 font-medium">Milestone</th>
+                  <th className="text-left py-2 px-2 font-medium">Weight</th>
                   <th className="text-left py-2 px-2 font-medium">Target Metric</th>
                   <th className="text-left py-2 px-2 font-medium">Category</th>
                   <th className="text-left py-2 px-2 font-medium">Order</th>
@@ -1772,7 +1878,7 @@ export function GoalTemplatesSection() {
                   <tr key={t.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-template-${t.id}`}>
                     {editingId === t.id ? (
                       <>
-                        <td className="py-2 px-2" colSpan={5}>
+                        <td className="py-2 px-2" colSpan={8}>
                           <div className="space-y-2">
                             <Input
                               value={String(editForm.goal_title ?? "")}
@@ -1788,7 +1894,7 @@ export function GoalTemplatesSection() {
                               className="h-7 text-xs"
                               data-testid={`input-edit-metric-${t.id}`}
                             />
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <Input
                                 type="number"
                                 value={String(editForm.sort_order ?? 0)}
@@ -1797,6 +1903,28 @@ export function GoalTemplatesSection() {
                                 className="h-7 text-xs w-16"
                                 data-testid={`input-edit-order-${t.id}`}
                               />
+                              <Input
+                                type="number"
+                                value={editForm.weight ?? ""}
+                                onChange={e => setEditForm(prev => ({ ...prev, weight: e.target.value === "" ? null : parseInt(e.target.value, 10) }))}
+                                placeholder="Weight %"
+                                className="h-7 text-xs w-20"
+                                data-testid={`input-edit-weight-${t.id}`}
+                              />
+                              <Select
+                                value={editForm.milestone ?? "none"}
+                                onValueChange={v => setEditForm(prev => ({ ...prev, milestone: v === "none" ? null : v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-28">
+                                  <SelectValue placeholder="Milestone" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">No milestone</SelectItem>
+                                  <SelectItem value="day_30">Day 30</SelectItem>
+                                  <SelectItem value="day_60">Day 60</SelectItem>
+                                  <SelectItem value="day_90">Day 90</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <Select
                                 value={String(editForm.goal_category ?? "individual")}
                                 onValueChange={v => setEditForm(prev => ({ ...prev, goal_category: v }))}
@@ -1818,6 +1946,60 @@ export function GoalTemplatesSection() {
                                   data-testid={`switch-edit-active-${t.id}`}
                                 />
                                 <span className="text-xs">Active</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Select
+                                value={editForm.department || "none"}
+                                onValueChange={v => setEditForm(prev => ({ ...prev, department: v === "none" ? null : v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-edit-department-${t.id}`}>
+                                  <SelectValue placeholder="Department" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Any / Unset dept</SelectItem>
+                                  {Object.entries(DEPARTMENT_LABELS).map(([slug, label]) => (
+                                    <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={editForm.role || "none"}
+                                onValueChange={v => setEditForm(prev => ({ ...prev, role: v === "none" ? null : v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-36" data-testid={`select-edit-role-family-${t.id}`}>
+                                  <SelectValue placeholder="Role family" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Unset role</SelectItem>
+                                  <SelectItem value="recruiter">Recruiter</SelectItem>
+                                  <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
+                                  <SelectItem value="account_manager">Account Manager</SelectItem>
+                                  <SelectItem value="hr_ops">HR / Operations</SelectItem>
+                                  <SelectItem value="marketing">Marketing</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={editForm.level || "none"}
+                                onValueChange={v => setEditForm(prev => ({ ...prev, level: v === "none" ? null : v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-32" data-testid={`select-edit-level-${t.id}`}>
+                                  <SelectValue placeholder="Level" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Unset level</SelectItem>
+                                  {Object.entries(LEVEL_LABELS).map(([slug, label]) => (
+                                    <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <div className="flex items-center gap-1.5">
+                                <Switch
+                                  checked={!!editForm.is_universal}
+                                  onCheckedChange={v => setEditForm(prev => ({ ...prev, is_universal: v }))}
+                                  data-testid={`switch-edit-universal-${t.id}`}
+                                />
+                                <span className="text-xs">Universal goal</span>
                               </div>
                             </div>
                           </div>
@@ -1851,7 +2033,26 @@ export function GoalTemplatesSection() {
                           <div className="flex flex-col gap-0.5">
                             <Badge variant="outline" className="text-[10px] h-4 px-1 w-fit">{PLAN_TYPE_LABELS[t.plan_type] || t.plan_type}</Badge>
                             <span className="text-[11px] text-muted-foreground">{ROLE_SLUG_LABELS[t.role_slug] || t.role_slug}</span>
+                            {t.is_universal && (
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1 w-fit">Universal</Badge>
+                            )}
                           </div>
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[11px] text-muted-foreground">{t.department ? (DEPARTMENT_LABELS[t.department] || t.department) : "Any"}</span>
+                            {t.level && <span className="text-[11px] text-muted-foreground">{LEVEL_LABELS[t.level] || t.level}</span>}
+                          </div>
+                        </td>
+                        <td className="py-2 px-2">
+                          {t.milestone ? (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1">{MILESTONE_LABELS[t.milestone] || t.milestone}</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2">
+                          <span className="text-xs font-mono">{t.weight != null ? `${t.weight}%` : "—"}</span>
                         </td>
                         <td className="py-2 px-2 max-w-[200px]">
                           <span className="text-xs text-muted-foreground">{t.target_metric || "—"}</span>
@@ -1929,18 +2130,58 @@ export function GoalTemplatesSection() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Role</Label>
-                <Select value={addForm.role_slug} onValueChange={v => setAddForm(prev => ({ ...prev, role_slug: v }))}>
-                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-role">
+                <Label className="text-xs">Role Key (unique slug)</Label>
+                <Input
+                  value={addForm.role_slug}
+                  onChange={e => setAddForm(prev => ({ ...prev, role_slug: e.target.value }))}
+                  placeholder="e.g. ta_recruiter_associate or universal"
+                  className="h-8 text-xs"
+                  data-testid="input-add-role-slug"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Department</Label>
+                <Select value={addForm.department || "none"} onValueChange={v => setAddForm(prev => ({ ...prev, department: v === "none" ? "" : v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-department">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="associate_recruiter">Associate Recruiter</SelectItem>
-                    <SelectItem value="senior_recruiter">Senior Recruiter</SelectItem>
+                    <SelectItem value="none">Any / Unset</SelectItem>
+                    {Object.entries(DEPARTMENT_LABELS).map(([slug, label]) => (
+                      <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Role Family</Label>
+                <Select value={addForm.role || "none"} onValueChange={v => setAddForm(prev => ({ ...prev, role: v === "none" ? "" : v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-role-family">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unset</SelectItem>
+                    <SelectItem value="recruiter">Recruiter</SelectItem>
                     <SelectItem value="lead_recruiter">Lead Recruiter</SelectItem>
-                    <SelectItem value="associate_manager">Associate Manager</SelectItem>
                     <SelectItem value="account_manager">Account Manager</SelectItem>
-                    <SelectItem value="foundation_to_senior">Foundation → Senior Recruiter</SelectItem>
+                    <SelectItem value="hr_ops">HR / Operations</SelectItem>
+                    <SelectItem value="marketing">Marketing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Level</Label>
+                <Select value={addForm.level || "none"} onValueChange={v => setAddForm(prev => ({ ...prev, level: v === "none" ? "" : v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-level">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unset</SelectItem>
+                    {Object.entries(LEVEL_LABELS).map(([slug, label]) => (
+                      <SelectItem key={slug} value={slug}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2002,6 +2243,41 @@ export function GoalTemplatesSection() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-3 items-end">
+              <div className="space-y-1">
+                <Label className="text-xs">Weight (%)</Label>
+                <Input
+                  type="number"
+                  value={addForm.weight}
+                  onChange={e => setAddForm(prev => ({ ...prev, weight: e.target.value }))}
+                  placeholder="e.g. 40"
+                  className="h-8 text-xs"
+                  data-testid="input-add-weight"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Milestone</Label>
+                <Select value={addForm.milestone || "none"} onValueChange={v => setAddForm(prev => ({ ...prev, milestone: v === "none" ? "" : v }))}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-add-milestone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No milestone</SelectItem>
+                    <SelectItem value="day_30">Day 30</SelectItem>
+                    <SelectItem value="day_60">Day 60</SelectItem>
+                    <SelectItem value="day_90">Day 90</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 h-8">
+                <Switch
+                  checked={addForm.is_universal}
+                  onCheckedChange={v => setAddForm(prev => ({ ...prev, is_universal: v }))}
+                  data-testid="switch-add-universal"
+                />
+                <span className="text-xs">Universal goal</span>
+              </div>
+            </div>
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
@@ -2013,6 +2289,56 @@ export function GoalTemplatesSection() {
               </Button>
               <Button size="sm" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
             </div>
+          </div>
+        )}
+
+        {filterPlanType === "probation" && scoringData && (scoringData.bands?.length > 0 || scoringData.passRule) && (
+          <div className="border rounded-md p-4 space-y-3 mt-4" data-testid="card-scoring-bands">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">Probation Scoring Bands & Pass Rule</p>
+              <Badge variant="outline" className="text-[10px] h-4 px-1">Reference</Badge>
+            </div>
+            {scoringData.bands?.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="text-left py-2 px-2 font-medium">Score</th>
+                      <th className="text-left py-2 px-2 font-medium">Meaning</th>
+                      <th className="text-left py-2 px-2 font-medium">Recommended Outcome</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scoringData.bands.map(b => (
+                      <tr key={b.id} className="border-b last:border-0" data-testid={`row-band-${b.id}`}>
+                        <td className="py-2 px-2"><Badge variant="secondary" className="text-[10px] h-4 px-1 font-mono">{b.label}</Badge></td>
+                        <td className="py-2 px-2 text-xs text-muted-foreground">{b.meaning || "—"}</td>
+                        <td className="py-2 px-2 text-xs text-muted-foreground">{b.recommended_outcome || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {scoringData.finalWeights && scoringData.finalWeights.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Day 90 Final Weights</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {scoringData.finalWeights.map((w, i) => (
+                    <Badge key={i} variant="outline" className="text-[10px] h-5 px-1.5" data-testid={`badge-weight-${i}`}>
+                      {w.area}: {w.weight}%
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {scoringData.passRule && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Pass Rule</p>
+                <p className="text-xs text-muted-foreground" data-testid="text-pass-rule">{scoringData.passRule}</p>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

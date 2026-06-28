@@ -68,7 +68,7 @@ import {
 } from "@shared/performanceClauses";
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
-import { registerPerformanceRoutes } from "./performanceRoutes";
+import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, normalizeGoalCategory } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
@@ -9192,6 +9192,24 @@ export async function registerRoutes(
         addendumType: addendum.addendumType,
       }).catch(e => console.error("[Addendum] Failed to notify HR:", e));
 
+      // Activation engine: a signed addendum that carries a 90-day growth-plan
+      // clause now instantiates a REAL, active, fully-tracked growth plan
+      // (goals + milestones + check-ins) that follows the normal SOP. Idempotent,
+      // so countersign / backfill never duplicate it. Non-fatal.
+      if (addendum.includeGrowthPlanClause && actorIdForAudit) {
+        try {
+          const r = await ensureGrowthPlanFromAddendum({
+            employeeId: addendum.forEmployeeId ?? null,
+            offerLetterId: addendum.offerLetterId ?? null,
+            effectiveDate: addendum.effectiveDate ?? null,
+            createdBy: actorIdForAudit,
+          });
+          if (r.created) console.log(`[Addendum] Growth plan activated from signed addendum ${addendum.id} -> plan ${r.planId}`);
+        } catch (planErr) {
+          console.error("[Addendum] Growth plan activation failed (non-fatal):", planErr);
+        }
+      }
+
       res.json({ success: true, authCode, documentHash });
     } catch (error) {
       console.error("Accept addendum error:", error);
@@ -9647,6 +9665,23 @@ export async function registerRoutes(
         changes: { addendumId: addendum.id, counterAuthCode },
       });
 
+      // Activation engine (idempotent): ensure a growth-clause addendum has its
+      // real, tracked growth plan in effect even if it was accepted before this
+      // feature existed. Non-fatal.
+      if (addendum.includeGrowthPlanClause) {
+        try {
+          const r = await ensureGrowthPlanFromAddendum({
+            employeeId: addendum.forEmployeeId ?? null,
+            offerLetterId: addendum.offerLetterId ?? null,
+            effectiveDate: addendum.effectiveDate ?? null,
+            createdBy: req.session.userId!,
+          });
+          if (r.created) console.log(`[Addendum] Growth plan activated on countersign of ${addendum.id} -> plan ${r.planId}`);
+        } catch (planErr) {
+          console.error("[Addendum] Growth plan activation on countersign failed (non-fatal):", planErr);
+        }
+      }
+
       res.json({ success: true, counterAuthCode });
     } catch (error) {
       console.error("Counter-sign addendum error:", error);
@@ -9823,33 +9858,29 @@ export async function registerRoutes(
               WHERE id = ${pendingPlan.id}
             `);
 
-            // Seed template goals for this role/designation
-            const roleSlug = (letter.designation || "")
+            // Seed goals via the cross-department probation framework: universal
+            // goals + best-matching role/level milestone goals, with a legacy
+            // healthcare-template fallback so existing behavior never regresses.
+            const { parseProbationKey, resolveProbationGoalTemplates } = await import("./probationTemplates");
+            const legacyRoleSlug = (letter.designation || "")
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "_")
               .replace(/^_|_$/g, "");
+            const probationKey = parseProbationKey(letter.designation, deptName);
+            const resolvedGoals = await resolveProbationGoalTemplates(probationKey, legacyRoleSlug);
 
-            const templates = await db.execute(sql`
-              SELECT * FROM plan_goal_templates
-              WHERE plan_type = 'probation'
-                AND department_scope = 'healthcare'
-                AND is_active = true
-                AND (role_slug = ${roleSlug} OR role_slug = 'all')
-              ORDER BY sort_order ASC
-            `);
-
-            for (const tpl of templates.rows as any[]) {
+            for (const g of resolvedGoals) {
               await db.execute(sql`
                 INSERT INTO performance_goals
                   (employee_id, plan_id, title, description, category, status, progress, auto_progress_from_milestones, source_ref)
                 VALUES
-                  (${newUser.id}, ${pendingPlan.id}, ${tpl.goal_title}, ${(tpl as any).goal_description ?? null},
-                   ${(tpl as any).goal_category ?? "general"}, 'not_started', 0, true, 'seed')
+                  (${newUser.id}, ${pendingPlan.id}, ${g.title}, ${g.description},
+                   ${normalizeGoalCategory(g.category)}, 'not_started', 0, true, 'seed')
               `);
             }
 
-            // Generate Day 15/30/60/90 milestone check-ins from actual joining date
-            const milestones = [15, 30, 60, 90].filter(d => d <= durationDays);
+            // Generate Day 1/7/15/30/45/60/75/90 milestone check-ins from actual joining date
+            const milestones = [1, 7, 15, 30, 45, 60, 75, 90].filter(d => d <= durationDays);
             for (const day of milestones) {
               const milestoneDate = new Date(joiningDate);
               milestoneDate.setDate(milestoneDate.getDate() + day);
@@ -9864,7 +9895,7 @@ export async function registerRoutes(
               action: "probation_plan_activated",
               actorId,
               targetId: newUser.id,
-              changes: { planId: pendingPlan.id, joiningDate, endDate: endDateStr, durationDays, roleSlug, goalsSeeded: templates.rows.length },
+              changes: { planId: pendingPlan.id, joiningDate, endDate: endDateStr, durationDays, probationKey, goalsSeeded: resolvedGoals.length },
             });
           }
         } catch (planErr) {
@@ -10904,7 +10935,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {

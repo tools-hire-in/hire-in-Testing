@@ -971,10 +971,37 @@ export const planGoalTemplates = pgTable("plan_goal_templates", {
   planType: employeePlanTypeEnum("plan_type").notNull(),
   roleSlug: varchar("role_slug").notNull(),
   departmentScope: employeePlanDeptScopeEnum("department_scope").notNull().default("healthcare"),
+  // Department/role/level keying for the cross-department probation framework.
+  // Nullable for back-compat with existing healthcare templates (which key off
+  // departmentScope + roleSlug). NULL department = applies to all departments.
+  department: varchar("department"),
+  role: varchar("role"),
+  level: varchar("level"),
+  // Goal weight (% contribution to the probation score) — used by universal goals.
+  weight: integer("weight"),
+  // Milestone tag for role-specific targets: "day_30" | "day_60" | "day_90".
+  milestone: varchar("milestone"),
+  // Universal goals apply to every probation plan regardless of role/level.
+  isUniversal: boolean("is_universal").notNull().default(false),
   goalTitle: varchar("goal_title").notNull(),
   goalCategory: varchar("goal_category").notNull().default("individual"),
   goalDescription: text("goal_description"),
   targetMetric: varchar("target_metric"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Probation scoring bands (Section 7 of the framework doc) — structured data the
+// milestone-scorecard feature consumes to map a numeric score to an outcome.
+export const probationScoringBands = pgTable("probation_scoring_bands", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  minScore: integer("min_score").notNull(),
+  maxScore: integer("max_score").notNull(),
+  label: varchar("label").notNull(),
+  meaning: text("meaning"),
+  recommendedOutcome: text("recommended_outcome"),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -995,10 +1022,79 @@ export const insertPlanGoalTemplateSchema = createInsertSchema(planGoalTemplates
   updatedAt: true,
 });
 
+// Day-90 final weights (Section 12) — one row per assessment area. Stored as a
+// table (not system_settings JSON) so the framework's structured reference data
+// is uniform with probation_scoring_bands and editable per-row.
+export const probationFinalWeights = pgTable("probation_final_weights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  area: varchar("area").notNull(),
+  weight: integer("weight").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Probation pass rule (Section 7) — the confirmation criteria statement. A table
+// (single active row) keeps it in the same structured-DB style as bands/weights.
+export const probationPassRule = pgTable("probation_pass_rule", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  rule: text("rule").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProbationScoringBandSchema = createInsertSchema(probationScoringBands).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProbationFinalWeightSchema = createInsertSchema(probationFinalWeights).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProbationPassRuleSchema = createInsertSchema(probationPassRule).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Coaching log — free-text coaching notes a manager/HR records against an
+// employee's plan (probation/growth/pip). Distinct from check-ins: these are
+// ad-hoc coaching observations, not scheduled milestone reviews.
+export const coachingLogEntries = pgTable("coaching_log_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planId: varchar("plan_id").notNull(),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  authorId: varchar("author_id").notNull().references(() => adminUsers.id),
+  note: text("note").notNull(),
+  entryDate: varchar("entry_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCoachingLogEntrySchema = createInsertSchema(coachingLogEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type EmployeePlan = typeof employeePlans.$inferSelect;
 export type InsertEmployeePlan = z.infer<typeof insertEmployeePlanSchema>;
 export type PlanGoalTemplate = typeof planGoalTemplates.$inferSelect;
 export type InsertPlanGoalTemplate = z.infer<typeof insertPlanGoalTemplateSchema>;
+export type ProbationScoringBand = typeof probationScoringBands.$inferSelect;
+export type InsertProbationScoringBand = z.infer<typeof insertProbationScoringBandSchema>;
+export type ProbationFinalWeight = typeof probationFinalWeights.$inferSelect;
+export type InsertProbationFinalWeight = z.infer<typeof insertProbationFinalWeightSchema>;
+export type ProbationPassRule = typeof probationPassRule.$inferSelect;
+export type InsertProbationPassRule = z.infer<typeof insertProbationPassRuleSchema>;
+export type CoachingLogEntry = typeof coachingLogEntries.$inferSelect;
+export type InsertCoachingLogEntry = z.infer<typeof insertCoachingLogEntrySchema>;
 
 export const employeePlansRelations = relations(employeePlans, ({ one }) => ({
   employee: one(adminUsers, { fields: [employeePlans.employeeId], references: [adminUsers.id], relationName: "planEmployee" }),

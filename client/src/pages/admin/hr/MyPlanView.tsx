@@ -36,6 +36,13 @@ interface CheckIn {
   manager_notes: string | null;
 }
 
+interface CoachingEntry {
+  id: string;
+  note: string;
+  entry_date: string;
+  author_name: string | null;
+}
+
 interface PlanData {
   plan: {
     id: string;
@@ -51,6 +58,7 @@ interface PlanData {
   goals: PlanGoal[];
   checkIns: CheckIn[];
   weeklyUpdates: CheckIn[];
+  coachingLog?: CoachingEntry[];
 }
 
 function planTypeLabel(t: string) {
@@ -508,6 +516,7 @@ export default function MyPlanView() {
   }
 
   const { plan, goals, checkIns, weeklyUpdates } = data;
+  const coachingLog = data.coachingLog ?? [];
   const isPending = plan.status === "pending";
   const isPIP = plan.plan_type === "pip";
   const remaining = daysRemaining(plan.end_date);
@@ -640,6 +649,29 @@ export default function MyPlanView() {
           <CardContent className="space-y-2">
             {goals.map(g => (
               <GoalRow key={g.id} goal={g} planId={plan.id} readOnly={isPIP} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Coaching notes from manager/HR (read-only) */}
+      {coachingLog.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />
+              Coaching Notes ({coachingLog.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {coachingLog.map(c => (
+              <div key={c.id} className="border rounded-lg p-2.5 text-xs space-y-1" data-testid={`row-coaching-${c.id}`}>
+                <div className="flex justify-between text-muted-foreground">
+                  <span className="font-medium text-foreground">{c.author_name || "Manager"}</span>
+                  <span>{formatDate(c.entry_date)}</span>
+                </div>
+                <p className="text-foreground whitespace-pre-wrap">{c.note}</p>
+              </div>
             ))}
           </CardContent>
         </Card>
