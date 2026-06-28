@@ -2155,9 +2155,13 @@ async function seedProbationFramework() {
 
     // ── Pass rule + Day 90 final weights (Sections 7 & 12) in system_settings ─
     const passRule = "Minimum 75 overall, no unresolved compliance/integrity issue, and no major recurring attendance or conduct concern. A manager may extend probation even with a passing score if role volume was insufficient to fairly assess the employee.";
+    // Day-90 final scoring is split across FIVE dimensions: "Quality" and
+    // "Process discipline" are scored separately (previously a single combined
+    // "Quality and process adherence" dimension). Weights total 100.
     const finalWeights = [
       { area: "Role output", weight: 40 },
-      { area: "Quality and process adherence", weight: 25 },
+      { area: "Quality", weight: 15 },
+      { area: "Process discipline", weight: 10 },
       { area: "Attendance, reliability, and communication", weight: 20 },
       { area: "Values, ownership, and coachability", weight: 15 },
     ];
@@ -2169,11 +2173,31 @@ async function seedProbationFramework() {
       INSERT INTO system_settings (key, value) VALUES ('probation_final_weights', ${JSON.stringify(finalWeights)}::jsonb)
       ON CONFLICT (key) DO NOTHING
     `);
+    // One-time migration of the legacy JSON fallback to the 5-dimension shape:
+    // overwrite only while it still holds the pre-split combined dimension.
+    await db.execute(sql`
+      UPDATE system_settings
+      SET value = ${JSON.stringify(finalWeights)}::jsonb
+      WHERE key = 'probation_final_weights'
+        AND value::text LIKE '%Quality and process adherence%'
+    `);
 
     // ── Same pass rule + final weights ALSO seeded into dedicated DB tables ────
     // (probation_framework_db flag, default ON, reads these; JSON above is the
     // revert fallback). Idempotent: seed weights only if the table is empty, and
     // the single pass-rule row only if none exists.
+    // One-time migration: if the pre-split combined dimension is still present,
+    // clear the active weights so the loop below re-seeds the full 5-dimension
+    // set with correct ordering. Gated on the legacy row so later HR edits are
+    // never clobbered.
+    const legacyWeightRow = await db.execute(sql`
+      SELECT 1 FROM probation_final_weights
+      WHERE area = 'Quality and process adherence' AND is_active = true
+      LIMIT 1
+    `);
+    if (legacyWeightRow.rows.length > 0) {
+      await db.execute(sql`DELETE FROM probation_final_weights`);
+    }
     for (let i = 0; i < finalWeights.length; i++) {
       const w = finalWeights[i];
       await db.execute(sql`

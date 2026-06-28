@@ -116,12 +116,18 @@ export async function computeOnboardingChecklist(
       .where(eq(employeeEmergencyContacts.userId, userId))
       .limit(1);
     emergencyComplete = !!emc;
-    const reqDocs = await db
-      .select({ status: employeeDocuments.status })
+    const allDocs = await db
+      .select({ status: employeeDocuments.status, isRequired: employeeDocuments.isRequired })
       .from(employeeDocuments)
-      .where(and(eq(employeeDocuments.userId, userId), eq(employeeDocuments.isRequired, true)));
+      .where(eq(employeeDocuments.userId, userId));
+    const reqDocs = allDocs.filter((d) => d.isRequired);
     docsPendingCount = reqDocs.filter((d) => d.status === "pending").length;
-    docsComplete = docsPendingCount === 0;
+    // A new hire whose required-document rows haven't been seeded yet should
+    // still be prompted to upload documents (treat "no rows" as incomplete),
+    // so post-acceptance onboarding always surfaces the document step.
+    const hasNoDocRows = allDocs.length === 0;
+    docsComplete = !hasNoDocRows && docsPendingCount === 0;
+    if (hasNoDocRows) docsPendingCount = 1;
   }
 
   const twoFactorComplete = userRecord?.totpEnabled === true;

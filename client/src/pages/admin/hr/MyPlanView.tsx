@@ -102,6 +102,12 @@ function checkInMarkerTextColor(ci: CheckIn): string {
   return "text-muted-foreground";
 }
 
+const PROBATION_MILESTONE_LABELS: Record<number, string> = {
+  30: "Calibration & Correction",
+  60: "Consistency Check",
+  90: "Confirmation Review",
+};
+
 function markerPercent(startDate: string, endDate: string, markerDate: string): number {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
@@ -138,6 +144,10 @@ function PlanTimeline({ plan, checkIns }: { plan: PlanData["plan"]; checkIns: Ch
           const pct = markerPercent(plan.start_date, plan.end_date, ci.scheduled_date);
           const color = checkInMarkerColor(ci);
           const dayNum = Math.round((new Date(ci.scheduled_date).getTime() - new Date(plan.start_date).getTime()) / (1000 * 60 * 60 * 24));
+          const milestoneLabel = plan.plan_type === "probation" ? PROBATION_MILESTONE_LABELS[dayNum] : undefined;
+          const markerTitle = milestoneLabel
+            ? `Day ${dayNum} — ${milestoneLabel} Review · ${formatDate(ci.scheduled_date)} — ${ci.status}`
+            : `${formatDate(ci.scheduled_date)} — ${ci.status}`;
           return (
             <div
               key={ci.id}
@@ -145,7 +155,7 @@ function PlanTimeline({ plan, checkIns }: { plan: PlanData["plan"]; checkIns: Ch
               style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
               data-testid={`marker-checkin-${ci.id}`}
             >
-              <div className={`w-3 h-3 rounded-full border-2 ${color}`} title={`${formatDate(ci.scheduled_date)} — ${ci.status}`} />
+              <div className={`w-3 h-3 rounded-full border-2 ${color}`} title={markerTitle} />
               <span className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">D{dayNum}</span>
             </div>
           );

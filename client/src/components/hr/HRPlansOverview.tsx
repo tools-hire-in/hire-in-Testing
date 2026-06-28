@@ -78,6 +78,12 @@ const OUTCOME_OPTIONS: Record<string, { value: string; label: string; descriptio
 const EXTENDED_OUTCOMES = new Set(["extended"]);
 const RELIEVING_OUTCOMES = new Set(["released", "terminated"]);
 
+const PROBATION_MILESTONE_LABELS: Record<number, string> = {
+  30: "Calibration & Correction",
+  60: "Consistency Check",
+  90: "Confirmation Review",
+};
+
 function planTypeLabel(t: string) {
   if (t === "probation") return "Probation";
   if (t === "growth") return "Growth";
@@ -227,9 +233,17 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
         </div>
         {checkIns.length > 0 && (
           <div className="mt-3 space-y-1.5">
-            {checkIns.slice(0, 8).map((ci: any) => (
+            {checkIns.slice(0, 8).map((ci: any) => {
+              const dayNum = Math.round((new Date(ci.scheduled_date).getTime() - new Date(plan.start_date).getTime()) / 86400000);
+              const milestoneLabel = plan.plan_type === "probation" && ci.check_in_type === "milestone"
+                ? PROBATION_MILESTONE_LABELS[dayNum]
+                : undefined;
+              const checkInLabel = milestoneLabel
+                ? `Day ${dayNum} — ${milestoneLabel} Review`
+                : (ci.check_in_type || "").replace(/_/g, " ");
+              return (
               <div key={ci.id} className="flex items-center justify-between text-xs p-1.5 rounded border" data-testid={`row-checkin-detail-${ci.id}`}>
-                <span className="capitalize">{(ci.check_in_type || "").replace(/_/g, " ")} — {formatDate(ci.scheduled_date)}</span>
+                <span className="capitalize">{checkInLabel} — {formatDate(ci.scheduled_date)}</span>
                 <Badge
                   variant={ci.status === "completed" ? "default" : ci.scheduled_date < today ? "destructive" : "outline"}
                   className="text-[10px] h-4 px-1.5 capitalize"
@@ -237,7 +251,8 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
                   {ci.status}
                 </Badge>
               </div>
-            ))}
+              );
+            })}
             {checkIns.length > 8 && (
               <p className="text-xs text-muted-foreground text-center">+{checkIns.length - 8} more</p>
             )}

@@ -40,6 +40,22 @@ defensive JSON fallback if a table is empty; OFF → JSON. Response shape is unc
 `source` field). Flag registered in routes.ts `ALLOWED_FLAGS` + HRSettings flagDefs. Flip OFF to
 revert to JSON without code changes.
 
+**Day-90 scoring is 5 dimensions, not 4.** Per TA-head spec the old combined "Quality and
+process adherence" is split into separate "Quality" (15) and "Process discipline" (10). Full
+set summing to 100: Role output 40, Quality 15, Process discipline 10, "Attendance, reliability,
+and communication" 20, "Values, ownership, and coachability" 15. Startup migration in
+`server/index.ts` rewrites the legacy `system_settings` JSON and DELETEs+reseeds
+`probation_final_weights` rows (gated on the legacy combined row existing). HRSettings renders
+weights dynamically so no client edit was needed.
+
+**Probation milestone labels are server-owned, probation-only.** `PROBATION_MILESTONE_LABELS`
+{30:"Calibration & Correction",60:"Consistency Check",90:"Confirmation Review"} +
+`probationMilestoneLabel()` live in `performanceRoutes.ts`; GET `/api/performance/check-ins`
+attaches `milestoneDay`/`milestoneLabel` only for `plan_type='probation'` milestone check-ins
+(growth plans also have 30/60/90 milestones but get NO label). Client surfaces re-derive the
+same label map from `start_date` + plan_type (CheckIns card/dialog, MyPlanView timeline tooltip,
+HRPlansOverview rows) — keep the three client copies of the map in sync with the server.
+
 **Edit/PATCH null semantics** (`PATCH /api/hr/plan-templates/:id`): presence-based, not
 COALESCE. Matrix-key fields (department/role/level/weight/milestone) honor explicit null = unset;
 content fields preserve on null/absent. **Why:** all-COALESCE made the edit form's "Unset"

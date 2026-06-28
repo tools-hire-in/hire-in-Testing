@@ -55,6 +55,13 @@ interface CheckIn {
   rating: number | null;
   completedAt: string | null;
   createdAt: string;
+  milestoneDay?: number | null;
+  milestoneLabel?: string | null;
+}
+
+function milestoneTitle(checkIn: { milestoneDay?: number | null; milestoneLabel?: string | null }): string | null {
+  if (!checkIn.milestoneLabel || checkIn.milestoneDay == null) return null;
+  return `Day ${checkIn.milestoneDay} — ${checkIn.milestoneLabel} Review`;
 }
 
 interface TeamMember {
@@ -389,7 +396,7 @@ function CheckInDetailDialog({
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle data-testid="text-checkin-detail-title">
-            Check-In Details
+            {milestoneTitle(checkIn) ?? "Check-In Details"}
           </DialogTitle>
           <DialogDescription>
             {formatDate(checkIn.scheduledDate)} — {checkIn.employeeName} &amp; {checkIn.managerName}
@@ -560,6 +567,15 @@ function CheckInCard({
               >
                 {STATUS_LABELS[checkIn.status] || checkIn.status}
               </Badge>
+              {milestoneTitle(checkIn) && (
+                <Badge
+                  variant="outline"
+                  className="border-primary/40 text-primary text-[10px]"
+                  data-testid={`badge-checkin-milestone-${checkIn.id}`}
+                >
+                  Day {checkIn.milestoneDay} · {checkIn.milestoneLabel}
+                </Badge>
+              )}
             </div>
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">

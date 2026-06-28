@@ -222,6 +222,19 @@ export function generatePlanCheckIns(
   return schedule;
 }
 
+// Probation milestone review forms — the Day 30 / 60 / 90 manager check-ins each
+// have a distinct purpose. Labels are derived from the offset (in days) of a
+// milestone check-in from the plan start. Non-milestone days return null.
+export const PROBATION_MILESTONE_LABELS: Record<number, string> = {
+  30: "Calibration & Correction",
+  60: "Consistency Check",
+  90: "Confirmation Review",
+};
+
+export function probationMilestoneLabel(dayOffset: number): string | null {
+  return PROBATION_MILESTONE_LABELS[dayOffset] ?? null;
+}
+
 const ADMIN_ROLES = ["super_admin", "admin", "hr"];
 const MANAGER_ROLES = ["super_admin", "admin", "hr", "manager"];
 const ALL_ROLES = ["super_admin", "admin", "hr", "operations", "manager", "employee"];
@@ -949,13 +962,40 @@ export function registerPerformanceRoutes(app: Express) {
       const allUsers = await storage.getAdminUsers();
       const userMap = new Map(allUsers.map(u => [u.id, u]));
 
+      // Resolve plan start dates + types so probation milestone check-ins can be
+      // labeled as Day 30 / 60 / 90 review forms with their distinct purpose.
+      const planIds = Array.from(new Set(list.map(ci => ci.planId).filter((id): id is string => !!id)));
+      const planMap = new Map<string, { startDate: string; planType: string }>();
+      if (planIds.length > 0) {
+        const planRows = await db.execute(sql`
+          SELECT id, start_date, plan_type FROM employee_plans
+          WHERE id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
+        `);
+        for (const r of planRows.rows as any[]) {
+          planMap.set(r.id, { startDate: r.start_date, planType: r.plan_type });
+        }
+      }
+
       const enrichedList = list.map(ci => {
         const emp = userMap.get(ci.employeeId);
         const mgr = ci.managerId ? userMap.get(ci.managerId) : null;
+        let milestoneDay: number | null = null;
+        let milestoneLabel: string | null = null;
+        if (ci.planId && ci.checkInType === "milestone") {
+          const p = planMap.get(ci.planId);
+          if (p && p.planType === "probation" && p.startDate && ci.scheduledDate) {
+            milestoneDay = Math.round(
+              (new Date(ci.scheduledDate as any).getTime() - new Date(p.startDate).getTime()) / 86400000,
+            );
+            milestoneLabel = probationMilestoneLabel(milestoneDay);
+          }
+        }
         return {
           ...ci,
           employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
           managerName: mgr ? `${mgr.firstName} ${mgr.lastName}` : "Unknown",
+          milestoneDay,
+          milestoneLabel,
         };
       });
 
