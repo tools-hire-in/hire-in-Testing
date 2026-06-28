@@ -4,9 +4,10 @@
 // call site, re-derives the effective role list written at that site (applying
 // the per-file auto-grant rule), and asserts it equals ACCESS_REGISTRY[key].
 //
-// This proves the invariant that keeps `CENTRALIZED_ACCESS_CONTROL` safe to flip
-// ON: registry value == legacy fallback for every migrated site. Any future edit
-// to a call site or the registry that drifts the two apart fails this check.
+// This proves the consolidation invariant: the role list seeded at every guard
+// call site equals ACCESS_REGISTRY[key], so routing all decisions through the
+// registry (the only path now) is access-preserving. Any future edit to a call
+// site or the registry that drifts the two apart fails this check.
 //
 // Usage:  node scripts/verifyAccessParity.mjs   (exit 0 = parity, 1 = mismatch)
 import fs from 'fs';
@@ -29,8 +30,9 @@ const ONB_CONSTS = {
 const read = f => fs.readFileSync(f, 'utf8').split('\n');
 const sites = [];
 
-// routes.ts + contractRoutes.ts : requirePermission("key", ...roles) — auto-grant super_admin+admin
-for (const file of ['server/routes.ts', 'server/contractRoutes.ts']) {
+// routes.ts + contractRoutes.ts + travelRoutes.ts :
+// requirePermission("key", ...roles) — auto-grant super_admin+admin
+for (const file of ['server/routes.ts', 'server/contractRoutes.ts', 'server/travelRoutes.ts']) {
   read(file).forEach((line, i) => {
     if (/function requirePermission/.test(line)) return;
     const m = line.match(/requirePermission\(\s*"([^"]+)"\s*((?:,\s*"[^"]+"\s*)*)\)/);
@@ -40,11 +42,33 @@ for (const file of ['server/routes.ts', 'server/contractRoutes.ts']) {
   });
 }
 
-// performanceRoutes.ts : requireRole(req, res, "key", CONST) — auto-grant super_admin+admin
+// salaryAdvanceRoutes.ts : requirePermission("key", ...roles) — NO auto-grant
+// (final-approval routes must stay super_admin-exact; helper does not inject admin)
+read('server/salaryAdvanceRoutes.ts').forEach((line, i) => {
+  if (/function requirePermission/.test(line)) return;
+  const m = line.match(/requirePermission\(\s*"([^"]+)"\s*((?:,\s*"[^"]+"\s*)*)\)/);
+  if (!m) return;
+  sites.push({ file: 'server/salaryAdvanceRoutes.ts', line: i + 1, key: m[1], eff: dedupe(parseArgs(m[2].replace(/^,/, ''))) });
+});
+
+// performanceRoutes.ts : requirePermission(req, res, "key", CONST) — auto-grant super_admin+admin
 read('server/performanceRoutes.ts').forEach((line, i) => {
-  const m = line.match(/requireRole\(req,\s*res,\s*"([^"]+)",\s*([A-Z_]+)\)/);
+  const m = line.match(/requirePermission\(req,\s*res,\s*"([^"]+)",\s*([A-Z_]+)\)/);
   if (!m) return;
   sites.push({ file: 'server/performanceRoutes.ts', line: i + 1, key: m[1], eff: dedupe(['super_admin', 'admin', ...PERF_CONSTS[m[2]]]) });
+});
+
+// releaseNotesRoutes.ts : ...requirePermission("key", ...ALLOWED_ROLES | "role") — NO auto-grant
+const RN_ALLOWED_ROLES = ['super_admin', 'admin', 'hr'];
+read('server/releaseNotesRoutes.ts').forEach((line, i) => {
+  if (/function requirePermission/.test(line)) return;
+  const m = line.match(/requirePermission\(\s*"([^"]+)"\s*,\s*([^)]*)\)/);
+  if (!m) return;
+  const argStr = m[2];
+  const roles = [];
+  if (/\.\.\.ALLOWED_ROLES/.test(argStr)) roles.push(...RN_ALLOWED_ROLES);
+  for (const qm of argStr.matchAll(/"([^"]+)"/g)) roles.push(qm[1]);
+  sites.push({ file: 'server/releaseNotesRoutes.ts', line: i + 1, key: m[1], eff: dedupe(roles) });
 });
 
 // authRoutes.ts : requirePermission("key", ...roles) — NO auto-grant
@@ -96,4 +120,4 @@ if (failures) {
   console.error(`PARITY CHECK FAILED: ${failures} mismatch(es).`);
   process.exit(1);
 }
-console.log('PARITY OK: every guard site fallback equals its registry entry (flag ON == flag OFF).');
+console.log('PARITY OK: every guard site default equals its registry entry (registry-authoritative path is access-preserving).');

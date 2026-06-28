@@ -18,18 +18,9 @@ function requireAuth(req: Request, res: Response, next: any) {
   next();
 }
 
-function requireRole(...roles: string[]) {
-  return (req: Request, res: Response, next: any) => {
-    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const role = req.session.role;
-    if (role === "super_admin" || role === "admin" || roles.includes(role!)) return next();
-    return res.status(403).json({ error: "Insufficient permissions" });
-  };
-}
-
 // Centralized permission middleware — resolves allowed roles via the central
-// access registry (when the flag is on) or the call site fallback (legacy).
-// super_admin and admin are auto-granted, matching requireRole above.
+// access registry (ACCESS_REGISTRY). super_admin and admin are auto-granted.
+// The trailing role list is the defensive default seed for resolveRoles.
 function requirePermission(featureKey: string, ...roles: string[]) {
   return (req: Request, res: Response, next: any) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });

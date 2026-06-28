@@ -18,7 +18,7 @@ import {
 } from "../attendancePolicy.js";
 import { getCurrentShiftTiming } from "../shiftUtils.js";
 import { runAbsentSweep } from "../scheduler.js";
-import { requireRole, requireAuth } from "../auth.js";
+import { requirePermission, requireAuth } from "../auth.js";
 import { storage } from "../storage.js";
 import { db } from "../db.js";
 import { sql } from "drizzle-orm";
@@ -460,9 +460,9 @@ describe("queryGraceUsage — real DB inserts, manager scoping, empty-month", ()
   });
 });
 
-// --- Suite 7: Grace-usage HTTP — real requireRole + real queryGraceUsage ---
+// --- Suite 7: Grace-usage HTTP — real requirePermission + real queryGraceUsage ---
 
-describe("Grace-usage HTTP — real requireRole + real queryGraceUsage", () => {
+describe("Grace-usage HTTP — real requirePermission + real queryGraceUsage", () => {
   function buildApp(userId: string, role: string) {
     const app = express();
     app.use(express.json());
@@ -472,7 +472,7 @@ describe("Grace-usage HTTP — real requireRole + real queryGraceUsage", () => {
     });
     app.get(
       "/api/hr/attendance/grace-usage",
-      requireRole("hr", "admin", "super_admin", "manager"),
+      requirePermission("hr.attendance.graceUsage", "hr", "admin", "super_admin", "manager"),
       async (req: Request, res: Response) => {
         try {
           const s = (req as any).session as { userId: string; role: string };
@@ -492,7 +492,7 @@ describe("Grace-usage HTTP — real requireRole + real queryGraceUsage", () => {
   });
   unauthApp.get("/api/hr/attendance/grace-usage",
     requireAuth,
-    requireRole("hr", "admin", "super_admin", "manager"),
+    requirePermission("hr.attendance.graceUsage", "hr", "admin", "super_admin", "manager"),
     (_req, res) => res.json([]),
   );
 

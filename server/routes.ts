@@ -11,7 +11,7 @@ import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
-import { setupSession, requireAuth as requireAuthImported, requireRole as requireRoleAuth, require2FA } from "./auth";
+import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
 import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
@@ -339,30 +339,9 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Role-based middleware - allows specific roles plus super_admin and admin
-// super_admin and admin automatically have access to all admin routes
-function requireRole(...allowedRoles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session?.userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    
-    const userRole = req.session.role;
-    // Super admin and admin always have access to everything
-    if (userRole === "super_admin" || userRole === "admin") {
-      return next();
-    }
-    // Check if user's role is in the allowed roles
-    if (allowedRoles.includes(userRole!)) {
-      return next();
-    }
-    return res.status(403).json({ error: "Insufficient permissions" });
-  };
-}
-
 // Centralized permission middleware — resolves allowed roles via the central
-// access registry (when the flag is on) or the call site fallback (legacy).
-// super_admin and admin are auto-granted, matching requireRole above.
+// access registry (ACCESS_REGISTRY). super_admin and admin are auto-granted.
+// The trailing role list is the defensive default seed for resolveRoles.
 function requirePermission(featureKey: string, ...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session?.userId) {
@@ -13326,7 +13305,7 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/insights-launch/load",
     requireAuth,
-    requireRole("super_admin"),
+    requirePermission("admin.studio.insightsLaunch.load", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { seedInsightsLaunchArticles, applyLaunchRoutingGuardrail, getLaunchStatus } = await import("./insightsLaunch");
@@ -13351,7 +13330,7 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/insights-launch/announce-and-route",
     requireAuth,
-    requireRole("super_admin"),
+    requirePermission("admin.studio.insightsLaunch.announceAndRoute", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { announceAndRouteLaunch } = await import("./insightsLaunch");
@@ -13387,7 +13366,7 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/insights-launch/announce",
     requireAuth,
-    requireRole("super_admin"),
+    requirePermission("admin.studio.insightsLaunch.announce", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { sendLaunchAnnouncement } = await import("./insightsLaunch");
@@ -13943,7 +13922,7 @@ export async function registerRoutes(
   app.post(
     "/api/admin/studio/articles/bulk-approve",
     requireAuth,
-    requirePermission("studio.marketing_approve"),
+    requirePermission("studio.marketing_approve.bulk"),
     async (req: Request, res: Response) => {
       try {
         const { articleIds } = req.body ?? {};

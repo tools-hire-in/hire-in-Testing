@@ -4,6 +4,7 @@ import { eq, and, desc, or, gte, sql } from "drizzle-orm";
 import { travelQuotes, travelQuoteOutputs, travelMarginFloors, gsaRateSnapshots, adminUsers } from "@shared/schema";
 import { getGsaRate } from "./gsaRateService";
 import { runTravelCalc } from "./travelCalculation";
+import { resolveRoles } from "@shared/accessControl";
 import { z } from "zod";
 import { execSync } from "child_process";
 import puppeteer, { type Browser } from "puppeteer-core";
@@ -46,12 +47,14 @@ function requireAuth(req: Request, res: Response, next: Function) {
   next();
 }
 
-function requireRole(...roles: string[]) {
+// Centralized permission middleware — resolves allowed roles via the central
+// access registry (ACCESS_REGISTRY). super_admin and admin are auto-granted.
+// The trailing role list is the defensive default seed for resolveRoles.
+function requirePermission(featureKey: string, ...roles: string[]) {
   return (req: Request, res: Response, next: Function) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const role = req.session.role as string;
-    if (role === "super_admin" || role === "admin") return next();
-    if (roles.includes(role)) return next();
+    const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...roles])));
+    if (allowed.includes(req.session.role as string)) return next();
     return res.status(403).json({ error: "Insufficient permissions" });
   };
 }
@@ -169,7 +172,7 @@ export function registerTravelRoutes(app: Express) {
     }
   });
 
-  app.post("/api/travel/quotes", requireRole("hr", "operations", "manager", "recruiter", "employee"), async (req, res) => {
+  app.post("/api/travel/quotes", requirePermission("travel.quotes", "hr", "operations", "manager", "recruiter", "employee"), async (req, res) => {
     try {
       const recruiterId = req.session.userId!;
       const body = req.body;
@@ -386,7 +389,7 @@ export function registerTravelRoutes(app: Express) {
     }
   });
 
-  app.post("/api/travel/quotes/:id/approve", requireRole("hr"), async (req, res) => {
+  app.post("/api/travel/quotes/:id/approve", requirePermission("travel.quotes.approve", "hr"), async (req, res) => {
     try {
       await db.update(travelQuotes).set({ status: "approved", updatedAt: new Date() }).where(eq(travelQuotes.id, req.params.id));
       const [updated] = await db.select().from(travelQuotes).where(eq(travelQuotes.id, req.params.id));
@@ -434,7 +437,7 @@ export function registerTravelRoutes(app: Express) {
     }
   });
 
-  app.put("/api/travel/margin-floors/:roleType", requireRole("hr"), async (req, res) => {
+  app.put("/api/travel/margin-floors/:roleType", requirePermission("travel.marginFloors", "hr"), async (req, res) => {
     try {
       const { roleType } = req.params;
       const body = req.body;

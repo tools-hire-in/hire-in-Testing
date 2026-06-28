@@ -4,19 +4,23 @@ import { storage } from "./storage";
 import { releaseNotes, adminUsers } from "@shared/schema";
 import { eq, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "./auth";
+import { resolveRoles } from "@shared/accessControl";
 import { getCommitsSinceLastRelease, getHeadSha } from "./services/gitLogService";
 import { generateReleaseNotes, isAiConfigured } from "./services/aiDraftService";
 import { sendReleaseNotesEmail } from "./email";
 
 const ALLOWED_ROLES = ["super_admin", "admin", "hr"] as const;
 
-// Roles that can author/edit/generate/submit drafts
-function requireRole(...roles: string[]) {
+// Centralized permission middleware — resolves allowed roles via the central
+// access registry (ACCESS_REGISTRY). NO auto-grant: exact role list semantics.
+// Returns [requireAuth, guard]; the trailing role list is the defensive default.
+function requirePermission(featureKey: string, ...roles: string[]) {
   return [
     requireAuth,
     (req: Request, res: Response, next: Function) => {
       const role = req.session?.role;
-      if (!role || !roles.includes(role)) {
+      const allowed = resolveRoles(featureKey, Array.from(new Set(roles)));
+      if (!role || !allowed.includes(role)) {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
       next();
@@ -79,7 +83,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // List all release notes (drafts + sent) — restricted to hr/admin/super_admin
   app.get(
     "/api/admin/release-notes",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes", ...ALLOWED_ROLES),
     async (_req: Request, res: Response) => {
       try {
         const notes = await db
@@ -98,7 +102,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Fetch git commits since last release — OPTIONAL convenience, always degrades gracefully
   app.post(
     "/api/admin/release-notes/git-log",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes.gitLog", ...ALLOWED_ROLES),
     async (_req: Request, res: Response) => {
       try {
         const lastSha = await getSettingValue("release_notes_last_git_sha") || "";
@@ -116,7 +120,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // mode: "release" (default) | "digest" (one-time themed monthly catch-up)
   app.post(
     "/api/admin/release-notes/generate",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes.generate", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         if (!isAiConfigured()) {
@@ -138,7 +142,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Create a new draft release note (never overwrites an existing one — each is its own row)
   app.post(
     "/api/admin/release-notes",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         const userId = req.session?.userId || null;
@@ -173,7 +177,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Edit an existing draft / rejected note (cannot edit once sent)
   app.patch(
     "/api/admin/release-notes/:id",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -223,7 +227,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Discard a draft (any unsent note)
   app.delete(
     "/api/admin/release-notes/:id",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -244,7 +248,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Combine multiple saved drafts into a single new draft
   app.post(
     "/api/admin/release-notes/combine",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes.combine", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         const userId = req.session?.userId || null;
@@ -310,7 +314,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Submit a draft for Super Admin approval
   app.post(
     "/api/admin/release-notes/:id/submit",
-    ...requireRole(...ALLOWED_ROLES),
+    ...requirePermission("admin.releaseNotes.submit", ...ALLOWED_ROLES),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -347,7 +351,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Approve a pending note — SUPER ADMIN ONLY
   app.post(
     "/api/admin/release-notes/:id/approve",
-    ...requireRole("super_admin"),
+    ...requirePermission("admin.releaseNotes.approve", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -395,7 +399,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Reject a pending note with a reason — SUPER ADMIN ONLY
   app.post(
     "/api/admin/release-notes/:id/reject",
-    ...requireRole("super_admin"),
+    ...requirePermission("admin.releaseNotes.reject", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -445,7 +449,7 @@ export function registerReleaseNotesRoutes(app: Express) {
   // Send an APPROVED note via the chosen channels — SUPER ADMIN ONLY
   app.post(
     "/api/admin/release-notes/:id/send",
-    ...requireRole("super_admin"),
+    ...requirePermission("admin.releaseNotes.send", "super_admin"),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;

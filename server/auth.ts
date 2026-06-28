@@ -122,22 +122,9 @@ export async function require2FA(req: Request, res: Response, next: NextFunction
   next();
 }
 
-// Role-based auth middleware (legacy: exact list, no auto-grant)
-export function requireRole(...allowedRoles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    if (!allowedRoles.includes(req.session.role!)) {
-      return res.status(403).json({ message: "Forbidden - insufficient permissions" });
-    }
-    next();
-  };
-}
-
 // Centralized permission middleware — resolves allowed roles via the central
-// access registry (when the flag is on) or the provided fallback (legacy).
-// Preserves the no-auto-grant semantics of requireRole and its error shapes.
+// access registry (ACCESS_REGISTRY). NO auto-grant: exact role list semantics.
+// The trailing role list is the defensive default seed for resolveRoles.
 export function requirePermission(featureKey: string, ...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId) {
