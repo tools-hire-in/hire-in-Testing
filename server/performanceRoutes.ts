@@ -8,7 +8,11 @@ import {
 import { resolveRoles } from "@shared/accessControl";
 import { eq, and, or, inArray, sql, desc, asc, isNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
-import { sendCheckInReminderEmail } from "./email";
+import { sendCheckInReminderEmail, sendProbationManagerBriefingEmail } from "./email";
+import {
+  cadenceCheckInType, PROBATION_CADENCE_DAYS, milestoneDayFor, probationAreaKey,
+  computeWeightedOverall, type ProbationWeight, type ProbationReviewScores,
+} from "@shared/probation";
 
 // ─── Healthcare Plan types ────────────────────────────────────────────────────
 interface PlanGoalTemplate {
@@ -193,11 +197,10 @@ export function generatePlanCheckIns(
   };
 
   if (planType === "probation") {
-    // Eight formal probation check-ins per the 90-day framework:
-    // Day 1 (kickoff), 7 (early), 15, 30 (calibration), 45, 60 (consistency),
-    // 75, 90 (confirmation). All recorded as milestone check-ins so they appear
-    // on the timeline and the manager review surfaces.
-    [1, 7, 15, 30, 45, 60, 75, 90].forEach(day => push(addDays(start, day), "milestone"));
+    // Eight probation check-ins per the 90-day framework. Day 30/60/90 are the
+    // FORMAL milestone reviews (scored scorecard required); the rest (Day
+    // 1/7/15/45/75) are lightweight PULSE check-ins typed "weekly".
+    PROBATION_CADENCE_DAYS.forEach(day => push(addDays(start, day), cadenceCheckInType(day)));
   } else if (planType === "pip") {
     // Weekly PIP review every 7 days for the full duration
     let cur = addDays(start, 7);
@@ -309,6 +312,159 @@ async function getHrAdminIds(): Promise<string[]> {
     `);
     return (result.rows as any[]).map((r: any) => r.id as string);
   } catch { return []; }
+}
+
+// ─── Step 1: brief the owning manager once per probation plan ─────────────────
+// Idempotent: an atomic UPDATE…WHERE manager_briefed_at IS NULL claims the
+// single-fire slot, so concurrent activation paths (create / acknowledge /
+// PATCH active) can all call this safely. Respects the notifications feature
+// flag — when notifications are off, nothing is sent and the slot is NOT
+// claimed, so the briefing can still fire later once notifications are enabled.
+async function briefManagerOnce(planId: string): Promise<void> {
+  try {
+    if (!(await isPlanNotificationsEnabled())) return;
+
+    // Load the plan + manager + employee details first (read before claim).
+    const planRes = await db.execute(sql`
+      SELECT ep.id, ep.plan_type, ep.manager_id, ep.start_date, ep.end_date, ep.status,
+             ep.acknowledged_at, ep.manager_briefed_at,
+             mgr.first_name AS mgr_first_name, mgr.email AS mgr_email,
+             emp.first_name || ' ' || emp.last_name AS employee_name
+      FROM employee_plans ep
+      JOIN admin_users mgr ON ep.manager_id = mgr.id
+      JOIN admin_users emp ON ep.employee_id = emp.id
+      WHERE ep.id = ${planId}
+    `);
+    const plan = planRes.rows[0] as any;
+    if (!plan) return;
+    if (plan.plan_type !== "probation") return;
+    if (!plan.manager_id) return;
+    if (plan.manager_briefed_at) return;
+
+    // Atomically claim the single-fire slot.
+    const claim = await db.execute(sql`
+      UPDATE employee_plans SET manager_briefed_at = NOW()
+      WHERE id = ${planId} AND manager_briefed_at IS NULL
+      RETURNING id
+    `);
+    if (claim.rows.length === 0) return; // someone else already briefed
+
+    const ackStatus = plan.acknowledged_at ? "acknowledged by the employee" : "pending employee acknowledgement";
+
+    await notifyPlan(
+      plan.manager_id,
+      "probation_manager_briefing",
+      `You own ${plan.employee_name}'s probation plan`,
+      `Run the Day 1/7/15/30/45/60/75/90 check-ins and complete the Day 30/60/90 scorecards. Plan runs ${plan.start_date} → ${plan.end_date}.`,
+      { planId: plan.id, planType: "probation", employeeName: plan.employee_name, link: "/admin/probation-guide" },
+    );
+
+    if (plan.mgr_email) {
+      try {
+        await sendProbationManagerBriefingEmail({
+          to: plan.mgr_email,
+          managerFirstName: plan.mgr_first_name || "there",
+          employeeName: plan.employee_name,
+          startDate: plan.start_date,
+          endDate: plan.end_date,
+          ackStatus,
+        });
+      } catch (e) {
+        console.error(`[performanceRoutes] manager briefing email failed for plan ${planId}:`, e);
+      }
+    }
+  } catch (err) {
+    console.error(`[performanceRoutes] briefManagerOnce failed for plan ${planId}:`, err);
+  }
+}
+
+// ─── Probation scoring helpers (Step 3/5) ─────────────────────────────────────
+// Reads the same authoritative weighted areas the GET /api/hr/probation-scoring-bands
+// endpoint serves (DB table first, system_settings JSON fallback). No parallel
+// scoring model — the scorecard, enforcement, and guidance view share this data.
+async function getProbationFinalWeights(): Promise<ProbationWeight[]> {
+  try {
+    const wr = await db.execute(sql`
+      SELECT area, weight FROM probation_final_weights WHERE is_active = true ORDER BY sort_order ASC
+    `);
+    if (wr.rows.length > 0) {
+      return (wr.rows as any[]).map(r => ({ area: String(r.area), weight: Number(r.weight) }));
+    }
+    const js = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'probation_final_weights' LIMIT 1`);
+    let raw = (js.rows[0] as any)?.value;
+    if (typeof raw === "string") { try { raw = JSON.parse(raw); } catch { raw = null; } }
+    if (Array.isArray(raw)) return raw.map((r: any) => ({ area: String(r.area), weight: Number(r.weight) }));
+  } catch (err) {
+    console.error("[performanceRoutes] getProbationFinalWeights failed:", err);
+  }
+  return [];
+}
+
+function validateMilestoneScores(
+  incoming: any,
+  weights: ProbationWeight[],
+): { ok: boolean; error?: string; normalized?: ProbationReviewScores } {
+  if (!incoming || typeof incoming !== "object") {
+    return { ok: false, error: "Milestone scores are required to complete a Day 30/60/90 review." };
+  }
+  const scores = (incoming.scores && typeof incoming.scores === "object") ? incoming.scores : incoming;
+  if (!scores || typeof scores !== "object") {
+    return { ok: false, error: "Milestone scores are required to complete a Day 30/60/90 review." };
+  }
+  if (weights.length === 0) {
+    // No configured areas — still require an overall numeric score so a review
+    // is never confirmed with empty scoring.
+    const overall = typeof incoming.overall === "number" ? incoming.overall : NaN;
+    if (Number.isNaN(overall)) return { ok: false, error: "An overall milestone score is required." };
+    return { ok: true, normalized: { scores: scores as Record<string, number>, overall: Math.round(overall), recommendedOutcome: incoming.recommendedOutcome ?? null, band: incoming.band ?? null, decisionNote: incoming.decisionNote ?? null } };
+  }
+  for (const w of weights) {
+    const key = probationAreaKey(w.area);
+    const v = (scores as any)[key];
+    if (typeof v !== "number" || Number.isNaN(v) || v < 0 || v > 100) {
+      return { ok: false, error: `A score (0-100) for "${w.area}" is required.` };
+    }
+  }
+  const overall = computeWeightedOverall(scores as Record<string, number>, weights);
+  return {
+    ok: true,
+    normalized: {
+      scores: scores as Record<string, number>,
+      overall,
+      recommendedOutcome: incoming.recommendedOutcome ?? null,
+      band: incoming.band ?? null,
+      decisionNote: incoming.decisionNote ?? null,
+    },
+  };
+}
+
+// Shared completion gate for probation check-ins (used by both PATCH paths).
+// Returns an error string when completion must be blocked, or the normalized
+// reviewScores to persist for a milestone review.
+async function enforceProbationCompletion(opts: {
+  completing: boolean;
+  planId: string | null | undefined;
+  scheduledDate: string;
+  incomingManagerNotes?: string | null;
+  existingManagerNotes?: string | null;
+  incomingReviewScores?: any;
+  existingReviewScores?: any;
+}): Promise<{ error?: string; reviewScoresToPersist?: ProbationReviewScores | null }> {
+  if (!opts.completing || !opts.planId) return {};
+  const planRes = await db.execute(sql`SELECT plan_type, start_date FROM employee_plans WHERE id = ${opts.planId}`);
+  const plan = planRes.rows[0] as any;
+  if (!plan || plan.plan_type !== "probation") return {};
+
+  const notes = String(opts.incomingManagerNotes ?? opts.existingManagerNotes ?? "").trim();
+  if (!notes) return { error: "Manager notes are required to complete a probation check-in." };
+
+  const mDay = milestoneDayFor(String(plan.start_date), String(opts.scheduledDate));
+  if (mDay == null) return {}; // pulse check-in: notes are sufficient
+
+  const weights = await getProbationFinalWeights();
+  const v = validateMilestoneScores(opts.incomingReviewScores ?? opts.existingReviewScores, weights);
+  if (!v.ok) return { error: v.error };
+  return { reviewScoresToPersist: v.normalized ?? null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -963,39 +1119,42 @@ export function registerPerformanceRoutes(app: Express) {
       const userMap = new Map(allUsers.map(u => [u.id, u]));
 
       // Resolve plan start dates + types so probation milestone check-ins can be
-      // labeled as Day 30 / 60 / 90 review forms with their distinct purpose.
-      const planIds = Array.from(new Set(list.map(ci => ci.planId).filter((id): id is string => !!id)));
-      const planMap = new Map<string, { startDate: string; planType: string }>();
+      // labeled as Day 30 / 60 / 90 review forms and the UI can render the
+      // milestone scorecard and overdue state without a second round-trip.
+      const planIds = Array.from(new Set(list.map(ci => ci.planId).filter(Boolean))) as string[];
+      const planMap = new Map<string, { planType: string; startDate: string }>();
       if (planIds.length > 0) {
         const planRows = await db.execute(sql`
-          SELECT id, start_date, plan_type FROM employee_plans
-          WHERE id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
+          SELECT id, plan_type, start_date FROM employee_plans WHERE id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
         `);
         for (const r of planRows.rows as any[]) {
-          planMap.set(r.id, { startDate: r.start_date, planType: r.plan_type });
+          planMap.set(String(r.id), { planType: String(r.plan_type), startDate: String(r.start_date) });
         }
       }
+      const todayStr = new Date().toISOString().slice(0, 10);
 
       const enrichedList = list.map(ci => {
         const emp = userMap.get(ci.employeeId);
         const mgr = ci.managerId ? userMap.get(ci.managerId) : null;
-        let milestoneDay: number | null = null;
-        let milestoneLabel: string | null = null;
-        if (ci.planId && ci.checkInType === "milestone") {
-          const p = planMap.get(ci.planId);
-          if (p && p.planType === "probation" && p.startDate && ci.scheduledDate) {
-            milestoneDay = Math.round(
-              (new Date(ci.scheduledDate as any).getTime() - new Date(p.startDate).getTime()) / 86400000,
-            );
-            milestoneLabel = probationMilestoneLabel(milestoneDay);
-          }
-        }
+        const plan = ci.planId ? planMap.get(ci.planId) : null;
+        const isProbation = plan?.planType === "probation";
+        const milestoneDay = isProbation && ci.scheduledDate
+          ? milestoneDayFor(plan!.startDate, String(ci.scheduledDate))
+          : null;
+        const milestoneLabel = milestoneDay != null ? probationMilestoneLabel(milestoneDay) : null;
+        const isOverdue = ci.status !== "completed" && ci.status !== "cancelled"
+          && !!ci.scheduledDate && String(ci.scheduledDate) < todayStr;
         return {
           ...ci,
           employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
           managerName: mgr ? `${mgr.firstName} ${mgr.lastName}` : "Unknown",
+          planType: plan?.planType ?? null,
+          planStartDate: plan?.startDate ?? null,
+          isProbation,
           milestoneDay,
           milestoneLabel,
+          requiresScores: milestoneDay != null,
+          isOverdue,
         };
       });
 
@@ -1095,8 +1254,27 @@ export function registerPerformanceRoutes(app: Express) {
         return res.status(403).json({ error: "Not authorized to update this check-in" });
       }
 
-      const { status, employeeNotes, managerNotes, actionItems, rating, goalId } = req.body;
+      const { status, employeeNotes, managerNotes, actionItems, rating, goalId, reviewScores } = req.body;
       const updates: Partial<CheckIn> = { updatedAt: new Date() };
+
+      // Step 5: gate probation completion — manager notes always required; a
+      // Day 30/60/90 milestone additionally requires a valid weighted scorecard.
+      if (status === "completed") {
+        const gate = await enforceProbationCompletion({
+          completing: true,
+          planId: existing.planId,
+          scheduledDate: String(existing.scheduledDate),
+          incomingManagerNotes: managerNotes,
+          existingManagerNotes: existing.managerNotes,
+          incomingReviewScores: reviewScores,
+          existingReviewScores: (existing as any).reviewScores,
+        });
+        if (gate.error) return res.status(400).json({ error: gate.error });
+        if (gate.reviewScoresToPersist !== undefined) {
+          updates.reviewScores = gate.reviewScoresToPersist as any;
+        }
+      }
+
       if (status !== undefined) {
         updates.status = status;
         if (status === "completed") updates.completedAt = new Date();
@@ -1105,6 +1283,9 @@ export function registerPerformanceRoutes(app: Express) {
       if (managerNotes !== undefined) updates.managerNotes = managerNotes;
       if (actionItems !== undefined) updates.actionItems = actionItems;
       if (rating !== undefined) updates.rating = rating;
+      if (reviewScores !== undefined && updates.reviewScores === undefined) {
+        updates.reviewScores = reviewScores as any;
+      }
       if (goalId !== undefined) {
         if (goalId) {
           const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
@@ -1839,6 +2020,10 @@ export function registerPerformanceRoutes(app: Express) {
       }
 
       await createAuditLog(userId, "employee_plan_created", { planId: plan.id, plan_type, employee_id }, employee_id);
+
+      // Step 1: brief the owning manager (idempotent, probation-only, flag-gated).
+      await briefManagerOnce(plan.id);
+
       res.status(201).json({ plan, checkInsScheduled: checkInSchedule.length, goalsCreated });
     } catch (error) {
       console.error("Error creating employee plan:", error);
@@ -1995,6 +2180,8 @@ export function registerPerformanceRoutes(app: Express) {
           `Your ${planLabel} has been activated and is now in progress.`,
           { planId: updatedPlan.id, planType: updatedPlan.plan_type },
         );
+        // Step 1: ensure the owning manager has been briefed (idempotent).
+        await briefManagerOnce(updatedPlan.id);
       }
 
       // Notification: plan closed with outcome
@@ -2049,6 +2236,24 @@ export function registerPerformanceRoutes(app: Express) {
 
       const { status, managerNotes, rating, reviewScores, goalProgressNotes } = req.body;
 
+      // Step 5: gate probation completion (manager notes + milestone scorecard).
+      let scoresToPersist: any = reviewScores ?? null;
+      if (status === "completed") {
+        const gate = await enforceProbationCompletion({
+          completing: true,
+          planId: ci.plan_id,
+          scheduledDate: String(ci.scheduled_date),
+          incomingManagerNotes: managerNotes,
+          existingManagerNotes: ci.manager_notes,
+          incomingReviewScores: reviewScores,
+          existingReviewScores: ci.review_scores,
+        });
+        if (gate.error) return res.status(400).json({ error: gate.error });
+        if (gate.reviewScoresToPersist !== undefined && gate.reviewScoresToPersist !== null) {
+          scoresToPersist = gate.reviewScoresToPersist;
+        }
+      }
+
       // Serialize goalProgressNotes as JSON into action_items when provided
       const actionItemsValue = goalProgressNotes && Object.keys(goalProgressNotes).length > 0
         ? JSON.stringify({ goalProgressNotes })
@@ -2060,7 +2265,7 @@ export function registerPerformanceRoutes(app: Express) {
           manager_notes = COALESCE(${managerNotes ?? null}, manager_notes),
           rating = COALESCE(${rating ?? null}, rating),
           review_scores = CASE
-            WHEN ${reviewScores != null} THEN ${reviewScores != null ? JSON.stringify(reviewScores) : null}::jsonb
+            WHEN ${scoresToPersist != null} THEN ${scoresToPersist != null ? JSON.stringify(scoresToPersist) : null}::jsonb
             ELSE review_scores
           END,
           action_items = CASE
@@ -2134,6 +2339,9 @@ export function registerPerformanceRoutes(app: Express) {
       `);
 
       await createAuditLog(userId, "employee_plan_acknowledged", { planId: req.params.id, typedName: typed_name?.trim() });
+
+      // Step 1: ensure the owning manager has been briefed now the plan is active.
+      await briefManagerOnce(acknowledgedPlan.id);
 
       // Fire notifications for plan acknowledgement
       const planLabel = acknowledgedPlan.plan_type === "pip" ? "Performance Improvement Plan" : acknowledgedPlan.plan_type === "probation" ? "Probation Plan" : "Growth Plan";

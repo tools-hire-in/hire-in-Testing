@@ -39,6 +39,27 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  probationAreaKey,
+  computeWeightedOverall,
+  resolveBand,
+  type ProbationWeight,
+  type ProbationBand,
+  type ProbationReviewScores,
+} from "@shared/probation";
+
+interface ScoringBandsResponse {
+  bands: Array<{
+    min_score: number;
+    max_score: number;
+    label: string;
+    recommended_outcome?: string | null;
+    meaning?: string | null;
+  }>;
+  passRule: any;
+  finalWeights: ProbationWeight[] | null;
+  source: string;
+}
 
 interface CheckIn {
   id: string;
@@ -55,8 +76,14 @@ interface CheckIn {
   rating: number | null;
   completedAt: string | null;
   createdAt: string;
+  planId?: string | null;
+  planType?: string | null;
+  isProbation?: boolean;
   milestoneDay?: number | null;
   milestoneLabel?: string | null;
+  requiresScores?: boolean;
+  isOverdue?: boolean;
+  reviewScores?: ProbationReviewScores | null;
 }
 
 function milestoneTitle(checkIn: { milestoneDay?: number | null; milestoneLabel?: string | null }): string | null {
@@ -331,6 +358,34 @@ function CheckInDetailDialog({
   const [actionItems, setActionItems] = useState(checkIn?.actionItems || "");
   const [rating, setRating] = useState(checkIn?.rating || 0);
   const [discussionTopics, setDiscussionTopics] = useState(checkIn?.discussionTopics || "");
+  const [scores, setScores] = useState<Record<string, number | "">>(
+    checkIn?.reviewScores?.scores || {},
+  );
+  const [decisionNote, setDecisionNote] = useState(checkIn?.reviewScores?.decisionNote || "");
+
+  const isProbationMilestone = !!checkIn?.requiresScores;
+
+  const { data: scoringData } = useQuery<ScoringBandsResponse>({
+    queryKey: ["/api/hr/probation-scoring-bands"],
+    enabled: open && isProbationMilestone,
+  });
+
+  const weights: ProbationWeight[] = scoringData?.finalWeights ?? [];
+  const bands: ProbationBand[] = (scoringData?.bands ?? []).map((b) => ({
+    minScore: b.min_score,
+    maxScore: b.max_score,
+    label: b.label,
+    recommendedOutcome: b.recommended_outcome,
+    meaning: b.meaning,
+  }));
+
+  const numericScores: Record<string, number> = {};
+  for (const [k, v] of Object.entries(scores)) {
+    if (typeof v === "number" && !Number.isNaN(v)) numericScores[k] = v;
+  }
+  const allScored = weights.length > 0 && weights.every((w) => typeof numericScores[probationAreaKey(w.area)] === "number");
+  const overall = allScored ? computeWeightedOverall(numericScores, weights) : null;
+  const resolvedBand = overall != null ? resolveBand(overall, bands) : null;
 
   useState(() => {
     if (checkIn) {
@@ -339,6 +394,8 @@ function CheckInDetailDialog({
       setActionItems(checkIn.actionItems || "");
       setRating(checkIn.rating || 0);
       setDiscussionTopics(checkIn.discussionTopics || "");
+      setScores(checkIn.reviewScores?.scores || {});
+      setDecisionNote(checkIn.reviewScores?.decisionNote || "");
     }
   });
 
@@ -374,6 +431,16 @@ function CheckInDetailDialog({
         rating: rating || null,
         discussionTopics,
       };
+      if (isProbationMilestone) {
+        const reviewScores: ProbationReviewScores = {
+          scores: numericScores,
+          overall: overall ?? 0,
+          band: resolvedBand?.label ?? null,
+          recommendedOutcome: resolvedBand?.recommendedOutcome ?? null,
+          decisionNote: decisionNote.trim() || null,
+        };
+        body.reviewScores = reviewScores;
+      }
       const res = await apiRequest("PATCH", `/api/performance/check-ins/${checkIn!.id}`, body);
       return res.json();
     },
@@ -492,6 +559,93 @@ function CheckInDetailDialog({
             )}
           </div>
 
+          {isProbationMilestone && (
+            <div className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4" data-testid="section-milestone-scorecard">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Label className="text-sm font-semibold">
+                  Day {checkIn.milestoneDay} Milestone Scorecard
+                </Label>
+                {overall != null && (
+                  <Badge variant="secondary" data-testid="text-milestone-overall">
+                    Overall {overall}
+                    {resolvedBand ? ` · ${resolvedBand.label}` : ""}
+                  </Badge>
+                )}
+              </div>
+              {isCompleted ? (
+                <div className="space-y-1.5 text-sm">
+                  {weights.map((w) => {
+                    const key = probationAreaKey(w.area);
+                    const val = checkIn.reviewScores?.scores?.[key];
+                    return (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-muted-foreground">{w.area} ({w.weight}%)</span>
+                        <span className="font-medium" data-testid={`score-readonly-${key}`}>
+                          {typeof val === "number" ? val : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {checkIn.reviewScores?.recommendedOutcome && (
+                    <p className="text-xs text-primary pt-1">
+                      Recommended: {checkIn.reviewScores.recommendedOutcome}
+                    </p>
+                  )}
+                  {checkIn.reviewScores?.decisionNote && (
+                    <p className="text-xs text-muted-foreground pt-1">{checkIn.reviewScores.decisionNote}</p>
+                  )}
+                </div>
+              ) : weights.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Loading scoring model…</p>
+              ) : (
+                <div className="space-y-3">
+                  {weights.map((w) => {
+                    const key = probationAreaKey(w.area);
+                    return (
+                      <div key={key} className="flex items-center gap-3">
+                        <Label className="flex-1 text-sm font-normal">
+                          {w.area} <span className="text-muted-foreground">({w.weight}%)</span>
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="w-24"
+                          data-testid={`input-score-${key}`}
+                          value={scores[key] ?? ""}
+                          disabled={!isManager}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setScores((prev) => ({
+                              ...prev,
+                              [key]: raw === "" ? "" : Math.max(0, Math.min(100, Number(raw))),
+                            }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-normal">Decision Note</Label>
+                    <Textarea
+                      data-testid="input-decision-note"
+                      value={decisionNote}
+                      onChange={(e) => setDecisionNote(e.target.value)}
+                      placeholder="Recommendation / rationale for this milestone..."
+                      rows={2}
+                      disabled={!isManager}
+                    />
+                  </div>
+                  {!allScored && (
+                    <p className="text-xs text-amber-600" data-testid="text-scorecard-incomplete">
+                      Score every area (0–100) to complete this milestone.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {(isManager || isCompleted) && (
             <div className="space-y-2">
               <Label>Rating</Label>
@@ -520,7 +674,25 @@ function CheckInDetailDialog({
             </Button>
             {isManager && (
               <Button
-                onClick={() => completeMutation.mutate()}
+                onClick={() => {
+                  if (!managerNotes.trim()) {
+                    toast({
+                      title: "Manager notes required",
+                      description: "Add your notes before completing this check-in.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (isProbationMilestone && !allScored) {
+                    toast({
+                      title: "Scorecard incomplete",
+                      description: "Score every area (0–100) to complete this milestone.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  completeMutation.mutate();
+                }}
                 disabled={completeMutation.isPending}
                 data-testid="button-complete-checkin"
               >
@@ -567,13 +739,22 @@ function CheckInCard({
               >
                 {STATUS_LABELS[checkIn.status] || checkIn.status}
               </Badge>
-              {milestoneTitle(checkIn) && (
+              {milestoneTitle(checkIn) ? (
                 <Badge
                   variant="outline"
                   className="border-primary/40 text-primary text-[10px]"
                   data-testid={`badge-checkin-milestone-${checkIn.id}`}
                 >
                   Day {checkIn.milestoneDay} · {checkIn.milestoneLabel}
+                </Badge>
+              ) : checkIn.requiresScores ? (
+                <Badge variant="outline" className="border-primary/50 text-primary" data-testid={`badge-milestone-${checkIn.id}`}>
+                  Day {checkIn.milestoneDay} Milestone
+                </Badge>
+              ) : null}
+              {checkIn.isOverdue && checkIn.status !== "completed" && checkIn.status !== "cancelled" && (
+                <Badge variant="destructive" data-testid={`badge-overdue-${checkIn.id}`}>
+                  Overdue
                 </Badge>
               )}
             </div>

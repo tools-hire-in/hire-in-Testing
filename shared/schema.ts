@@ -896,6 +896,11 @@ export const checkIns = pgTable("check_ins", {
   completedAt: timestamp("completed_at"),
   notifiedAt: timestamp("notified_at"),
   managerNotifiedAt: timestamp("manager_notified_at"),
+  // Probation accountability (Task #633): per-day dedupe marker for the daily
+  // manager overdue reminder, and a once-only marker for milestone (Day
+  // 30/60/90) HR/Ops escalation when a formal review is 3+ days overdue.
+  overdueRemindedOn: varchar("overdue_reminded_on"),
+  milestoneEscalatedAt: timestamp("milestone_escalated_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -961,6 +966,15 @@ export const employeePlans = pgTable("employee_plans", {
   durationDays: integer("duration_days").notNull(),
   acknowledgedAt: timestamp("acknowledged_at"),
   acknowledgedBy: varchar("acknowledged_by").references(() => adminUsers.id),
+  // Typed full-name evidence captured at digital acknowledgement (PIP plans).
+  acknowledgedName: varchar("acknowledged_name"),
+  // Links a plan back to the offer letter that spawned it (growth-clause flow).
+  offerLetterId: varchar("offer_letter_id"),
+  // Probation accountability (Task #633): once-only marker that the owning
+  // manager has been briefed on this plan, and a once-only marker that a
+  // 3-strike (repeated overdue check-ins) escalation has fired to HR/skip-level.
+  managerBriefedAt: timestamp("manager_briefed_at"),
+  strikeEscalatedAt: timestamp("strike_escalated_at"),
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

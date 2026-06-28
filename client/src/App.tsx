@@ -71,6 +71,7 @@ const Reviews = lazy(() => import("@/pages/admin/performance/Reviews"));
 const PerformanceFeedback = lazy(() => import("@/pages/admin/performance/Feedback"));
 const PerformanceReviewCycles = lazy(() => import("@/pages/admin/performance/ReviewCycles"));
 const PerformanceAnalytics = lazy(() => import("@/pages/admin/performance/Analytics"));
+const ProbationGuide = lazy(() => import("@/pages/admin/probation/ProbationGuide"));
 const PolicyGate = lazy(() => import("@/pages/admin/PolicyGate"));
 const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
@@ -297,6 +298,7 @@ function PublicRouter() {
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
       <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
+      <Route path="/admin/probation-guide">{() => <Suspense fallback={<AdminFallback />}><ProbationGuide /></Suspense>}</Route>
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
 
@@ -420,6 +422,7 @@ function EmployeeRouter() {
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
       <Route path="/admin/performance/analytics">{() => <Suspense fallback={<AdminFallback />}><PerformanceAnalytics /></Suspense>}</Route>
+      <Route path="/admin/probation-guide">{() => <Suspense fallback={<AdminFallback />}><ProbationGuide /></Suspense>}</Route>
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
 

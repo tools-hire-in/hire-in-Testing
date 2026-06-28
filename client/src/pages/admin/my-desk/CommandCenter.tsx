@@ -15,6 +15,8 @@ import {
   ChevronDown,
   Timer,
   AlertCircle,
+  ClipboardCheck,
+  ArrowRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -195,6 +197,34 @@ export default function CommandCenter() {
     enabled: isAuthenticated && stats?.todayStatus === "punched_in",
     refetchInterval: 30000,
   });
+
+  const { data: probationCheckInsData } = useQuery<{
+    checkIns: Array<{
+      id: string;
+      employeeName: string;
+      scheduledDate: string;
+      status: string;
+      isProbation?: boolean;
+      isOverdue?: boolean;
+      requiresScores?: boolean;
+      milestoneDay?: number | null;
+    }>;
+  }>({
+    queryKey: ["/api/performance/check-ins"],
+    enabled: isAuthenticated && isManagerRole,
+    refetchInterval: 120000,
+  });
+
+  const probationOpen = (probationCheckInsData?.checkIns || []).filter(
+    (c) => c.isProbation && c.status !== "completed" && c.status !== "cancelled",
+  );
+  const probationOverdue = probationOpen
+    .filter((c) => c.isOverdue)
+    .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+  const probationUpcoming = probationOpen
+    .filter((c) => !c.isOverdue)
+    .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())
+    .slice(0, 3);
 
   const punchInMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-in"),
@@ -594,6 +624,72 @@ export default function CommandCenter() {
                 <Button size="sm" variant="link" className="h-auto p-0 text-xs ml-auto text-amber-700 dark:text-amber-400" onClick={() => setLocation("/admin/hr/my-team?tab=leave-approvals")}>
                   Review →
                 </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Probation action items — manager/HR/admin only ── */}
+      {isManagerRole && probationOpen.length > 0 && (
+        <Card className="border-primary/20 shadow-sm" data-testid="cc-probation-card">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                <CardTitle className="text-sm font-semibold">Probation Check-Ins</CardTitle>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setLocation("/admin/performance/check-ins")} data-testid="cc-link-probation-checkins">
+                View all →
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {probationOverdue.length > 0 && (
+              <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-2.5 space-y-1.5" data-testid="cc-probation-overdue">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-red-700 dark:text-red-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {probationOverdue.length} overdue
+                </div>
+                {probationOverdue.slice(0, 3).map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setLocation("/admin/performance/check-ins")}
+                    className="flex items-center justify-between w-full text-left text-xs hover:underline"
+                    data-testid={`cc-probation-overdue-${c.id}`}
+                  >
+                    <span>
+                      {c.employeeName}
+                      {c.requiresScores ? ` · Day ${c.milestoneDay} milestone` : ""}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400 flex items-center gap-1">
+                      {new Date(c.scheduledDate).toLocaleDateString()}
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {probationUpcoming.length > 0 && (
+              <div className="space-y-1.5" data-testid="cc-probation-upcoming">
+                <p className="text-xs font-medium text-muted-foreground">Upcoming</p>
+                {probationUpcoming.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setLocation("/admin/performance/check-ins")}
+                    className="flex items-center justify-between w-full text-left text-xs hover:underline"
+                    data-testid={`cc-probation-upcoming-${c.id}`}
+                  >
+                    <span>
+                      {c.employeeName}
+                      {c.requiresScores ? ` · Day ${c.milestoneDay} milestone` : ""}
+                    </span>
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      {new Date(c.scheduledDate).toLocaleDateString()}
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </CardContent>
