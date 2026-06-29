@@ -33,10 +33,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Search, FileEdit, Clock3, FastForward } from "lucide-react";
+import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
-import type { StudioArticle } from "@shared/schema";
+import type { StudioArticle, StudioAuthorProfile } from "@shared/schema";
 
 interface ArticleListResponse {
   items: (StudioArticle & { authorName: string | null })[];
@@ -62,6 +62,16 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canBulkApprove = can("studio.marketing_approve");
+  const canManageAuthors = can("studio.manage_authors");
+  const showSelection = canBulkApprove || canManageAuthors;
+
+  const [assignAuthorId, setAssignAuthorId] = useState<string>("");
+
+  const { data: authors } = useQuery<StudioAuthorProfile[]>({
+    queryKey: ["/api/admin/studio/authors", { projectId }],
+    enabled: !!projectId && canManageAuthors,
+  });
+  const activeAuthors = (authors ?? []).filter((a) => a.isActive);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -99,6 +109,31 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
     },
     onError: (err: Error) => toast({ title: "Bulk approve failed", description: err.message, variant: "destructive" }),
+  });
+
+  const bulkAssignMutation = useMutation({
+    mutationFn: async (authorProfileId: string | null) => {
+      const res = await apiRequest("POST", "/api/admin/studio/articles/bulk-assign-author", {
+        articleIds: Array.from(selectedIds),
+        authorProfileId,
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Bulk assign failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data, authorProfileId) => {
+      toast({
+        title: authorProfileId
+          ? `${data.updated} article(s) reassigned`
+          : `${data.updated} article(s) cleared`,
+      });
+      setSelectedIds(new Set());
+      setAssignAuthorId("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+    },
+    onError: (err: Error) => toast({ title: "Bulk assign failed", description: err.message, variant: "destructive" }),
   });
 
   const queryKey = [
@@ -218,6 +253,61 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
         </div>
       </div>
 
+      {/* Bulk author assignment bar */}
+      {canManageAuthors && selectedIds.size > 0 && (
+        <div
+          className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="bar-bulk-author"
+        >
+          <span className="text-sm font-medium" data-testid="text-bulk-selected-count">
+            {selectedIds.size} article{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select value={assignAuthorId} onValueChange={setAssignAuthorId}>
+              <SelectTrigger className="w-[220px]" data-testid="select-bulk-author">
+                <SelectValue placeholder="Choose an author…" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeAuthors.length === 0 ? (
+                  <SelectItem value="__none__" disabled>
+                    No active authors
+                  </SelectItem>
+                ) : (
+                  activeAuthors.map((a) => (
+                    <SelectItem key={a.id} value={a.id} data-testid={`option-bulk-author-${a.id}`}>
+                      {a.displayName}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              onClick={() => bulkAssignMutation.mutate(assignAuthorId)}
+              disabled={!assignAuthorId || bulkAssignMutation.isPending}
+              data-testid="button-bulk-assign-author"
+            >
+              {bulkAssignMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <UserPlus className="mr-2 h-4 w-4" />
+              )}
+              Assign author
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => bulkAssignMutation.mutate(null)}
+              disabled={bulkAssignMutation.isPending}
+              data-testid="button-bulk-clear-author"
+            >
+              <UserX className="mr-2 h-4 w-4" />
+              Clear author
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -240,7 +330,7 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {canBulkApprove && (
+                  {showSelection && (
                     <TableHead className="w-8">
                       <Checkbox
                         checked={items.length > 0 && selectedIds.size === items.length}
@@ -265,7 +355,7 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
                     className="cursor-pointer"
                     data-testid={`row-article-${a.id}`}
                   >
-                    {canBulkApprove && (
+                    {showSelection && (
                       <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(a.id); }}>
                         <Checkbox
                           checked={selectedIds.has(a.id)}

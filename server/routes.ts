@@ -9,7 +9,7 @@ import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SEN
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
-import { eq, and, inArray, sql, desc, isNull, or } from "drizzle-orm";
+import { eq, and, inArray, sql, desc, isNull, isNotNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
 import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY } from "@shared/accessControl";
@@ -13665,6 +13665,96 @@ export async function registerRoutes(
     },
   );
 
+  // Recompute an author's profileComplete flag from its byline fields. Shared by
+  // create / update / from-employee so the "incomplete profile" rule stays in one place.
+  const computeAuthorProfileComplete = (a: {
+    displayName?: string | null;
+    publicTitle?: string | null;
+    bio?: string | null;
+    photoUrl?: string | null;
+  }): boolean =>
+    !!(
+      a.displayName?.toString().trim() &&
+      a.publicTitle?.toString().trim() &&
+      a.bio?.toString().trim() &&
+      a.photoUrl?.toString().trim()
+    );
+
+  // Central reassignment primitive shared by bulk-assign and merge. Validates
+  // project compatibility, reassigns (or clears when targetId is null), and writes
+  // one author_reassigned audit event per article. Throws an Error with a `.status`
+  // property on validation failure so callers can surface the right HTTP code.
+  //
+  // Project rule: a project-scoped author may only own articles in its own project.
+  // A global (null-project) author may own articles from any project — that is the
+  // documented purpose of global authors, so a null-project target is allowed across
+  // any selection.
+  const reassignArticlesToAuthorGuarded = async (opts: {
+    articles: Array<{ id: string; projectId: string; authorProfileId: string | null }>;
+    targetId: string | null;
+    actorUserId: string | undefined;
+    via: string;
+  }): Promise<string[]> => {
+    const { articles, targetId, actorUserId, via } = opts;
+    if (articles.length === 0) return [];
+
+    if (targetId) {
+      const target = await storage.getStudioAuthorProfile(targetId);
+      if (!target) {
+        throw Object.assign(new Error("Target author not found"), { status: 404 });
+      }
+      const targetProject = (target as any).projectId ?? null;
+      if (targetProject) {
+        const mismatch = articles.find((a) => a.projectId !== targetProject);
+        if (mismatch) {
+          throw Object.assign(
+            new Error(
+              "Target author belongs to a different project than one or more selected articles.",
+            ),
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    const ids = articles.map((a) => a.id);
+    const affected = await storage.reassignStudioArticleAuthors(ids, targetId);
+    await Promise.all(
+      articles.map((a) =>
+        storage.createStudioAuditEvent({
+          articleId: a.id,
+          actorUserId,
+          eventType: "author_reassigned",
+          metadata: { from: a.authorProfileId ?? null, to: targetId, via },
+        } as any),
+      ),
+    );
+    return affected;
+  };
+
+  // Per-author linked article counts (for the merge UI: "N articles will move").
+  app.get(
+    "/api/admin/studio/authors/article-counts",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const rows = await db
+          .select({
+            authorProfileId: studioArticles.authorProfileId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(studioArticles)
+          .where(isNotNull(studioArticles.authorProfileId))
+          .groupBy(studioArticles.authorProfileId);
+        res.json(rows);
+      } catch (error) {
+        console.error("Author article-counts error:", error);
+        res.status(500).json({ error: "Failed to fetch article counts" });
+      }
+    },
+  );
+
   app.post(
     "/api/admin/studio/authors",
     requireAuth,
@@ -13680,12 +13770,7 @@ export async function registerRoutes(
           return res.status(400).json({ error: "linkedUserId is required for internal (employee) authors" });
         }
         const body = { ...parsed, displayName: parsed.displayName.trim() };
-        const profileComplete = !!(
-          body.displayName?.trim() &&
-          (body as any).publicTitle?.trim() &&
-          (body as any).bio?.trim() &&
-          (body as any).photoUrl?.trim()
-        );
+        const profileComplete = computeAuthorProfileComplete(body as any);
         const created = await storage.createStudioAuthorProfile({
           ...body,
           profileComplete,
@@ -13723,12 +13808,7 @@ export async function registerRoutes(
         const updates = insertStudioAuthorProfileSchema.partial().parse(coerced);
         // Merge with existing to recompute profileComplete correctly.
         const merged = { ...existing, ...updates };
-        const profileComplete = !!(
-          merged.displayName?.trim() &&
-          (merged as any).publicTitle?.trim() &&
-          merged.bio?.trim() &&
-          (merged as any).photoUrl?.trim()
-        );
+        const profileComplete = computeAuthorProfileComplete(merged as any);
         const updated = await storage.updateStudioAuthorProfile(req.params.id, {
           ...updates,
           profileComplete,
@@ -14124,6 +14204,199 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Assign author error:", error);
         res.status(400).json({ error: error?.message || "Failed to assign author" });
+      }
+    },
+  );
+
+  // Bulk reassign (or clear) the author of a set of articles.
+  app.post(
+    "/api/admin/studio/articles/bulk-assign-author",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const { articleIds, authorProfileId } = req.body ?? {};
+        if (!Array.isArray(articleIds) || articleIds.length === 0) {
+          return res.status(400).json({ error: "articleIds must be a non-empty array" });
+        }
+        const targetId: string | null =
+          authorProfileId === null || authorProfileId === undefined || authorProfileId === ""
+            ? null
+            : String(authorProfileId);
+
+        // Load articles up-front so we can validate and audit old → new.
+        const articles = await Promise.all(
+          articleIds.map((id: string) => storage.getStudioArticle(id)),
+        );
+        const found = articles.filter((a): a is NonNullable<typeof a> => !!a);
+        if (found.length === 0) {
+          return res.status(404).json({ error: "No matching articles found" });
+        }
+
+        const affected = await reassignArticlesToAuthorGuarded({
+          articles: found,
+          targetId,
+          actorUserId: req.session.userId,
+          via: "bulk_assign",
+        });
+        res.json({ updated: affected.length, articleIds: affected });
+      } catch (error: any) {
+        console.error("Bulk assign author error:", error);
+        res.status(error?.status ?? 400).json({ error: error?.message || "Failed to bulk assign author" });
+      }
+    },
+  );
+
+  // Merge an author into another: move ALL of the source author's articles onto
+  // the target author, then delete the now-empty source author.
+  app.post(
+    "/api/admin/studio/authors/:id/merge",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const sourceId = req.params.id;
+        const { targetAuthorId } = req.body ?? {};
+        if (!targetAuthorId || typeof targetAuthorId !== "string") {
+          return res.status(400).json({ error: "targetAuthorId is required" });
+        }
+        if (targetAuthorId === sourceId) {
+          return res.status(400).json({ error: "Cannot merge an author into itself" });
+        }
+        const source = await storage.getStudioAuthorProfile(sourceId);
+        if (!source) return res.status(404).json({ error: "Source author not found" });
+        const target = await storage.getStudioAuthorProfile(targetAuthorId);
+        if (!target) return res.status(404).json({ error: "Target author not found" });
+
+        // Two project-scoped authors must share the same project to merge. A
+        // null-project (global) author is compatible with anything by design.
+        const sourceProject = (source as any).projectId ?? null;
+        const targetProject = (target as any).projectId ?? null;
+        if (sourceProject && targetProject && sourceProject !== targetProject) {
+          return res.status(400).json({
+            error: "Cannot merge authors that belong to different projects.",
+          });
+        }
+
+        // Move all of the source's articles via the shared, project-validated
+        // primitive (this also writes the per-article author_reassigned events).
+        const sourceArticleIds = await storage.getStudioArticleIdsByAuthor(sourceId);
+        const sourceArticles = (
+          await Promise.all(sourceArticleIds.map((id) => storage.getStudioArticle(id)))
+        ).filter((a): a is NonNullable<typeof a> => !!a);
+        const moved = await reassignArticlesToAuthorGuarded({
+          articles: sourceArticles,
+          targetId: targetAuthorId,
+          actorUserId: req.session.userId,
+          via: "merge",
+        });
+
+        // Source is now empty — reuse the existing delete path's storage method.
+        await storage.deleteStudioAuthorProfile(sourceId);
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "author_merged",
+          metadata: {
+            sourceAuthorId: sourceId,
+            sourceDisplayName: source.displayName,
+            targetAuthorId,
+            targetDisplayName: target.displayName,
+            movedArticleCount: moved.length,
+          },
+        } as any);
+
+        res.json({
+          merged: true,
+          movedArticleCount: moved.length,
+          targetAuthorId,
+        });
+      } catch (error: any) {
+        console.error("Merge author error:", error);
+        res.status(error?.status ?? 400).json({ error: error?.message || "Failed to merge author" });
+      }
+    },
+  );
+
+  // One-click: create an employee-type author profile directly from an
+  // employee's HR record (name, title, photo, LinkedIn auto-pulled). Missing
+  // byline fields are flagged on the card later — creation is NOT blocked.
+  app.post(
+    "/api/admin/studio/authors/from-employee",
+    requireAuth,
+    requirePermission("studio.manage_authors"),
+    async (req: Request, res: Response) => {
+      try {
+        const { employeeId, projectId } = req.body ?? {};
+        if (!employeeId || typeof employeeId !== "string") {
+          return res.status(400).json({ error: "employeeId is required" });
+        }
+        const user = await storage.getAdminUser(employeeId);
+        if (!user || !user.isActive) {
+          return res.status(404).json({ error: "Employee not found or inactive" });
+        }
+
+        // Guard against double-linking the same employee.
+        const existingAuthors = await storage.getStudioAuthorProfiles(undefined);
+        const alreadyLinked = existingAuthors.some(
+          (a) =>
+            (a as any).linkedUserId === employeeId ||
+            (a as any).linkedEmployeeId === employeeId,
+        );
+        if (alreadyLinked) {
+          return res.status(409).json({ error: "This employee is already linked as an author." });
+        }
+
+        const displayName =
+          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
+        const title = (user as any).designation ?? user.role ?? null;
+        const photoUrl = (user as any).profilePhoto ?? null;
+        const linkedinUrl = (user as any).linkedinUrl ?? null;
+
+        // Same completeness rule as the normal create path. HR records don't carry
+        // a publicTitle or bio, so a one-click profile is almost always incomplete
+        // by design — that's surfaced on the card so it can be filled in later.
+        const profileComplete = computeAuthorProfileComplete({
+          displayName,
+          publicTitle: null,
+          bio: null,
+          photoUrl,
+        });
+
+        const created = await storage.createStudioAuthorProfile({
+          projectId: projectId || null,
+          displayName,
+          title,
+          photoUrl,
+          linkedinUrl,
+          authorType: "employee",
+          linkedUserId: employeeId,
+          profileComplete,
+        } as any);
+
+        // Keep LinkedIn in sync back to the HR record (no-op if already set).
+        if (linkedinUrl) {
+          await storage
+            .updateAdminUser(employeeId, { linkedinUrl } as any)
+            .catch(() => {/* non-fatal */});
+        }
+
+        await storage.createStudioAuditEvent({
+          articleId: null,
+          actorUserId: req.session.userId,
+          eventType: "author_created",
+          metadata: {
+            authorId: created.id,
+            displayName: created.displayName,
+            via: "from_employee",
+            employeeId,
+          },
+        } as any);
+
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create author from employee error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create author from employee" });
       }
     },
   );

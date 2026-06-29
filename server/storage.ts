@@ -484,6 +484,8 @@ export interface IStorage {
   createStudioAuthorProfile(data: InsertStudioAuthorProfile): Promise<StudioAuthorProfile>;
   updateStudioAuthorProfile(id: string, updates: Partial<InsertStudioAuthorProfile>): Promise<StudioAuthorProfile | undefined>;
   deleteStudioAuthorProfile(id: string): Promise<void>;
+  getStudioArticleIdsByAuthor(authorProfileId: string): Promise<string[]>;
+  reassignStudioArticleAuthors(articleIds: string[], authorProfileId: string | null): Promise<string[]>;
   // Audit
   createStudioAuditEvent(data: InsertStudioAuditEvent): Promise<StudioAuditEvent>;
   getStudioAuditEvents(articleId: string): Promise<StudioAuditEvent[]>;
@@ -3520,6 +3522,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteStudioAuthorProfile(id: string): Promise<void> {
     await db.delete(studioAuthorProfiles).where(eq(studioAuthorProfiles.id, id));
+  }
+
+  async getStudioArticleIdsByAuthor(authorProfileId: string): Promise<string[]> {
+    const rows = await db
+      .select({ id: studioArticles.id })
+      .from(studioArticles)
+      .where(eq(studioArticles.authorProfileId, authorProfileId));
+    return rows.map((r) => r.id);
+  }
+
+  async reassignStudioArticleAuthors(
+    articleIds: string[],
+    authorProfileId: string | null,
+  ): Promise<string[]> {
+    if (!articleIds.length) return [];
+    const rows = await db
+      .update(studioArticles)
+      .set({ authorProfileId, updatedAt: new Date() })
+      .where(inArray(studioArticles.id, articleIds))
+      .returning({ id: studioArticles.id });
+    return rows.map((r) => r.id);
   }
 
   // ---- Audit ----

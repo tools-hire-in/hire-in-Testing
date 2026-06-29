@@ -59,6 +59,8 @@ import {
   Building2,
   HandHeart,
   UserCheck,
+  GitMerge,
+  UserPlus,
 } from "lucide-react";
 import type { StudioAuthorProfile } from "@shared/schema";
 
@@ -122,6 +124,11 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<StudioAuthorProfile | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [mergeSource, setMergeSource] = useState<StudioAuthorProfile | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  const [quickEmployeeId, setQuickEmployeeId] = useState<string>("");
+
   const { data: authors, isLoading } = useQuery<StudioAuthorProfile[]>({
     queryKey: ["/api/admin/studio/authors", { projectId }],
     enabled: !!projectId,
@@ -131,6 +138,21 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     queryKey: ["/api/admin/studio/author-candidates"],
     enabled: open && !editing && authorMode === "internal" && canManage,
   });
+
+  // Separate fetch for the one-click "Add from employee" picker (independent of
+  // the create dialog state).
+  const { data: quickCandidates, isLoading: quickCandidatesLoading } = useQuery<EmployeeCandidate[]>({
+    queryKey: ["/api/admin/studio/author-candidates"],
+    enabled: employeePickerOpen && canManage,
+  });
+
+  // Article counts per author — used to show "N articles will move" on merge.
+  const { data: articleCounts } = useQuery<{ authorProfileId: string | null; count: number }[]>({
+    queryKey: ["/api/admin/studio/authors/article-counts", { projectId }],
+    enabled: !!projectId && canManage,
+  });
+  const countFor = (authorId: string): number =>
+    articleCounts?.find((c) => c.authorProfileId === authorId)?.count ?? 0;
 
   // Pre-fill form fields when an employee candidate is selected.
   useEffect(() => {
@@ -263,6 +285,54 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
     },
   });
 
+  const mergeMutation = useMutation({
+    mutationFn: async ({ sourceId, targetAuthorId }: { sourceId: string; targetAuthorId: string }) => {
+      const res = await apiRequest("POST", `/api/admin/studio/authors/${sourceId}/merge`, {
+        targetAuthorId,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to merge author");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors/article-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      setMergeSource(null);
+      setMergeTargetId("");
+      toast({ title: `Merged — ${data.movedArticleCount} article(s) moved` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not merge author", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const fromEmployeeMutation = useMutation({
+    mutationFn: async (employeeId: string) => {
+      const res = await apiRequest("POST", "/api/admin/studio/authors/from-employee", {
+        employeeId,
+        projectId,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to create author");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/authors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/author-candidates"] });
+      setEmployeePickerOpen(false);
+      setQuickEmployeeId("");
+      toast({ title: "Author added from employee" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not add author", description: err.message, variant: "destructive" });
+    },
+  });
+
   const saveDisabled =
     !form.displayName.trim() ||
     saveMutation.isPending ||
@@ -294,6 +364,16 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
                   Show inactive ({inactiveCount})
                 </>
               )}
+            </Button>
+          )}
+          {canManage && (
+            <Button
+              variant="outline"
+              onClick={() => { setQuickEmployeeId(""); setEmployeePickerOpen(true); }}
+              data-testid="button-add-from-employee"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add from employee
             </Button>
           )}
           {canManage && (
@@ -342,9 +422,11 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
               key={a.id}
               author={a}
               canManage={canManage}
+              articleCount={countFor(a.id)}
               onEdit={() => openEdit(a)}
               onToggleActive={() => toggleActiveMutation.mutate({ id: a.id, isActive: !a.isActive })}
               onDelete={() => { setDeleteTarget(a); setDeleteError(null); }}
+              onMerge={() => { setMergeSource(a); setMergeTargetId(""); }}
             />
           ))}
         </div>
@@ -550,6 +632,124 @@ export function AuthorsPanel({ projectId }: { projectId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Merge author dialog */}
+      <Dialog
+        open={!!mergeSource}
+        onOpenChange={(o) => { if (!o) { setMergeSource(null); setMergeTargetId(""); } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Merge author</DialogTitle>
+            <DialogDescription>
+              Move all articles from{" "}
+              <strong>{mergeSource?.displayName}</strong> onto another author, then
+              delete this author.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="text-merge-article-count">
+              {mergeSource ? countFor(mergeSource.id) : 0} article
+              {(mergeSource ? countFor(mergeSource.id) : 0) !== 1 ? "s" : ""} will move to the target author.
+            </div>
+            <div className="space-y-2">
+              <Label>Merge into</Label>
+              <Select value={mergeTargetId} onValueChange={setMergeTargetId}>
+                <SelectTrigger data-testid="select-merge-target">
+                  <SelectValue placeholder="Choose target author…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(authors ?? [])
+                    .filter((a) => a.id !== mergeSource?.id)
+                    .map((a) => (
+                      <SelectItem key={a.id} value={a.id} data-testid={`option-merge-target-${a.id}`}>
+                        {a.displayName}
+                        {!a.isActive ? " (inactive)" : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setMergeSource(null); setMergeTargetId(""); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (mergeSource && mergeTargetId) {
+                  mergeMutation.mutate({ sourceId: mergeSource.id, targetAuthorId: mergeTargetId });
+                }
+              }}
+              disabled={!mergeTargetId || mergeMutation.isPending}
+              data-testid="button-confirm-merge"
+            >
+              {mergeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Merge & delete source
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* One-click add-from-employee dialog */}
+      <Dialog
+        open={employeePickerOpen}
+        onOpenChange={(o) => { setEmployeePickerOpen(o); if (!o) setQuickEmployeeId(""); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add author from employee</DialogTitle>
+            <DialogDescription>
+              Creates an author profile instantly from the employee's HR record.
+              Missing byline fields (bio, public title, photo) are flagged on the
+              card — you can fill them in later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <Label>Employee</Label>
+            {quickCandidatesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading employees…
+              </div>
+            ) : !quickCandidates || quickCandidates.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">
+                All active employees are already linked as authors.
+              </p>
+            ) : (
+              <Select value={quickEmployeeId} onValueChange={setQuickEmployeeId}>
+                <SelectTrigger data-testid="select-quick-employee">
+                  <SelectValue placeholder="Choose an employee…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {quickCandidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id} data-testid={`option-quick-employee-${c.id}`}>
+                      {c.displayName}
+                      {c.title ? ` — ${c.title}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmployeePickerOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => { if (quickEmployeeId) fromEmployeeMutation.mutate(quickEmployeeId); }}
+              disabled={!quickEmployeeId || fromEmployeeMutation.isPending}
+              data-testid="button-confirm-from-employee"
+            >
+              {fromEmployeeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add as author
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -602,15 +802,19 @@ function AuthorTypeBadge({ authorType }: { authorType?: string | null }) {
 function AuthorCard({
   author: a,
   canManage,
+  articleCount,
   onEdit,
   onToggleActive,
   onDelete,
+  onMerge,
 }: {
   author: StudioAuthorProfile;
   canManage: boolean;
+  articleCount: number;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onMerge: () => void;
 }) {
   const fields = [
     { label: "Byline name", filled: !!a.displayName?.trim() },
@@ -677,6 +881,11 @@ function AuthorCard({
                   )}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onMerge} data-testid={`menu-merge-author-${a.id}`}>
+                  <GitMerge className="mr-2 h-3.5 w-3.5" />
+                  Merge into…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={onDelete}
@@ -716,6 +925,11 @@ function AuthorCard({
             {a.isActive ? "Active" : "Inactive"}
           </Badge>
           <AuthorTypeBadge authorType={(a as any).authorType} />
+          {articleCount > 0 && (
+            <Badge variant="outline" data-testid={`badge-article-count-${a.id}`}>
+              {articleCount} article{articleCount !== 1 ? "s" : ""}
+            </Badge>
+          )}
           {a.consentedAt && (
             <Badge variant="outline" className="gap-1">
               <ShieldCheck className="h-3 w-3" />
