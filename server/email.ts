@@ -1976,76 +1976,131 @@ function probationEmailShell(heading: string, accent: string, bodyHtml: string):
     </div>`;
 }
 
-/** Sent once to a probation plan's owning manager when the plan is assigned. */
-export async function sendProbationManagerBriefingEmail(options: {
+// Plan-type-aware copy so the briefing/overdue/escalation emails cover all three
+// owned plan types (probation, growth, pip), not just probation.
+type PlanCopyType = "probation" | "growth" | "pip" | string;
+function planEmailMeta(planType?: PlanCopyType): {
+  label: string;
+  noun: string;
+  cadenceItems: string[];
+  guideUrl?: string;
+  guideLabel?: string;
+} {
+  switch (planType) {
+    case "growth":
+      return {
+        label: "Growth Plan",
+        noun: "growth plan",
+        cadenceItems: [
+          "Run the milestone reviews at Day 30, 60 and 90.",
+          "Hold the weekly progress check-ins for the full plan duration.",
+          "Log notes/evidence at every check-in and record the final outcome.",
+        ],
+      };
+    case "pip":
+      return {
+        label: "Performance Improvement Plan",
+        noun: "performance improvement plan (PIP)",
+        cadenceItems: [
+          "Run the weekly PIP review check-ins for the full plan duration.",
+          "Log notes/evidence at every check-in and record the final outcome.",
+        ],
+      };
+    default:
+      return {
+        label: "Probation Plan",
+        noun: "90-day probation plan",
+        cadenceItems: [
+          "Run the check-in cadence: Day 1, 7, 15, 30, 45, 60, 75, 90.",
+          "Complete the formal milestone scorecards at Day 30, 60 and 90.",
+          "Log notes/evidence at every check-in and record the final outcome.",
+        ],
+        guideUrl: PROBATION_GUIDE_URL,
+        guideLabel: "Read the Probation Guide",
+      };
+  }
+}
+
+/** Sent once to a plan's owning manager when the plan is assigned (probation/growth/pip). */
+export async function sendPlanManagerBriefingEmail(options: {
   to: string;
   managerFirstName: string;
   employeeName: string;
   startDate: string;
   endDate: string;
   ackStatus: string;
+  planType?: PlanCopyType;
 }) {
+  const meta = planEmailMeta(options.planType);
+  const cadenceHtml = meta.cadenceItems.map(i => `      <li>${i}</li>`).join("\n");
+  const cadenceText = meta.cadenceItems.map(i => `- ${i}`).join("\n");
+  const guideButtonHtml = meta.guideUrl
+    ? `\n      <a href="${meta.guideUrl}" style="display: inline-block; background: #F47C20; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">${meta.guideLabel}</a>`
+    : "";
+  const guideText = meta.guideUrl ? `\n${meta.guideLabel}: ${meta.guideUrl}` : "";
   const body = `
     <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">Hi ${options.managerFirstName},</h2>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">
-      You are the accountable owner of the 90-day probation plan for <strong>${options.employeeName}</strong>
+      You are the accountable owner of the ${meta.noun} for <strong>${options.employeeName}</strong>
       (${options.startDate} → ${options.endDate}, currently <strong>${options.ackStatus}</strong>).
     </p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">As the manager you must:</p>
     <ul style="color: #475569; line-height: 1.7; margin: 0 0 16px; padding-left: 20px;">
-      <li>Run the check-in cadence: Day 1, 7, 15, 30, 45, 60, 75, 90.</li>
-      <li>Complete the formal milestone scorecards at Day 30, 60 and 90.</li>
-      <li>Log notes/evidence at every check-in and record the final outcome.</li>
+${cadenceHtml}
     </ul>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 10px;">Open Check-Ins</a>
-      <a href="${PROBATION_GUIDE_URL}" style="display: inline-block; background: #F47C20; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Read the Probation Guide</a>
+      <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 10px;">Open Check-Ins</a>${guideButtonHtml}
     </div>`;
-  return dispatchAutomatedEmail("probation_manager_briefing", "plan:probation_briefing", {
+  return dispatchAutomatedEmail(`${options.planType ?? "probation"}_manager_briefing`, "plan:manager_briefing", {
     to: options.to,
-    subject: `You own ${options.employeeName}'s 90-day probation plan`,
-    html: probationEmailShell("Probation plan assigned", "#1F3A6E", body),
-    text: `Hi ${options.managerFirstName},\n\nYou are the accountable owner of the 90-day probation plan for ${options.employeeName} (${options.startDate} to ${options.endDate}, currently ${options.ackStatus}).\n\nYou must run the check-in cadence (Day 1/7/15/30/45/60/75/90), complete the Day 30/60/90 milestone scorecards, log notes at every check-in, and record the final outcome.\n\nOpen Check-Ins: ${PROBATION_CHECKINS_URL}\nProbation Guide: ${PROBATION_GUIDE_URL}${SIGNOFF_TEXT}`,
+    subject: `You own ${options.employeeName}'s ${meta.label}`,
+    html: probationEmailShell(`${meta.label} assigned`, "#1F3A6E", body),
+    text: `Hi ${options.managerFirstName},\n\nYou are the accountable owner of the ${meta.noun} for ${options.employeeName} (${options.startDate} to ${options.endDate}, currently ${options.ackStatus}).\n\nAs the manager you must:\n${cadenceText}\n\nOpen Check-Ins: ${PROBATION_CHECKINS_URL}${guideText}${SIGNOFF_TEXT}`,
   });
 }
 
-/** Daily reminder to a manager about an overdue probation check-in they own. */
-export async function sendProbationOverdueReminderEmail(options: {
+/** Daily reminder to a manager about an overdue check-in they own (probation/growth/pip). */
+export async function sendPlanOverdueReminderEmail(options: {
   to: string;
   managerFirstName: string;
   employeeName: string;
   checkInLabel: string;
   scheduledDate: string;
   daysOverdue: number;
+  planType?: PlanCopyType;
 }) {
+  const meta = planEmailMeta(options.planType);
+  const planWord = meta.label.toLowerCase();
   const body = `
     <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">Hi ${options.managerFirstName},</h2>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">
-      The <strong>${options.checkInLabel}</strong> probation check-in for <strong>${options.employeeName}</strong>
+      The <strong>${options.checkInLabel}</strong> ${planWord} check-in for <strong>${options.employeeName}</strong>
       was due on <strong>${options.scheduledDate}</strong> and is now <strong>${options.daysOverdue} day${options.daysOverdue === 1 ? "" : "s"} overdue</strong>.
     </p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">Please complete it as soon as possible to keep the plan on track.</p>
     <div style="margin: 22px 0;">
       <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Complete the Check-In</a>
     </div>`;
-  return dispatchAutomatedEmail("probation_overdue_reminder", "scheduler:probation_escalation", {
+  return dispatchAutomatedEmail(`${options.planType ?? "probation"}_overdue_reminder`, "scheduler:plan_escalation", {
     to: options.to,
-    subject: `Overdue: ${options.employeeName}'s ${options.checkInLabel} probation check-in`,
-    html: probationEmailShell("Probation check-in overdue", "#b45309", body),
-    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} probation check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\nComplete it: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
+    subject: `Overdue: ${options.employeeName}'s ${options.checkInLabel} ${planWord} check-in`,
+    html: probationEmailShell(`${meta.label} check-in overdue`, "#b45309", body),
+    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} ${planWord} check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\nComplete it: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
   });
 }
 
-/** Escalation to HR/Ops (and optionally the skip-level manager). */
-export async function sendProbationEscalationEmail(options: {
+/** Escalation to HR/Ops (and optionally the skip-level manager) for any plan type. */
+export async function sendPlanEscalationEmail(options: {
   to: string | string[];
   employeeName: string;
   managerName: string;
   reason: string;
   detail: string;
+  planType?: PlanCopyType;
 }) {
+  const meta = planEmailMeta(options.planType);
   const body = `
-    <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">Probation escalation</h2>
+    <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">${meta.label} escalation</h2>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">
       <strong>${options.reason}</strong>
     </p>
@@ -2055,11 +2110,11 @@ export async function sendProbationEscalationEmail(options: {
     <div style="margin: 22px 0;">
       <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Review Check-Ins</a>
     </div>`;
-  return dispatchAutomatedEmail("probation_escalation", "scheduler:probation_escalation", {
+  return dispatchAutomatedEmail(`${options.planType ?? "probation"}_escalation`, "scheduler:plan_escalation", {
     to: options.to,
-    subject: `Probation escalation: ${options.employeeName}`,
-    html: probationEmailShell("Probation escalation", "#b91c1c", body),
-    text: `Probation escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\nReview check-ins: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
+    subject: `${meta.label} escalation: ${options.employeeName}`,
+    html: probationEmailShell(`${meta.label} escalation`, "#b91c1c", body),
+    text: `${meta.label} escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\nReview check-ins: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
   });
 }
 

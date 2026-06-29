@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { generateMonthlySalaryReport } from "./salaryReport";
-import { sendSalaryReportApprovalReminder, sendOfferLetterReminderEmail, sendAddendumReminderEmail, sendProbationOverdueReminderEmail, sendProbationEscalationEmail } from "./email";
+import { sendSalaryReportApprovalReminder, sendOfferLetterReminderEmail, sendAddendumReminderEmail, sendPlanOverdueReminderEmail, sendPlanEscalationEmail } from "./email";
 import { PROBATION_CADENCE_DAYS, cadenceCheckInType, milestoneDayFor } from "@shared/probation";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -1005,14 +1005,14 @@ export function startScheduler() {
       // ── 2) Manager daily overdue reminders (deduped per-day) ─────────────────
       const overdue = (await db.execute(sql`
         SELECT ci.id, ci.employee_id, ci.manager_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
-               ep.start_date,
+               ep.start_date, ep.plan_type,
                emp.first_name || ' ' || emp.last_name AS employee_name,
                mgr.first_name AS mgr_first_name, mgr.email AS mgr_email, mgr.manager_id AS skip_level_id
         FROM check_ins ci
         JOIN employee_plans ep ON ci.plan_id = ep.id
         JOIN admin_users emp ON ci.employee_id = emp.id
         LEFT JOIN admin_users mgr ON ci.manager_id = mgr.id
-        WHERE ep.plan_type = 'probation'
+        WHERE ep.plan_type IN ('probation', 'growth', 'pip')
           AND ep.status = 'active'
           AND ci.status NOT IN ('completed', 'cancelled')
           AND ci.scheduled_date < ${todayStr}
@@ -1033,27 +1033,30 @@ export function startScheduler() {
         const daysOverdue = Math.max(1, daysBetween(ci.scheduled_date));
         const mDay = milestoneDayFor(String(ci.start_date), String(ci.scheduled_date));
         const label = mDay != null ? `Day ${mDay} milestone` : (ci.check_in_type as string).replace(/_/g, " ");
+        const planType = String(ci.plan_type);
+        const planWord = planType === "pip" ? "PIP" : planType === "growth" ? "growth" : "probation";
 
         await storage.createNotification({
           userId: ci.manager_id,
-          type: "probation_overdue_reminder",
+          type: `${planType}_overdue_reminder`,
           title: `Overdue: ${ci.employee_name}'s ${label} check-in`,
-          message: `The ${label} probation check-in was due ${ci.scheduled_date} and is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue.`,
+          message: `The ${label} ${planWord} check-in was due ${ci.scheduled_date} and is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue.`,
           isRead: false,
-          metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, daysOverdue },
+          metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, planType, daysOverdue },
         });
         if (ci.mgr_email) {
           try {
-            await sendProbationOverdueReminderEmail({
+            await sendPlanOverdueReminderEmail({
               to: ci.mgr_email,
               managerFirstName: ci.mgr_first_name || "there",
               employeeName: ci.employee_name,
               checkInLabel: label,
               scheduledDate: ci.scheduled_date,
               daysOverdue,
+              planType,
             });
           } catch (e) {
-            console.error(`[scheduler] probation overdue email failed for check-in ${ci.id}:`, e);
+            console.error(`[scheduler] ${planWord} overdue email failed for check-in ${ci.id}:`, e);
           }
         }
         reminders++;
@@ -1071,11 +1074,11 @@ export function startScheduler() {
             for (const rid of recipientIds) {
               await storage.createNotification({
                 userId: rid,
-                type: "probation_milestone_escalation",
-                title: `Probation milestone overdue: ${ci.employee_name}`,
+                type: `${planType}_milestone_escalation`,
+                title: `${planWord.charAt(0).toUpperCase() + planWord.slice(1)} milestone overdue: ${ci.employee_name}`,
                 message: `${ci.employee_name}'s Day ${mDay} milestone review is ${daysOverdue} days overdue (owner: ${mgrName}).`,
                 isRead: false,
-                metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, milestoneDay: mDay, daysOverdue },
+                metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, planType, milestoneDay: mDay, daysOverdue },
               });
             }
             const skipEmail = ci.skip_level_id
@@ -1084,15 +1087,16 @@ export function startScheduler() {
             const escEmails = Array.from(new Set([...hrOpsEmails, skipEmail].filter(Boolean))) as string[];
             if (escEmails.length > 0) {
               try {
-                await sendProbationEscalationEmail({
+                await sendPlanEscalationEmail({
                   to: escEmails,
                   employeeName: ci.employee_name,
                   managerName: mgrName,
-                  reason: `Day ${mDay} probation milestone review is ${daysOverdue} days overdue.`,
-                  detail: `This formal milestone scorecard has not been completed. Please follow up with the owning manager to keep the 90-day probation on track.`,
+                  reason: `Day ${mDay} ${planWord} milestone review is ${daysOverdue} days overdue.`,
+                  detail: `This formal milestone scorecard has not been completed. Please follow up with the owning manager to keep the plan on track.`,
+                  planType,
                 });
               } catch (e) {
-                console.error(`[scheduler] probation milestone escalation email failed for ${ci.id}:`, e);
+                console.error(`[scheduler] ${planWord} milestone escalation email failed for ${ci.id}:`, e);
               }
             }
           }
@@ -1101,7 +1105,7 @@ export function startScheduler() {
 
       // ── 4) Per-plan 3-strike escalation (once per plan) ──────────────────────
       const strikes = (await db.execute(sql`
-        SELECT ep.id, ep.employee_id, ep.manager_id,
+        SELECT ep.id, ep.employee_id, ep.manager_id, ep.plan_type,
                COUNT(ci.id) AS overdue_count,
                emp.first_name || ' ' || emp.last_name AS employee_name,
                mgr.first_name AS mgr_first_name, mgr.manager_id AS skip_level_id
@@ -1109,12 +1113,12 @@ export function startScheduler() {
         JOIN check_ins ci ON ci.plan_id = ep.id
         JOIN admin_users emp ON ep.employee_id = emp.id
         LEFT JOIN admin_users mgr ON ep.manager_id = mgr.id
-        WHERE ep.plan_type = 'probation'
+        WHERE ep.plan_type IN ('probation', 'growth', 'pip')
           AND ep.status = 'active'
           AND ep.strike_escalated_at IS NULL
           AND ci.status NOT IN ('completed', 'cancelled')
           AND ci.scheduled_date < ${todayStr}
-        GROUP BY ep.id, ep.employee_id, ep.manager_id, emp.first_name, emp.last_name, mgr.first_name, mgr.manager_id
+        GROUP BY ep.id, ep.employee_id, ep.manager_id, ep.plan_type, emp.first_name, emp.last_name, mgr.first_name, mgr.manager_id
         HAVING COUNT(ci.id) >= ${strikeThreshold}
       `)).rows as any[];
 
@@ -1127,16 +1131,18 @@ export function startScheduler() {
         `);
         if (claim.rows.length === 0) continue;
 
+        const planType = String(plan.plan_type);
+        const planWord = planType === "pip" ? "PIP" : planType === "growth" ? "growth" : "probation";
         const mgrName = plan.mgr_first_name ? `${plan.mgr_first_name}` : "the assigned manager";
         const recipientIds = Array.from(new Set([...hrOpsIds, plan.skip_level_id].filter(Boolean))) as string[];
         for (const rid of recipientIds) {
           await storage.createNotification({
             userId: rid,
-            type: "probation_strike_escalation",
-            title: `Probation at risk: ${plan.employee_name}`,
-            message: `${plan.employee_name}'s probation has ${plan.overdue_count} overdue check-ins (owner: ${mgrName}).`,
+            type: `${planType}_strike_escalation`,
+            title: `${planWord.charAt(0).toUpperCase() + planWord.slice(1)} at risk: ${plan.employee_name}`,
+            message: `${plan.employee_name}'s ${planWord} plan has ${plan.overdue_count} overdue check-ins (owner: ${mgrName}).`,
             isRead: false,
-            metadata: { planId: plan.id, employeeId: plan.employee_id, overdueCount: Number(plan.overdue_count) },
+            metadata: { planId: plan.id, employeeId: plan.employee_id, planType, overdueCount: Number(plan.overdue_count) },
           });
         }
         const skipEmail = plan.skip_level_id
@@ -1145,21 +1151,22 @@ export function startScheduler() {
         const escEmails = Array.from(new Set([...hrOpsEmails, skipEmail].filter(Boolean))) as string[];
         if (escEmails.length > 0) {
           try {
-            await sendProbationEscalationEmail({
+            await sendPlanEscalationEmail({
               to: escEmails,
               employeeName: plan.employee_name,
               managerName: mgrName,
-              reason: `${plan.overdue_count} probation check-ins are overdue on this plan.`,
-              detail: `The owning manager has missed ${plan.overdue_count} or more probation check-ins. Please intervene to bring the plan back on cadence.`,
+              reason: `${plan.overdue_count} ${planWord} check-ins are overdue on this plan.`,
+              detail: `The owning manager has missed ${plan.overdue_count} or more ${planWord} check-ins. Please intervene to bring the plan back on cadence.`,
+              planType,
             });
           } catch (e) {
-            console.error(`[scheduler] probation strike escalation email failed for plan ${plan.id}:`, e);
+            console.error(`[scheduler] ${planWord} strike escalation email failed for plan ${plan.id}:`, e);
           }
         }
         strikeEscalations++;
       }
 
-      console.log(`[scheduler] Probation sweep: ${backfilled} backfilled, ${reminders} manager reminders, ${strikeEscalations} plan escalations`);
+      console.log(`[scheduler] Plan escalation sweep: ${backfilled} backfilled, ${reminders} manager reminders, ${strikeEscalations} plan escalations`);
     } catch (err) {
       console.error("[scheduler] Probation escalation sweep failed:", err);
     }

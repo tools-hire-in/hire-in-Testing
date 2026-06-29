@@ -8,7 +8,7 @@ import {
 import { resolveRoles } from "@shared/accessControl";
 import { eq, and, or, inArray, sql, desc, asc, isNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
-import { sendCheckInReminderEmail, sendProbationManagerBriefingEmail } from "./email";
+import { sendCheckInReminderEmail, sendPlanManagerBriefingEmail } from "./email";
 import {
   cadenceCheckInType, PROBATION_CADENCE_DAYS, milestoneDayFor, probationAreaKey,
   computeWeightedOverall, type ProbationWeight, type ProbationReviewScores,
@@ -495,7 +495,7 @@ async function briefManagerOnce(planId: string): Promise<void> {
     `);
     const plan = planRes.rows[0] as any;
     if (!plan) return;
-    if (plan.plan_type !== "probation") return;
+    if (!["probation", "growth", "pip"].includes(plan.plan_type)) return;
     if (!plan.manager_id) return;
     if (plan.manager_briefed_at) return;
 
@@ -509,23 +509,36 @@ async function briefManagerOnce(planId: string): Promise<void> {
 
     const ackStatus = plan.acknowledged_at ? "acknowledged by the employee" : "pending employee acknowledgement";
 
+    const planLabel = plan.plan_type === "pip"
+      ? "Performance Improvement Plan"
+      : plan.plan_type === "growth"
+        ? "Growth Plan"
+        : "Probation Plan";
+    const cadenceMsg = plan.plan_type === "pip"
+      ? `Run the weekly PIP review check-ins for the full plan duration.`
+      : plan.plan_type === "growth"
+        ? `Run the weekly progress check-ins and complete the Day 30/60/90 milestone reviews.`
+        : `Run the Day 1/7/15/30/45/60/75/90 check-ins and complete the Day 30/60/90 scorecards.`;
+    const briefingLink = plan.plan_type === "probation" ? "/admin/probation-guide" : "/admin/performance/check-ins";
+
     await notifyPlan(
       plan.manager_id,
-      "probation_manager_briefing",
-      `You own ${plan.employee_name}'s probation plan`,
-      `Run the Day 1/7/15/30/45/60/75/90 check-ins and complete the Day 30/60/90 scorecards. Plan runs ${plan.start_date} → ${plan.end_date}.`,
-      { planId: plan.id, planType: "probation", employeeName: plan.employee_name, link: "/admin/probation-guide" },
+      `${plan.plan_type}_manager_briefing`,
+      `You own ${plan.employee_name}'s ${planLabel}`,
+      `${cadenceMsg} Plan runs ${plan.start_date} → ${plan.end_date}.`,
+      { planId: plan.id, planType: plan.plan_type, employeeName: plan.employee_name, link: briefingLink },
     );
 
     if (plan.mgr_email) {
       try {
-        await sendProbationManagerBriefingEmail({
+        await sendPlanManagerBriefingEmail({
           to: plan.mgr_email,
           managerFirstName: plan.mgr_first_name || "there",
           employeeName: plan.employee_name,
           startDate: plan.start_date,
           endDate: plan.end_date,
           ackStatus,
+          planType: plan.plan_type,
         });
       } catch (e) {
         console.error(`[performanceRoutes] manager briefing email failed for plan ${planId}:`, e);
