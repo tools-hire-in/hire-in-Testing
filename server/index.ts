@@ -2423,9 +2423,34 @@ async function runStartupTasks() {
     await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_conditional BOOLEAN NOT NULL DEFAULT TRUE`);
     await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS carry_forward_cap INTEGER DEFAULT 0`);
     await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS occurrence_based BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS block_entitlement BOOLEAN NOT NULL DEFAULT FALSE`);
     log("Ensured leave_types extra columns exist");
   } catch (err) {
     console.error("leave_types migration error:", err);
+  }
+
+  try {
+    // Maternity & Paternity are NON-ACCRUING block entitlements, not monthly-accruing
+    // balances. Mark them as block entitlements and zero out any accrual configuration so
+    // the monthly engine (skips monthly_accrual <= 0) and year-end batch never credit them.
+    // The leave is granted on application/approval up to default_days (the entitlement cap).
+    await db.execute(sql`
+      UPDATE leave_types
+      SET block_entitlement = TRUE,
+          monthly_accrual = 0,
+          is_conditional = FALSE,
+          carry_forward_cap = 0
+      WHERE (name ILIKE '%maternity%' OR name ILIKE '%paternity%')
+        AND (
+          block_entitlement = FALSE
+          OR CAST(monthly_accrual AS NUMERIC) != 0
+          OR is_conditional = TRUE
+          OR COALESCE(carry_forward_cap, 0) != 0
+        )
+    `);
+    log("Ensured Maternity/Paternity are configured as non-accruing block entitlements");
+  } catch (err) {
+    console.error("maternity/paternity block-entitlement migration error:", err);
   }
 
   try {

@@ -185,6 +185,10 @@ export const leaveTypes = pgTable("leave_types", {
   // If true, balance tracks occurrences (count-based) rather than days — used for Emergency Leave (EML).
   // totalDays field holds max occurrences, usedDays holds occurrences consumed.
   occurrenceBased: boolean("occurrence_based").notNull().default(false),
+  // If true, this is a NON-ACCRUING block entitlement (e.g. Maternity/Paternity).
+  // The monthly accrual engine and year-end batch never touch it. The leave is granted
+  // on application/approval up to default_days (the fixed entitlement cap).
+  blockEntitlement: boolean("block_entitlement").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

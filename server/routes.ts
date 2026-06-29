@@ -3672,12 +3672,49 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/leave-types/:id", requirePermission("hr.leaveTypes", "hr"), async (req, res) => {
+  app.get("/api/hr/leave-types/:id/usage", requirePermission("hr.leaveTypes", "hr"), async (req, res) => {
     try {
-      await storage.deleteLeaveType(req.params.id as string);
-      res.status(204).send();
+      const usage = await storage.getLeaveTypeUsage(req.params.id as string);
+      res.json(usage);
     } catch (error) {
-      res.status(500).json({ error: "Failed to delete leave type" });
+      res.status(500).json({ error: "Failed to fetch leave type usage" });
+    }
+  });
+
+  // Safe delete is restricted to super_admin. When the type is in use, the caller must
+  // choose how to clear dependents: "transfer" remaining balances into another type, or
+  // "expire" (discard balances/history). A clean (unused) type can be deleted directly.
+  app.delete("/api/hr/leave-types/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "Only a Super Admin can delete a leave type" });
+      }
+      const id = req.params.id as string;
+      const { mode, targetLeaveTypeId } = (req.body || {}) as { mode?: "transfer" | "expire"; targetLeaveTypeId?: string };
+
+      const usage = await storage.getLeaveTypeUsage(id);
+      const inUse = usage.balances > 0 || usage.accruals > 0 || usage.adjustments > 0 || usage.requests > 0;
+
+      if (!inUse) {
+        await storage.deleteLeaveType(id);
+        return res.status(200).json({ deleted: true });
+      }
+
+      if (mode !== "transfer" && mode !== "expire") {
+        return res.status(409).json({
+          error: "Leave type is in use. Choose how to handle existing data.",
+          requiresChoice: true,
+          usage,
+        });
+      }
+      if (mode === "transfer" && !targetLeaveTypeId) {
+        return res.status(400).json({ error: "A target leave type is required to transfer balances" });
+      }
+
+      await storage.deleteLeaveTypeSafe(id, { mode, targetLeaveTypeId });
+      res.status(200).json({ deleted: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to delete leave type" });
     }
   });
 
@@ -4415,6 +4452,33 @@ export async function registerRoutes(
       const calculatedDays = await storage.countLeaveDays(result.data.startDate, result.data.endDate);
       const finalDays = result.data.halfDay ? 0.5 : calculatedDays;
 
+      // Non-accruing block entitlements (Maternity/Paternity): cap the application at the
+      // configured entitlement (default_days) so it can be granted on approval without a
+      // pre-accrued balance and without driving the balance negative.
+      if (leaveType?.blockEntitlement) {
+        const reqYear = parseInt(result.data.startDate.split("-")[0]);
+        const reqBalances = await storage.getLeaveBalances(userId, reqYear);
+        const reqBalance = reqBalances.find(b => b.leaveTypeId === leaveType.id);
+        const alreadyUsed = reqBalance ? parseFloat(reqBalance.usedDays || "0") : 0;
+        // Also count still-pending requests for the same type/year — they will draw
+        // from the same fixed entitlement once approved, so they must be reserved now
+        // to prevent cumulative overbooking against the cap.
+        const userRequests = await storage.getLeaveRequests({ userId });
+        const pendingSameType = userRequests
+          .filter(r => r.leaveTypeId === leaveType.id
+            && r.status === "pending"
+            && parseInt(r.startDate.split("-")[0]) === reqYear)
+          .reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+        const cap = leaveType.defaultDays || 0;
+        const committed = alreadyUsed + pendingSameType;
+        if (cap > 0 && committed + finalDays > cap) {
+          const remaining = Math.max(0, cap - committed);
+          return res.status(422).json({
+            error: `This request exceeds the ${leaveType.name} entitlement of ${cap} day(s). You have ${remaining.toFixed(1)} day(s) remaining for ${reqYear} (including pending requests).`,
+          });
+        }
+      }
+
       const lr = await storage.createLeaveRequest({ ...result.data, totalDays: String(finalDays) });
       res.status(201).json(lr);
 
@@ -4500,6 +4564,29 @@ export async function registerRoutes(
         }
       }
 
+      // For split-leave: deduct only the paid portion (splitPaidDays) from this leave type's balance.
+      // The LWP portion (splitLwpDays) does not come from any balance — it is unpaid.
+      const paidPortion = leaveRequest.splitPaidDays != null
+        ? parseFloat(leaveRequest.splitPaidDays)
+        : parseFloat(leaveRequest.totalDays || "0");
+      const reviewYear = parseInt(leaveRequest.startDate.split("-")[0]);
+      const reviewLeaveType = await storage.getLeaveType(leaveRequest.leaveTypeId);
+
+      // Pre-validate block-entitlement cap BEFORE persisting the approval, so a rejection
+      // never leaves the request marked approved without a corresponding balance grant.
+      if (status === "approved" && reviewLeaveType?.blockEntitlement) {
+        const cap = reviewLeaveType.defaultDays || 0;
+        const preBalances = await storage.getLeaveBalances(leaveRequest.userId, reviewYear);
+        const preBalance = preBalances.find(b => b.leaveTypeId === leaveRequest.leaveTypeId);
+        const currentUsed = preBalance ? parseFloat(preBalance.usedDays || "0") : 0;
+        if (cap > 0 && currentUsed + paidPortion > cap) {
+          const remaining = Math.max(0, cap - currentUsed);
+          return res.status(422).json({
+            error: `Approving this request would exceed the ${reviewLeaveType.name} entitlement of ${cap} day(s). Only ${remaining.toFixed(1)} day(s) remain for ${reviewYear}.`,
+          });
+        }
+      }
+
       const lr = await storage.updateLeaveRequest(req.params.id as string, {
         status,
         reviewComment,
@@ -4510,14 +4597,31 @@ export async function registerRoutes(
 
       if (status === "approved") {
         const year = parseInt(lr.startDate.split("-")[0]);
-        const balances = await storage.getLeaveBalances(lr.userId, year);
-        const balance = balances.find(b => b.leaveTypeId === lr.leaveTypeId);
-        if (balance) {
-          // For split-leave: deduct only the paid portion (splitPaidDays) from this leave type's balance.
-          // The LWP portion (splitLwpDays) does not come from any balance — it is unpaid.
-          const paidPortion = lr.splitPaidDays != null
-            ? parseFloat(lr.splitPaidDays)
-            : parseFloat(lr.totalDays || "0");
+        const approvedLeaveType = reviewLeaveType;
+        let balances = await storage.getLeaveBalances(lr.userId, year);
+        let balance = balances.find(b => b.leaveTypeId === lr.leaveTypeId);
+
+        if (approvedLeaveType?.blockEntitlement) {
+          // Non-accruing block entitlement (Maternity/Paternity): there is no pre-accrued
+          // balance. Grant on approval by topping up totalDays to cover the usage, capped at
+          // the configured entitlement (default_days), so remaining never goes negative.
+          if (!balance) {
+            await storage.initLeaveBalances(lr.userId, year);
+            balances = await storage.getLeaveBalances(lr.userId, year);
+            balance = balances.find(b => b.leaveTypeId === lr.leaveTypeId);
+          }
+          if (!balance) {
+            balance = await storage.createLeaveBalance({
+              userId: lr.userId, leaveTypeId: lr.leaveTypeId,
+              totalDays: "0", usedDays: "0", year,
+            });
+          }
+          const cap = approvedLeaveType.defaultDays || 0;
+          const currentUsed = parseFloat(balance.usedDays || "0");
+          const newUsed = currentUsed + paidPortion;
+          const newTotal = Math.min(cap, Math.max(parseFloat(balance.totalDays || "0"), newUsed));
+          await storage.updateLeaveBalance(balance.id, { totalDays: String(newTotal), usedDays: String(newUsed) });
+        } else if (balance) {
           const newUsed = parseFloat(balance.usedDays || "0") + paidPortion;
           await storage.updateLeaveBalance(balance.id, { usedDays: String(newUsed) });
         }

@@ -269,6 +269,8 @@ export interface IStorage {
   createLeaveType(lt: InsertLeaveType): Promise<LeaveType>;
   updateLeaveType(id: string, lt: Partial<InsertLeaveType>): Promise<LeaveType | undefined>;
   deleteLeaveType(id: string): Promise<boolean>;
+  getLeaveTypeUsage(id: string): Promise<{ balances: number; accruals: number; adjustments: number; requests: number; employees: number; remainingDays: number }>;
+  deleteLeaveTypeSafe(id: string, options: { mode: "transfer" | "expire"; targetLeaveTypeId?: string }): Promise<{ deleted: boolean }>;
 
   // Leave Balances
   getLeaveBalances(userId: string, year: number): Promise<LeaveBalance[]>;
@@ -1237,13 +1239,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLeaveType(lt: InsertLeaveType): Promise<LeaveType> {
-    const [created] = await db.insert(leaveTypes).values(lt).returning();
+    const values = { ...lt };
+    // Block entitlements never accrue — enforce the invariant regardless of form input.
+    if (values.blockEntitlement) {
+      values.monthlyAccrual = "0";
+      values.isConditional = false;
+      values.carryForwardCap = 0;
+    }
+    const [created] = await db.insert(leaveTypes).values(values).returning();
     return created;
   }
 
   async updateLeaveType(id: string, lt: Partial<InsertLeaveType>): Promise<LeaveType | undefined> {
+    const values = { ...lt };
+    // Determine whether the type is (or is becoming) a block entitlement, even when the
+    // patch body omits the flag, so a routine save can never re-enable accrual on it.
+    const existing = await this.getLeaveType(id);
+    const isBlock = values.blockEntitlement ?? existing?.blockEntitlement ?? false;
+    if (isBlock) {
+      values.monthlyAccrual = "0";
+      values.isConditional = false;
+      values.carryForwardCap = 0;
+    }
     const [updated] = await db.update(leaveTypes)
-      .set(lt)
+      .set(values)
       .where(eq(leaveTypes.id, id))
       .returning();
     return updated;
@@ -1252,6 +1271,98 @@ export class DatabaseStorage implements IStorage {
   async deleteLeaveType(id: string): Promise<boolean> {
     await db.delete(leaveTypes).where(eq(leaveTypes.id, id));
     return true;
+  }
+
+  // Counts how many dependent rows reference a leave type, so the UI can warn the
+  // Super Admin before a destructive delete.
+  async getLeaveTypeUsage(id: string): Promise<{
+    balances: number;
+    accruals: number;
+    adjustments: number;
+    requests: number;
+    employees: number;
+    remainingDays: number;
+  }> {
+    const balanceRows = await db.select().from(leaveBalances).where(eq(leaveBalances.leaveTypeId, id));
+    const accrualRows = await db.select().from(leaveAccruals).where(eq(leaveAccruals.leaveTypeId, id));
+    const adjustmentRows = await db.select().from(leaveAdjustments).where(eq(leaveAdjustments.leaveTypeId, id));
+    const requestRows = await db.select().from(leaveRequests).where(eq(leaveRequests.leaveTypeId, id));
+
+    const employeeSet = new Set<string>();
+    let remainingDays = 0;
+    for (const b of balanceRows) {
+      employeeSet.add(b.userId);
+      remainingDays += Math.max(0, parseFloat(b.totalDays || "0") - parseFloat(b.usedDays || "0"));
+    }
+
+    return {
+      balances: balanceRows.length,
+      accruals: accrualRows.length,
+      adjustments: adjustmentRows.length,
+      requests: requestRows.length,
+      employees: employeeSet.size,
+      remainingDays: parseFloat(remainingDays.toFixed(2)),
+    };
+  }
+
+  // Guarded delete: clears or reassigns every dependent row before removing the type so
+  // there are no FK violations or orphans.
+  //  - "transfer": merge each employee's remaining balance into targetLeaveTypeId and
+  //    reassign accruals/adjustments/requests to that type (history preserved).
+  //  - "expire": zero out balances and delete all dependent rows (history discarded).
+  async deleteLeaveTypeSafe(
+    id: string,
+    options: { mode: "transfer" | "expire"; targetLeaveTypeId?: string },
+  ): Promise<{ deleted: boolean }> {
+    const { mode, targetLeaveTypeId } = options;
+
+    if (mode === "transfer") {
+      if (!targetLeaveTypeId) throw new Error("targetLeaveTypeId is required for transfer mode");
+      if (targetLeaveTypeId === id) throw new Error("Cannot transfer a leave type into itself");
+      const target = await this.getLeaveType(targetLeaveTypeId);
+      if (!target) throw new Error("Target leave type not found");
+    }
+
+    await db.transaction(async (tx) => {
+      if (mode === "transfer" && targetLeaveTypeId) {
+        // Merge remaining balances into the target type, per user+year.
+        const sourceBalances = await tx.select().from(leaveBalances).where(eq(leaveBalances.leaveTypeId, id));
+        for (const sb of sourceBalances) {
+          const remaining = Math.max(0, parseFloat(sb.totalDays || "0") - parseFloat(sb.usedDays || "0"));
+          const [targetBalance] = await tx.select().from(leaveBalances).where(and(
+            eq(leaveBalances.userId, sb.userId),
+            eq(leaveBalances.leaveTypeId, targetLeaveTypeId),
+            eq(leaveBalances.year, sb.year),
+          ));
+          if (targetBalance) {
+            await tx.update(leaveBalances)
+              .set({ totalDays: String(parseFloat(targetBalance.totalDays || "0") + remaining), updatedAt: new Date() })
+              .where(eq(leaveBalances.id, targetBalance.id));
+          } else {
+            await tx.insert(leaveBalances).values({
+              userId: sb.userId, leaveTypeId: targetLeaveTypeId,
+              totalDays: String(remaining), usedDays: "0", year: sb.year,
+            });
+          }
+        }
+        // Reassign history rows to the target type so nothing is orphaned.
+        await tx.update(leaveAccruals).set({ leaveTypeId: targetLeaveTypeId }).where(eq(leaveAccruals.leaveTypeId, id));
+        await tx.update(leaveAdjustments).set({ leaveTypeId: targetLeaveTypeId }).where(eq(leaveAdjustments.leaveTypeId, id));
+        await tx.update(leaveRequests).set({ leaveTypeId: targetLeaveTypeId }).where(eq(leaveRequests.leaveTypeId, id));
+        // The source balances have been merged — remove them.
+        await tx.delete(leaveBalances).where(eq(leaveBalances.leaveTypeId, id));
+      } else {
+        // Expire: discard all dependent rows for this type.
+        await tx.delete(leaveAccruals).where(eq(leaveAccruals.leaveTypeId, id));
+        await tx.delete(leaveAdjustments).where(eq(leaveAdjustments.leaveTypeId, id));
+        await tx.delete(leaveRequests).where(eq(leaveRequests.leaveTypeId, id));
+        await tx.delete(leaveBalances).where(eq(leaveBalances.leaveTypeId, id));
+      }
+
+      await tx.delete(leaveTypes).where(eq(leaveTypes.id, id));
+    });
+
+    return { deleted: true };
   }
 
   // ==========================================
@@ -1385,6 +1496,9 @@ export class DatabaseStorage implements IStorage {
       const userName = `${user.firstName} ${user.lastName || ""}`.trim();
 
       for (const lt of activeLeaveTypesList) {
+        // Non-accruing block entitlements (Maternity/Paternity) are never credited by the
+        // monthly engine — they are granted on application/approval up to default_days.
+        if (lt.blockEntitlement) continue;
         const baseMonthlyRate = parseFloat(lt.monthlyAccrual || "0");
         if (baseMonthlyRate <= 0) continue;
         const monthlyRate = parseFloat((baseMonthlyRate * proRateFactor).toFixed(4));
@@ -1549,6 +1663,10 @@ export class DatabaseStorage implements IStorage {
       for (const lt of allLeaveTypes) {
         const balance = balances.find(b => b.leaveTypeId === lt.id);
         if (!balance) continue;
+
+        // Non-accruing block entitlements (Maternity/Paternity) never carry forward or
+        // lapse via the year-end batch — they reset by virtue of being granted per-event.
+        if (lt.blockEntitlement) continue;
 
         const totalDays = parseFloat(balance.totalDays);
         const usedDays = parseFloat(balance.usedDays);

@@ -2906,7 +2906,11 @@ export default function HRSettings({ group }: { group?: string }) {
 
   const [showLeaveType, setShowLeaveType] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
-  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0" });
+  const [ltForm, setLtForm] = useState({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0", blockEntitlement: false });
+  const [deleteLtTarget, setDeleteLtTarget] = useState<LeaveType | null>(null);
+  const [deleteLtUsage, setDeleteLtUsage] = useState<{ balances: number; accruals: number; adjustments: number; requests: number; employees: number; remainingDays: number } | null>(null);
+  const [deleteLtMode, setDeleteLtMode] = useState<"transfer" | "expire">("transfer");
+  const [transferTargetId, setTransferTargetId] = useState<string>("");
 
   const [showHoliday, setShowHoliday] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
@@ -2961,12 +2965,38 @@ export default function HRSettings({ group }: { group?: string }) {
   });
 
   const deleteLeaveTypeMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/hr/leave-types/${id}`),
+    mutationFn: (data: { id: string; mode?: "transfer" | "expire"; targetLeaveTypeId?: string }) =>
+      apiRequest("DELETE", `/api/hr/leave-types/${data.id}`, data.mode ? { mode: data.mode, targetLeaveTypeId: data.targetLeaveTypeId } : undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leave-types"] });
+      setDeleteLtTarget(null);
+      setDeleteLtUsage(null);
       toast({ title: "Deleted", description: "Leave type deleted." });
     },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    },
   });
+
+  const startDeleteLeaveType = async (lt: LeaveType) => {
+    try {
+      const res = await apiRequest("GET", `/api/hr/leave-types/${lt.id}/usage`);
+      const usage = await res.json();
+      const inUse = usage.balances > 0 || usage.accruals > 0 || usage.adjustments > 0 || usage.requests > 0;
+      if (!inUse) {
+        if (window.confirm(`Delete "${lt.name}"? No employee data is attached to this leave type.`)) {
+          deleteLeaveTypeMutation.mutate({ id: lt.id });
+        }
+        return;
+      }
+      setDeleteLtTarget(lt);
+      setDeleteLtUsage(usage);
+      setDeleteLtMode("transfer");
+      setTransferTargetId("");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to check leave type usage", variant: "destructive" });
+    }
+  };
 
   const accrualMutation = useMutation({
     mutationFn: (data: { year?: number; month?: number }) => apiRequest("POST", "/api/hr/leave-accruals/run", data),
@@ -3165,10 +3195,11 @@ export default function HRSettings({ group }: { group?: string }) {
         isActive: lt.isActive,
         isConditional: lt.isConditional ?? true,
         carryForwardCap: String(lt.carryForwardCap ?? 0),
+        blockEntitlement: (lt as any).blockEntitlement ?? false,
       });
     } else {
       setEditingLeaveType(null);
-      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0" });
+      setLtForm({ name: "", defaultDays: "0", monthlyAccrual: "0", minHoursForAccrual: "128", description: "", isActive: true, isConditional: true, carryForwardCap: "0", blockEntitlement: false });
     }
     setShowLeaveType(true);
   };
@@ -3276,11 +3307,27 @@ export default function HRSettings({ group }: { group?: string }) {
                   <Switch
                     checked={ltForm.isConditional}
                     onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isConditional: v }))}
+                    disabled={ltForm.blockEntitlement}
                     data-testid="switch-lt-conditional"
                   />
                   <div>
                     <Label>Conditional Accrual (EL)</Label>
                     <p className="text-xs text-muted-foreground">If enabled, requires min hours/month to qualify. Disable for unconditional leave (SL).</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={ltForm.blockEntitlement}
+                    onCheckedChange={(v) => setLtForm(prev => ({
+                      ...prev,
+                      blockEntitlement: v,
+                      ...(v ? { monthlyAccrual: "0", isConditional: false, carryForwardCap: "0" } : {}),
+                    }))}
+                    data-testid="switch-lt-block-entitlement"
+                  />
+                  <div>
+                    <Label>Block Entitlement (Maternity/Paternity)</Label>
+                    <p className="text-xs text-muted-foreground">Non-accruing. Granted on application up to "Annual Days (Max)" — no monthly accrual or carry-forward.</p>
                   </div>
                 </div>
               </div>
@@ -3300,15 +3347,92 @@ export default function HRSettings({ group }: { group?: string }) {
                   body: {
                     ...ltForm,
                     defaultDays: parseInt(ltForm.defaultDays),
-                    monthlyAccrual: ltForm.monthlyAccrual,
+                    monthlyAccrual: ltForm.blockEntitlement ? "0" : ltForm.monthlyAccrual,
                     minHoursForAccrual: ltForm.minHoursForAccrual,
-                    carryForwardCap: parseInt(ltForm.carryForwardCap) || 0,
+                    carryForwardCap: ltForm.blockEntitlement ? 0 : (parseInt(ltForm.carryForwardCap) || 0),
+                    isConditional: ltForm.blockEntitlement ? false : ltForm.isConditional,
+                    blockEntitlement: ltForm.blockEntitlement,
                   },
                 })}
                 disabled={!ltForm.name || leaveTypeMutation.isPending}
                 data-testid="button-save-leave-type"
               >
                 {leaveTypeMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!deleteLtTarget} onOpenChange={(open) => { if (!open) { setDeleteLtTarget(null); setDeleteLtUsage(null); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete "{deleteLtTarget?.name}"</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
+                This leave type is in use. Deleting affects{" "}
+                <strong>{deleteLtUsage?.employees ?? 0}</strong> employee(s),{" "}
+                <strong>{deleteLtUsage?.balances ?? 0}</strong> balance record(s) (
+                <strong>{deleteLtUsage?.remainingDays ?? 0}</strong> remaining day(s)),{" "}
+                <strong>{deleteLtUsage?.requests ?? 0}</strong> request(s) and{" "}
+                <strong>{deleteLtUsage?.accruals ?? 0}</strong> accrual record(s).
+              </div>
+              <div className="space-y-3">
+                <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-transfer">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={deleteLtMode === "transfer"}
+                    onChange={() => setDeleteLtMode("transfer")}
+                  />
+                  <div>
+                    <div className="font-medium text-sm">Transfer balances to another leave type</div>
+                    <p className="text-xs text-muted-foreground">Remaining balances are merged into the chosen type; history is reassigned to it.</p>
+                  </div>
+                </label>
+                {deleteLtMode === "transfer" && (
+                  <div className="pl-6">
+                    <Select value={transferTargetId} onValueChange={setTransferTargetId}>
+                      <SelectTrigger data-testid="select-transfer-target">
+                        <SelectValue placeholder="Select target leave type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(leaveTypes || [])
+                          .filter(t => t.id !== deleteLtTarget?.id && t.isActive)
+                          .map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-expire">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={deleteLtMode === "expire"}
+                    onChange={() => setDeleteLtMode("expire")}
+                  />
+                  <div>
+                    <div className="font-medium text-sm">Expire balances</div>
+                    <p className="text-xs text-muted-foreground">Remaining balances and history for this type are discarded.</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setDeleteLtTarget(null); setDeleteLtUsage(null); }}>Cancel</Button>
+              <Button
+                variant="destructive"
+                disabled={deleteLeaveTypeMutation.isPending || (deleteLtMode === "transfer" && !transferTargetId)}
+                onClick={() => deleteLtTarget && deleteLeaveTypeMutation.mutate({
+                  id: deleteLtTarget.id,
+                  mode: deleteLtMode,
+                  targetLeaveTypeId: deleteLtMode === "transfer" ? transferTargetId : undefined,
+                })}
+                data-testid="button-confirm-delete-leave-type"
+              >
+                {deleteLeaveTypeMutation.isPending ? "Deleting..." : "Delete leave type"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3588,9 +3712,13 @@ export default function HRSettings({ group }: { group?: string }) {
                         <td className="py-2 px-2">{lt.defaultDays}</td>
                         <td className="py-2 px-2">{parseFloat(lt.monthlyAccrual || "0")}/month</td>
                         <td className="py-2 px-2">
-                          <Badge variant={lt.isConditional ? "default" : "secondary"} className="text-xs">
-                            {lt.isConditional ? "Conditional (EL)" : "Unconditional (SL)"}
-                          </Badge>
+                          {(lt as any).blockEntitlement ? (
+                            <Badge variant="outline" className="text-xs">Block Entitlement</Badge>
+                          ) : (
+                            <Badge variant={lt.isConditional ? "default" : "secondary"} className="text-xs">
+                              {lt.isConditional ? "Conditional (EL)" : "Unconditional (SL)"}
+                            </Badge>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-muted-foreground">
                           {(lt.carryForwardCap ?? 0) > 0 ? `${lt.carryForwardCap} days` : "None"}
@@ -3600,13 +3728,16 @@ export default function HRSettings({ group }: { group?: string }) {
                             <Button variant="ghost" size="icon" onClick={() => openLeaveTypeForm(lt)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteLeaveTypeMutation.mutate(lt.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {user?.role === "super_admin" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => startDeleteLeaveType(lt)}
+                                data-testid={`button-delete-leave-type-${lt.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

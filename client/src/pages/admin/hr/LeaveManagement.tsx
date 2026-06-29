@@ -364,6 +364,9 @@ export default function LeaveManagement({ view }: { view?: "balance" | "apply" |
     if (/maternity/i.test(lt.name)) {
       return user?.maternityLeaveEligible === true;
     }
+    if (/paternity/i.test(lt.name)) {
+      return (user?.gender || "").toLowerCase() === "male";
+    }
     return true;
   });
   const filteredLeaves = (myLeaves || []).filter(lr => {
