@@ -1,0 +1,124 @@
+CREATE TABLE "coaching_log_entries" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"plan_id" varchar NOT NULL,
+	"employee_id" varchar NOT NULL,
+	"author_id" varchar NOT NULL,
+	"note" text NOT NULL,
+	"entry_date" varchar NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "probation_scoring_bands" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"min_score" integer NOT NULL,
+	"max_score" integer NOT NULL,
+	"label" varchar NOT NULL,
+	"meaning" text,
+	"recommended_outcome" text,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "probation_pass_rule" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"rule" text NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "probation_final_weights" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"area" varchar NOT NULL,
+	"weight" integer NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "communications_log" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"type" varchar NOT NULL,
+	"source_job" varchar,
+	"recipients" text[] DEFAULT '{}' NOT NULL,
+	"cc" text[] DEFAULT '{}' NOT NULL,
+	"subject" text NOT NULL,
+	"body_html" text,
+	"body_text" text,
+	"status" varchar DEFAULT 'sent' NOT NULL,
+	"error" text,
+	"reviewed_by" varchar,
+	"reviewed_at" timestamp,
+	"review_note" text,
+	"sent_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_plan_id_fkey";
+ALTER TABLE "performance_goals" DROP CONSTRAINT "performance_goals_plan_id_fkey";
+DROP INDEX "break_records_attendance_idx";
+DROP INDEX "break_records_user_date_idx";
+DROP INDEX "idx_policy_ack_user_type";
+DROP INDEX "hr_letters_reference_number_idx";
+DROP INDEX "idx_att_exception_status";
+DROP INDEX "idx_att_reg_date";
+DROP INDEX "idx_att_reg_employee_id";
+DROP INDEX "idx_att_reg_status";
+DROP INDEX "idx_travel_quotes_recruiter";
+DROP INDEX "idx_travel_quotes_status";
+DROP INDEX "goal_milestones_goal_id_idx";
+DROP INDEX "idx_att_report_mgr_approvals_run";
+DROP INDEX "idx_employee_plans_employee";
+DROP INDEX "idx_plan_acks_plan_id";
+DROP INDEX "idx_plan_acks_user_id";
+DROP INDEX "idx_plan_goal_templates_type_role";
+DROP INDEX "idx_plan_goal_templates_unique";
+DROP INDEX "studio_generations_article_idx";
+DROP INDEX "studio_generations_user_idx";
+DROP INDEX "idx_att_report_edits_run";
+DROP INDEX "idx_att_report_edits_status";
+DROP INDEX "idx_att_report_entries_manager";
+DROP INDEX "idx_att_report_entries_run";
+DROP INDEX "idx_signature_records_doc";
+DROP INDEX "idx_signature_records_ref";
+DROP INDEX "card_templates_default_idx";
+DROP INDEX "studio_review_assignments_article_idx";
+DROP INDEX "studio_article_versions_article_idx";
+DROP INDEX "studio_articles_project_idx";
+DROP INDEX "studio_articles_status_idx";
+DROP INDEX "studio_prompt_templates_global_key";
+ALTER TABLE "check_ins" ADD COLUMN "overdue_reminded_on" varchar;
+ALTER TABLE "check_ins" ADD COLUMN "milestone_escalated_at" timestamp;
+ALTER TABLE "learning_tracks" ADD COLUMN "policy_key" varchar;
+ALTER TABLE "admin_users" ADD COLUMN "linkedin_url" varchar;
+ALTER TABLE "admin_users" ADD COLUMN "photo_url" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "attached_plan_type" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "attached_plan_department" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "attached_plan_role" varchar;
+ALTER TABLE "offer_letter_addendums" ADD COLUMN "attached_plan_level" varchar;
+ALTER TABLE "release_notes" ADD COLUMN "status" varchar DEFAULT 'draft' NOT NULL;
+ALTER TABLE "release_notes" ADD COLUMN "created_by_user_id" varchar;
+ALTER TABLE "release_notes" ADD COLUMN "submitted_by_user_id" varchar;
+ALTER TABLE "release_notes" ADD COLUMN "submitted_at" timestamp;
+ALTER TABLE "release_notes" ADD COLUMN "approved_by_user_id" varchar;
+ALTER TABLE "release_notes" ADD COLUMN "approved_at" timestamp;
+ALTER TABLE "release_notes" ADD COLUMN "rejection_reason" text;
+ALTER TABLE "employee_plans" ADD COLUMN "manager_briefed_at" timestamp;
+ALTER TABLE "employee_plans" ADD COLUMN "strike_escalated_at" timestamp;
+ALTER TABLE "offer_letters" ADD COLUMN "attached_plan_type" varchar;
+ALTER TABLE "offer_letters" ADD COLUMN "attached_plan_department" varchar;
+ALTER TABLE "offer_letters" ADD COLUMN "attached_plan_role" varchar;
+ALTER TABLE "offer_letters" ADD COLUMN "attached_plan_level" varchar;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "department" varchar;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "role" varchar;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "level" varchar;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "weight" integer;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "milestone" varchar;
+ALTER TABLE "plan_goal_templates" ADD COLUMN "is_universal" boolean DEFAULT false NOT NULL;
+ALTER TABLE "coaching_log_entries" ADD CONSTRAINT "coaching_log_entries_author_id_admin_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "coaching_log_entries" ADD CONSTRAINT "coaching_log_entries_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "communications_log" ADD CONSTRAINT "communications_log_reviewed_by_admin_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "idx_communications_log_status" ON "communications_log" USING btree ("status","created_at");
+CREATE INDEX "idx_communications_log_type" ON "communications_log" USING btree ("type","created_at");
+ALTER TABLE "release_notes" ADD CONSTRAINT "release_notes_approved_by_user_id_admin_users_id_fk" FOREIGN KEY ("approved_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "release_notes" ADD CONSTRAINT "release_notes_created_by_user_id_admin_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "release_notes" ADD CONSTRAINT "release_notes_submitted_by_user_id_admin_users_id_fk" FOREIGN KEY ("submitted_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
