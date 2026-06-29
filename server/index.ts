@@ -2645,6 +2645,13 @@ async function runStartupTasks() {
     console.error("contract_clients is_active migration error:", err);
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE contract_clients ADD COLUMN IF NOT EXISTS ein VARCHAR`);
+    log("Ensured ein column on contract_clients");
+  } catch (err) {
+    console.error("contract_clients ein migration error:", err);
+  }
+
   // ── Contract dispatch schema migrations ─────────────────────────────────────
   try {
     // Add pending_dispatch_approval to the contract_status enum (idempotent)

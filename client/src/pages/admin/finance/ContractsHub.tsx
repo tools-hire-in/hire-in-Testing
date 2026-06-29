@@ -17,10 +17,11 @@ import {
   FileText, Plus, Search, Download, Send, CheckCircle, Upload,
   Building2, FileUp, Eye, Clock, XCircle, PenLine, FilePlus,
   ReceiptText, Calendar, DollarSign, RefreshCw, AlertCircle, X,
-  Loader2, ShieldCheck, Users, Globe, User
+  Loader2, ShieldCheck, Users, Globe, User, ScrollText
 } from "lucide-react";
 import type { Contract, ContractClient } from "@shared/schema";
 import ContractGenerator from "./ContractGenerator";
+import FreeformMsaGenerator from "./FreeformMsaGenerator";
 import ImportContract from "./ImportContract";
 import ClientRegistry from "./ClientRegistry";
 import ContractTemplates from "./ContractTemplates";
@@ -77,6 +78,7 @@ export default function ContractsHub() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showMsaBuilder, setShowMsaBuilder] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
 
@@ -265,6 +267,9 @@ export default function ContractsHub() {
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract">
                 <Upload className="h-4 w-4 mr-2" /> Import Contract
+              </Button>
+              <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa">
+                <ScrollText className="h-4 w-4 mr-2" /> New MSA (Freeform)
               </Button>
               <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract">
                 <Plus className="h-4 w-4 mr-2" /> Generate Contract
@@ -567,6 +572,18 @@ export default function ContractsHub() {
             queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
           }}
           onGoToClientsTab={() => setTab("clients")}
+        />
+      )}
+
+      {/* Freeform MSA Builder Dialog */}
+      {showMsaBuilder && (
+        <FreeformMsaGenerator
+          clients={clients}
+          onClose={() => setShowMsaBuilder(false)}
+          onCreated={() => {
+            setShowMsaBuilder(false);
+            queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+          }}
         />
       )}
 

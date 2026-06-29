@@ -1599,6 +1599,7 @@ export const contractClients = pgTable("contract_clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   address: text("address"),
+  ein: varchar("ein"),
   signatoryName: varchar("signatory_name"),
   signatoryTitle: varchar("signatory_title"),
   email: varchar("email"),

@@ -9,6 +9,7 @@ import { extractPlaceholders, renderTemplate } from "./contractTemplateEngine";
 import { sendContractSigningEmail, sendContractCountersignEmail } from "./email";
 import { searchCeipalCandidates } from "./ceipalService";
 import { resolveRoles } from "@shared/accessControl";
+import { z } from "zod";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
@@ -174,6 +175,100 @@ export function registerContractRoutes(app: Express) {
       } = req.body;
 
       if (!clientName) return res.status(400).json({ error: "Client name required" });
+
+      // ─── Freeform MSA branch ────────────────────────────────────────────────
+      // When a `freeformMsa` payload is supplied, build the DOCX from pre-written,
+      // user-edited clauses instead of the docxtemplater template path. The record
+      // is saved as a normal generated contract (templateId null, source generated)
+      // so the existing dispatch / e-sign / countersign / verify pipeline applies
+      // unchanged. Freeform inputs are persisted in variableValues with a flag.
+      if (req.body.freeformMsa) {
+        const msaSchema = z.object({
+          client: z.object({
+            name: z.string().min(1, "Client name required"),
+            ein: z.string().optional().default(""),
+            address: z.string().optional().default(""),
+            signatoryName: z.string().optional().default(""),
+            signatoryTitle: z.string().optional().default(""),
+          }),
+          provider: z.object({
+            name: z.string().optional().default("Hire'in Solutions"),
+            ein: z.string().optional().default(""),
+            address: z.string().optional().default(""),
+            signatoryName: z.string().optional().default(""),
+            signatoryTitle: z.string().optional().default(""),
+          }).optional().default({}),
+          establishment: z.object({
+            city: z.string().optional().default(""),
+            state: z.string().optional().default(""),
+            country: z.string().optional().default(""),
+          }).optional().default({}),
+          clauses: z.array(z.object({
+            key: z.string(),
+            title: z.string().optional().default(""),
+            body: z.string().optional().default(""),
+          })).default([]),
+          additionalTerms: z.string().optional().default(""),
+        });
+
+        const parsed = msaSchema.safeParse(req.body.freeformMsa);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "Invalid MSA input", details: parsed.error.flatten() });
+        }
+        const msa = parsed.data;
+
+        const { buildFreeformMsaDocx } = await import("./freeformMsa");
+        const buffer = await buildFreeformMsaDocx({
+          client: msa.client,
+          provider: msa.provider,
+          establishment: msa.establishment,
+          agreementDate: agreementDate || undefined,
+          clauses: msa.clauses,
+          additionalTerms: msa.additionalTerms,
+        });
+
+        const outPath = `.private/contracts/${Date.now()}_MSA_${(msa.client.name || clientName).replace(/\s+/g, "_")}.docx`;
+        const msaDocxPath = await objectStorageService.uploadBuffer(
+          buffer, outPath,
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+        // Persist EIN back to the registry client so it's remembered next time.
+        if (clientId && msa.client.ein?.trim()) {
+          try {
+            const existing = await dbStorage.getContractClient(clientId);
+            if (existing && !existing.ein?.trim()) {
+              await dbStorage.updateContractClient(clientId, { ein: msa.client.ein.trim() });
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        const contract = await dbStorage.createContract({
+          source: "generated",
+          templateId: null,
+          clientId: clientId || null,
+          templateName: "Master Services Agreement (Freeform)",
+          clientName,
+          candidateName: null,
+          candidateRole: null,
+          candidates: [],
+          variableValues: {
+            __msaFreeform: true,
+            client: msa.client,
+            provider: msa.provider,
+            establishment: msa.establishment,
+            clauses: msa.clauses,
+            additionalTerms: msa.additionalTerms,
+          },
+          docxPath: msaDocxPath,
+          agreementDate: agreementDate || null,
+          paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
+          billingFrequency: billingFrequency || null,
+          notes: notes || null,
+          createdBy: req.session!.userId,
+        });
+
+        return res.status(201).json(contract);
+      }
 
       // Normalise candidates array — fall back to legacy single-candidate fields
       const candidatesArray: Array<{ name: string; role: string; startDate: string; location: string; engagementType: string }> =

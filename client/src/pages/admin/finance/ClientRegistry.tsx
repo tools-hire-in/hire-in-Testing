@@ -14,7 +14,7 @@ import type { ContractClient, InsertContractClient } from "@shared/schema";
 interface Props { canManage: boolean; }
 
 const EMPTY: Partial<InsertContractClient> = {
-  name: "", address: "", signatoryName: "", signatoryTitle: "", email: "", phone: "", website: "",
+  name: "", address: "", ein: "", signatoryName: "", signatoryTitle: "", email: "", phone: "", website: "",
 };
 
 interface ClientFormProps {
@@ -28,6 +28,10 @@ function ClientForm({ data, onChange }: ClientFormProps) {
       <div className="space-y-1.5 col-span-2">
         <Label>Company Name *</Label>
         <Input value={data.name || ""} onChange={e => onChange({ ...data, name: e.target.value })} data-testid="input-client-company" />
+      </div>
+      <div className="space-y-1.5">
+        <Label>EIN / Tax ID</Label>
+        <Input value={data.ein || ""} onChange={e => onChange({ ...data, ein: e.target.value })} placeholder="e.g. 12-3456789" data-testid="input-client-ein" />
       </div>
       <div className="space-y-1.5">
         <Label>Signatory Name</Label>
