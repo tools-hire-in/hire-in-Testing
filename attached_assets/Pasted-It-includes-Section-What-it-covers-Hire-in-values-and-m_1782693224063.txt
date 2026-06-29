@@ -1,0 +1,19 @@
+It includes:
+
+Section	What it covers
+Hire’in values and mission	Candidate-first delivery, communication clarity, AI with human judgment, digital safety, transparency, ownership, and metrics
+Final SOP library	21 SOPs total, including the missing domains
+Missing SOPs added	Marketing, BD, Finance, Legal, Engineering/Professional Services, Candidate Experience, Requirement Synthesis, and KleriQ/ProKred SaaS usage
+ProKred/KleriQ positioning	Clear explanation that they are separate SaaS platforms used by Hire’in as pilot/design-partner tools, not internal-only tools
+Successive rollout plan	5 launch waves so the team learns and adopts gradually
+Training cadence	No more than two operational SOPs per week, with role-based training and acknowledgment
+App governance	Reuse the existing central review/discussion/approval workflow service; no duplicate SOP-only workflow engine
+KPIs	Intake completeness, submission QC, ATS updates, candidate communication SLA, credential packet completeness, ProKred adoption, access removal, training completion
+Launch communication	Ready-to-send announcement for the team
+Manager checklist	Practical actions managers must take to make SOP adoption real
+
+The approach is aligned with Hire’in’s own delivery model around intake calibration, credential-aware pre-screening, submission QC, MSP/VMS readiness, pipeline visibility, and interview-to-start follow-through. It also fits your app direction because your platform already has shared authentication, RBAC, audit logging, and multi-portal architecture that can support centralized SOP workflow governance.
+
+For adoption, I also grounded the rollout in staffing and operating standards: ASA emphasizes ethical staffing, dignity, equal opportunity, client/candidate confidentiality, and lawful conduct; SHRM supports policy acknowledgment practices; and NIST’s least-privilege principle supports role-based tool access and deprovisioning controls.
+
+My recommendation: launch Wave 1 only first — REQ-001, TA-001, TA-003, OPS-001, and SALES-001. That gives immediate value without overwhelming the team.
