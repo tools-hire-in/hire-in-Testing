@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, index, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, index, real, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -987,7 +987,17 @@ export const employeePlans = pgTable("employee_plans", {
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Data-hygiene guard: a plan may only have a NULL employee_id while it is still
+  // 'pending' (seeded at offer acceptance, backfilled at onboarding/activation).
+  // Any non-pending plan (active/completed/extended/closed) MUST have an employee.
+  // This keeps the pending workflow legal while preventing an activated plan from
+  // ever pointing at no one.
+  check(
+    "ck_employee_plans_nonpending_has_employee",
+    sql`${table.status} = 'pending' OR ${table.employeeId} IS NOT NULL`,
+  ),
+]);
 
 export const planGoalTemplates = pgTable("plan_goal_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -1324,6 +1324,29 @@ export function startScheduler() {
       }
 
       console.log(`[scheduler] Signing reminders: ${offerReminders} offer letter(s), ${addendumReminders} addendum(s) reminded.`);
+
+      // --- Orphaned pending-plan cleanup ---
+      // A pending plan is seeded at offer acceptance with NULL employee_id and
+      // activated (employee_id backfilled) at onboarding. If the offer was
+      // cancelled, deleted, or the candidate never joined, the pending row lingers
+      // forever. Delete those — pending plans have no check-ins/goals yet (those
+      // are seeded only at activation), so deletion is clean and has no dependents.
+      const sixtyDaysAgoStr = new Date(now.getTime() - 60 * 86400000).toISOString().slice(0, 10);
+      const orphans = await db.execute(sql`
+        DELETE FROM employee_plans ep
+        WHERE ep.status = 'pending'
+          AND ep.employee_id IS NULL
+          AND (
+            ep.offer_letter_id IS NULL
+            OR NOT EXISTS (SELECT 1 FROM offer_letters ol WHERE ol.id = ep.offer_letter_id)
+            OR EXISTS (SELECT 1 FROM offer_letters ol WHERE ol.id = ep.offer_letter_id AND ol.status = 'cancelled')
+            OR (ep.start_date ~ '^\\d{4}-\\d{2}-\\d{2}$' AND ep.start_date::date < ${sixtyDaysAgoStr}::date)
+          )
+        RETURNING ep.id
+      `);
+      if (orphans.rows.length > 0) {
+        console.log(`[scheduler] Orphaned pending-plan cleanup: ${orphans.rows.length} stale pending plan(s) deleted.`);
+      }
     } catch (err) {
       console.error("[scheduler] Signing reminder sweep failed:", err);
     }

@@ -10162,6 +10162,12 @@ export async function registerRoutes(
 
       await storage.updateOfferLetter(letter.id, { status: "cancelled" });
 
+      // Clean up any pending plan seeded for this offer (no employee/check-ins yet).
+      await db.execute(sql`
+        DELETE FROM employee_plans
+        WHERE offer_letter_id = ${letter.id} AND status = 'pending' AND employee_id IS NULL
+      `);
+
       await storage.createAuditLog({
         action: "offer_letter_cancelled",
         actorId: req.session.userId!,
@@ -10195,6 +10201,12 @@ export async function registerRoutes(
       }
 
       await storage.updateOfferLetter(letter.id, { status: "cancelled" });
+
+      // Clean up any pending plan seeded for this offer (no employee/check-ins yet).
+      await db.execute(sql`
+        DELETE FROM employee_plans
+        WHERE offer_letter_id = ${letter.id} AND status = 'pending' AND employee_id IS NULL
+      `);
 
       await storage.createAuditLog({
         action: "offer_letter_withdrawn",

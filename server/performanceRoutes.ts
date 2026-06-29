@@ -2330,6 +2330,13 @@ export function registerPerformanceRoutes(app: Express) {
       }
 
       const { status, outcome, end_date } = req.body;
+      // Data-hygiene guard (mirrors ck_employee_plans_nonpending_has_employee):
+      // a plan may only be NULL-employee while 'pending' (offer-seeded placeholder).
+      // Block transitioning such a placeholder to a non-pending status with a clear
+      // 400 instead of letting it surface as a 500 CHECK violation.
+      if (status && status !== "pending" && !existingPlan.employee_id) {
+        return res.status(400).json({ error: "Cannot activate or close a plan that has no employee assigned. This plan is an unfilled offer placeholder." });
+      }
       const result = await db.execute(sql`
         UPDATE employee_plans SET
           status = COALESCE(${status ?? null}::employee_plan_status, status),
