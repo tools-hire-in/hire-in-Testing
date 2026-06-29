@@ -2960,6 +2960,11 @@ export const salaryAdvanceRepaymentStatusEnum = pgEnum("salary_advance_repayment
   "waived",
 ]);
 
+export const salaryAdvanceKindEnum = pgEnum("salary_advance_kind", [
+  "advance",
+  "overpayment",
+]);
+
 export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   requestNumber: varchar("request_number").notNull().unique(),
@@ -2968,6 +2973,11 @@ export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
   requestedAmount: numeric("requested_amount").notNull(),
   reason: text("reason").notNull(),
   status: salaryAdvanceStatusEnum("status").notNull().default("pending_manager"),
+  // Distinguishes a normal salary advance from a recorded overpayment recovery.
+  kind: salaryAdvanceKindEnum("kind").notNull().default("advance"),
+  // True when the record was manually recorded by HR/admin (backfill), bypassing
+  // the self-service request/approval chain.
+  backfilled: boolean("backfilled").notNull().default(false),
   // Approval / repayment plan
   approvedAmount: numeric("approved_amount"),
   repaymentMonths: integer("repayment_months"),

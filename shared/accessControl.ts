@@ -250,6 +250,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "salaryAdvance.managerApprove": ["super_admin", "admin", "hr", "manager"],
   "salaryAdvance.finalApprove": ["super_admin"],
   "salaryAdvance.accounts": ["super_admin", "admin", "hr", "finance"],
+  "salaryAdvance.backfill": ["super_admin", "admin", "hr"],
   "salaryAdvance.policy.manage": ["super_admin", "admin", "hr"],
   "admin.releaseNotes": ["super_admin", "admin", "hr"],
   "admin.releaseNotes.gitLog": ["super_admin", "admin", "hr"],

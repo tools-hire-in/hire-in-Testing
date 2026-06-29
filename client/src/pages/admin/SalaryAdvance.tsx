@@ -27,6 +27,8 @@ interface AdvanceUser {
 interface Advance {
   id: string;
   requestNumber: string;
+  kind?: string;
+  backfilled?: boolean;
   requesterId: string;
   managerId: string | null;
   requestedAmount: string;
@@ -95,6 +97,21 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function KindBadge({ kind }: { kind?: string }) {
+  if (kind === "overpayment") {
+    return (
+      <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200" data-testid="badge-kind-overpayment">
+        Overpayment
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs bg-indigo-100 text-indigo-700 border-indigo-200" data-testid="badge-kind-advance">
+      Advance
+    </Badge>
+  );
+}
+
 function fmt(value: string | number | null | undefined) {
   const num = typeof value === "string" ? parseFloat(value) : (value || 0);
   if (isNaN(num as number)) return "0.00";
@@ -113,26 +130,38 @@ export default function SalaryAdvance() {
   const [location, setLocation] = useLocation();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
 
-  // The self-service Salary Advance feature is hidden behind the
-  // `salary_advance_enabled` flag (default OFF). When disabled, redirect away so
-  // the page is unreachable even via a direct URL. Code is kept intact so the
-  // flag can re-enable the feature later.
-  const advanceEnabled = isEnabled("salary_advance_enabled");
-  useEffect(() => {
-    if (!flagsLoading && !advanceEnabled) setLocation("/admin/hr");
-  }, [flagsLoading, advanceEnabled, setLocation]);
-
   const role = user?.role || "employee";
   // HR can be a fallback approver when the manager chain is unavailable, so HR
   // must also reach the manager-approval queue/UI.
   const isManager = ["manager", "admin", "super_admin", "hr"].includes(role);
   const isFinal = role === "super_admin";
   const isAccounts = ["super_admin", "admin", "hr", "finance"].includes(role);
+  // HR/admin/super_admin can manually record advances & overpayments. This tool
+  // works regardless of the self-service flag, so these roles keep access to the
+  // page (Active Advances area) even when the flag is OFF.
+  const canRecord = ["super_admin", "admin", "hr"].includes(role);
+
+  // The self-service Salary Advance feature is hidden behind the
+  // `salary_advance_enabled` flag (default OFF). When disabled, redirect away so
+  // the page is unreachable even via a direct URL — except for the roles that can
+  // manually record entries, who land on the Active Advances tab. Code is kept
+  // intact so the flag can re-enable the full self-service feature later.
+  const advanceEnabled = isEnabled("salary_advance_enabled");
+  useEffect(() => {
+    if (!flagsLoading && !advanceEnabled && !canRecord) setLocation("/admin/hr");
+  }, [flagsLoading, advanceEnabled, canRecord, setLocation]);
+
+  // When the flag is off but the user can record, only the Active Advances tab is
+  // meaningful (the self-service request/approval flow is disabled).
+  const recordOnly = !advanceEnabled && canRecord;
 
   const params = new URLSearchParams(location.split("?")[1] || "");
-  const initialTab = params.get("tab") || "mine";
+  const initialTab = recordOnly ? "active" : (params.get("tab") || "mine");
   const [tab, setTab] = useState(initialTab);
-  useEffect(() => { setTab(params.get("tab") || "mine"); /* eslint-disable-next-line */ }, [location]);
+  useEffect(() => {
+    setTab(recordOnly ? "active" : (params.get("tab") || "mine"));
+    /* eslint-disable-next-line */
+  }, [location, recordOnly]);
 
   const setTabAndUrl = (t: string) => {
     setTab(t);
@@ -155,35 +184,43 @@ export default function SalaryAdvance() {
             <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
               <Wallet className="h-6 w-6" /> Salary Advance
             </h1>
-            <p className="text-muted-foreground text-sm">Request a salary advance and track repayment</p>
+            <p className="text-muted-foreground text-sm">
+              {recordOnly ? "Record salary advances and overpayments for employees" : "Request a salary advance and track repayment"}
+            </p>
           </div>
         </div>
 
-        <Tabs value={tab} onValueChange={setTabAndUrl}>
-          <TabsList className="flex flex-wrap gap-1 h-auto">
-            <TabsTrigger value="mine" data-testid="tab-mine">My Requests</TabsTrigger>
-            {isManager && (
-              <TabsTrigger value="approvals" data-testid="tab-approvals">
-                Approvals {stats?.pendingManager ? <Badge className="ml-1.5 bg-amber-500">{stats.pendingManager}</Badge> : null}
-              </TabsTrigger>
-            )}
-            {isFinal && (
-              <TabsTrigger value="final" data-testid="tab-final">
-                Final Approval {stats?.pendingFinal ? <Badge className="ml-1.5 bg-blue-500">{stats.pendingFinal}</Badge> : null}
-              </TabsTrigger>
-            )}
-            {isAccounts && (
-              <TabsTrigger value="active" data-testid="tab-active">Active Advances</TabsTrigger>
-            )}
-            <TabsTrigger value="policy" data-testid="tab-policy">Policy</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {recordOnly ? (
+          <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />
+        ) : (
+          <>
+            <Tabs value={tab} onValueChange={setTabAndUrl}>
+              <TabsList className="flex flex-wrap gap-1 h-auto">
+                <TabsTrigger value="mine" data-testid="tab-mine">My Requests</TabsTrigger>
+                {isManager && (
+                  <TabsTrigger value="approvals" data-testid="tab-approvals">
+                    Approvals {stats?.pendingManager ? <Badge className="ml-1.5 bg-amber-500">{stats.pendingManager}</Badge> : null}
+                  </TabsTrigger>
+                )}
+                {isFinal && (
+                  <TabsTrigger value="final" data-testid="tab-final">
+                    Final Approval {stats?.pendingFinal ? <Badge className="ml-1.5 bg-blue-500">{stats.pendingFinal}</Badge> : null}
+                  </TabsTrigger>
+                )}
+                {isAccounts && (
+                  <TabsTrigger value="active" data-testid="tab-active">Active Advances</TabsTrigger>
+                )}
+                <TabsTrigger value="policy" data-testid="tab-policy">Policy</TabsTrigger>
+              </TabsList>
+            </Tabs>
 
-        {tab === "mine" && <MyRequestsTab policy={policy} onOpen={setDetailId} />}
-        {tab === "approvals" && isManager && <ManagerQueueTab policy={policy} onOpen={setDetailId} />}
-        {tab === "final" && isFinal && <FinalQueueTab policy={policy} onOpen={setDetailId} />}
-        {tab === "active" && isAccounts && <ActiveAdvancesTab onOpen={setDetailId} />}
-        {tab === "policy" && <PolicyView policy={policy} />}
+            {tab === "mine" && <MyRequestsTab policy={policy} onOpen={setDetailId} />}
+            {tab === "approvals" && isManager && <ManagerQueueTab policy={policy} onOpen={setDetailId} />}
+            {tab === "final" && isFinal && <FinalQueueTab policy={policy} onOpen={setDetailId} />}
+            {tab === "active" && isAccounts && <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />}
+            {tab === "policy" && <PolicyView policy={policy} />}
+          </>
+        )}
 
         {detailId && (
           <AdvanceDetailDialog
@@ -222,6 +259,12 @@ function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: str
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-xs text-muted-foreground">{a.requestNumber}</span>
           <StatusBadge status={a.status} />
+          <KindBadge kind={a.kind} />
+          {a.backfilled && (
+            <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200" data-testid={`badge-backfilled-${a.id}`}>
+              Manually recorded
+            </Badge>
+          )}
           {a.isException && <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-200">Exception</Badge>}
           {a.exitRecoveryFlag && <Badge variant="outline" className="text-xs bg-red-100 text-red-700 border-red-200">Exit Recovery</Badge>}
         </div>
@@ -377,14 +420,22 @@ function FinalQueueTab({ policy, onOpen }: { policy?: Policy; onOpen: (id: strin
   );
 }
 
-function ActiveAdvancesTab({ onOpen }: { onOpen: (id: string) => void }) {
+function ActiveAdvancesTab({ onOpen, canRecord }: { onOpen: (id: string) => void; canRecord?: boolean }) {
   const { data: advances, isLoading } = useQuery<Advance[]>({ queryKey: ["/api/salary-advances/active"] });
+  const [showRecord, setShowRecord] = useState(false);
   const totalOutstanding = (advances || []).reduce((s, a) => s + parseFloat(a.outstandingBalance || "0"), 0);
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Advances with outstanding balances</h2>
-        <div className="text-sm">Total outstanding: <span className="font-semibold font-mono">₹{fmt(totalOutstanding)}</span></div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm">Total outstanding: <span className="font-semibold font-mono">₹{fmt(totalOutstanding)}</span></div>
+          {canRecord && (
+            <Button size="sm" onClick={() => setShowRecord(true)} data-testid="button-record-for-employee">
+              <IndianRupee className="h-4 w-4 mr-1.5" /> Record for Employee
+            </Button>
+          )}
+        </div>
       </div>
       {isLoading ? (
         <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
@@ -393,7 +444,142 @@ function ActiveAdvancesTab({ onOpen }: { onOpen: (id: string) => void }) {
       ) : (
         <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No active advances.</CardContent></Card>
       )}
+      {canRecord && showRecord && (
+        <RecordForEmployeeDialog open={showRecord} onClose={() => setShowRecord(false)} />
+      )}
     </div>
+  );
+}
+
+function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const invalidate = useInvalidateAll();
+  const [kind, setKind] = useState<"advance" | "overpayment">("advance");
+  const [employeeId, setEmployeeId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [repaymentMonths, setRepaymentMonths] = useState("6");
+  const now = new Date();
+  const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [startYear, setStartYear] = useState(String(defaultStart.getFullYear()));
+  const [startMonth, setStartMonth] = useState(String(defaultStart.getMonth() + 1));
+
+  const { data: usersResp } = useQuery<{ users: AdvanceUser[] }>({ queryKey: ["/api/admin/users", "active"], queryFn: async () => {
+    const res = await fetch("/api/admin/users?status=active", { credentials: "include" });
+    if (!res.ok) return { users: [] };
+    return res.json();
+  } });
+  const employees = (usersResp?.users || []).slice().sort((a, b) => userName(a).localeCompare(userName(b)));
+
+  const amt = parseFloat(amount || "0");
+  const months = parseInt(repaymentMonths || "0", 10);
+  const monthlyPreview = kind === "advance" && amt > 0 && months > 0 ? Math.ceil((amt / months) * 100) / 100 : amt;
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const body: any = { employeeId, kind, amount: amt };
+      if (reason.trim()) body.reason = reason.trim();
+      if (kind === "advance") {
+        body.repaymentMonths = months;
+        body.startYear = parseInt(startYear, 10);
+        body.startMonth = parseInt(startMonth, 10);
+      }
+      const res = await apiRequest("POST", "/api/salary-advances/backfill", body);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: kind === "overpayment" ? "Overpayment recorded" : "Advance recorded" });
+      invalidate();
+      onClose();
+    },
+    onError: (e: any) => toast({ title: "Failed to record", description: e?.message, variant: "destructive" }),
+  });
+
+  const canSubmit = !!employeeId && amt > 0 && (kind === "overpayment" || months > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Record for Employee</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-xs">Type</Label>
+            <Tabs value={kind} onValueChange={(v) => setKind(v as any)}>
+              <TabsList className="grid grid-cols-2 w-full">
+                <TabsTrigger value="advance" data-testid="tab-record-advance">Salary Advance</TabsTrigger>
+                <TabsTrigger value="overpayment" data-testid="tab-record-overpayment">Overpayment</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <p className="text-xs text-muted-foreground">
+              {kind === "advance"
+                ? "Backfill an already-given advance. Recovery runs over the chosen months starting from the selected month."
+                : "Record an overpayment to recover in full next cycle. If net pay is short, the remainder carries forward automatically."}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Employee</Label>
+            <select
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              data-testid="select-employee"
+            >
+              <option value="">Select an employee…</option>
+              {employees.map(u => (
+                <option key={u.id} value={u.id}>{userName(u)} · {u.email}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Amount (₹)</Label>
+            <Input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 25000" data-testid="input-record-amount" />
+          </div>
+
+          {kind === "advance" && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Repayment months</Label>
+                <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-months" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Start month</Label>
+                <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-start-month">
+                  {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Start year</Label>
+                <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} data-testid="input-start-year" />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label className="text-xs">Reason / note (optional)</Label>
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={kind === "overpayment" ? "Why was this overpaid?" : "Context for this advance"} data-testid="input-record-reason" />
+          </div>
+
+          {amt > 0 && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+              {kind === "advance"
+                ? <>Recovery: {months} month(s) × <span className="font-mono">₹{fmt(monthlyPreview)}</span>, starting {MONTHS[parseInt(startMonth, 10)]} {startYear}.</>
+                : <>Will recover <span className="font-mono">₹{fmt(amt)}</span> from the next salary cycle (remainder carries forward if net pay is short).</>}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-record">Cancel</Button>
+          <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-record">
+            {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+            Record {kind === "overpayment" ? "Overpayment" : "Advance"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -500,9 +686,15 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-sm">{advance?.requestNumber || "Advance"}</span>
             {advance && <StatusBadge status={advance.status} />}
+            {advance && <KindBadge kind={advance.kind} />}
+            {advance?.backfilled && (
+              <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200" data-testid="badge-detail-backfilled">
+                Manually recorded
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
 

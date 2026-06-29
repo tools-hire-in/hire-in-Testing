@@ -51,3 +51,10 @@ request is routed to the first active HR user, stored as the advance's
 
 ## Feature flag gate (salary_advance_enabled)
 The whole self-service Salary Advance feature is gated behind the `salary_advance_enabled` system_settings feature flag (default OFF — useFeatureFlags treats absent/non-true as disabled, so no seeding needed). Backend: an `app.use("/api/salary-advances")` middleware at the top of registerSalaryAdvanceRoutes returns 403 unless the flag is true; route handlers + applyAdvanceRecoveriesForRun are left intact. Frontend gates: AdminLayout nav item + stats query, SalaryAdvance.tsx redirect to /admin/hr, HRSettings "Salary Advance Policy" nav+section. To re-enable: flip the flag via /api/system/feature-flags. Tests (access/recovery) call storage directly, not HTTP, so the gate doesn't affect them.
+
+## Manual recording: backfill advance + overpayment (admin tool)
+HR/admin/super_admin can manually record records that flow through the SAME recovery engine, bypassing request/approval.
+- **Schema:** `salaryAdvanceRequests.kind` enum (`advance`|`overpayment`, default `advance`) + `backfilled` boolean (default false). Both have DB defaults so the insert schema stays unchanged.
+- **Recovery is kind-agnostic:** records are created with status `disbursed`, so the existing flag-independent recovery engine picks them up with no engine changes. Overpayment = single installment next month (remainder carries forward via the same reschedule path); backfilled advance = N installments from a chosen start month.
+- **Flag bypass is deliberate:** the `/api/salary-advances` 403 middleware exempts the backfill route + read endpoints (`/active`,`/stats`,`/policy`,`/:id`) for privileged roles, so the manual tool works even when `salary_advance_enabled` is OFF. Permission key `salaryAdvance.backfill = [super_admin, admin, hr]`.
+**Why:** the self-service flag governs the employee request flow; HR must be able to record real-world advances/overpayments regardless of whether self-service is live.

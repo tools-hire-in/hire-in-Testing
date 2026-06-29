@@ -193,11 +193,30 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   // explicitly true, every endpoint returns 403 so the feature is fully off, not
   // just hidden in the UI. The route handlers below are kept intact so the flag
   // can re-enable the feature without rebuilding it.
-  app.use("/api/salary-advances", async (_req: Request, res: Response, next: NextFunction) => {
+  // The manual HR recording tool (backfill advance / record overpayment) must
+  // work regardless of the self-service flag — its whole point is to let HR/admin
+  // record entries even when the request workflow is off. So when the flag is
+  // OFF we still let trusted roles reach the backfill route and the read
+  // endpoints the recording UI depends on; everything else stays fully disabled.
+  const FLAG_OFF_PRIVILEGED_ROLES = ["super_admin", "admin", "hr"];
+  const isAdminToolRequest = (method: string, subPath: string): boolean => {
+    if (method === "POST" && subPath === "/backfill") return true;
+    if (method !== "GET") return false;
+    if (subPath === "/active" || subPath === "/stats" || subPath === "/policy") return true;
+    // Detail dialog: GET /api/salary-advances/:id (uuid-shaped, no extra segment).
+    if (/^\/[0-9a-fA-F-]{16,}$/.test(subPath)) return true;
+    return false;
+  };
+  app.use("/api/salary-advances", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const setting = await storage.getSystemSetting("feature_flags");
       const flags = (setting?.value as Record<string, boolean>) || {};
       if (flags.salary_advance_enabled === true) return next();
+      const role = req.session?.role || "";
+      // req.path is relative to the "/api/salary-advances" mount point here.
+      if (FLAG_OFF_PRIVILEGED_ROLES.includes(role) && isAdminToolRequest(req.method, req.path)) {
+        return next();
+      }
     } catch {
       // fall through to disabled response
     }
@@ -295,6 +314,116 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       res.json(await enrichUsers(rows));
     } catch {
       res.status(500).json({ error: "Failed to load active advances" });
+    }
+  });
+
+  // ── HR/admin: manually record an entry for an employee.
+  // Two kinds:
+  //   • advance     — backfill an already-active advance, skipping the
+  //                   request/approval chain (HR picks amount, repayment months,
+  //                   and the start month of recovery).
+  //   • overpayment — record an overpayment to be recovered in full next cycle
+  //                   (single installment); any shortfall carries forward via the
+  //                   existing monthly recovery engine.
+  // The record is created in `disbursed` status with a repayment schedule, so the
+  // standard payroll recovery picks it up automatically. Works regardless of the
+  // self-service feature flag (see the feature gate above).
+  app.post("/api/salary-advances/backfill", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        employeeId: z.string().min(1, "Employee is required"),
+        kind: z.enum(["advance", "overpayment"]),
+        amount: z.number().positive("Amount must be greater than zero"),
+        reason: z.string().optional(),
+        repaymentMonths: z.number().int().min(1).max(36).optional(),
+        startYear: z.number().int().min(2000).max(2100).optional(),
+        startMonth: z.number().int().min(1).max(12).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      const { employeeId, kind } = parsed.data;
+      const actorId = req.session.userId!;
+      const amount = Math.round(parsed.data.amount * 100) / 100;
+
+      const target = await storage.getAdminUser(employeeId);
+      if (!target) return res.status(404).json({ error: "Employee not found" });
+
+      // Resolve schedule parameters. Overpayment = single installment next cycle.
+      let months: number;
+      let start: { year: number; month: number };
+      if (kind === "overpayment") {
+        months = 1;
+        start = nextMonth();
+      } else {
+        months = parsed.data.repaymentMonths || 1;
+        start = (parsed.data.startYear && parsed.data.startMonth)
+          ? { year: parsed.data.startYear, month: parsed.data.startMonth }
+          : nextMonth();
+      }
+      const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
+
+      const defaultReason = kind === "overpayment"
+        ? "Overpayment recovery recorded by HR"
+        : "Salary advance recorded by HR";
+      const reason = parsed.data.reason && parsed.data.reason.trim().length > 0
+        ? parsed.data.reason.trim()
+        : defaultReason;
+
+      const now = new Date();
+      const created = await storage.createSalaryAdvanceWithNumber({
+        requesterId: employeeId,
+        managerId: null,
+        requestedAmount: amount.toFixed(2),
+        reason,
+        kind,
+        backfilled: true,
+        status: "disbursed",
+        approvedAmount: amount.toFixed(2),
+        repaymentMonths: months,
+        monthlyDeduction: monthlyDeduction.toFixed(2),
+        repaymentStartYear: start.year,
+        repaymentStartMonth: start.month,
+        totalRepaid: "0",
+        outstandingBalance: amount.toFixed(2),
+        managerApprovedBy: actorId,
+        managerApprovedAt: now,
+        finalApprovedBy: actorId,
+        finalApprovedAt: now,
+        disbursedBy: actorId,
+        disbursedAt: now,
+      } as any);
+
+      const schedule = buildSchedule({
+        advanceId: created.id,
+        userId: employeeId,
+        amount,
+        months,
+        startYear: start.year,
+        startMonth: start.month,
+      });
+      await storage.createSalaryAdvanceRepayments(schedule as any);
+
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: created.id, actorId, action: "backfilled",
+        oldStatus: null, newStatus: "disbursed",
+        metadata: { kind, amount, months, monthlyDeduction, scheduleStart: start, recordedManually: true },
+      } as any);
+
+      await notify({
+        userId: employeeId,
+        type: kind === "overpayment" ? "salary_overpayment_recorded" : "salary_advance_recorded",
+        title: kind === "overpayment" ? "Overpayment recovery scheduled" : "Salary advance recorded",
+        message: kind === "overpayment"
+          ? `An overpayment of ${amount.toFixed(2)} will be recovered from your upcoming salary.`
+          : `A salary advance of ${amount.toFixed(2)} has been recorded and will be recovered over ${months} month(s).`,
+        link: EMPLOYEE_LINK,
+      });
+
+      res.status(201).json({ ...created, repayments: schedule });
+    } catch (err) {
+      console.error("Salary advance backfill error:", err);
+      res.status(500).json({ error: "Failed to record entry" });
     }
   });
 
