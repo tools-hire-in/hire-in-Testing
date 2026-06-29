@@ -20,6 +20,7 @@
 - [Shift system times](shift-system-times.md) — SHIFT_A/C had wrong IST times; corrected values seeded via ON CONFLICT DO UPDATE; sweep cron 01:30 IST targets yesterday.
 - [AdminLayout nesting-aware](adminlayout-nesting.md) — nested AdminLayout dedupes via AdminLayoutMounted context (benign); only nested Tabs are the real tabs-inside-tabs problem.
 - [My Desk router](my-desk-router.md) — live dashboard is CommandCenter (MyWork/HRDashboard dead); embedded sub-pages must namespace their own tab param, never write parent's `tab`.
+- [employee_plans nullable employee_id](employee-plans-nullable-employee-id.md) — pending plans seeded at offer-accept with NULL employee_id; never declare .notNull() or publish SET NOT NULL fails on prod.
 - [New Look two-tier gate](new-look-two-tier-gate.md) — v2 = global `new_look` flag (admin master/kill-switch) AND per-user `preferences.newLook`; compose via useNewLook().enabled.
 - [HIRD needs_info flow](hird-needs-info-flow.md) — return/respond audit actions returned_for_info & responded_to_info; respond restores priorStatus from latest return's metadata.
 - [App redesign v2 seam](v2-redesign-seam.md) — opt-in newLook flag; v2 tokens scoped to .app-v2 re-map shadcn --sidebar* so existing Sidebar renders navy; content tokens untouched; flag-OFF=classic.

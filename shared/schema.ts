@@ -962,7 +962,9 @@ export const employeePlanOutcomeEnum = pgEnum("employee_plan_outcome", ["confirm
 
 export const employeePlans = pgTable("employee_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  // Nullable: a pending plan is seeded at offer acceptance with NULL employee_id
+  // and the real employee_id is backfilled at onboarding/activation.
+  employeeId: varchar("employee_id").references(() => adminUsers.id),
   managerId: varchar("manager_id").references(() => adminUsers.id),
   planType: employeePlanTypeEnum("plan_type").notNull(),
   departmentScope: employeePlanDeptScopeEnum("department_scope").notNull().default("healthcare"),
