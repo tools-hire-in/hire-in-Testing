@@ -1,7 +1,19 @@
 ---
-name: Growth plan activation from signed addendums
-description: How a signed offer-letter addendum with a growth clause becomes a real tracked employee_plan, and the goal-category enum trap that blocks plan-goal seeding
+name: Plan activation from signed offers/addendums (generalized)
+description: How a signed offer-letter/addendum instantiates a real tracked employee_plan of any type (probation/growth/pip), and the goal-category enum trap
 ---
+
+**Any document can carry an attached plan of any type.** Offers and addendums persist a
+nullable plan attachment (type + dept/role/level key); on accept/countersign/onboard a
+single generic activation entrypoint instantiates a real tracked plan (plan + check-ins +
+template goals). **Why:** previously only growth-clause addendums activated; the engine was
+generalized so probation/growth/pip all flow through one idempotent path instead of N
+bespoke hooks. **Invariants to preserve:** idempotency key is (employee, planType, window);
+activation aborts when zero goals resolve EXCEPT pip (a pip with no template goals is still
+a valid empty plan); the legacy growth-from-addendum hook must keep delegating so existing
+back-compat/backfill behavior is unchanged. The picker pre-selects the framework-resolved
+default but every choice is overridable, so never assume the stored attachment equals the
+default.
 
 A signed offer-letter addendum that carries a 90-day growth-plan clause
 (`include_growth_plan_clause=true`) now instantiates a REAL, active, fully-tracked

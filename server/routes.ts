@@ -68,7 +68,7 @@ import {
 } from "@shared/performanceClauses";
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
-import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, normalizeGoalCategory } from "./performanceRoutes";
+import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, ensurePlanFromDocument, resolveAttachedPlanGoals, seedPlanGoals, generatePlanCheckIns, normalizeGoalCategory, type AttachablePlanType } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
@@ -7878,7 +7878,8 @@ export async function registerRoutes(
         probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
         probationPeriodMonths, extendedProbationMonths,
         performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords,
-        policyAnnexures, seedProbationPlan } = req.body;
+        policyAnnexures, seedProbationPlan,
+        attachedPlanType, attachedPlanDepartment, attachedPlanRole, attachedPlanLevel } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
@@ -8006,6 +8007,12 @@ export async function registerRoutes(
         performanceClauseText: renderedPerformanceClauseText,
         policyAnnexures: Array.isArray(policyAnnexures) && policyAnnexures.length > 0 ? policyAnnexures : null,
         seedProbationPlan: !!seedProbationPlan,
+        // Phase 2: attached plan template. Default to probation when only the
+        // legacy seed-probation checkbox is set, so older clients keep working.
+        attachedPlanType: attachedPlanType || (seedProbationPlan ? "probation" : null),
+        attachedPlanDepartment: attachedPlanDepartment || null,
+        attachedPlanRole: attachedPlanRole || null,
+        attachedPlanLevel: attachedPlanLevel || null,
       });
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -8123,7 +8130,8 @@ export async function registerRoutes(
         probationSalary, probationSalaryInWords, postProbationSalary, postProbationSalaryInWords,
         probationPeriodMonths, extendedProbationMonths,
         performanceProbationReview, maxRevisionSalary, maxRevisionSalaryInWords,
-        policyAnnexures, seedProbationPlan } = req.body;
+        policyAnnexures, seedProbationPlan,
+        attachedPlanType, attachedPlanDepartment, attachedPlanRole, attachedPlanLevel } = req.body;
 
       if (!candidateName || !candidatePersonalEmail || !designation) {
         return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
@@ -8237,6 +8245,10 @@ export async function registerRoutes(
         performanceClauseText: renderedPerformanceClauseText,
         policyAnnexures: Array.isArray(policyAnnexures) && policyAnnexures.length > 0 ? policyAnnexures : null,
         seedProbationPlan: !!seedProbationPlan,
+        attachedPlanType: attachedPlanType || (seedProbationPlan ? "probation" : null),
+        attachedPlanDepartment: attachedPlanDepartment || null,
+        attachedPlanRole: attachedPlanRole || null,
+        attachedPlanLevel: attachedPlanLevel || null,
       };
 
       // Resubmitting a rejected letter returns it to the approval queue
@@ -8666,22 +8678,37 @@ export async function registerRoutes(
         changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, authCode },
       });
 
-      // ── Seed a pending probation plan at offer acceptance ─────────────────
-      if ((letter as any).seedProbationPlan) {
+      // ── Seed a pending plan at offer acceptance ──────────────────────────
+      // Phase 2: honor the attached plan template chosen on the offer. Fall back
+      // to the legacy seed-probation checkbox so older offers keep working.
+      const acceptPlanType: AttachablePlanType | null =
+        ((letter as any).attachedPlanType as AttachablePlanType | null)
+        || ((letter as any).seedProbationPlan ? "probation" : null);
+      if (acceptPlanType) {
         try {
-          const probationMonths: number = (letter as any).probationPeriodMonths || 3;
           const proposedStart: string = letter.proposedStartDate || new Date().toISOString().slice(0, 10);
-          const endDate = new Date(proposedStart);
-          endDate.setMonth(endDate.getMonth() + probationMonths);
-          const endDateStr = endDate.toISOString().slice(0, 10);
-          const durationDays = Math.round((endDate.getTime() - new Date(proposedStart).getTime()) / (1000 * 60 * 60 * 24));
+          let durationDays: number;
+          let endDateStr: string;
+          // Probation windows follow the offer's probation duration in months;
+          // growth/pip use the engine's default day windows.
+          if (acceptPlanType === "probation") {
+            const probationMonths: number = (letter as any).probationPeriodMonths || 3;
+            const endDate = new Date(proposedStart);
+            endDate.setMonth(endDate.getMonth() + probationMonths);
+            endDateStr = endDate.toISOString().slice(0, 10);
+            durationDays = Math.round((endDate.getTime() - new Date(proposedStart).getTime()) / (1000 * 60 * 60 * 24));
+          } else {
+            durationDays = acceptPlanType === "pip" ? 30 : 90;
+            endDateStr = new Date(new Date(proposedStart).getTime() + durationDays * 86400000)
+              .toISOString().slice(0, 10);
+          }
 
           // Seed plan with NULL employee_id — filled in at onboarding
           await db.execute(sql`
             INSERT INTO employee_plans
               (offer_letter_id, employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
             VALUES
-              (${letter.id}, NULL, NULL, 'probation', 'healthcare', 'pending',
+              (${letter.id}, NULL, NULL, ${acceptPlanType}::employee_plan_type, 'healthcare', 'pending',
                ${proposedStart}, ${endDateStr}, ${durationDays}, ${letter.createdBy})
           `);
         } catch (planErr) {
@@ -8754,6 +8781,58 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // ATTACH-A-PLAN PICKER OPTIONS
+  // ==========================================
+
+  // Options for the "attach a plan template" picker on offers and addendums.
+  // Returns the available (department/role/level) keys per plan type plus the
+  // probation default resolved from an optional designation/department, so the
+  // UI can pre-select a sensible template. Read-only.
+  app.get("/api/hr/plans/attach-options", requireAuth, requirePermission("hr.plans.attachOptions", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const designation = (req.query.designation as string | undefined) ?? null;
+      const departmentName = (req.query.department as string | undefined) ?? null;
+
+      // Distinct template keys per plan type. NULLs collapse so the UI can offer
+      // a "default / all" option when a template isn't keyed to a specific
+      // department or level.
+      const keyRows = await db.execute(sql`
+        SELECT DISTINCT plan_type, department, role, level
+        FROM plan_goal_templates
+        WHERE is_active = true
+        ORDER BY plan_type, department NULLS FIRST, role NULLS FIRST, level NULLS FIRST
+      `);
+
+      const byType: Record<string, Array<{ department: string | null; role: string | null; level: string | null }>> = {
+        probation: [], growth: [], pip: [],
+      };
+      for (const row of keyRows.rows as any[]) {
+        const pt = row.plan_type as string;
+        if (!byType[pt]) continue;
+        // Skip fully-empty rows (legacy healthcare templates keyed only by
+        // role_slug surface via the probation default instead).
+        if (!row.department && !row.role && !row.level) continue;
+        byType[pt].push({ department: row.department ?? null, role: row.role ?? null, level: row.level ?? null });
+      }
+
+      // Probation default from the free-text designation/department, mirroring
+      // the onboarding activation resolver.
+      const { parseProbationKey } = await import("./probationTemplates");
+      const probationDefault = parseProbationKey(designation, departmentName);
+
+      res.json({
+        types: ["probation", "growth", "pip"] as AttachablePlanType[],
+        probation: { keys: byType.probation, default: probationDefault },
+        growth: { keys: byType.growth, default: null },
+        pip: { keys: byType.pip, default: null },
+      });
+    } catch (error) {
+      console.error("Attach-plan options error:", error);
+      res.status(500).json({ error: "Failed to load attach-plan options" });
+    }
+  });
+
+  // ==========================================
   // OFFER LETTER ADDENDUMS
   // ==========================================
 
@@ -8787,6 +8866,7 @@ export async function registerRoutes(
         customClauseTitle, customClauseText,
         deviceItems, ccEmails, annexures,
         includeGrowthPlanClause, growthPlanCurrentSalary, growthPlanMaxRevisionSalary,
+        attachedPlanType, attachedPlanDepartment, attachedPlanRole, attachedPlanLevel,
       } = req.body;
 
       if (!addendumType || !effectiveDate) {
@@ -8837,6 +8917,12 @@ export async function registerRoutes(
         growthPlanCurrentSalary: includeGrowthPlanClause ? (growthPlanCurrentSalary || null) : null,
         growthPlanMaxRevisionSalary: includeGrowthPlanClause ? (growthPlanMaxRevisionSalary || null) : null,
         growthPlanClauseText: renderedGrowthPlanText,
+        // Phase 2: attached plan template. Default to growth when the legacy
+        // growth-plan clause is enabled, so existing growth flows keep working.
+        attachedPlanType: attachedPlanType || (includeGrowthPlanClause ? "growth" : null),
+        attachedPlanDepartment: attachedPlanDepartment || null,
+        attachedPlanRole: attachedPlanRole || null,
+        attachedPlanLevel: attachedPlanLevel || null,
       });
 
       const addendumExpiresAt = new Date();
@@ -9171,21 +9257,32 @@ export async function registerRoutes(
         addendumType: addendum.addendumType,
       }).catch(e => console.error("[Addendum] Failed to notify HR:", e));
 
-      // Activation engine: a signed addendum that carries a 90-day growth-plan
-      // clause now instantiates a REAL, active, fully-tracked growth plan
+      // Activation engine: a signed addendum that carries an attached plan
+      // template now instantiates a REAL, active, fully-tracked plan of that type
       // (goals + milestones + check-ins) that follows the normal SOP. Idempotent,
-      // so countersign / backfill never duplicate it. Non-fatal.
-      if (addendum.includeGrowthPlanClause && actorIdForAudit) {
+      // so countersign / backfill never duplicate it. Non-fatal. The legacy
+      // growth-plan clause still activates a growth plan when no explicit type is
+      // attached, preserving back-compat.
+      const acceptAttachedType: AttachablePlanType | null =
+        ((addendum as any).attachedPlanType as AttachablePlanType | null)
+        || (addendum.includeGrowthPlanClause ? "growth" : null);
+      if (acceptAttachedType && actorIdForAudit) {
         try {
-          const r = await ensureGrowthPlanFromAddendum({
+          const r = await ensurePlanFromDocument({
+            planType: acceptAttachedType,
             employeeId: addendum.forEmployeeId ?? null,
             offerLetterId: addendum.offerLetterId ?? null,
             effectiveDate: addendum.effectiveDate ?? null,
             createdBy: actorIdForAudit,
+            department: (addendum as any).attachedPlanDepartment ?? null,
+            role: (addendum as any).attachedPlanRole ?? null,
+            level: (addendum as any).attachedPlanLevel ?? null,
+            designation: (addendum as any).newDesignation ?? (addendum as any).oldDesignation ?? null,
+            departmentName: (addendum as any).newDepartment ?? (addendum as any).oldDepartment ?? null,
           });
-          if (r.created) console.log(`[Addendum] Growth plan activated from signed addendum ${addendum.id} -> plan ${r.planId}`);
+          if (r.created) console.log(`[Addendum] ${acceptAttachedType} plan activated from signed addendum ${addendum.id} -> plan ${r.planId}`);
         } catch (planErr) {
-          console.error("[Addendum] Growth plan activation failed (non-fatal):", planErr);
+          console.error("[Addendum] Plan activation failed (non-fatal):", planErr);
         }
       }
 
@@ -9245,6 +9342,7 @@ export async function registerRoutes(
         deviceItems, ccEmails, annexureData,
         forEmployeeId,
         includeGrowthPlanClause, growthPlanCurrentSalary, growthPlanMaxRevisionSalary,
+        attachedPlanType, attachedPlanDepartment, attachedPlanRole, attachedPlanLevel,
       } = req.body;
 
       if (!employeeName || !employeeEmail || !addendumType || !effectiveDate) {
@@ -9330,6 +9428,11 @@ export async function registerRoutes(
         growthPlanCurrentSalary: includeGrowthPlanClause ? (growthPlanCurrentSalary || null) : null,
         growthPlanMaxRevisionSalary: includeGrowthPlanClause ? (growthPlanMaxRevisionSalary || null) : null,
         growthPlanClauseText: renderedStandaloneGrowthPlanText,
+        // Phase 2: attached plan template (default growth when growth clause on).
+        attachedPlanType: attachedPlanType || (includeGrowthPlanClause ? "growth" : null),
+        attachedPlanDepartment: attachedPlanDepartment || null,
+        attachedPlanRole: attachedPlanRole || null,
+        attachedPlanLevel: attachedPlanLevel || null,
       } as any);
 
       const standaloneExpiresAt = new Date();
@@ -9644,20 +9747,30 @@ export async function registerRoutes(
         changes: { addendumId: addendum.id, counterAuthCode },
       });
 
-      // Activation engine (idempotent): ensure a growth-clause addendum has its
-      // real, tracked growth plan in effect even if it was accepted before this
-      // feature existed. Non-fatal.
-      if (addendum.includeGrowthPlanClause) {
+      // Activation engine (idempotent): ensure an addendum's attached plan is in
+      // effect even if it was accepted before this feature existed. The legacy
+      // growth-plan clause still activates a growth plan when no explicit type is
+      // attached. Non-fatal.
+      const countersignAttachedType: AttachablePlanType | null =
+        ((addendum as any).attachedPlanType as AttachablePlanType | null)
+        || (addendum.includeGrowthPlanClause ? "growth" : null);
+      if (countersignAttachedType) {
         try {
-          const r = await ensureGrowthPlanFromAddendum({
+          const r = await ensurePlanFromDocument({
+            planType: countersignAttachedType,
             employeeId: addendum.forEmployeeId ?? null,
             offerLetterId: addendum.offerLetterId ?? null,
             effectiveDate: addendum.effectiveDate ?? null,
             createdBy: req.session.userId!,
+            department: (addendum as any).attachedPlanDepartment ?? null,
+            role: (addendum as any).attachedPlanRole ?? null,
+            level: (addendum as any).attachedPlanLevel ?? null,
+            designation: (addendum as any).newDesignation ?? (addendum as any).oldDesignation ?? null,
+            departmentName: (addendum as any).newDepartment ?? (addendum as any).oldDepartment ?? null,
           });
-          if (r.created) console.log(`[Addendum] Growth plan activated on countersign of ${addendum.id} -> plan ${r.planId}`);
+          if (r.created) console.log(`[Addendum] ${countersignAttachedType} plan activated on countersign of ${addendum.id} -> plan ${r.planId}`);
         } catch (planErr) {
-          console.error("[Addendum] Growth plan activation on countersign failed (non-fatal):", planErr);
+          console.error("[Addendum] Plan activation on countersign failed (non-fatal):", planErr);
         }
       }
 
@@ -9805,81 +9918,86 @@ export async function registerRoutes(
         console.error("Rayo Academy provisioning failed (non-fatal):", err);
       }
 
-      // ── Activate the pending probation plan seeded at offer acceptance ────
-      if ((letter as any).seedProbationPlan) {
-        try {
-          // Find the pending plan created at offer acceptance (linked by offer_letter_id)
-          const pendingPlanResult = await db.execute(sql`
-            SELECT * FROM employee_plans
-            WHERE offer_letter_id = ${letter.id} AND status = 'pending'
-            LIMIT 1
-          `);
+      // ── Activate the pending plan seeded at offer acceptance ─────────────
+      // Phase 2: generalized to any attached plan type (probation/growth/pip).
+      // We key off the pending plan row's own plan_type rather than the legacy
+      // seedProbationPlan flag, so growth/pip attachments activate identically.
+      try {
+        // Find the pending plan created at offer acceptance (linked by offer_letter_id)
+        const pendingPlanResult = await db.execute(sql`
+          SELECT * FROM employee_plans
+          WHERE offer_letter_id = ${letter.id} AND status = 'pending'
+          LIMIT 1
+        `);
 
-          if (pendingPlanResult.rows.length > 0) {
-            const pendingPlan = pendingPlanResult.rows[0] as any;
-            const joiningDate: string = newUser.joiningDate || new Date().toISOString().slice(0, 10);
+        if (pendingPlanResult.rows.length > 0) {
+          const pendingPlan = pendingPlanResult.rows[0] as any;
+          const planType = (pendingPlan.plan_type as AttachablePlanType) || "probation";
+          const joiningDate: string = newUser.joiningDate || new Date().toISOString().slice(0, 10);
+
+          // Recalculate the window from the actual joining date. Probation honors
+          // the offer's probation duration in months; growth/pip use day windows.
+          let endDateStr: string;
+          let durationDays: number;
+          if (planType === "probation") {
             const probationMonths: number = (letter as any).probationPeriodMonths || 3;
             const endDate = new Date(joiningDate);
             endDate.setMonth(endDate.getMonth() + probationMonths);
-            const endDateStr = endDate.toISOString().slice(0, 10);
-            const durationDays = Math.round((endDate.getTime() - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
-
-            // Activate plan: fill in employee_id, manager_id, recalculate dates from actual joining date
-            await db.execute(sql`
-              UPDATE employee_plans SET
-                employee_id = ${newUser.id},
-                manager_id = ${newUser.managerId ?? null},
-                status = 'active',
-                start_date = ${joiningDate},
-                end_date = ${endDateStr},
-                duration_days = ${durationDays},
-                updated_at = NOW()
-              WHERE id = ${pendingPlan.id}
-            `);
-
-            // Seed goals via the cross-department probation framework: universal
-            // goals + best-matching role/level milestone goals, with a legacy
-            // healthcare-template fallback so existing behavior never regresses.
-            const { parseProbationKey, resolveProbationGoalTemplates } = await import("./probationTemplates");
-            const legacyRoleSlug = (letter.designation || "")
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_|_$/g, "");
-            const probationKey = parseProbationKey(letter.designation, deptName);
-            const resolvedGoals = await resolveProbationGoalTemplates(probationKey, legacyRoleSlug);
-
-            for (const g of resolvedGoals) {
-              await db.execute(sql`
-                INSERT INTO performance_goals
-                  (employee_id, plan_id, title, description, category, status, progress, auto_progress_from_milestones, source_ref)
-                VALUES
-                  (${newUser.id}, ${pendingPlan.id}, ${g.title}, ${g.description},
-                   ${normalizeGoalCategory(g.category)}, 'not_started', 0, true, 'seed')
-              `);
-            }
-
-            // Generate Day 1/7/15/30/45/60/75/90 milestone check-ins from actual joining date
-            const milestones = [1, 7, 15, 30, 45, 60, 75, 90].filter(d => d <= durationDays);
-            for (const day of milestones) {
-              const milestoneDate = new Date(joiningDate);
-              milestoneDate.setDate(milestoneDate.getDate() + day);
-              const milestoneDateStr = milestoneDate.toISOString().slice(0, 10);
-              await db.execute(sql`
-                INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
-                VALUES (${newUser.id}, ${newUser.managerId ?? null}, ${pendingPlan.id}, 'milestone'::check_in_type, ${milestoneDateStr}, 'scheduled'::check_in_status)
-              `);
-            }
-
-            await storage.createAuditLog({
-              action: "probation_plan_activated",
-              actorId,
-              targetId: newUser.id,
-              changes: { planId: pendingPlan.id, joiningDate, endDate: endDateStr, durationDays, probationKey, goalsSeeded: resolvedGoals.length },
-            });
+            endDateStr = endDate.toISOString().slice(0, 10);
+            durationDays = Math.round((endDate.getTime() - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
+          } else {
+            durationDays = planType === "pip" ? 30 : 90;
+            endDateStr = new Date(new Date(joiningDate).getTime() + durationDays * 86400000)
+              .toISOString().slice(0, 10);
           }
-        } catch (planErr) {
-          console.error("[Onboarding] Probation plan activation failed (non-fatal):", planErr);
+
+          // Activate plan: fill in employee_id, manager_id, recalculate dates from actual joining date
+          await db.execute(sql`
+            UPDATE employee_plans SET
+              employee_id = ${newUser.id},
+              manager_id = ${newUser.managerId ?? null},
+              status = 'active',
+              start_date = ${joiningDate},
+              end_date = ${endDateStr},
+              duration_days = ${durationDays},
+              updated_at = NOW()
+            WHERE id = ${pendingPlan.id}
+          `);
+
+          // Seed goals via the generalized resolver: probation → cross-department
+          // framework (universal + role/level milestones, legacy fallback);
+          // growth/pip → plan_goal_templates by the offer's attached key.
+          const resolvedGoals = await resolveAttachedPlanGoals({
+            planType,
+            department: (letter as any).attachedPlanDepartment ?? null,
+            role: (letter as any).attachedPlanRole ?? null,
+            level: (letter as any).attachedPlanLevel ?? null,
+            designation: letter.designation,
+            departmentName: deptName,
+          });
+          await seedPlanGoals(pendingPlan.id, newUser.id, newUser.managerId ?? null, joiningDate, endDateStr, resolvedGoals);
+
+          // Generate the SOP check-in schedule for this plan type from the actual
+          // joining date (probation = Day 1/7/15/30/45/60/75/90 milestones).
+          const checkInSchedule = generatePlanCheckIns(
+            pendingPlan.id, newUser.id, newUser.managerId ?? null, planType, joiningDate, endDateStr,
+          );
+          for (const ci of checkInSchedule) {
+            await db.execute(sql`
+              INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+              VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId}, ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
+            `);
+          }
+
+          await storage.createAuditLog({
+            action: "plan_activated",
+            actorId,
+            targetId: newUser.id,
+            changes: { planId: pendingPlan.id, planType, joiningDate, endDate: endDateStr, durationDays, goalsSeeded: resolvedGoals.length },
+          });
         }
+      } catch (planErr) {
+        console.error("[Onboarding] Plan activation failed (non-fatal):", planErr);
       }
 
       res.json({ success: true, userId: newUser.id, employeeId, rayoProvisioning });

@@ -698,6 +698,13 @@ export const offerLetters = pgTable("offer_letters", {
   performanceClauseText: text("performance_clause_text"),
   policyAnnexures: text("policy_annexures").array(),
   seedProbationPlan: boolean("seed_probation_plan").notNull().default(false),
+  // Phase 2: explicitly attach a plan template (probation/growth/pip) to this
+  // offer. When set, the activation engine instantiates this plan type using the
+  // resolved department/role/level key (overridable from the auto-resolved default).
+  attachedPlanType: varchar("attached_plan_type"),
+  attachedPlanDepartment: varchar("attached_plan_department"),
+  attachedPlanRole: varchar("attached_plan_role"),
+  attachedPlanLevel: varchar("attached_plan_level"),
   reminderSentAt: timestamp("reminder_sent_at"),
 });
 
@@ -1381,6 +1388,15 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   growthPlanCurrentSalary: varchar("growth_plan_current_salary"),
   growthPlanMaxRevisionSalary: varchar("growth_plan_max_revision_salary"),
   growthPlanClauseText: text("growth_plan_clause_text"),
+
+  // Phase 2: explicitly attach a plan template (probation/growth/pip) to this
+  // addendum. On accept/countersign the activation engine instantiates this plan
+  // type using the resolved department/role/level key. Falls back to growth when
+  // only the legacy growth-plan clause is present.
+  attachedPlanType: varchar("attached_plan_type"),
+  attachedPlanDepartment: varchar("attached_plan_department"),
+  attachedPlanRole: varchar("attached_plan_role"),
+  attachedPlanLevel: varchar("attached_plan_level"),
 
   effectiveDate: varchar("effective_date"),
   reason: text("reason"),

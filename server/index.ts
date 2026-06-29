@@ -783,6 +783,17 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters reminder_sent_at column migration error:", err);
   }
+
+  // Phase 2: attached-plan-template fields (probation/growth/pip + dept/role/level)
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS attached_plan_type VARCHAR`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS attached_plan_department VARCHAR`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS attached_plan_role VARCHAR`);
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS attached_plan_level VARCHAR`);
+    log("Ensured attached_plan_* columns exist on offer_letters");
+  } catch (err) {
+    console.error("offer_letters attached_plan_* column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {
@@ -824,6 +835,11 @@ async function ensureOfferLetterAddendumsTable() {
       await db.execute(sql`
         ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP
       `);
+      // Phase 2: attached-plan-template fields (probation/growth/pip + dept/role/level)
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_type VARCHAR`);
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_department VARCHAR`);
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_role VARCHAR`);
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_level VARCHAR`);
       // Add "expired" value to the offer_letter_addendum_status enum if not present
       await db.execute(sql`
         DO $$ BEGIN

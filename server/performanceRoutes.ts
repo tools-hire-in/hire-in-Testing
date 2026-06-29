@@ -93,13 +93,169 @@ export function normalizeGoalCategory(raw: string | null | undefined): string {
 // duplicated, so accept, countersign, and the startup backfill are all safe to
 // call repeatedly. This is the foundation for the broader "attach a plan to any
 // offer/addendum" system; today the only attachment signal is the growth clause.
-export async function ensureGrowthPlanFromAddendum(opts: {
+export type AttachablePlanType = "probation" | "growth" | "pip";
+
+// Default plan window (days) when the caller doesn't supply one. Probation and
+// growth both run the 90-day cycle; PIP defaults to a 30-day window.
+const PLAN_DEFAULT_DURATION_DAYS: Record<AttachablePlanType, number> = {
+  probation: 90,
+  growth: 90,
+  pip: 30,
+};
+
+// A canonical, plan-type-agnostic goal shape used to seed performance_goals.
+interface SeedGoal { title: string; description: string | null; category: string }
+
+// ─── Shared helper: resolve the goal-template set for an attached plan ─────────
+// Generalizes goal resolution across plan types:
+//  - probation → cross-department framework (universal + role/level milestones,
+//    legacy healthcare fallback) via resolveProbationGoalTemplates.
+//  - growth / pip → plan_goal_templates filtered by plan_type, best-matched on
+//    role/department/level when supplied, with sensible fallbacks so we never
+//    create a zero-goal growth plan (PIP may legitimately resolve to zero goals).
+export async function resolveAttachedPlanGoals(opts: {
+  planType: AttachablePlanType;
+  department?: string | null;
+  role?: string | null;
+  level?: string | null;
+  designation?: string | null;
+  departmentName?: string | null;
+}): Promise<SeedGoal[]> {
+  if (opts.planType === "probation") {
+    const { parseProbationKey, resolveProbationGoalTemplates } = await import("./probationTemplates");
+    const key = (opts.department || opts.role || opts.level)
+      ? { department: opts.department ?? null, role: opts.role ?? null, level: opts.level ?? null }
+      : parseProbationKey(opts.designation ?? null, opts.departmentName ?? null);
+    const legacyRoleSlug = (opts.designation || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "") || null;
+    const resolved = await resolveProbationGoalTemplates(key, legacyRoleSlug);
+    return resolved.map(g => ({ title: g.title, description: g.description, category: g.category }));
+  }
+
+  // growth / pip — match by role (and best dept/level group) when provided.
+  let rows: any[] = [];
+  if (opts.role) {
+    const candidates = await db.execute(sql`
+      SELECT goal_title, goal_description, goal_category, sort_order, department, level
+      FROM plan_goal_templates
+      WHERE plan_type = ${opts.planType}::employee_plan_type
+        AND is_active = true
+        AND role = ${opts.role}
+      ORDER BY sort_order ASC
+    `);
+    const all = candidates.rows as any[];
+    const score = (row: any): number => {
+      let s = 0;
+      if (opts.department && row.department === opts.department) s += 4;
+      else if (!row.department) s += 1;
+      if (opts.level && row.level === opts.level) s += 2;
+      else if (row.level === "all" || !row.level) s += 1;
+      return s;
+    };
+    let best = -1; let bestGroupKey: string | null = null;
+    for (const row of all) {
+      const sc = score(row);
+      const gk = `${row.department ?? ""}::${row.level ?? ""}`;
+      if (sc > best) { best = sc; bestGroupKey = gk; }
+    }
+    if (bestGroupKey !== null) {
+      rows = all.filter(r => `${r.department ?? ""}::${r.level ?? ""}` === bestGroupKey);
+    }
+  }
+
+  // Growth fallback: legacy role_slug progression tracks, then ANY active growth
+  // template so a salary-revision / promotion clause never yields a zero-goal plan.
+  if (rows.length === 0 && opts.planType === "growth") {
+    const candidateSlugs = ["foundation_to_senior", "senior_recruiter", "associate_recruiter"];
+    for (const slug of candidateSlugs) {
+      const r = await db.execute(sql`
+        SELECT goal_title, goal_description, goal_category, sort_order
+        FROM plan_goal_templates
+        WHERE plan_type = 'growth' AND role_slug = ${slug} AND is_active = true
+        ORDER BY sort_order ASC
+      `);
+      if (r.rows.length > 0) { rows = r.rows as any[]; break; }
+    }
+    if (rows.length === 0) {
+      const r = await db.execute(sql`
+        SELECT goal_title, goal_description, goal_category, sort_order
+        FROM plan_goal_templates
+        WHERE plan_type = 'growth' AND is_active = true
+        ORDER BY sort_order ASC
+      `);
+      rows = r.rows as any[];
+    }
+  }
+
+  // PIP fallback: any active PIP template (zero is acceptable — PIP goals are
+  // frequently authored manually per case).
+  if (rows.length === 0 && opts.planType === "pip" && !opts.role) {
+    const r = await db.execute(sql`
+      SELECT goal_title, goal_description, goal_category, sort_order
+      FROM plan_goal_templates
+      WHERE plan_type = 'pip' AND is_active = true
+      ORDER BY sort_order ASC
+    `);
+    rows = r.rows as any[];
+  }
+
+  return (rows as any[]).map(r => ({
+    title: r.goal_title,
+    description: r.goal_description ?? null,
+    category: r.goal_category ?? "individual",
+  }));
+}
+
+// ─── Shared helper: seed plan-linked goals from a resolved goal set ───────────
+// Single canonical insert used by both the document-activation engine and the
+// onboarding probation activation, so goal columns stay consistent everywhere.
+export async function seedPlanGoals(
+  planId: string,
+  employeeId: string,
+  managerId: string | null,
+  startDate: string,
+  endDate: string,
+  goals: SeedGoal[],
+): Promise<number> {
+  const sourceRef = `plan:${planId}`;
+  for (const g of goals) {
+    await db.execute(sql`
+      INSERT INTO performance_goals
+        (employee_id, manager_id, plan_id, title, description, category, status, progress,
+         auto_progress_from_milestones, source_ref, start_date, target_date, weight)
+      VALUES
+        (${employeeId}, ${managerId}, ${planId}, ${g.title}, ${g.description ?? null},
+         ${normalizeGoalCategory(g.category)}, 'not_started', 0, true, ${sourceRef},
+         ${startDate}, ${endDate}, 3)
+    `);
+  }
+  return goals.length;
+}
+
+// ─── Activation engine ───────────────────────────────────────────────────────
+// Instantiate a REAL, active, fully-tracked plan of ANY type (probation / growth
+// / pip) from a signed offer-letter or addendum that carries an attached plan
+// template. Mirrors POST /api/hr/plans (active plan + SOP check-in schedule +
+// template goals) so once created the plan follows the normal SOP. Idempotent —
+// a matching plan of the same type for the same employee + window is never
+// duplicated, so accept, countersign, and the startup backfill are all safe to
+// call repeatedly.
+export async function ensurePlanFromDocument(opts: {
+  planType: AttachablePlanType;
   employeeId?: string | null;
   offerLetterId?: string | null;
   effectiveDate?: string | null;
   createdBy: string;
   durationDays?: number;
+  department?: string | null;
+  role?: string | null;
+  level?: string | null;
+  designation?: string | null;
+  departmentName?: string | null;
 }): Promise<{ created: boolean; planId?: string; reason?: string }> {
+  const planType = opts.planType;
   let employeeId = opts.employeeId ?? null;
   if (!employeeId && opts.offerLetterId) {
     const r = await db.execute(sql`
@@ -119,52 +275,41 @@ export async function ensureGrowthPlanFromAddendum(opts: {
   const startDate = (opts.effectiveDate && opts.effectiveDate.trim())
     ? opts.effectiveDate.slice(0, 10)
     : new Date().toISOString().slice(0, 10);
-  const durationDays = opts.durationDays ?? 90;
+  const durationDays = opts.durationDays ?? PLAN_DEFAULT_DURATION_DAYS[planType];
   const endDate = new Date(new Date(startDate).getTime() + durationDays * 86400000)
     .toISOString().slice(0, 10);
 
-  // Idempotency: same employee + growth + identical window already planned.
+  // Idempotency: same employee + plan type + identical window already planned.
   const dup = await db.execute(sql`
     SELECT id FROM employee_plans
-    WHERE employee_id = ${employeeId} AND plan_type = 'growth'
+    WHERE employee_id = ${employeeId} AND plan_type = ${planType}::employee_plan_type
       AND start_date = ${startDate} AND end_date = ${endDate}
     LIMIT 1
   `);
   if (dup.rows.length > 0) return { created: false, planId: (dup.rows[0] as any).id, reason: "exists" };
 
-  // Resolve the growth goal-template set. A salary-revision / promotion growth
-  // clause maps to the foundation->senior 90-day progression track; fall back to
-  // senior, then associate, then ANY active growth template so we never create a
-  // zero-goal plan.
-  const candidateSlugs = ["foundation_to_senior", "senior_recruiter", "associate_recruiter"];
-  let templates: PlanGoalTemplate[] = [];
-  for (const slug of candidateSlugs) {
-    const r = await db.execute(sql`
-      SELECT * FROM plan_goal_templates
-      WHERE plan_type = 'growth' AND role_slug = ${slug} AND is_active = true
-      ORDER BY sort_order ASC
-    `);
-    if (r.rows.length > 0) { templates = r.rows as PlanGoalTemplate[]; break; }
-  }
-  if (templates.length === 0) {
-    const r = await db.execute(sql`
-      SELECT * FROM plan_goal_templates
-      WHERE plan_type = 'growth' AND is_active = true
-      ORDER BY sort_order ASC
-    `);
-    templates = r.rows as PlanGoalTemplate[];
-  }
-  if (templates.length === 0) return { created: false, reason: "no_templates" };
+  const goals = await resolveAttachedPlanGoals({
+    planType,
+    department: opts.department,
+    role: opts.role,
+    level: opts.level,
+    designation: opts.designation,
+    departmentName: opts.departmentName,
+  });
+  // Probation always has universal goals and growth always falls back to ANY
+  // active template; a zero-goal result there means templates aren't seeded yet,
+  // so abort rather than create an empty plan. PIP may legitimately be zero-goal.
+  if (goals.length === 0 && planType !== "pip") return { created: false, reason: "no_templates" };
 
   // Create the ACTIVE plan, its SOP check-in schedule, and the template goals.
   const result = await db.execute(sql`
     INSERT INTO employee_plans (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
-    VALUES (${employeeId}, ${managerId}, 'growth'::employee_plan_type, 'healthcare'::employee_plan_dept_scope, 'active'::employee_plan_status, ${startDate}, ${endDate}, ${durationDays}, ${opts.createdBy})
+    VALUES (${employeeId}, ${managerId}, ${planType}::employee_plan_type, 'healthcare'::employee_plan_dept_scope, 'active'::employee_plan_status, ${startDate}, ${endDate}, ${durationDays}, ${opts.createdBy})
     RETURNING *
   `);
   const plan = result.rows[0] as EmployeePlan;
 
-  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, "growth", startDate, endDate);
+  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, planType, startDate, endDate);
   for (const ci of checkInSchedule) {
     await db.execute(sql`
       INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
@@ -172,9 +317,22 @@ export async function ensureGrowthPlanFromAddendum(opts: {
     `);
   }
 
-  await insertPlanGoalsFromTemplates(plan.id, employeeId, managerId, startDate, endDate, templates);
+  await seedPlanGoals(plan.id, employeeId, managerId, startDate, endDate, goals);
 
   return { created: true, planId: plan.id };
+}
+
+// Back-compat thin wrapper: the original growth-only entry point now delegates to
+// the generalized engine. Existing call sites (addendum accept/countersign,
+// startup backfill) keep working unchanged.
+export async function ensureGrowthPlanFromAddendum(opts: {
+  employeeId?: string | null;
+  offerLetterId?: string | null;
+  effectiveDate?: string | null;
+  createdBy: string;
+  durationDays?: number;
+}): Promise<{ created: boolean; planId?: string; reason?: string }> {
+  return ensurePlanFromDocument({ ...opts, planType: "growth" });
 }
 
 export function generatePlanCheckIns(

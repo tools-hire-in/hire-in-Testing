@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -6,7 +6,7 @@ import {
   Send, XCircle, Eye, CheckCircle, Clock, Mail, UserPlus, ExternalLink,
   FileSearch, Printer, ShieldCheck, ScrollText, FileStack, FilePlus,
   ChevronDown, ChevronUp, RefreshCw, ArrowRight, RotateCcw,
-  Plus, Trash2, Laptop, Shield, BookOpen, Pencil,
+  Plus, Trash2, Laptop, Shield, BookOpen, Pencil, ClipboardList,
 } from "lucide-react";
 import { PolicySignoffsContent } from "./PolicySignoffs";
 import { Textarea } from "@/components/ui/textarea";
@@ -647,6 +647,130 @@ function SalarySlipGenerator() {
   );
 }
 
+// ─── Attach-a-plan picker ────────────────────────────────────────────────────
+// Reusable control letting offer/addendum creators pick a plan template
+// (probation / growth / pip + an optional department/role/level key) to attach.
+// On accept/countersign the backend activation engine instantiates the chosen
+// plan. Selecting "None" leaves the document with no attached plan.
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  probation: "Probation Plan",
+  growth: "Growth Plan",
+  pip: "Performance Improvement Plan (PIP)",
+};
+
+interface AttachPlanValue {
+  attachedPlanType: string;
+  attachedPlanDepartment: string;
+  attachedPlanRole: string;
+  attachedPlanLevel: string;
+}
+
+function planKeyToToken(k: { department: string | null; role: string | null; level: string | null }): string {
+  return `${k.department ?? ""}|${k.role ?? ""}|${k.level ?? ""}`;
+}
+
+function planKeyLabel(k: { department: string | null; role: string | null; level: string | null }): string {
+  const parts = [k.department, k.role, k.level].filter(Boolean) as string[];
+  return parts.length ? parts.map(p => p.replace(/_/g, " ")).join(" · ") : "Default";
+}
+
+function AttachPlanPicker({ value, onChange, designation, departmentName, autoDefaultType }: {
+  value: AttachPlanValue;
+  onChange: (patch: Partial<AttachPlanValue>) => void;
+  designation?: string;
+  departmentName?: string;
+  autoDefaultType?: string;
+}) {
+  const { data: options } = useQuery<any>({
+    queryKey: ["/api/hr/plans/attach-options", { designation: designation || "", department: departmentName || "" }],
+  });
+  // Once the creator interacts with either select we stop auto-applying defaults,
+  // so an explicit choice (including "None") is never silently overridden.
+  const touchedRef = useRef(false);
+
+  // Pre-select the framework-resolved default: when untouched, auto-attach the
+  // suggested plan type (e.g. growth for a growth-clause addendum) and fill in
+  // the resolved template key for whichever type is active. Always overridable.
+  useEffect(() => {
+    if (touchedRef.current || !options) return;
+    const effectiveType = value.attachedPlanType || autoDefaultType || "";
+    if (!effectiveType) return;
+    const def = options?.[effectiveType]?.default as { department: string | null; role: string | null; level: string | null } | null | undefined;
+    const keyEmpty = !value.attachedPlanDepartment && !value.attachedPlanRole && !value.attachedPlanLevel;
+    const patch: Partial<AttachPlanValue> = {};
+    if (!value.attachedPlanType && autoDefaultType) {
+      patch.attachedPlanType = autoDefaultType;
+    }
+    if (keyEmpty && def && (def.department || def.role || def.level)) {
+      patch.attachedPlanDepartment = def.department ?? "";
+      patch.attachedPlanRole = def.role ?? "";
+      patch.attachedPlanLevel = def.level ?? "";
+    }
+    if (Object.keys(patch).length > 0) onChange(patch);
+  }, [options, autoDefaultType, value.attachedPlanType, value.attachedPlanDepartment, value.attachedPlanRole, value.attachedPlanLevel]);
+
+  const keysForType: Array<{ department: string | null; role: string | null; level: string | null }> =
+    (value.attachedPlanType && options?.[value.attachedPlanType]?.keys) || [];
+  const currentToken = planKeyToToken({
+    department: value.attachedPlanDepartment || null,
+    role: value.attachedPlanRole || null,
+    level: value.attachedPlanLevel || null,
+  });
+
+  return (
+    <div className="space-y-2" data-testid="attach-plan-picker">
+      <div>
+        <p className="text-sm font-medium mb-0.5">Attach a Plan Template</p>
+        <p className="text-xs text-muted-foreground mb-2">
+          Instantiates a tracked plan (goals + check-ins) when the candidate accepts/onboards.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <select
+          className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+          value={value.attachedPlanType}
+          onChange={e => {
+            touchedRef.current = true;
+            onChange({
+              attachedPlanType: e.target.value,
+              attachedPlanDepartment: "",
+              attachedPlanRole: "",
+              attachedPlanLevel: "",
+            });
+          }}
+          data-testid="select-attached-plan-type"
+        >
+          <option value="">None</option>
+          {(options?.types ?? ["probation", "growth", "pip"]).map((t: string) => (
+            <option key={t} value={t}>{PLAN_TYPE_LABELS[t] ?? t}</option>
+          ))}
+        </select>
+        {value.attachedPlanType && (
+          <select
+            className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+            value={currentToken}
+            onChange={e => {
+              touchedRef.current = true;
+              const [department, role, level] = e.target.value.split("|");
+              onChange({
+                attachedPlanDepartment: department || "",
+                attachedPlanRole: role || "",
+                attachedPlanLevel: level || "",
+              });
+            }}
+            data-testid="select-attached-plan-key"
+          >
+            <option value="||">Auto / default</option>
+            {keysForType.map(k => (
+              <option key={planKeyToToken(k)} value={planKeyToToken(k)}>{planKeyLabel(k)}</option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface OfferFormData {
   candidateTitle: string;
   candidateName: string;
@@ -663,6 +787,10 @@ interface OfferFormData {
   trainingExempt: boolean;
   maternityLeaveEligible: boolean;
   seedProbationPlan: boolean;
+  attachedPlanType: string;
+  attachedPlanDepartment: string;
+  attachedPlanRole: string;
+  attachedPlanLevel: string;
   proposedStartDate: string;
   salary: number;
   salaryInWords: string;
@@ -700,6 +828,10 @@ function getDefaultOfferData(): OfferFormData {
     trainingExempt: false,
     maternityLeaveEligible: false,
     seedProbationPlan: false,
+    attachedPlanType: "",
+    attachedPlanDepartment: "",
+    attachedPlanRole: "",
+    attachedPlanLevel: "",
     proposedStartDate: "",
     salary: 0,
     salaryInWords: "",
@@ -780,11 +912,14 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
 
   useEffect(() => {
     const hasProbationMonths = formData.probationPeriodMonths > 0;
-    if (hasProbationMonths && !formData.seedProbationPlan) {
-      updateField("seedProbationPlan", true);
+    // Auto-attach a probation plan when probation months are configured and no
+    // plan is attached yet; auto-clear only when it was the auto-set probation
+    // (so an explicitly chosen growth/pip plan is never overridden).
+    if (hasProbationMonths && !formData.attachedPlanType) {
+      updateField("attachedPlanType", "probation");
     }
-    if (!hasProbationMonths && formData.seedProbationPlan) {
-      updateField("seedProbationPlan", false);
+    if (!hasProbationMonths && formData.attachedPlanType === "probation") {
+      updateField("attachedPlanType", "");
     }
   }, [formData.probationPeriodMonths]);
 
@@ -857,6 +992,10 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
       trainingExempt: false,
       maternityLeaveEligible: false,
       seedProbationPlan: !!letter.seedProbationPlan,
+      attachedPlanType: letter.attachedPlanType || (letter.seedProbationPlan ? "probation" : ""),
+      attachedPlanDepartment: letter.attachedPlanDepartment || "",
+      attachedPlanRole: letter.attachedPlanRole || "",
+      attachedPlanLevel: letter.attachedPlanLevel || "",
       proposedStartDate: toIsoDate(letter.proposedStartDate),
       salary: letter.salary ? parseFloat(letter.salary) : 0,
       salaryInWords: letter.salaryInWords || "",
@@ -1029,7 +1168,11 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
         maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
         maxRevisionSalaryInWords: formData.performanceProbationReview ? formData.maxRevisionSalaryInWords || undefined : undefined,
         policyAnnexures: policyAnnexures.length > 0 ? policyAnnexures : undefined,
-        seedProbationPlan: formData.seedProbationPlan,
+        seedProbationPlan: formData.attachedPlanType === "probation",
+        attachedPlanType: formData.attachedPlanType || undefined,
+        attachedPlanDepartment: formData.attachedPlanDepartment || undefined,
+        attachedPlanRole: formData.attachedPlanRole || undefined,
+        attachedPlanLevel: formData.attachedPlanLevel || undefined,
       };
 
       // Edit mode: update the existing pending/rejected letter in place instead of creating a new one.
@@ -1469,16 +1612,19 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
                   <span className="text-sm">Maternity Leave Eligible</span>
                   <span className="text-xs text-muted-foreground">(auto-set when gender = Female)</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer" data-testid="check-seed-probation-plan">
-                  <input
-                    type="checkbox"
-                    checked={formData.seedProbationPlan}
-                    onChange={e => updateField("seedProbationPlan", e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  <span className="text-sm">Seed Probation Plan on Onboarding</span>
-                  <span className="text-xs text-muted-foreground">(auto-creates a healthcare probation plan when employee is onboarded)</span>
-                </label>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <AttachPlanPicker
+                  value={{
+                    attachedPlanType: formData.attachedPlanType,
+                    attachedPlanDepartment: formData.attachedPlanDepartment,
+                    attachedPlanRole: formData.attachedPlanRole,
+                    attachedPlanLevel: formData.attachedPlanLevel,
+                  }}
+                  onChange={patch => setFormData(prev => ({ ...prev, ...patch }))}
+                  designation={formData.designation}
+                  departmentName={departments?.find((d: any) => d.id === formData.departmentId)?.name}
+                />
               </div>
             </div>
           </CardContent>
@@ -1872,6 +2018,10 @@ export function OfferLettersDashboard() {
     includeGrowthPlanClause: false,
     growthPlanCurrentSalary: "",
     growthPlanMaxRevisionSalary: "",
+    attachedPlanType: "",
+    attachedPlanDepartment: "",
+    attachedPlanRole: "",
+    attachedPlanLevel: "",
   });
   const [submittingStandalone, setSubmittingStandalone] = useState(false);
   const [previewingStandalone, setPreviewingStandalone] = useState(false);
@@ -1893,6 +2043,10 @@ export function OfferLettersDashboard() {
     includeGrowthPlanClause: false,
     growthPlanCurrentSalary: "",
     growthPlanMaxRevisionSalary: "",
+    attachedPlanType: "",
+    attachedPlanDepartment: "",
+    attachedPlanRole: "",
+    attachedPlanLevel: "",
   });
   const [submittingAddendum, setSubmittingAddendum] = useState(false);
   const [addendumAnnexures, setAddendumAnnexures] = useState<AnnexureItem[]>([]);
@@ -1923,6 +2077,10 @@ export function OfferLettersDashboard() {
       includeGrowthPlanClause: false,
       growthPlanCurrentSalary: "",
       growthPlanMaxRevisionSalary: "",
+      attachedPlanType: "",
+      attachedPlanDepartment: "",
+      attachedPlanRole: "",
+      attachedPlanLevel: "",
     });
     setAddendumAnnexures([]);
   };
@@ -2039,6 +2197,10 @@ export function OfferLettersDashboard() {
       includeGrowthPlanClause: false,
       growthPlanCurrentSalary: "",
       growthPlanMaxRevisionSalary: "",
+      attachedPlanType: "",
+      attachedPlanDepartment: "",
+      attachedPlanRole: "",
+      attachedPlanLevel: "",
     });
     setStandaloneAnnexures([]);
     setSelectedStandaloneEmployeeId(null);
@@ -2368,8 +2530,12 @@ export function OfferLettersDashboard() {
     reference: string;
     sortDate: number;
     dateLabel: string;
+    attachedPlan?: string;
     raw: any;
   };
+
+  const attachedPlanLabel = (raw: any): string | undefined =>
+    raw?.attachedPlanType ? (PLAN_TYPE_LABELS[raw.attachedPlanType] ?? raw.attachedPlanType) : undefined;
 
   const rows: UnifiedRow[] = [];
 
@@ -2390,6 +2556,7 @@ export function OfferLettersDashboard() {
       reference: "—",
       sortDate: ts(l.createdAt),
       dateLabel: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—",
+      attachedPlan: attachedPlanLabel(l),
       raw: l,
     });
   });
@@ -2412,6 +2579,7 @@ export function OfferLettersDashboard() {
       reference: a.referenceNumber || "—",
       sortDate: ts(a.createdAt || a.issuedAt),
       dateLabel: a.issuedAt ? new Date(a.issuedAt).toLocaleDateString() : (a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—"),
+      attachedPlan: attachedPlanLabel(a),
       raw: a,
     });
   });
@@ -2564,6 +2732,11 @@ export function OfferLettersDashboard() {
                           <div className="flex flex-col gap-0.5">
                             <span className="text-xs font-medium" data-testid={`text-type-${row.key}`}>{row.typeLabel}</span>
                             {row.subLabel && <span className="text-[11px] text-muted-foreground">{row.subLabel}</span>}
+                            {row.attachedPlan && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 text-[10px] font-medium w-fit" data-testid={`badge-attached-plan-${row.key}`}>
+                                <ClipboardList className="h-3 w-3" /> {row.attachedPlan}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -3388,6 +3561,20 @@ export function OfferLettersDashboard() {
                   </div>
                 </div>
               )}
+              <div className="pt-3 border-t border-amber-200">
+                <AttachPlanPicker
+                  value={{
+                    attachedPlanType: addendumForm.attachedPlanType,
+                    attachedPlanDepartment: addendumForm.attachedPlanDepartment,
+                    attachedPlanRole: addendumForm.attachedPlanRole,
+                    attachedPlanLevel: addendumForm.attachedPlanLevel,
+                  }}
+                  onChange={patch => setAddendumForm(f => ({ ...f, ...patch }))}
+                  designation={addendumForm.newDesignation || addendumForm.oldDesignation}
+                  departmentName={addendumForm.newDepartment || addendumForm.oldDepartment}
+                  autoDefaultType={addendumForm.includeGrowthPlanClause ? "growth" : undefined}
+                />
+              </div>
             </div>
 
             {/* Annexures */}
@@ -3692,6 +3879,20 @@ export function OfferLettersDashboard() {
                   </div>
                 </div>
               )}
+              <div className="pt-3 border-t border-amber-200">
+                <AttachPlanPicker
+                  value={{
+                    attachedPlanType: standaloneForm.attachedPlanType,
+                    attachedPlanDepartment: standaloneForm.attachedPlanDepartment,
+                    attachedPlanRole: standaloneForm.attachedPlanRole,
+                    attachedPlanLevel: standaloneForm.attachedPlanLevel,
+                  }}
+                  onChange={patch => setStandaloneForm(f => ({ ...f, ...patch }))}
+                  designation={standaloneForm.newDesignation || standaloneForm.employeeDesignation}
+                  departmentName={standaloneForm.newDepartment || standaloneForm.employeeDepartment}
+                  autoDefaultType={standaloneForm.includeGrowthPlanClause ? "growth" : undefined}
+                />
+              </div>
             </div>
 
             <AnnexureEditor
