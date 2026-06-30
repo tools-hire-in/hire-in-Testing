@@ -606,6 +606,11 @@ export function FeatureFlagsSection() {
       label: "Probation Framework from Database",
       description: "When ON (default), the probation pass rule and Day-90 final weights are read from dedicated database tables (alongside the scoring bands) for a single, scalable source of truth. Turn OFF to instantly revert to the legacy settings-based values if anything looks wrong — no data is lost either way.",
     },
+    {
+      key: "process_governance",
+      label: "Process Governance Center (master switch)",
+      description: "Master switch for the SOP / Process Governance Center (21-SOP library + version control). When ON, the SOP library becomes available to super admins/admins and to whoever is included in the rollout scope below. When OFF, the entire feature is hidden — use this as an instant kill-switch.",
+    },
   ];
 
   return (
@@ -620,22 +625,138 @@ export function FeatureFlagsSection() {
         {flagDefs.map((def) => {
           const enabled = flags?.[def.key] === true;
           return (
-            <div key={def.key} className="flex items-center justify-between gap-4 py-1">
-              <div>
-                <p className="font-medium text-sm" data-testid={`text-flag-${def.key}`}>{def.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+            <div key={def.key}>
+              <div className="flex items-center justify-between gap-4 py-1">
+                <div>
+                  <p className="font-medium text-sm" data-testid={`text-flag-${def.key}`}>{def.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+                </div>
+                <Switch
+                  checked={enabled}
+                  onCheckedChange={(v) => toggleMutation.mutate({ [def.key]: v })}
+                  disabled={isLoading || toggleMutation.isPending}
+                  data-testid={`switch-flag-${def.key}`}
+                />
               </div>
-              <Switch
-                checked={enabled}
-                onCheckedChange={(v) => toggleMutation.mutate({ [def.key]: v })}
-                disabled={isLoading || toggleMutation.isPending}
-                data-testid={`switch-flag-${def.key}`}
-              />
+              {def.key === "process_governance" && enabled && <ProcessGovernanceRolloutEditor />}
             </div>
           );
         })}
       </CardContent>
     </Card>
+  );
+}
+
+interface SopRolloutScope {
+  mode: "pilot" | "all";
+  roles: string[];
+  userIds: string[];
+}
+
+const SOP_ROLLOUT_ROLES = ["hr", "operations", "manager", "recruiter", "finance", "employee"];
+
+function ProcessGovernanceRolloutEditor() {
+  const { toast } = useToast();
+  const { data: rollout, isLoading } = useQuery<SopRolloutScope>({
+    queryKey: ["/api/sops/rollout"],
+  });
+
+  const [mode, setMode] = useState<"pilot" | "all">("pilot");
+  const [roles, setRoles] = useState<string[]>([]);
+  const [userIdsText, setUserIdsText] = useState("");
+
+  useEffect(() => {
+    if (rollout) {
+      setMode(rollout.mode);
+      setRoles(rollout.roles ?? []);
+      setUserIdsText((rollout.userIds ?? []).join(", "));
+    }
+  }, [rollout]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (next: SopRolloutScope) => {
+      const res = await apiRequest("PATCH", "/api/sops/rollout", next);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/rollout"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/access"] });
+      toast({ title: "Rollout scope updated" });
+    },
+    onError: () => toast({ title: "Failed to update rollout scope", variant: "destructive" }),
+  });
+
+  const toggleRole = (role: string) => {
+    setRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
+  };
+
+  const handleSave = () => {
+    const userIds = userIdsText.split(",").map((s) => s.trim()).filter(Boolean);
+    saveMutation.mutate({ mode, roles, userIds });
+  };
+
+  return (
+    <div className="mt-3 ml-1 rounded-md border bg-muted/40 p-4 space-y-4" data-testid="section-sop-rollout">
+      <div>
+        <p className="text-sm font-medium">Rollout Scope</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Choose who can access the Process Governance Center while the master switch is ON. Super admins and admins always have access.
+        </p>
+      </div>
+
+      <div className="space-y-1.5 max-w-xs">
+        <Label className="text-xs">Mode</Label>
+        <Select value={mode} onValueChange={(v) => setMode(v as "pilot" | "all")}>
+          <SelectTrigger data-testid="select-sop-rollout-mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pilot">Pilot (selected roles / users only)</SelectItem>
+            <SelectItem value="all">All eligible users</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {mode === "pilot" && (
+        <>
+          <div className="space-y-2">
+            <Label className="text-xs">Pilot roles</Label>
+            <div className="flex flex-wrap gap-3">
+              {SOP_ROLLOUT_ROLES.map((role) => (
+                <label key={role} className="flex items-center gap-2 text-sm capitalize cursor-pointer">
+                  <Checkbox
+                    checked={roles.includes(role)}
+                    onCheckedChange={() => toggleRole(role)}
+                    data-testid={`checkbox-sop-role-${role}`}
+                  />
+                  {role.replace("_", " ")}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Pilot user IDs (optional, comma-separated)</Label>
+            <Textarea
+              value={userIdsText}
+              onChange={(e) => setUserIdsText(e.target.value)}
+              placeholder="user-id-1, user-id-2"
+              rows={2}
+              data-testid="textarea-sop-user-ids"
+            />
+          </div>
+        </>
+      )}
+
+      <Button
+        size="sm"
+        onClick={handleSave}
+        disabled={isLoading || saveMutation.isPending}
+        data-testid="button-save-sop-rollout"
+      >
+        {saveMutation.isPending ? "Saving..." : "Save rollout scope"}
+      </Button>
+    </div>
   );
 }
 

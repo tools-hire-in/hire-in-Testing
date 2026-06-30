@@ -90,6 +90,7 @@ import { useNewLook } from "@/hooks/use-new-look";
 import { useToast } from "@/hooks/use-toast";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useSopAccess } from "@/hooks/use-sop-access";
 import { usePermissions } from "@/hooks/use-permissions";
 import { COMPANY } from "@/lib/constants";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -910,6 +911,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const { isEnabled } = useFeatureFlags();
+  const { enabled: hasSopAccess } = useSopAccess();
   const { can } = usePermissions();
   const { enabled: newLook, available: newLookAvailable, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
   const { toast } = useToast();
@@ -1396,6 +1398,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "Communications",
       icon: Megaphone,
       roles: ["super_admin", "admin", "hr"],
+    }] : []),
+    ...(hasSopAccess ? [{
+      href: "/admin/sops",
+      label: "SOPs",
+      icon: ShieldCheck,
+      roles: ["all"],
     }] : []),
     ...(hasFinanceAccess ? [{
       href: "/admin/finance",

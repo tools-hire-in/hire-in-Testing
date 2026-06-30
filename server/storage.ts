@@ -156,6 +156,12 @@ import {
   type InsertInternalRequestApproval,
   type InternalRequestAuditLog,
   type InsertInternalRequestAuditLog,
+  sopDocuments,
+  sopRoleAssignments,
+  type SopDocument,
+  type InsertSopDocument,
+  type SopRoleAssignment,
+  type InsertSopRoleAssignment,
 } from "@shared/schema";
 import { COMMUNICATION_POLICY_KEY, resolveCommunicationPolicy } from "@shared/communications";
 
@@ -610,6 +616,15 @@ export interface IStorage {
   getInternalRequestAuditLog(requestId: string): Promise<InternalRequestAuditLog[]>;
   getHirdStats(userId: string, role: string): Promise<{ open: number; pendingApproval: number; resolved: number; total: number }>;
   getHirdOpenCount(): Promise<number>;
+
+  // Process Governance Center — SOPs (Task #660)
+  getSopDocuments(filters?: { category?: string; launchWave?: number; lifecycleStatus?: string; owner?: string; currentOnly?: boolean }): Promise<SopDocument[]>;
+  getSopDocumentById(id: string): Promise<SopDocument | undefined>;
+  getCurrentSopByMasterId(sopMasterId: string): Promise<SopDocument | undefined>;
+  getSopVersionHistory(sopMasterId: string): Promise<SopDocument[]>;
+  getSopRoleAssignments(sopMasterId: string): Promise<SopRoleAssignment[]>;
+  createSopDocument(data: InsertSopDocument): Promise<SopDocument>;
+  updateSopDocument(id: string, updates: Partial<InsertSopDocument>, actorId?: string): Promise<{ doc: SopDocument; clonedNewVersion: boolean }>;
 
   // Salary advances
   createSalaryAdvanceWithNumber(data: InsertSalaryAdvanceRequest): Promise<SalaryAdvanceRequest>;
@@ -4878,6 +4893,156 @@ export class DatabaseStorage implements IStorage {
       .from(internalRequests)
       .where(sql`${internalRequests.status} NOT IN ('closed', 'rejected')`);
     return result?.count ?? 0;
+  }
+
+  // ==========================================
+  // PROCESS GOVERNANCE CENTER — SOPs (Task #660)
+  // ==========================================
+
+  async getSopDocuments(filters?: { category?: string; launchWave?: number; lifecycleStatus?: string; owner?: string; currentOnly?: boolean }): Promise<SopDocument[]> {
+    const conditions = [];
+    // Default to current versions only unless explicitly disabled.
+    if (filters?.currentOnly !== false) conditions.push(eq(sopDocuments.isCurrent, true));
+    if (filters?.category) conditions.push(eq(sopDocuments.category, filters.category));
+    if (filters?.launchWave !== undefined) conditions.push(eq(sopDocuments.launchWave, filters.launchWave));
+    if (filters?.lifecycleStatus) conditions.push(eq(sopDocuments.lifecycleStatus, filters.lifecycleStatus as any));
+    if (filters?.owner) conditions.push(ilike(sopDocuments.owner, `%${filters.owner}%`));
+    const whereClause = conditions.length ? and(...conditions) : undefined;
+    return await db
+      .select()
+      .from(sopDocuments)
+      .where(whereClause)
+      .orderBy(sopDocuments.launchWave, sopDocuments.code);
+  }
+
+  async getSopDocumentById(id: string): Promise<SopDocument | undefined> {
+    const [row] = await db.select().from(sopDocuments).where(eq(sopDocuments.id, id));
+    return row;
+  }
+
+  async getCurrentSopByMasterId(sopMasterId: string): Promise<SopDocument | undefined> {
+    const [row] = await db
+      .select()
+      .from(sopDocuments)
+      .where(and(eq(sopDocuments.sopMasterId, sopMasterId), eq(sopDocuments.isCurrent, true)));
+    return row;
+  }
+
+  async getSopVersionHistory(sopMasterId: string): Promise<SopDocument[]> {
+    return await db
+      .select()
+      .from(sopDocuments)
+      .where(eq(sopDocuments.sopMasterId, sopMasterId))
+      .orderBy(desc(sopDocuments.version));
+  }
+
+  async getSopRoleAssignments(sopMasterId: string): Promise<SopRoleAssignment[]> {
+    return await db
+      .select()
+      .from(sopRoleAssignments)
+      .where(eq(sopRoleAssignments.sopMasterId, sopMasterId))
+      .orderBy(sopRoleAssignments.role);
+  }
+
+  async createSopDocument(data: InsertSopDocument): Promise<SopDocument> {
+    // A brand-new SOP starts at version 1, is_current=true. If no sopMasterId is
+    // provided, default it to the code (the natural stable key).
+    const values = {
+      ...data,
+      sopMasterId: data.sopMasterId ?? data.code,
+      version: data.version ?? 1,
+      isCurrent: true,
+    };
+    const [created] = await db.insert(sopDocuments).values(values).returning();
+    return created;
+  }
+
+  async updateSopDocument(
+    id: string,
+    updates: Partial<InsertSopDocument>,
+    actorId?: string,
+  ): Promise<{ doc: SopDocument; clonedNewVersion: boolean }> {
+    const existing = await this.getSopDocumentById(id);
+    if (!existing) {
+      throw new Error("SOP not found");
+    }
+
+    // Version control: a published/active SOP version is LOCKED. Editing it must
+    // never mutate the locked row — instead clone a new draft version (version+1),
+    // mark the old row superseded + not-current, and return the new draft. A
+    // draft / changes_requested / under_revision row is editable in place.
+    const lockedStatuses = ["published", "active"];
+    const isLocked = lockedStatuses.includes(existing.lifecycleStatus as string);
+
+    // Fields that identify the SOP/version are never taken from client updates.
+    const {
+      sopMasterId: _ignoreMaster,
+      code: _ignoreCode,
+      version: _ignoreVersion,
+      isCurrent: _ignoreCurrent,
+      supersededByVersionId: _ignoreSuperseded,
+      ...safeUpdates
+    } = updates;
+
+    if (!isLocked) {
+      const [updated] = await db
+        .update(sopDocuments)
+        .set({ ...safeUpdates, updatedAt: new Date() })
+        .where(eq(sopDocuments.id, id))
+        .returning();
+      return { doc: updated, clonedNewVersion: false };
+    }
+
+    // Clone a new draft version inside a transaction.
+    return await db.transaction(async (tx) => {
+      const [{ max }] = await tx
+        .select({ max: sql<number>`coalesce(max(${sopDocuments.version}), 0)::int` })
+        .from(sopDocuments)
+        .where(eq(sopDocuments.sopMasterId, existing.sopMasterId));
+      const nextVersion = (max ?? existing.version) + 1;
+
+      const [cloned] = await tx
+        .insert(sopDocuments)
+        .values({
+          sopMasterId: existing.sopMasterId,
+          code: existing.code,
+          title: safeUpdates.title ?? existing.title,
+          category: safeUpdates.category ?? existing.category,
+          owner: safeUpdates.owner ?? existing.owner,
+          approver: safeUpdates.approver ?? existing.approver,
+          audienceRoles: safeUpdates.audienceRoles ?? existing.audienceRoles ?? undefined,
+          launchWave: safeUpdates.launchWave ?? existing.launchWave,
+          lifecycleStatus: "draft",
+          version: nextVersion,
+          isCurrent: true,
+          effectiveDate: safeUpdates.effectiveDate ?? existing.effectiveDate ?? undefined,
+          reviewCycle: safeUpdates.reviewCycle ?? existing.reviewCycle ?? undefined,
+          confidentiality: safeUpdates.confidentiality ?? existing.confidentiality ?? undefined,
+          kpiDescription: safeUpdates.kpiDescription ?? existing.kpiDescription ?? undefined,
+          auditOwnerRole: safeUpdates.auditOwnerRole ?? existing.auditOwnerRole ?? undefined,
+          frequency: safeUpdates.frequency ?? existing.frequency ?? undefined,
+          evidenceDescription: safeUpdates.evidenceDescription ?? existing.evidenceDescription ?? undefined,
+          target: safeUpdates.target ?? existing.target ?? undefined,
+          aiAssistAllowed: safeUpdates.aiAssistAllowed ?? existing.aiAssistAllowed,
+          humanSignoffRequired: safeUpdates.humanSignoffRequired ?? existing.humanSignoffRequired,
+          summary: safeUpdates.summary ?? existing.summary ?? undefined,
+          createdBy: actorId ?? existing.createdBy ?? undefined,
+        })
+        .returning();
+
+      // Lock + supersede the previous current row.
+      await tx
+        .update(sopDocuments)
+        .set({
+          isCurrent: false,
+          lifecycleStatus: "under_revision",
+          supersededByVersionId: cloned.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(sopDocuments.id, existing.id));
+
+      return { doc: cloned, clonedNewVersion: true };
+    });
   }
 
   // ==========================================

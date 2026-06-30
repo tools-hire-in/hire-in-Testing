@@ -3320,3 +3320,168 @@ export type InsertTravelMarginFloor = typeof travelMarginFloors.$inferInsert;
 export type TravelQuote = typeof travelQuotes.$inferSelect;
 export type InsertTravelQuote = z.infer<typeof insertTravelQuoteSchema>;
 export type TravelQuoteOutput = typeof travelQuoteOutputs.$inferSelect;
+
+// ==========================================
+// PROCESS GOVERNANCE CENTER — SOP FOUNDATION (Task #660)
+// ==========================================
+// Stable SOP identity: every SOP has an immutable `sopMasterId` (we store the
+// SOP `code`, e.g. "OPS-001", in it — the natural stable key that never changes
+// across versions). Version rows are children of that identity. ALL child tables
+// (role assignments, employee progress, audit records, findings) link by
+// `sopMasterId`, NOT by a per-version row id, so cloning a new version never
+// orphans progress/audits/findings. Acknowledgments capture the specific version
+// they bound to via `sopVersion`.
+
+export const sopLifecycleStatusEnum = pgEnum("sop_lifecycle_status", [
+  "draft",
+  "in_review",
+  "changes_requested",
+  "approved",
+  "published",
+  "training_assigned",
+  "acknowledged",
+  "active",
+  "under_revision",
+  "retired",
+]);
+
+export const sopFindingStatusEnum = pgEnum("sop_finding_status", [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+]);
+
+export const sopDocuments = pgTable("sop_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Stable identity shared by every version of this SOP (holds the SOP code).
+  sopMasterId: varchar("sop_master_id").notNull(),
+  code: varchar("code").notNull(),
+  title: varchar("title").notNull(),
+  category: varchar("category").notNull(),
+  owner: varchar("owner").notNull(),
+  approver: varchar("approver"),
+  audienceRoles: text("audience_roles").array(),
+  launchWave: integer("launch_wave").default(0).notNull(),
+  lifecycleStatus: sopLifecycleStatusEnum("lifecycle_status").default("draft").notNull(),
+  version: integer("version").default(1).notNull(),
+  isCurrent: boolean("is_current").default(true).notNull(),
+  effectiveDate: date("effective_date"),
+  reviewCycle: varchar("review_cycle"),
+  confidentiality: varchar("confidentiality"),
+  kpiDescription: text("kpi_description"),
+  auditOwnerRole: varchar("audit_owner_role"),
+  frequency: varchar("frequency"),
+  evidenceDescription: text("evidence_description"),
+  target: varchar("target"),
+  aiAssistAllowed: boolean("ai_assist_allowed").default(false).notNull(),
+  humanSignoffRequired: boolean("human_signoff_required").default(true).notNull(),
+  summary: text("summary"),
+  supersededByVersionId: varchar("superseded_by_version_id"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  masterVersionUnique: uniqueIndex("sop_documents_master_version_unique").on(table.sopMasterId, table.version),
+  masterIdx: index("sop_documents_master_idx").on(table.sopMasterId),
+  currentIdx: index("sop_documents_current_idx").on(table.isCurrent),
+}));
+
+export const sopRoleAssignments = pgTable("sop_role_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  role: varchar("role").notNull(),
+  trainingType: varchar("training_type"),
+  quizRequired: boolean("quiz_required").default(false).notNull(),
+  kpiDescription: text("kpi_description"),
+  auditOwnerRole: varchar("audit_owner_role"),
+  frequency: varchar("frequency"),
+  evidenceDescription: text("evidence_description"),
+  target: varchar("target"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  masterRoleUnique: uniqueIndex("sop_role_assignments_master_role_unique").on(table.sopMasterId, table.role),
+  masterIdx: index("sop_role_assignments_master_idx").on(table.sopMasterId),
+}));
+
+export const sopEmployeeProgress = pgTable("sop_employee_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  sopVersion: integer("sop_version").notNull(),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  trainingCompletedAt: timestamp("training_completed_at"),
+  quizPassedAt: timestamp("quiz_passed_at"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgmentHash: varchar("acknowledgment_hash"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  masterUserIdx: index("sop_employee_progress_master_user_idx").on(table.sopMasterId, table.userId),
+  userIdx: index("sop_employee_progress_user_idx").on(table.userId),
+}));
+
+export const sopAuditRecords = pgTable("sop_audit_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  auditorId: varchar("auditor_id").references(() => adminUsers.id),
+  weekDate: date("week_date"),
+  evidenceCollected: boolean("evidence_collected").default(false).notNull(),
+  missesCount: integer("misses_count").default(0).notNull(),
+  auditScore: integer("audit_score"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  masterIdx: index("sop_audit_records_master_idx").on(table.sopMasterId),
+}));
+
+export const sopAuditFindings = pgTable("sop_audit_findings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  raisedBy: varchar("raised_by").references(() => adminUsers.id),
+  description: text("description").notNull(),
+  correctiveAction: text("corrective_action"),
+  dueDate: date("due_date"),
+  status: sopFindingStatusEnum("status").default("open").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  masterIdx: index("sop_audit_findings_master_idx").on(table.sopMasterId),
+}));
+
+export const insertSopDocumentSchema = createInsertSchema(sopDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSopRoleAssignmentSchema = createInsertSchema(sopRoleAssignments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSopEmployeeProgressSchema = createInsertSchema(sopEmployeeProgress).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSopAuditRecordSchema = createInsertSchema(sopAuditRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSopAuditFindingSchema = createInsertSchema(sopAuditFindings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SopDocument = typeof sopDocuments.$inferSelect;
+export type InsertSopDocument = z.infer<typeof insertSopDocumentSchema>;
+export type SopRoleAssignment = typeof sopRoleAssignments.$inferSelect;
+export type InsertSopRoleAssignment = z.infer<typeof insertSopRoleAssignmentSchema>;
+export type SopEmployeeProgress = typeof sopEmployeeProgress.$inferSelect;
+export type InsertSopEmployeeProgress = z.infer<typeof insertSopEmployeeProgressSchema>;
+export type SopAuditRecord = typeof sopAuditRecords.$inferSelect;
+export type InsertSopAuditRecord = z.infer<typeof insertSopAuditRecordSchema>;
+export type SopAuditFinding = typeof sopAuditFindings.$inferSelect;
+export type InsertSopAuditFinding = z.infer<typeof insertSopAuditFindingSchema>;

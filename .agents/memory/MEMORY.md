@@ -34,3 +34,4 @@
 - [Guided onboarding checklist](guided-onboarding-checklist.md) — non-blocking new-hire checklist; annexure→policy bridge stops double-signing; computeOnboardingChecklist is the single source for endpoint/badges/cron.
 - [Probation framework templates](probation-framework-templates.md) — probation templates keyed by dept/role/level + universal goals; resolver in probationTemplates.ts; legacy healthcare role_slug templates untouched.
 - [Centralized compensation](centralized-compensation.md) — admin_users.salary single source via salary_changes ledger; probation=opening + future-dated post-probation; manual edits need mandatory proof + maker-checker + manager direct-report scope.
+- [SOP Process Governance](sop-process-governance.md) — two-tier gate (process_governance master + rollout scope); locked published/active versions clone a new draft on edit; child tables link by sopMasterId (code).

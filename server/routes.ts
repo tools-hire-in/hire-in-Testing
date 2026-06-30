@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -11502,7 +11502,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {
@@ -11521,6 +11521,162 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Update feature flags error:", error);
       res.status(500).json({ error: "Failed to update feature flags" });
+    }
+  });
+
+  // ==========================================
+  // PROCESS GOVERNANCE CENTER — SOPs (Task #660)
+  // ==========================================
+  // Two-tier feature gate mirroring the new_look pattern:
+  //  Tier 1 (master): system_settings.feature_flags.process_governance boolean.
+  //  Tier 2 (rollout): system_settings.process_governance_rollout =
+  //    { mode: 'pilot'|'all', roles: string[], userIds: string[] }.
+  // A user has access when the master flag is ON AND (mode==='all' OR their role
+  // is in rollout.roles OR their userId is in rollout.userIds). super_admin/admin
+  // always have access when the master flag is ON so governance owners can manage
+  // the library during a pilot.
+
+  interface SopRolloutScope { mode: "pilot" | "all"; roles: string[]; userIds: string[]; }
+
+  async function getSopRolloutScope(): Promise<SopRolloutScope> {
+    const setting = await storage.getSystemSetting("process_governance_rollout");
+    const raw = (setting?.value as Partial<SopRolloutScope>) || {};
+    return {
+      mode: raw.mode === "all" ? "all" : "pilot",
+      roles: Array.isArray(raw.roles) ? raw.roles : [],
+      userIds: Array.isArray(raw.userIds) ? raw.userIds : [],
+    };
+  }
+
+  async function resolveSopAccess(req: Request): Promise<{ masterOn: boolean; enabled: boolean; rollout: SopRolloutScope }> {
+    const flagSetting = await storage.getSystemSetting("feature_flags");
+    const flags = (flagSetting?.value as Record<string, boolean>) || {};
+    const masterOn = flags.process_governance === true;
+    const rollout = await getSopRolloutScope();
+    const role = req.session?.role as string | undefined;
+    const userId = req.session?.userId as string | undefined;
+    let enabled = false;
+    if (masterOn) {
+      if (role === "super_admin" || role === "admin") enabled = true;
+      else if (rollout.mode === "all") enabled = true;
+      else if (role && rollout.roles.includes(role)) enabled = true;
+      else if (userId && rollout.userIds.includes(userId)) enabled = true;
+    }
+    return { masterOn, enabled, rollout };
+  }
+
+  // Per-user SOP access summary for the client gate (useSopAccess hook).
+  app.get("/api/sops/access", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { masterOn, enabled, rollout } = await resolveSopAccess(req);
+      const role = req.session?.role as string | undefined;
+      const canManage = enabled && ["super_admin", "admin", "hr", "operations", "manager"].includes(role || "");
+      res.json({ masterOn, enabled, canManage, rollout });
+    } catch (error) {
+      console.error("SOP access resolve error:", error);
+      res.status(500).json({ error: "Failed to resolve SOP access" });
+    }
+  });
+
+  // Rollout scope read/write — super_admin/admin only.
+  app.get("/api/sops/rollout", requireAuth, requirePermission("sops.rollout"), async (_req: Request, res: Response) => {
+    try {
+      res.json(await getSopRolloutScope());
+    } catch (error) {
+      console.error("SOP rollout get error:", error);
+      res.status(500).json({ error: "Failed to fetch rollout scope" });
+    }
+  });
+
+  app.patch("/api/sops/rollout", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const body = req.body as Partial<SopRolloutScope>;
+      const next: SopRolloutScope = {
+        mode: body.mode === "all" ? "all" : "pilot",
+        roles: Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === "string") : [],
+        userIds: Array.isArray(body.userIds) ? body.userIds.filter((u) => typeof u === "string") : [],
+      };
+      await storage.upsertSystemSetting("process_governance_rollout", next, req.session.userId);
+      res.json(next);
+    } catch (error) {
+      console.error("SOP rollout update error:", error);
+      res.status(500).json({ error: "Failed to update rollout scope" });
+    }
+  });
+
+  // List SOPs (current versions by default), with optional filters.
+  app.get("/api/sops", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const { category, wave, status, owner, all } = req.query as Record<string, string>;
+      const docs = await storage.getSopDocuments({
+        category: category || undefined,
+        launchWave: wave !== undefined && wave !== "" ? Number(wave) : undefined,
+        lifecycleStatus: status || undefined,
+        owner: owner || undefined,
+        currentOnly: all === "true" ? false : true,
+      });
+      res.json(docs);
+    } catch (error) {
+      console.error("SOP list error:", error);
+      res.status(500).json({ error: "Failed to fetch SOPs" });
+    }
+  });
+
+  // Single SOP + its version history + role assignments.
+  app.get("/api/sops/:id", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const [versions, roleAssignments] = await Promise.all([
+        storage.getSopVersionHistory(doc.sopMasterId),
+        storage.getSopRoleAssignments(doc.sopMasterId),
+      ]);
+      res.json({ ...doc, versions, roleAssignments });
+    } catch (error) {
+      console.error("SOP get error:", error);
+      res.status(500).json({ error: "Failed to fetch SOP" });
+    }
+  });
+
+  // Create a new SOP (version 1).
+  app.post("/api/sops", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const parsed = insertSopDocumentSchema.safeParse({ ...req.body, createdBy: req.session.userId });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid SOP data", details: parsed.error.flatten() });
+      }
+      const created = await storage.createSopDocument(parsed.data);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("SOP create error:", error);
+      res.status(500).json({ error: "Failed to create SOP" });
+    }
+  });
+
+  // Update a SOP — version control enforced in storage (published/active clones a
+  // new draft version; draft edits in place).
+  app.patch("/api/sops/:id", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const parsed = insertSopDocumentSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid SOP data", details: parsed.error.flatten() });
+      }
+      const result = await storage.updateSopDocument(req.params.id, parsed.data, req.session.userId);
+      res.json({ ...result.doc, clonedNewVersion: result.clonedNewVersion });
+    } catch (error) {
+      if (error instanceof Error && error.message === "SOP not found") {
+        return res.status(404).json({ error: "SOP not found" });
+      }
+      console.error("SOP update error:", error);
+      res.status(500).json({ error: "Failed to update SOP" });
     }
   });
 

@@ -5,6 +5,7 @@ interface FeatureFlags {
   document_reminder_email_enabled: boolean;
   esign_docusign_flow: boolean;
   new_look: boolean;
+  process_governance: boolean;
   [key: string]: boolean;
 }
 
@@ -13,6 +14,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   document_reminder_email_enabled: false,
   esign_docusign_flow: false,
   new_look: false,
+  process_governance: false,
 };
 
 export function useFeatureFlags() {

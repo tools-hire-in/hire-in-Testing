@@ -10,6 +10,7 @@ import { checkAndAutoCreateRun } from "./attendanceReport";
 import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
+import { SOP_SEED } from "./sopSeedData";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 const app = express();
@@ -1986,10 +1987,57 @@ async function ensureHealthcarePlansTables() {
   }
 }
 
-// Seed the cross-department probation framework (universal goals + role-specific
-// target library + scoring bands + pass rule), transcribed from the 90-Day
-// Probation Goals, Milestones & Check-In Framework doc. Idempotent, ON CONFLICT-safe,
-// plain ASCII. Does NOT touch existing healthcare templates (different role_slugs).
+// Seed the Process Governance Center 21-SOP launch library (Task #660).
+// Idempotent, ON CONFLICT-safe, plain ASCII. Each SOP is seeded as version 1,
+// is_current=true, lifecycle 'published'. Role assignments are seeded per SOP.
+async function seedSopLibrary() {
+  try {
+    log("Ensuring Process Governance Center SOP library seed (21 SOPs)...");
+
+    let docsInserted = 0;
+    let assignmentsInserted = 0;
+
+    for (const sop of SOP_SEED) {
+      // sopMasterId is the stable identity (we store the SOP code in it). Every
+      // version of this SOP shares it; child rows link by it. Seed is version 1,
+      // is_current=true, lifecycle published (foundation/launch library is live).
+      const r = await db.execute(sql`
+        INSERT INTO sop_documents
+          (sop_master_id, code, title, category, owner, approver, audience_roles,
+           launch_wave, lifecycle_status, version, is_current, review_cycle,
+           confidentiality, kpi_description, audit_owner_role, frequency,
+           evidence_description, target, ai_assist_allowed, human_signoff_required, summary)
+        VALUES
+          (${sop.code}, ${sop.code}, ${sop.title}, ${sop.category}, ${sop.owner},
+           ${sop.approver}, ${sql`ARRAY[${sql.join(sop.audienceRoles.map((x) => sql`${x}`), sql`, `)}]::text[]`},
+           ${sop.launchWave}, 'published'::sop_lifecycle_status, 1, true, ${sop.reviewCycle},
+           ${sop.confidentiality}, ${sop.kpiDescription}, ${sop.auditOwnerRole}, ${sop.frequency},
+           ${sop.evidenceDescription}, ${sop.target}, ${sop.aiAssistAllowed}, ${sop.humanSignoffRequired}, ${sop.summary})
+        ON CONFLICT (sop_master_id, version) DO NOTHING
+      `);
+      if ((r.rowCount ?? 0) > 0) docsInserted++;
+
+      for (const ra of sop.roleAssignments) {
+        const ar = await db.execute(sql`
+          INSERT INTO sop_role_assignments
+            (sop_master_id, role, training_type, quiz_required, kpi_description,
+             audit_owner_role, frequency, evidence_description, target)
+          VALUES
+            (${sop.code}, ${ra.role}, ${ra.trainingType}, ${ra.quizRequired},
+             ${ra.kpiDescription}, ${ra.auditOwnerRole}, ${ra.frequency},
+             ${ra.evidenceDescription}, ${ra.target})
+          ON CONFLICT (sop_master_id, role) DO NOTHING
+        `);
+        if ((ar.rowCount ?? 0) > 0) assignmentsInserted++;
+      }
+    }
+
+    log(`SOP library seed complete: ${docsInserted} new SOP docs, ${assignmentsInserted} new role assignments.`);
+  } catch (err) {
+    console.error("[index] SOP library seed failed:", err);
+  }
+}
+
 async function seedProbationFramework() {
   try {
     log("Ensuring probation framework seed (universal goals, role library, scoring bands)...");
@@ -3117,6 +3165,7 @@ async function runStartupTasks() {
 
   await ensureHealthcarePlansTables();
   await seedProbationFramework();
+  await seedSopLibrary();
   await backfillGrowthPlansFromAddendums();
 
   // Travel Pay Calculator — enum types + tables (idempotent, matches shared/schema.ts exactly)
