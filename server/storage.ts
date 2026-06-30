@@ -158,10 +158,18 @@ import {
   type InsertInternalRequestAuditLog,
   sopDocuments,
   sopRoleAssignments,
+  sopReviewAssignments,
+  sopComments,
+  sopEmployeeProgress,
   type SopDocument,
   type InsertSopDocument,
   type SopRoleAssignment,
   type InsertSopRoleAssignment,
+  type SopReviewAssignment,
+  type InsertSopReviewAssignment,
+  type SopComment,
+  type InsertSopComment,
+  type SopEmployeeProgress,
 } from "@shared/schema";
 import { COMMUNICATION_POLICY_KEY, resolveCommunicationPolicy } from "@shared/communications";
 
@@ -625,6 +633,21 @@ export interface IStorage {
   getSopRoleAssignments(sopMasterId: string): Promise<SopRoleAssignment[]>;
   createSopDocument(data: InsertSopDocument): Promise<SopDocument>;
   updateSopDocument(id: string, updates: Partial<InsertSopDocument>, actorId?: string): Promise<{ doc: SopDocument; clonedNewVersion: boolean }>;
+  setSopLifecycleStatus(id: string, status: string, extra?: Partial<InsertSopDocument>): Promise<SopDocument | undefined>;
+  // SOP review assignments
+  createSopReviewAssignment(data: InsertSopReviewAssignment): Promise<SopReviewAssignment>;
+  getSopReviewAssignments(sopMasterId: string, sopVersion?: number): Promise<SopReviewAssignment[]>;
+  getSopReviewAssignmentById(id: string): Promise<SopReviewAssignment | undefined>;
+  updateSopReviewAssignment(id: string, updates: Partial<InsertSopReviewAssignment>): Promise<SopReviewAssignment | undefined>;
+  // SOP comments
+  createSopComment(data: InsertSopComment): Promise<SopComment>;
+  getSopComments(sopMasterId: string): Promise<SopComment[]>;
+  // SOP employee progress
+  getSopEmployeeProgress(sopMasterId: string): Promise<SopEmployeeProgress[]>;
+  getSopEmployeeProgressForUser(userId: string): Promise<SopEmployeeProgress[]>;
+  upsertSopEmployeeProgress(sopMasterId: string, sopVersion: number, userId: string): Promise<void>;
+  markSopTrainingComplete(sopMasterId: string, userId: string, at?: Date): Promise<void>;
+  setSopAcknowledged(sopMasterId: string, sopVersion: number, userId: string, hash: string, at?: Date): Promise<SopEmployeeProgress | undefined>;
 
   // Salary advances
   createSalaryAdvanceWithNumber(data: InsertSalaryAdvanceRequest): Promise<SalaryAdvanceRequest>;
@@ -5043,6 +5066,102 @@ export class DatabaseStorage implements IStorage {
 
       return { doc: cloned, clonedNewVersion: true };
     });
+  }
+
+  async setSopLifecycleStatus(id: string, status: string, extra?: Partial<InsertSopDocument>): Promise<SopDocument | undefined> {
+    const [updated] = await db
+      .update(sopDocuments)
+      .set({ ...(extra ?? {}), lifecycleStatus: status as any, updatedAt: new Date() })
+      .where(eq(sopDocuments.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ---- SOP review assignments ----
+  async createSopReviewAssignment(data: InsertSopReviewAssignment): Promise<SopReviewAssignment> {
+    const [row] = await db.insert(sopReviewAssignments).values(data).returning();
+    return row;
+  }
+
+  async getSopReviewAssignments(sopMasterId: string, sopVersion?: number): Promise<SopReviewAssignment[]> {
+    const conditions = [eq(sopReviewAssignments.sopMasterId, sopMasterId)];
+    if (sopVersion !== undefined) conditions.push(eq(sopReviewAssignments.sopVersion, sopVersion));
+    return await db
+      .select()
+      .from(sopReviewAssignments)
+      .where(and(...conditions))
+      .orderBy(desc(sopReviewAssignments.createdAt));
+  }
+
+  async getSopReviewAssignmentById(id: string): Promise<SopReviewAssignment | undefined> {
+    const [row] = await db.select().from(sopReviewAssignments).where(eq(sopReviewAssignments.id, id));
+    return row;
+  }
+
+  async updateSopReviewAssignment(id: string, updates: Partial<InsertSopReviewAssignment>): Promise<SopReviewAssignment | undefined> {
+    const [row] = await db
+      .update(sopReviewAssignments)
+      .set(updates)
+      .where(eq(sopReviewAssignments.id, id))
+      .returning();
+    return row;
+  }
+
+  // ---- SOP comments ----
+  async createSopComment(data: InsertSopComment): Promise<SopComment> {
+    const [row] = await db.insert(sopComments).values(data).returning();
+    return row;
+  }
+
+  async getSopComments(sopMasterId: string): Promise<SopComment[]> {
+    return await db
+      .select()
+      .from(sopComments)
+      .where(eq(sopComments.sopMasterId, sopMasterId))
+      .orderBy(sopComments.createdAt);
+  }
+
+  // ---- SOP employee progress ----
+  async getSopEmployeeProgress(sopMasterId: string): Promise<SopEmployeeProgress[]> {
+    return await db
+      .select()
+      .from(sopEmployeeProgress)
+      .where(eq(sopEmployeeProgress.sopMasterId, sopMasterId));
+  }
+
+  async getSopEmployeeProgressForUser(userId: string): Promise<SopEmployeeProgress[]> {
+    return await db
+      .select()
+      .from(sopEmployeeProgress)
+      .where(eq(sopEmployeeProgress.userId, userId));
+  }
+
+  async upsertSopEmployeeProgress(sopMasterId: string, sopVersion: number, userId: string): Promise<void> {
+    // Idempotent at the DB level: a UNIQUE index on (sop_master_id, user_id)
+    // backs onConflictDoNothing, so concurrent role-change / sync / publish paths
+    // can never create duplicate rows (no race-prone read-before-insert). We key
+    // on (master, user) rather than version so a role change never duplicates;
+    // version is advanced explicitly when a new version is published.
+    await db
+      .insert(sopEmployeeProgress)
+      .values({ sopMasterId, sopVersion, userId })
+      .onConflictDoNothing({ target: [sopEmployeeProgress.sopMasterId, sopEmployeeProgress.userId] });
+  }
+
+  async markSopTrainingComplete(sopMasterId: string, userId: string, at: Date = new Date()): Promise<void> {
+    await db
+      .update(sopEmployeeProgress)
+      .set({ trainingCompletedAt: at, updatedAt: new Date() })
+      .where(and(eq(sopEmployeeProgress.sopMasterId, sopMasterId), eq(sopEmployeeProgress.userId, userId)));
+  }
+
+  async setSopAcknowledged(sopMasterId: string, sopVersion: number, userId: string, hash: string, at: Date = new Date()): Promise<SopEmployeeProgress | undefined> {
+    const [row] = await db
+      .update(sopEmployeeProgress)
+      .set({ acknowledgedAt: at, acknowledgmentHash: hash, sopVersion, updatedAt: new Date() })
+      .where(and(eq(sopEmployeeProgress.sopMasterId, sopMasterId), eq(sopEmployeeProgress.userId, userId)))
+      .returning();
+    return row;
   }
 
   // ==========================================

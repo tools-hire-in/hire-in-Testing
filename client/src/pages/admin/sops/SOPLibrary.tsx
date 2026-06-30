@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,14 +10,37 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useSopAccess } from "@/hooks/use-sop-access";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { SopDocument, SopRoleAssignment } from "@shared/schema";
+import type { SopDocument, SopRoleAssignment, SopReviewAssignment, SopComment } from "@shared/schema";
+
+const MANAGE_SUBMIT_STATUSES = ["draft", "changes_requested", "under_revision"];
+const REVIEW_ACTIONS: { action: string; label: string }[] = [
+  { action: "approve", label: "Approve" },
+  { action: "approve_with_comments", label: "Approve w/ comments" },
+  { action: "request_changes", label: "Request changes" },
+  { action: "reject", label: "Reject" },
+];
+
+type ReviewRow = SopReviewAssignment & { reviewerName: string; overdue: boolean };
+type ReviewGate = { strictApprove: boolean; noObjectionEligible: boolean; hasBlocking: boolean; pendingCount: number; overdueCount: number };
+type CommentRow = SopComment & { authorName: string };
+type ProgressRow = {
+  userId: string;
+  name: string;
+  role: string | null;
+  departmentId: string | null;
+  trainingCompletedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedVersion: number | null;
+};
 
 const LIFECYCLE_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -248,77 +271,479 @@ export default function SOPLibrary() {
 }
 
 function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, isLoading } = useQuery<SopDetail>({
-    queryKey: ["/api/sops", id],
+  const { user } = useAuth();
+  const { canManage } = useSopAccess();
+  const { toast } = useToast();
+  const [tab, setTab] = useState("overview");
+  const [reviewerPickerOpen, setReviewerPickerOpen] = useState(false);
+  const [ackOpen, setAckOpen] = useState(false);
+
+  const { data, isLoading } = useQuery<SopDetail>({ queryKey: ["/api/sops", id] });
+  const { data: reviewData } = useQuery<{ reviews: ReviewRow[]; gate: ReviewGate }>({ queryKey: ["/api/sops", id, "reviews"] });
+
+  const isOverride = user?.role === "super_admin" || user?.role === "admin";
+  const status = data?.lifecycleStatus ?? "";
+  const reviews = reviewData?.reviews ?? [];
+  const gate = reviewData?.gate;
+  const myPendingReview = reviews.find((r) => r.reviewerId === user?.id && r.status === "pending");
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/sops"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", id, "reviews"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", id, "progress"] });
+  };
+
+  const publishMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/${id}/publish`, {})).json(),
+    onSuccess: (res: { training?: { assignedCount: number; skippedOutOfRollout: number } }) => {
+      refresh();
+      toast({ title: "SOP published", description: res?.training ? `${res.training.assignedCount} trainee(s) assigned, ${res.training.skippedOutOfRollout} outside rollout.` : undefined });
+    },
+    onError: (e: any) => toast({ title: "Publish failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const retireMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/${id}/retire`, {})).json(),
+    onSuccess: () => { refresh(); toast({ title: "SOP retired" }); },
+    onError: (e: any) => toast({ title: "Retire failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const reviewActionMut = useMutation({
+    mutationFn: async (vars: { action: string; comment?: string }) =>
+      (await apiRequest("POST", `/api/sops/${id}/review-action`, vars)).json(),
+    onSuccess: () => { refresh(); queryClient.invalidateQueries({ queryKey: ["/api/sops", id, "comments"] }); toast({ title: "Review recorded" }); },
+    onError: (e: any) => toast({ title: "Action failed", description: e?.message, variant: "destructive" }),
   });
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-sop-detail">
         <DialogHeader>
-          <DialogTitle>{isLoading ? "Loading..." : `${data?.code} — ${data?.title}`}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            {isLoading ? "Loading..." : `${data?.code} — ${data?.title}`}
+            {data && (
+              <Badge variant={lifecycleVariant(status)} data-testid="badge-detail-status">
+                {LIFECYCLE_LABELS[status] ?? status}
+              </Badge>
+            )}
+          </DialogTitle>
         </DialogHeader>
         {isLoading || !data ? (
           <Skeleton className="h-40 w-full" />
         ) : (
-          <div className="space-y-4 text-sm">
-            <p className="text-muted-foreground">{data.summary}</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-              <Field label="Owner" value={data.owner} />
-              <Field label="Approver" value={data.approver} />
-              <Field label="Category" value={data.category} />
-              <Field label="Launch wave" value={String(data.launchWave)} />
-              <Field label="Review cycle" value={data.reviewCycle} />
-              <Field label="Confidentiality" value={data.confidentiality} />
-              <Field label="Frequency" value={data.frequency} />
-              <Field label="Target" value={data.target} />
-              <Field label="AI assist allowed" value={data.aiAssistAllowed ? "Yes" : "No"} />
-              <Field label="Human sign-off required" value={data.humanSignoffRequired ? "Yes" : "No"} />
+          <>
+            {/* Action bar */}
+            <div className="flex flex-wrap gap-2 border-b pb-3" data-testid="sop-action-bar">
+              {canManage && MANAGE_SUBMIT_STATUSES.includes(status) && (
+                <Button size="sm" onClick={() => setReviewerPickerOpen(true)} data-testid="button-submit-review">
+                  <Send className="h-3.5 w-3.5 mr-1" /> Submit for Review
+                </Button>
+              )}
+              {status === "in_review" && myPendingReview && (
+                <ReviewActionButtons onAct={(action, comment) => reviewActionMut.mutate({ action, comment })} pending={reviewActionMut.isPending} />
+              )}
+              {canManage && status === "approved" && (
+                <Button size="sm" onClick={() => publishMut.mutate()} disabled={publishMut.isPending} data-testid="button-publish-sop">
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> {publishMut.isPending ? "Publishing..." : "Publish"}
+                </Button>
+              )}
+              {isOverride && status === "in_review" && (gate?.strictApprove || gate?.noObjectionEligible) && !gate?.hasBlocking && (
+                <Button size="sm" variant="secondary" onClick={() => publishMut.mutate()} disabled={publishMut.isPending} data-testid="button-publish-no-objection">
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Publish (no-objection)
+                </Button>
+              )}
+              {["published", "training_assigned", "acknowledged", "active"].includes(status) && (
+                <Button size="sm" variant="outline" onClick={() => setAckOpen(true)} data-testid="button-acknowledge-sop">
+                  <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Acknowledge
+                </Button>
+              )}
+              {canManage && ["active", "under_revision"].includes(status) && (
+                <Button size="sm" variant="outline" onClick={() => retireMut.mutate()} disabled={retireMut.isPending} data-testid="button-retire-sop">
+                  <Archive className="h-3.5 w-3.5 mr-1" /> Retire
+                </Button>
+              )}
             </div>
-            {data.kpiDescription && <Field label="KPI" value={data.kpiDescription} />}
-            {data.evidenceDescription && <Field label="Evidence" value={data.evidenceDescription} />}
-            {data.audienceRoles && data.audienceRoles.length > 0 && (
-              <div>
-                <p className="font-medium mb-1">Audience roles</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {data.audienceRoles.map((r) => <Badge key={r} variant="secondary" className="capitalize">{r.replace("_", " ")}</Badge>)}
-                </div>
-              </div>
-            )}
 
-            {data.roleAssignments.length > 0 && (
-              <div>
-                <p className="font-medium mb-1">Role assignments</p>
-                <div className="space-y-2">
-                  {data.roleAssignments.map((ra) => (
-                    <div key={ra.id} className="rounded border p-2 text-xs" data-testid={`row-role-assignment-${ra.role}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium capitalize">{ra.role.replace("_", " ")}</span>
-                        {ra.quizRequired && <Badge variant="outline" className="text-[10px]">Quiz required</Badge>}
-                      </div>
-                      {ra.trainingType && <p className="text-muted-foreground mt-0.5">Training: {ra.trainingType}</p>}
-                      {ra.target && <p className="text-muted-foreground">Target: {ra.target}</p>}
+            <Tabs value={tab} onValueChange={setTab} className="mt-2">
+              <TabsList className="grid grid-cols-4 w-full">
+                <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+                <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
+                <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
+                <TabsTrigger value="progress" data-testid="tab-progress">Team Progress</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="space-y-4 text-sm mt-3">
+                <p className="text-muted-foreground">{data.summary}</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <Field label="Owner" value={data.owner} />
+                  <Field label="Approver" value={data.approver} />
+                  <Field label="Category" value={data.category} />
+                  <Field label="Launch wave" value={String(data.launchWave)} />
+                  <Field label="Review cycle" value={data.reviewCycle} />
+                  <Field label="Confidentiality" value={data.confidentiality} />
+                  <Field label="Frequency" value={data.frequency} />
+                  <Field label="Target" value={data.target} />
+                  <Field label="AI assist allowed" value={data.aiAssistAllowed ? "Yes" : "No"} />
+                  <Field label="Human sign-off required" value={data.humanSignoffRequired ? "Yes" : "No"} />
+                </div>
+                {data.kpiDescription && <Field label="KPI" value={data.kpiDescription} />}
+                {data.evidenceDescription && <Field label="Evidence" value={data.evidenceDescription} />}
+                {data.audienceRoles && data.audienceRoles.length > 0 && (
+                  <div>
+                    <p className="font-medium mb-1">Audience roles</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {data.audienceRoles.map((r) => <Badge key={r} variant="secondary" className="capitalize">{r.replace("_", " ")}</Badge>)}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <p className="font-medium mb-1 flex items-center gap-1"><History className="h-3.5 w-3.5" /> Version history</p>
-              <div className="space-y-1">
-                {data.versions.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between rounded border px-2 py-1 text-xs" data-testid={`row-version-${v.version}`}>
-                    <span>v{v.version}{v.isCurrent && <Badge variant="default" className="ml-2 text-[10px]">Current</Badge>}</span>
-                    <Badge variant={lifecycleVariant(v.lifecycleStatus)} className="text-[10px]">
-                      {LIFECYCLE_LABELS[v.lifecycleStatus] ?? v.lifecycleStatus}
-                    </Badge>
                   </div>
-                ))}
+                )}
+                {data.roleAssignments.length > 0 && (
+                  <div>
+                    <p className="font-medium mb-1">Role assignments</p>
+                    <div className="space-y-2">
+                      {data.roleAssignments.map((ra) => (
+                        <div key={ra.id} className="rounded border p-2 text-xs" data-testid={`row-role-assignment-${ra.role}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium capitalize">{ra.role.replace("_", " ")}</span>
+                            {ra.quizRequired && <Badge variant="outline" className="text-[10px]">Quiz required</Badge>}
+                          </div>
+                          {ra.trainingType && <p className="text-muted-foreground mt-0.5">Training: {ra.trainingType}</p>}
+                          {ra.target && <p className="text-muted-foreground">Target: {ra.target}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <LinkTrackPanel sop={data} canManage={canManage} onSaved={refresh} />
+                <div>
+                  <p className="font-medium mb-1 flex items-center gap-1"><History className="h-3.5 w-3.5" /> Version history</p>
+                  <div className="space-y-1">
+                    {data.versions.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between rounded border px-2 py-1 text-xs" data-testid={`row-version-${v.version}`}>
+                        <span>v{v.version}{v.isCurrent && <Badge variant="default" className="ml-2 text-[10px]">Current</Badge>}</span>
+                        <Badge variant={lifecycleVariant(v.lifecycleStatus)} className="text-[10px]">
+                          {LIFECYCLE_LABELS[v.lifecycleStatus] ?? v.lifecycleStatus}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="reviewers" className="mt-3">
+                <ReviewersTab reviews={reviews} gate={gate} />
+              </TabsContent>
+
+              <TabsContent value="comments" className="mt-3">
+                <CommentsTab sopId={id} />
+              </TabsContent>
+
+              <TabsContent value="progress" className="mt-3">
+                <ProgressTab sopId={id} version={data.version} />
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
+      </DialogContent>
+
+      {reviewerPickerOpen && (
+        <ReviewerPickerDialog sopId={id} onClose={() => setReviewerPickerOpen(false)} onSubmitted={() => { setReviewerPickerOpen(false); refresh(); }} />
+      )}
+      {ackOpen && data && (
+        <AcknowledgeDialog sopId={id} sop={data} onClose={() => setAckOpen(false)} onDone={() => { setAckOpen(false); refresh(); }} />
+      )}
+    </Dialog>
+  );
+}
+
+function ReviewActionButtons({ onAct, pending }: { onAct: (action: string, comment?: string) => void; pending: boolean }) {
+  const [comment, setComment] = useState("");
+  return (
+    <div className="flex flex-col gap-2 w-full">
+      <div className="flex flex-wrap gap-2">
+        {REVIEW_ACTIONS.map((a) => (
+          <Button
+            key={a.action}
+            size="sm"
+            variant={a.action === "reject" || a.action === "request_changes" ? "destructive" : "default"}
+            disabled={pending}
+            onClick={() => onAct(a.action, comment.trim() || undefined)}
+            data-testid={`button-review-${a.action}`}
+          >
+            {a.label}
+          </Button>
+        ))}
+      </div>
+      <Input
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Comment (required for changes/reject/approve-with-comments)"
+        className="text-xs"
+        data-testid="input-review-comment"
+      />
+    </div>
+  );
+}
+
+function ReviewersTab({ reviews, gate }: { reviews: ReviewRow[]; gate?: ReviewGate }) {
+  if (reviews.length === 0) {
+    return <p className="text-sm text-muted-foreground" data-testid="text-no-reviewers">No reviewers assigned for this version yet.</p>;
+  }
+  return (
+    <div className="space-y-3 text-sm">
+      {gate && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant={gate.strictApprove ? "default" : "outline"}>{gate.strictApprove ? "Approval gate: clear" : gate.noObjectionEligible ? "Approval gate: no-objection (override)" : "Approval gate: pending"}</Badge>
+          {gate.hasBlocking && <Badge variant="destructive">Changes requested</Badge>}
+          {gate.overdueCount > 0 && <Badge variant="secondary">{gate.overdueCount} overdue</Badge>}
+        </div>
+      )}
+      <div className="space-y-2">
+        {reviews.map((r) => {
+          const due = r.dueAt ? new Date(r.dueAt) : null;
+          const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86400000) : null;
+          return (
+            <div key={r.id} className="rounded border p-2.5" data-testid={`row-reviewer-${r.reviewerId}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{r.reviewerName}</span>
+                <Badge variant={r.status === "pending" ? (r.overdue ? "destructive" : "outline") : r.status === "changes_requested" || r.status === "rejected" ? "destructive" : "default"}>
+                  {r.status.replace(/_/g, " ")}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                {r.status === "pending" && due && (
+                  r.overdue ? (
+                    <span className="flex items-center gap-1 text-destructive" data-testid={`text-overdue-${r.reviewerId}`}>
+                      <AlertTriangle className="h-3 w-3" /> Overdue (due {due.toLocaleDateString()})
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1" data-testid={`text-sla-${r.reviewerId}`}>
+                      <Clock className="h-3 w-3" /> {daysLeft} day{daysLeft === 1 ? "" : "s"} left (due {due.toLocaleDateString()})
+                    </span>
+                  )
+                )}
+                {r.decisionAt && <span>Decided {new Date(r.decisionAt).toLocaleDateString()}</span>}
+              </div>
+              {r.comment && <p className="text-xs mt-1.5 border-l-2 pl-2 italic">{r.comment}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CommentsTab({ sopId }: { sopId: string }) {
+  const { toast } = useToast();
+  const [body, setBody] = useState("");
+  const { data: comments, isLoading } = useQuery<CommentRow[]>({ queryKey: ["/api/sops", sopId, "comments"] });
+
+  const addMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/${sopId}/comments`, { body })).json(),
+    onSuccess: () => { setBody(""); queryClient.invalidateQueries({ queryKey: ["/api/sops", sopId, "comments"] }); },
+    onError: (e: any) => toast({ title: "Failed to add comment", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex gap-2">
+        <Input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Add a comment" data-testid="input-comment-body" />
+        <Button size="sm" disabled={!body.trim() || addMut.isPending} onClick={() => addMut.mutate()} data-testid="button-add-comment">
+          <MessageSquare className="h-3.5 w-3.5 mr-1" /> Post
+        </Button>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-20 w-full" />
+      ) : (comments ?? []).length === 0 ? (
+        <p className="text-muted-foreground text-xs" data-testid="text-no-comments">No comments yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {(comments ?? []).map((c) => (
+            <div key={c.id} className="rounded border p-2 text-xs" data-testid={`row-comment-${c.id}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{c.authorName}</span>
+                <span className="text-muted-foreground">{c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}</span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProgressTab({ sopId, version }: { sopId: string; version: number }) {
+  const [roleFilter, setRoleFilter] = useState("all");
+  const { data: rows, isLoading } = useQuery<ProgressRow[]>({ queryKey: ["/api/sops", sopId, "progress"] });
+  const { toast } = useToast();
+
+  const syncMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/assignments/sync`, {})).json(),
+    onSuccess: (res: { created: number }) => { queryClient.invalidateQueries({ queryKey: ["/api/sops", sopId, "progress"] }); toast({ title: "Synced", description: `${res?.created ?? 0} new assignment(s).` }); },
+    onError: (e: any) => toast({ title: "Sync failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const roles = useMemo(() => Array.from(new Set((rows ?? []).map((r) => r.role).filter(Boolean) as string[])).sort(), [rows]);
+  const filtered = (rows ?? []).filter((r) => roleFilter === "all" || r.role === roleFilter);
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-48" data-testid="select-progress-role"><SelectValue placeholder="Role" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All roles</SelectItem>
+            {roles.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace(/_/g, " ")}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" onClick={() => syncMut.mutate()} disabled={syncMut.isPending} data-testid="button-sync-assignments">
+          <Users className="h-3.5 w-3.5 mr-1" /> Sync
+        </Button>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : filtered.length === 0 ? (
+        <p className="text-muted-foreground text-xs" data-testid="text-no-progress">No impacted employees yet. Link a track and publish, or run Sync.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {filtered.map((r) => (
+            <div key={r.userId} className="flex items-center justify-between rounded border px-2.5 py-1.5 text-xs" data-testid={`row-progress-${r.userId}`}>
+              <div>
+                <span className="font-medium">{r.name}</span>
+                {r.role && <span className="text-muted-foreground capitalize ml-2">{r.role.replace(/_/g, " ")}</span>}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Badge variant={r.trainingCompletedAt ? "default" : "outline"} className="text-[10px]">
+                  {r.trainingCompletedAt ? "Trained" : "Training pending"}
+                </Badge>
+                {r.acknowledgedAt ? (
+                  <Badge variant="default" className="text-[10px]" data-testid={`badge-ack-${r.userId}`}>Ack v{r.acknowledgedVersion} · {new Date(r.acknowledgedAt).toLocaleDateString()}</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px]">Not acknowledged</Badge>
+                )}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkTrackPanel({ sop, canManage, onSaved }: { sop: SopDetail; canManage: boolean; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<string>(sop.learningTrackId ?? "none");
+  const { data: tracks } = useQuery<any[]>({ queryKey: ["/api/onboarding/tracks"], enabled: canManage });
+
+  const linkMut = useMutation({
+    mutationFn: async () => (await apiRequest("PATCH", `/api/sops/${sop.id}/learning-track`, { learningTrackId: selected === "none" ? null : selected })).json(),
+    onSuccess: () => { onSaved(); toast({ title: "Training track updated" }); },
+    onError: (e: any) => toast({ title: "Failed to link track", description: e?.message, variant: "destructive" }),
+  });
+
+  if (!canManage) {
+    const t = (tracks ?? []).find((x) => x.id === sop.learningTrackId);
+    return sop.learningTrackId ? <Field label="Linked training track" value={t?.title ?? sop.learningTrackId} /> : null;
+  }
+
+  return (
+    <div className="rounded border p-2.5 space-y-2" data-testid="panel-link-track">
+      <p className="font-medium text-xs flex items-center gap-1"><Link2 className="h-3.5 w-3.5" /> Linked training track</p>
+      <div className="flex gap-2">
+        <Select value={selected} onValueChange={setSelected}>
+          <SelectTrigger className="flex-1" data-testid="select-link-track"><SelectValue placeholder="Select a track" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">None</SelectItem>
+            {(tracks ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" disabled={linkMut.isPending || selected === (sop.learningTrackId ?? "none")} onClick={() => linkMut.mutate()} data-testid="button-save-track">
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewerPickerDialog({ sopId, onClose, onSubmitted }: { sopId: string; onClose: () => void; onSubmitted: () => void }) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [selected, setSelected] = useState<string[]>([]);
+  const { data: usersResp, isLoading } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; role: string }[] }>({
+    queryKey: ["/api/admin/users", "active"],
+    queryFn: async () => (await apiRequest("GET", "/api/admin/users?status=active")).json(),
+  });
+
+  const eligible = (usersResp?.users ?? []).filter((u) => u.id !== user?.id && ["super_admin", "admin", "hr", "operations", "manager"].includes(u.role));
+
+  const submitMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/${sopId}/submit-review`, { reviewerIds: selected })).json(),
+    onSuccess: () => { toast({ title: "Submitted for review" }); onSubmitted(); },
+    onError: (e: any) => toast({ title: "Failed to submit", description: e?.message, variant: "destructive" }),
+  });
+
+  const toggle = (id: string) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md" data-testid="dialog-reviewer-picker">
+        <DialogHeader>
+          <DialogTitle>Assign reviewers</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">Reviewers get a 5 business-day SLA to respond.</p>
+        {isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
+          <div className="max-h-72 overflow-y-auto space-y-1.5">
+            {eligible.map((u) => (
+              <label key={u.id} className="flex items-center gap-2 rounded border p-2 text-sm cursor-pointer" data-testid={`option-reviewer-${u.id}`}>
+                <Checkbox checked={selected.includes(u.id)} onCheckedChange={() => toggle(u.id)} />
+                <span className="flex-1">{u.firstName} {u.lastName} <span className="text-muted-foreground capitalize">· {u.role.replace(/_/g, " ")}</span></span>
+              </label>
+            ))}
+            {eligible.length === 0 && <p className="text-xs text-muted-foreground">No eligible reviewers found.</p>}
           </div>
         )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-reviewers">Cancel</Button>
+          <Button disabled={selected.length === 0 || submitMut.isPending} onClick={() => submitMut.mutate()} data-testid="button-confirm-reviewers">
+            {submitMut.isPending ? "Submitting..." : `Submit (${selected.length})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AcknowledgeDialog({ sopId, sop, onClose, onDone }: { sopId: string; sop: SopDetail; onClose: () => void; onDone: () => void }) {
+  const { toast } = useToast();
+  const [typedName, setTypedName] = useState("");
+  const ackMut = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/sops/${sopId}/acknowledge`, { typedName })).json(),
+    onSuccess: (res: { refNumber: string }) => { toast({ title: "SOP acknowledged", description: `Reference: ${res?.refNumber ?? ""}` }); onDone(); },
+    onError: (e: any) => toast({ title: "Cannot acknowledge", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md" data-testid="dialog-acknowledge">
+        <DialogHeader>
+          <DialogTitle>Acknowledge {sop.code} v{sop.version}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          By typing your name you confirm you have read, understood, and will follow this SOP version. This is recorded in the signature ledger.
+        </p>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Type your full name</Label>
+          <Input value={typedName} onChange={(e) => setTypedName(e.target.value)} placeholder="Your full name" data-testid="input-ack-name" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-ack">Cancel</Button>
+          <Button disabled={!typedName.trim() || ackMut.isPending} onClick={() => ackMut.mutate()} data-testid="button-confirm-ack">
+            {ackMut.isPending ? "Recording..." : "Acknowledge"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

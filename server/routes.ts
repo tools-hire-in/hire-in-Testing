@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, sopDocuments, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -56,6 +56,8 @@ import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
 import path from "path";
 import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance, recordSignature } from "./documentSigningService";
+import * as sopGov from "./sopGovernance";
+import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress } from "./sopAssignmentEngine";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
@@ -1893,6 +1895,14 @@ export async function registerRoutes(
         action: "update_user",
         changes: { before, after },
       });
+
+      // When a user's role is set/changed, project SOP obligations for the new role
+      // (idempotent, no duplicates). Non-fatal — never block the user update.
+      if (role && role !== targetUser.role) {
+        syncSopProgressForUser(userId, role).catch((err) =>
+          console.error("SOP progress sync on role change failed:", err),
+        );
+      }
 
       res.json(user);
     } catch (error) {
@@ -11679,6 +11689,446 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update SOP" });
     }
   });
+
+  // ── SOP Governance: lifecycle + review workflow (Task #661) ──────────────────
+
+  const SOP_OVERRIDE_ROLES = ["super_admin", "admin"]; // CEO/Super Admin override
+
+  // Comment thread on a SOP (by master id). Anyone with SOP access can read/post.
+  app.get("/api/sops/:id/comments", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const comments = await storage.getSopComments(doc.sopMasterId);
+      const users = await storage.getAdminUsers();
+      const nameById = new Map(users.map((u) => [u.id, `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email]));
+      res.json(comments.map((c) => ({ ...c, authorName: nameById.get(c.authorId) ?? "Unknown" })));
+    } catch (error) {
+      console.error("SOP comments list error:", error);
+      res.status(500).json({ error: "Failed to fetch comments" });
+    }
+  });
+
+  app.post("/api/sops/:id/comments", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const body = (req.body?.body ?? "").toString().trim();
+      if (!body) return res.status(400).json({ error: "Comment body is required" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const created = await storage.createSopComment({ sopMasterId: doc.sopMasterId, authorId: req.session.userId!, body });
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("SOP comment create error:", error);
+      res.status(500).json({ error: "Failed to add comment" });
+    }
+  });
+
+  // Reviewer assignments for a SOP's current version (with SLA state).
+  app.get("/api/sops/:id/reviews", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      // Only the latest review round is current; prior rounds are history.
+      const reviews = sopGov.latestRound(await storage.getSopReviewAssignments(doc.sopMasterId, doc.version));
+      const users = await storage.getAdminUsers();
+      const nameById = new Map(users.map((u) => [u.id, `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email]));
+      const now = new Date();
+      const enriched = reviews.map((r) => ({
+        ...r,
+        reviewerName: nameById.get(r.reviewerId) ?? "Unknown",
+        overdue: r.status === "pending" && !!r.dueAt && new Date(r.dueAt).getTime() < now.getTime(),
+      }));
+      const gate = sopGov.evaluateApprovalGate(
+        reviews.map((r) => ({ status: r.status, dueAt: r.dueAt ? new Date(r.dueAt) : null, decisionAt: r.decisionAt ? new Date(r.decisionAt) : null })),
+        now,
+      );
+      res.json({ reviews: enriched, gate });
+    } catch (error) {
+      console.error("SOP reviews list error:", error);
+      res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+  });
+
+  // Submit a SOP for review: assign reviewers with a 5-business-day SLA, move to in_review.
+  app.post("/api/sops/:id/submit-review", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const reviewerIds: string[] = Array.isArray(req.body?.reviewerIds) ? req.body.reviewerIds.filter((r: unknown) => typeof r === "string") : [];
+      if (reviewerIds.length === 0) return res.status(400).json({ error: "At least one reviewer is required" });
+
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const from = doc.lifecycleStatus as sopGov.SopLifecycleStatus;
+      if (!sopGov.canTransition(from, "in_review")) {
+        return res.status(409).json({ error: `Cannot submit a SOP in '${from}' status for review` });
+      }
+
+      // Open a fresh review round. The approval gate only ever evaluates the
+      // latest round, so prior changes_requested/rejected decisions from an
+      // earlier round never permanently block a resubmitted version.
+      const priorRounds = await storage.getSopReviewAssignments(doc.sopMasterId, doc.version);
+      const nextRound = priorRounds.reduce((max, r) => Math.max(max, r.round ?? 1), 0) + 1;
+
+      const dueAt = sopGov.addBusinessDays(new Date(), sopGov.REVIEWER_SLA_BUSINESS_DAYS);
+      const created = [];
+      for (const reviewerId of Array.from(new Set(reviewerIds))) {
+        const assignment = await storage.createSopReviewAssignment({
+          sopMasterId: doc.sopMasterId,
+          sopVersion: doc.version,
+          round: nextRound,
+          reviewerId,
+          status: "pending",
+          dueAt,
+          assignedBy: req.session.userId!,
+        });
+        created.push(assignment);
+        try {
+          await storage.createNotification({
+            userId: reviewerId,
+            type: "sop_review_assigned",
+            title: "SOP to review",
+            message: `You have a SOP to review: ${doc.code} — ${doc.title} (due ${dueAt.toLocaleDateString()})`,
+            isRead: false,
+            metadata: { sopId: doc.id, link: "/admin/sops" },
+          });
+        } catch (e) { console.error("SOP review notify error:", e); }
+      }
+
+      const updated = await storage.setSopLifecycleStatus(doc.id, "in_review");
+      res.json({ doc: updated, assignments: created });
+    } catch (error) {
+      console.error("SOP submit-review error:", error);
+      res.status(500).json({ error: "Failed to submit SOP for review" });
+    }
+  });
+
+  // Reviewer action: mark_reviewed | approve | approve_with_comments | request_changes | reject.
+  app.post("/api/sops/:id/review-action", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const action = req.body?.action as sopGov.ReviewerAction;
+      const comment: string | null = req.body?.comment ? String(req.body.comment).trim() : null;
+      if (!sopGov.REVIEWER_ACTIONS.includes(action)) return res.status(400).json({ error: "Invalid review action" });
+      if (sopGov.actionRequiresComment(action) && !comment) {
+        return res.status(400).json({ error: "A comment is required for this action" });
+      }
+
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      if (doc.lifecycleStatus !== "in_review") {
+        return res.status(409).json({ error: "SOP is not currently in review" });
+      }
+
+      // Scope to the current (latest) review round only.
+      const reviews = sopGov.latestRound(await storage.getSopReviewAssignments(doc.sopMasterId, doc.version));
+      // A reviewer decision may ONLY be recorded by the assigned reviewer for
+      // their own pending assignment in the current round. Override roles
+      // (CEO/Super Admin) do NOT get to impersonate another reviewer's decision
+      // here — their only elevated power is the no-objection publish.
+      const target = reviews.find((r) => r.reviewerId === req.session.userId && r.status === "pending");
+      if (!target) {
+        return res.status(403).json({ error: "You have no pending review assignment for this SOP" });
+      }
+
+      await storage.updateSopReviewAssignment(target.id, {
+        status: sopGov.reviewerActionToStatus(action),
+        decisionAt: new Date(),
+        comment,
+      });
+      if (comment) {
+        await storage.createSopComment({ sopMasterId: doc.sopMasterId, authorId: req.session.userId!, body: `[${action}] ${comment}` });
+      }
+
+      // Recompute the gate over the fresh latest-round assignment set.
+      const fresh = sopGov.latestRound(await storage.getSopReviewAssignments(doc.sopMasterId, doc.version));
+      const gate = sopGov.evaluateApprovalGate(
+        fresh.map((r) => ({ status: r.status, dueAt: r.dueAt ? new Date(r.dueAt) : null, decisionAt: r.decisionAt ? new Date(r.decisionAt) : null })),
+      );
+
+      // Auto-advance is STRICT-only: every reviewer must have positively signed
+      // off. The no-objection (overdue) path is deliberately NOT honored here —
+      // it is a privileged override consumed solely by /publish under an override
+      // role, so reviewers merely lapsing their SLA can never auto-approve a SOP.
+      let updated = doc;
+      if (gate.hasBlocking) {
+        updated = (await storage.setSopLifecycleStatus(doc.id, "changes_requested")) ?? doc;
+      } else if (gate.strictApprove) {
+        updated = (await storage.setSopLifecycleStatus(doc.id, "approved")) ?? doc;
+      }
+      res.json({ doc: updated, gate });
+    } catch (error) {
+      console.error("SOP review-action error:", error);
+      res.status(500).json({ error: "Failed to record review action" });
+    }
+  });
+
+  // Publish a SOP — only from 'approved'. CEO/Super Admin may force a publish from
+  // 'in_review' under the no-objection rule (all outstanding reviewers overdue).
+  app.post("/api/sops/:id/publish", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const role = req.session.role!;
+      const isOverride = SOP_OVERRIDE_ROLES.includes(role);
+
+      if (doc.lifecycleStatus === "in_review") {
+        // No-objection override path.
+        if (!isOverride) return res.status(403).json({ error: "Only a CEO/Super Admin can publish a SOP that is still in review" });
+        const reviews = sopGov.latestRound(await storage.getSopReviewAssignments(doc.sopMasterId, doc.version));
+        const gate = sopGov.evaluateApprovalGate(
+          reviews.map((r) => ({ status: r.status, dueAt: r.dueAt ? new Date(r.dueAt) : null, decisionAt: r.decisionAt ? new Date(r.decisionAt) : null })),
+        );
+        if (gate.hasBlocking) return res.status(409).json({ error: "A reviewer requested changes — resolve before publishing" });
+        // Accept either a clean strict approval or a no-objection override (all
+        // outstanding reviewers overdue). Both require the override role enforced
+        // above; reviewers still inside their SLA block the override.
+        if (!gate.strictApprove && !gate.noObjectionEligible) {
+          return res.status(409).json({ error: "Reviewers are still within their SLA — cannot override yet" });
+        }
+        await storage.setSopLifecycleStatus(doc.id, "approved");
+      } else if (doc.lifecycleStatus !== "approved") {
+        return res.status(409).json({ error: `Cannot publish a SOP in '${doc.lifecycleStatus}' status` });
+      }
+
+      const published = await storage.setSopLifecycleStatus(doc.id, "published", { effectiveDate: new Date().toISOString().slice(0, 10) });
+
+      // Auto-assign training to impacted roles (rollout-aware) → TRAINING_ASSIGNED.
+      // The lifecycle advances to training_assigned whenever the SOP requires
+      // training (a learning track is linked); the rollout filter only governs
+      // who actually receives an assignment/notification now, not the SOP's phase.
+      // With no linked track there is nothing to train, so it stays 'published'
+      // and is ready for direct acknowledgment.
+      const result = await assignSopTraining(doc, req);
+      const finalDoc = doc.learningTrackId
+        ? await storage.setSopLifecycleStatus(doc.id, "training_assigned")
+        : published;
+      res.json({ doc: finalDoc, training: result });
+    } catch (error) {
+      console.error("SOP publish error:", error);
+      res.status(500).json({ error: "Failed to publish SOP" });
+    }
+  });
+
+  // Retire an active/under_revision SOP.
+  app.post("/api/sops/:id/retire", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const from = doc.lifecycleStatus as sopGov.SopLifecycleStatus;
+      if (!sopGov.canTransition(from, "retired")) {
+        return res.status(409).json({ error: `Cannot retire a SOP in '${from}' status` });
+      }
+      const updated = await storage.setSopLifecycleStatus(doc.id, "retired", { isCurrent: false });
+      res.json({ doc: updated });
+    } catch (error) {
+      console.error("SOP retire error:", error);
+      res.status(500).json({ error: "Failed to retire SOP" });
+    }
+  });
+
+  // Link / unlink a learning track to a SOP.
+  app.patch("/api/sops/:id/learning-track", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const learningTrackId = req.body?.learningTrackId ? String(req.body.learningTrackId) : null;
+      const updated = await storage.setSopLifecycleStatus(doc.id, doc.lifecycleStatus as string, { learningTrackId } as any);
+      res.json({ doc: updated });
+    } catch (error) {
+      console.error("SOP link-track error:", error);
+      res.status(500).json({ error: "Failed to link learning track" });
+    }
+  });
+
+  // Team progress for a SOP (employee, role, training status, ack version + date).
+  app.get("/api/sops/:id/progress", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const progress = await storage.getSopEmployeeProgress(doc.sopMasterId);
+      const users = await storage.getAdminUsers();
+      const byId = new Map(users.map((u) => [u.id, u]));
+      const rows = progress.map((p) => {
+        const u = byId.get(p.userId);
+        return {
+          userId: p.userId,
+          name: u ? (`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email) : "Unknown",
+          role: u?.role ?? null,
+          departmentId: u?.departmentId ?? null,
+          trainingCompletedAt: p.trainingCompletedAt,
+          acknowledgedAt: p.acknowledgedAt,
+          acknowledgedVersion: p.acknowledgedAt ? p.sopVersion : null,
+          // True only when the user acknowledged the CURRENT version; a prior
+          // version ack shows as not-yet-acknowledged for this version.
+          acknowledgedCurrentVersion: !!p.acknowledgedAt && p.sopVersion === doc.version,
+        };
+      });
+      res.json(rows);
+    } catch (error) {
+      console.error("SOP progress error:", error);
+      res.status(500).json({ error: "Failed to fetch progress" });
+    }
+  });
+
+  // Employee acknowledges a SOP version — gated on linked-track completion.
+  app.post("/api/sops/:id/acknowledge", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const userId = req.session.userId!;
+
+      // Must have a progress row (i.e. impacted) for this SOP.
+      const myProgress = (await storage.getSopEmployeeProgressForUser(userId)).find((p) => p.sopMasterId === doc.sopMasterId);
+      if (!myProgress) return res.status(403).json({ error: "This SOP is not assigned to you" });
+
+      // Gate on linked-track completion if a track is linked.
+      if (doc.learningTrackId) {
+        const [assignment] = await db.select().from(trackAssignments)
+          .where(and(eq(trackAssignments.trackId, doc.learningTrackId), eq(trackAssignments.userId, userId)));
+        if (!assignment || assignment.status !== "completed") {
+          return res.status(409).json({ error: "Complete the linked training before acknowledging this SOP" });
+        }
+        await storage.markSopTrainingComplete(doc.sopMasterId, userId, assignment.completedAt ?? new Date());
+      }
+
+      const typedName = (req.body?.typedName ?? "").toString().trim();
+      if (!typedName) return res.status(400).json({ error: "Typed name is required to acknowledge" });
+
+      const now = new Date();
+      const refNumber = `SOP-${doc.code}-V${doc.version}-${userId.slice(0, 8)}`;
+      const payload = `${doc.sopMasterId}|${doc.version}|${userId}|${typedName}|${now.toISOString()}`;
+      const contentHash = crypto.createHash("sha256").update(payload).digest("hex");
+      const authCode = crypto.createHmac("sha256", process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY || "sop-fallback")
+        .update(payload).digest("hex").substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || "";
+
+      await recordSignature({
+        documentType: "sop",
+        documentId: `${doc.sopMasterId}:${doc.version}`,
+        referenceNumber: refNumber,
+        signerName: typedName,
+        signerRole: req.session.role,
+        signerUserId: userId,
+        signedAt: now,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        contentHash,
+        authCode,
+        metadata: { sopCode: doc.code, sopTitle: doc.title, sopVersion: doc.version },
+      });
+
+      const updatedProgress = await storage.setSopAcknowledged(doc.sopMasterId, doc.version, userId, contentHash, now);
+
+      // Advance only when every CURRENTLY-impacted user has acknowledged THIS
+      // version. Acknowledgment is version-bound: a prior-version ack (older
+      // sopVersion) does not count, and stale progress rows for users no longer
+      // in scope are ignored by intersecting with the live impacted set. This
+      // guarantees a v2 publish collects fresh v2 acknowledgments before going
+      // active.
+      const impactedIds = await impactedUserIdsForSop(doc.sopMasterId);
+      const allProgress = await storage.getSopEmployeeProgress(doc.sopMasterId);
+      const progressByUser = new Map(allProgress.map((p) => [p.userId, p]));
+      const allAck = impactedIds.length > 0 && impactedIds.every((uid) => {
+        const p = progressByUser.get(uid);
+        return !!p && p.sopVersion === doc.version && !!p.acknowledgedAt;
+      });
+      const ackFrom = doc.lifecycleStatus as sopGov.SopLifecycleStatus;
+      if (allAck && sopGov.canTransition(ackFrom, "acknowledged")) {
+        await storage.setSopLifecycleStatus(doc.id, "acknowledged");
+        await storage.setSopLifecycleStatus(doc.id, "active");
+      }
+
+      res.json({ progress: updatedProgress, refNumber, authCode });
+    } catch (error) {
+      console.error("SOP acknowledge error:", error);
+      res.status(500).json({ error: "Failed to acknowledge SOP" });
+    }
+  });
+
+  // Backfill SOP progress for all eligible employees (hr/admin).
+  app.post("/api/sops/assignments/sync", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const result = await backfillAllSopProgress();
+      res.json(result);
+    } catch (error) {
+      console.error("SOP assignments sync error:", error);
+      res.status(500).json({ error: "Failed to sync SOP assignments" });
+    }
+  });
+
+  // Auto-assign training on publish, filtered through the rollout gate. Returns the
+  // number of users assigned and the impacted/skipped breakdown.
+  async function assignSopTraining(doc: SopDocument, req: Request): Promise<{ assignedCount: number; skippedOutOfRollout: number; impacted: number }> {
+    const impacted = await impactedUserIdsForSop(doc.sopMasterId);
+    if (impacted.length === 0) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: 0 };
+
+    // Always project progress rows for impacted users (in-rollout or not), so a
+    // later rollout expansion + sync simply assigns training for already-tracked users.
+    const current = await storage.getSopDocumentById(doc.id);
+    for (const userId of impacted) {
+      await storage.upsertSopEmployeeProgress(doc.sopMasterId, current?.version ?? doc.version, userId);
+    }
+
+    if (!doc.learningTrackId) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: impacted.length };
+
+    // Filter recipients through the server-side rollout gate.
+    const rollout = await getSopRolloutScope();
+    const allUsers = await storage.getAdminUsers();
+    const byId = new Map(allUsers.map((u) => [u.id, u]));
+    const inRollout = (userId: string): boolean => {
+      const u = byId.get(userId);
+      if (!u) return false;
+      if (u.role === "super_admin" || u.role === "admin") return true;
+      if (rollout.mode === "all") return true;
+      if (u.role && rollout.roles.includes(u.role)) return true;
+      if (rollout.userIds.includes(userId)) return true;
+      return false;
+    };
+
+    let assignedCount = 0;
+    let skippedOutOfRollout = 0;
+    const dueDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+    for (const userId of impacted) {
+      if (!inRollout(userId)) { skippedOutOfRollout += 1; continue; }
+      const [existing] = await db.select().from(trackAssignments)
+        .where(and(eq(trackAssignments.trackId, doc.learningTrackId), eq(trackAssignments.userId, userId)));
+      if (existing) continue;
+      await db.insert(trackAssignments).values({
+        trackId: doc.learningTrackId, userId, assignedBy: req.session.userId!, dueDate, status: "not_started",
+      });
+      assignedCount += 1;
+      try {
+        await storage.createNotification({
+          userId,
+          type: "sop_training_assigned",
+          title: "New SOP training assigned",
+          message: `Training is required for SOP ${doc.code} — ${doc.title}.`,
+          isRead: false,
+          metadata: { sopId: doc.id, trackId: doc.learningTrackId, link: "/admin/my-training" },
+        });
+      } catch (e) { console.error("SOP training notify error:", e); }
+    }
+    return { assignedCount, skippedOutOfRollout, impacted: impacted.length };
+  }
 
   // ==========================================
   // ACCESS CONTROL (DB-driven RBAC, Super Admin editor)

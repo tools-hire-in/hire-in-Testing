@@ -3377,6 +3377,9 @@ export const sopDocuments = pgTable("sop_documents", {
   aiAssistAllowed: boolean("ai_assist_allowed").default(false).notNull(),
   humanSignoffRequired: boolean("human_signoff_required").default(true).notNull(),
   summary: text("summary"),
+  // Optional link to a learning track. When a SOP is published, training is
+  // auto-assigned to impacted roles via this track (Task #661).
+  learningTrackId: varchar("learning_track_id").references(() => learningTracks.id, { onDelete: "set null" }),
   supersededByVersionId: varchar("superseded_by_version_id"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -3416,7 +3419,7 @@ export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  masterUserIdx: index("sop_employee_progress_master_user_idx").on(table.sopMasterId, table.userId),
+  masterUserUnique: uniqueIndex("sop_employee_progress_master_user_idx").on(table.sopMasterId, table.userId),
   userIdx: index("sop_employee_progress_user_idx").on(table.userId),
 }));
 
@@ -3448,10 +3451,53 @@ export const sopAuditFindings = pgTable("sop_audit_findings", {
   masterIdx: index("sop_audit_findings_master_idx").on(table.sopMasterId),
 }));
 
+// SOP review-assignment workflow — mirrors studioReviewAssignments shape but
+// keyed by the stable sopMasterId + the specific version under review (Task #661).
+export const sopReviewAssignments = pgTable("sop_review_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  sopVersion: integer("sop_version").notNull(),
+  // Review round within a version. Each submit/resubmit (after changes_requested)
+  // opens a new round; the approval gate only evaluates the latest round so prior
+  // blocking decisions never permanently block a resubmitted version.
+  round: integer("round").default(1).notNull(),
+  reviewerId: varchar("reviewer_id").notNull(),
+  status: varchar("status").default("pending").notNull(), // pending | reviewed | approved | approved_with_comments | changes_requested | rejected
+  dueAt: timestamp("due_at"),
+  decisionAt: timestamp("decision_at"),
+  comment: text("comment"),
+  assignedBy: varchar("assigned_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  masterVersionIdx: index("sop_review_assignments_master_version_idx").on(table.sopMasterId, table.sopVersion),
+  reviewerIdx: index("sop_review_assignments_reviewer_idx").on(table.reviewerId),
+}));
+
+// SOP discussion thread — append-only comment side-table (like internalRequestComments).
+export const sopComments = pgTable("sop_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  authorId: varchar("author_id").notNull().references(() => adminUsers.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  masterIdx: index("sop_comments_master_idx").on(table.sopMasterId),
+}));
+
 export const insertSopDocumentSchema = createInsertSchema(sopDocuments).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertSopReviewAssignmentSchema = createInsertSchema(sopReviewAssignments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSopCommentSchema = createInsertSchema(sopComments).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertSopRoleAssignmentSchema = createInsertSchema(sopRoleAssignments).omit({
@@ -3477,6 +3523,10 @@ export const insertSopAuditFindingSchema = createInsertSchema(sopAuditFindings).
 
 export type SopDocument = typeof sopDocuments.$inferSelect;
 export type InsertSopDocument = z.infer<typeof insertSopDocumentSchema>;
+export type SopReviewAssignment = typeof sopReviewAssignments.$inferSelect;
+export type InsertSopReviewAssignment = z.infer<typeof insertSopReviewAssignmentSchema>;
+export type SopComment = typeof sopComments.$inferSelect;
+export type InsertSopComment = z.infer<typeof insertSopCommentSchema>;
 export type SopRoleAssignment = typeof sopRoleAssignments.$inferSelect;
 export type InsertSopRoleAssignment = z.infer<typeof insertSopRoleAssignmentSchema>;
 export type SopEmployeeProgress = typeof sopEmployeeProgress.$inferSelect;

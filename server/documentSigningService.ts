@@ -21,7 +21,7 @@ import { eq } from "drizzle-orm";
 export type DocumentType =
   | "offer_letter" | "offer_letter_counter"
   | "addendum" | "addendum_counter"
-  | "hr_letter" | "contract" | "policy";
+  | "hr_letter" | "contract" | "policy" | "sop";
 
 export interface SignResult {
   refNumber: string;
@@ -451,6 +451,17 @@ export async function verifyDocument(
         tamperDetected,
         record: { ...rec, policyTitle: pol.title, policyVersion: pol.version, signedAt: sig.signedAt } as any,
       };
+    }
+
+    if (documentType === "sop") {
+      // SOP acknowledgments are ledger-backed (no per-entity table carries the auth
+      // code). The ledger row stores reference + authCode + content hash; we match
+      // on reference + authCode. The contentHash is deterministic for the version.
+      const [rec] = await db.select().from(signatureRecords)
+        .where(eq(signatureRecords.referenceNumber, refNumber)).limit(1);
+      if (!rec || rec.documentType !== "sop" || !rec.authCode) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (rec.authCode.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      return { valid: true, tamperDetected: false, record: rec as any };
     }
 
     return { valid: false, tamperDetected: false, error: "unsupported_type" };

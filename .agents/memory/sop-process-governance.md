@@ -34,3 +34,46 @@ NOT the row UUID — a SOP "master" spans many version rows.
   ON CONFLICT (sop_master_id, version)/(sop_master_id, role) DO NOTHING.
 - Seed strings must be **plain ASCII** (no ×, em dash) or ON CONFLICT mismatches —
   see seed-unicode-pitfall.md.
+
+## Governance lifecycle, review flow & training gate
+- Lifecycle service is `server/sopGovernance.ts` (pure, unit-tested) — NOT a new
+  engine; it sits on `sop_documents` versioning + `sop_review_assignments` +
+  signature ledger. `TRANSITIONS` map is the legal-order source of truth;
+  `published→acknowledged` is intentionally legal for SOPs with no linked track.
+- Reviewer SLA = 5 business days (`addBusinessDays`). `evaluateApprovalGate`
+  returns TWO distinct, never-conflated signals: `strictApprove` (all reviewers
+  positively signed off, none pending, none blocking — SLA-independent) and
+  `noObjectionEligible` (no blocking, but every outstanding reviewer is overdue).
+  Auto-advance to `approved` in /review-action MUST use `strictApprove` ONLY.
+  `noObjectionEligible` is a privileged override consumed SOLELY in /publish and
+  ONLY after the override-role check. **Why:** if the overdue path could
+  auto-approve, reviewers merely lapsing their SLA would push a SOP to `approved`,
+  and any `sops.manage` user could then publish from `approved` with no override
+  check — bypassing the CEO/Super-Admin-only no-objection control.
+- Override (super_admin/admin) power is PUBLISH-ONLY: a no-objection force-publish
+  from in_review. It must NOT let them record a reviewer decision on another
+  reviewer's behalf — review-action accepts only the caller's own pending
+  assignment. **Why:** impersonating reviewer decisions corrupts the approval trail.
+- Review rounds: each (re)submit opens a new `round` on sop_review_assignments;
+  the approval gate evaluates ONLY the latest round (`latestRound()` in
+  sopGovernance.ts). **Why:** without round-scoping a prior round's
+  changes_requested permanently blocks a resubmitted version — the
+  CHANGES_REQUESTED→IN_REVIEW→APPROVED loop breaks. Apply at every gate site
+  (/reviews, /review-action, no-objection /publish).
+- Acknowledgment is ledger-backed AND version-bound: `documentType:'sop'`,
+  `documentId='<sopMasterId>:<version>'`. Gated on the linked track reaching
+  `completed` in `track_assignments` for that user. Auto-advance to
+  acknowledged→active requires every CURRENTLY-impacted user
+  (`impactedUserIdsForSop`) to have acked THIS version (progress.sopVersion ===
+  current). **Why:** progress rows are unique on (master,user) and survive new
+  versions, so a v1 ack must NOT satisfy a v2 publish; intersecting with the live
+  impacted set also drops stale rows for users who changed roles out of scope.
+- Role-based impact projection: `server/sopAssignmentEngine.ts`
+  `syncSopProgressForUser(userId, role)` is called fire-and-forget from PATCH
+  `/api/admin/users/:id` on role change; `upsertSopEmployeeProgress` keys on
+  (master,user) NOT version so role churn never duplicates. Backfill via POST
+  `/api/sops/assignments/sync`.
+- Publish auto-assigns training filtered through `getSopRolloutScope()` — users
+  outside the pilot get a progress row but NO track assignment/notification, so a
+  later rollout-expand + sync picks them up. **Why:** rollout gate must suppress
+  notifications for out-of-pilot users, not just hide the UI.
