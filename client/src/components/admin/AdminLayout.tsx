@@ -1328,6 +1328,21 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0);
 
+  // Manual salary-change requests awaiting Super-Admin approval (maker-checker)
+  const { data: salaryChangePending } = useQuery<{ count: number }>({
+    queryKey: ["/api/hr/salary-changes/pending-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/salary-changes/pending-count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && user?.role === "super_admin",
+  });
+  const salaryChangePendingCount = salaryChangePending?.count ?? 0;
+
   const personalNavItems: NavItem[] = [
     {
       href: "/admin/profile",
@@ -1373,7 +1388,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "People & HR",
       icon: Settings,
       roles: ["super_admin", "admin", "hr"],
-      badge: peopleHRBadge > 0 ? peopleHRBadge : undefined,
+      badge: (peopleHRBadge + salaryChangePendingCount) > 0 ? (peopleHRBadge + salaryChangePendingCount) : undefined,
       badgeColor: "bg-amber-500",
     }] : []),
     ...(hasHRAccess ? [{

@@ -7223,6 +7223,307 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // CENTRALIZED SALARY CHANGES (ledger + maker-checker)
+  // ==========================================
+
+  // History for one employee — includes every source (offer / addendum / manual /
+  // advance). Visible to roles that can view team compensation.
+  // Org-wide HR roles can act on any employee; managers are scoped to their own
+  // direct reports. Used to guard all salary-change read/write endpoints.
+  async function canAccessEmployeeSalary(actorId: string, role: string, employeeId: string): Promise<boolean> {
+    if (["super_admin", "admin", "hr"].includes(role)) return true;
+    if (role === "manager") {
+      const team = await storage.getTeamMembers(actorId);
+      return team.some(m => m.id === employeeId);
+    }
+    return false;
+  }
+
+  // Verify a proof document (offer letter / addendum) actually belongs to the
+  // employee, so a manual change cannot be linked to an unrelated document.
+  async function proofBelongsToEmployee(type: string, id: string, employeeId: string): Promise<boolean> {
+    if (type === "offer_letter") {
+      const offer = await storage.getOfferLetter(id);
+      return !!offer && (offer as any).resultingUserId === employeeId;
+    }
+    if (type === "addendum") {
+      const addendum = await storage.getAddendum(id);
+      return !!addendum && (addendum as any).forEmployeeId === employeeId;
+    }
+    return false;
+  }
+
+  app.get("/api/hr/salary-changes", requireAuth, requirePermission("hr.salaryChanges.view", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const employeeId = (req.query.employeeId as string) || "";
+      if (!employeeId) return res.status(400).json({ error: "employeeId is required" });
+      if (!(await canAccessEmployeeSalary(req.session.userId!, req.session.role || "", employeeId))) {
+        return res.status(403).json({ error: "You can only view salary history for your direct reports" });
+      }
+      const rows = await storage.getSalaryChangesByEmployee(employeeId);
+      // Enrich with actor names for the timeline.
+      const ids = new Set<string>();
+      for (const r of rows) { if (r.initiatedBy) ids.add(r.initiatedBy); if (r.approvedBy) ids.add(r.approvedBy); }
+      const userMap: Record<string, any> = {};
+      for (const id of ids) {
+        const u = await storage.getAdminUser(id);
+        if (u) userMap[id] = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+      }
+      res.json(rows.map(r => ({
+        ...r,
+        initiator: r.initiatedBy ? userMap[r.initiatedBy] || null : null,
+        approver: r.approvedBy ? userMap[r.approvedBy] || null : null,
+      })));
+    } catch (error) {
+      console.error("Failed to load salary changes:", error);
+      res.status(500).json({ error: "Failed to load salary changes" });
+    }
+  });
+
+  // Proof-document options for an employee (their offer letters + addendums) so a
+  // manual change can be linked to supporting documentation.
+  app.get("/api/hr/salary-changes/proof-options", requireAuth, requirePermission("hr.salaryChanges.manage", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const employeeId = (req.query.employeeId as string) || "";
+      if (!employeeId) return res.status(400).json({ error: "employeeId is required" });
+      if (!(await canAccessEmployeeSalary(req.session.userId!, req.session.role || "", employeeId))) {
+        return res.status(403).json({ error: "You can only manage salary for your direct reports" });
+      }
+      const [offers, addendums] = await Promise.all([storage.getOfferLetters(), storage.getAllAddendums()]);
+      const offerOptions = offers
+        .filter(o => (o as any).resultingUserId === employeeId)
+        .map(o => ({ type: "offer_letter", id: o.id, label: `Offer • ${(o as any).referenceNumber || o.id}`, salary: (o as any).salary ?? null }));
+      const addendumOptions = addendums
+        .filter(a => (a as any).forEmployeeId === employeeId)
+        .map(a => ({ type: "addendum", id: a.id, label: `Addendum • ${(a as any).addendumType || ""} ${(a as any).referenceNumber || a.id}`.trim(), salary: (a as any).newSalary ?? null }));
+      res.json([...addendumOptions, ...offerOptions]);
+    } catch (error) {
+      console.error("Failed to load proof options:", error);
+      res.status(500).json({ error: "Failed to load proof options" });
+    }
+  });
+
+  // Pending manual changes awaiting Super-Admin approval (maker-checker queue).
+  app.get("/api/hr/salary-changes/pending", requireAuth, requirePermission("hr.salaryChanges.approve", "super_admin"), async (_req: Request, res: Response) => {
+    try {
+      const rows = await storage.getPendingSalaryChanges();
+      const ids = new Set<string>();
+      for (const r of rows) { ids.add(r.employeeId); if (r.initiatedBy) ids.add(r.initiatedBy); }
+      const userMap: Record<string, any> = {};
+      for (const id of ids) {
+        const u = await storage.getAdminUser(id);
+        if (u) userMap[id] = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+      }
+      res.json(rows.map(r => ({
+        ...r,
+        employee: userMap[r.employeeId] || null,
+        initiator: r.initiatedBy ? userMap[r.initiatedBy] || null : null,
+      })));
+    } catch (error) {
+      console.error("Failed to load pending salary changes:", error);
+      res.status(500).json({ error: "Failed to load pending salary changes" });
+    }
+  });
+
+  app.get("/api/hr/salary-changes/pending-count", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (req.session.role !== "super_admin") return res.json({ count: 0 });
+      res.json({ count: await storage.countPendingSalaryChanges() });
+    } catch {
+      res.json({ count: 0 });
+    }
+  });
+
+  // Initiate a manual salary change. Super-admins apply immediately; everyone
+  // else creates a pending request that a super-admin must approve.
+  app.post("/api/hr/salary-changes", requireAuth, requirePermission("hr.salaryChanges.manage", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        employeeId: z.string().min(1, "Employee is required"),
+        newSalary: z.number().positive("Salary must be greater than zero"),
+        effectiveDate: z.string().min(1, "Effective date is required"),
+        reason: z.string().min(5, "Please provide a reason (at least 5 characters)"),
+        proofDocumentType: z.enum(["offer_letter", "addendum"], { required_error: "A linked proof document is required" }),
+        proofDocumentId: z.string().min(1, "A linked proof document is required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      const actorId = req.session.userId!;
+      const role = req.session.role || "";
+      const { employeeId, newSalary, effectiveDate, reason, proofDocumentType, proofDocumentId } = parsed.data;
+
+      const employee = await storage.getAdminUser(employeeId);
+      if (!employee) return res.status(404).json({ error: "Employee not found" });
+
+      // Managers may only change pay for their own direct reports.
+      if (!(await canAccessEmployeeSalary(actorId, role, employeeId))) {
+        return res.status(403).json({ error: "You can only manage salary for your direct reports" });
+      }
+
+      // The linked proof must genuinely belong to this employee (offer resulting
+      // user / addendum subject) — prevents attaching an unrelated document.
+      const validProof = await proofBelongsToEmployee(proofDocumentType, proofDocumentId, employeeId);
+      if (!validProof) return res.status(400).json({ error: "The linked proof document does not belong to this employee" });
+      const oldSalary = employee.salary != null ? Number(employee.salary) : null;
+      const newSalaryRounded = Math.round(newSalary * 100) / 100;
+
+      if (role === "super_admin") {
+        // Maker == checker authority: apply immediately via the centralized helper.
+        const { recordSalaryChange } = await import("./salaryLedger");
+        await recordSalaryChange({
+          employeeId,
+          newSalary: newSalaryRounded,
+          sourceType: "manual",
+          sourceDocumentType: proofDocumentType || null,
+          sourceDocumentId: proofDocumentId || null,
+          reason,
+          effectiveDate,
+          initiatedBy: actorId,
+          approvedBy: actorId,
+          apply: true,
+        });
+        await storage.createAuditLog({ action: "salary_change_applied", actorId, changes: { employeeId, oldSalary, newSalary: newSalaryRounded, source: "manual" } });
+        return res.status(201).json({ status: "applied" });
+      }
+
+      // Maker-checker: create a pending change for Super-Admin approval.
+      const created = await storage.createSalaryChange({
+        employeeId,
+        sourceType: "manual",
+        sourceDocumentType: proofDocumentType || null,
+        sourceDocumentId: proofDocumentId || null,
+        oldSalary: oldSalary != null ? oldSalary.toFixed(2) : null,
+        newSalary: newSalaryRounded.toFixed(2),
+        amount: null,
+        effectiveDate,
+        reason,
+        status: "pending_approval",
+        initiatedBy: actorId,
+      } as any);
+      await storage.createAuditLog({ action: "salary_change_requested", actorId, changes: { employeeId, oldSalary, newSalary: newSalaryRounded, changeId: created.id } });
+
+      // Notify super admins of the pending approval.
+      try {
+        const flagsSetting = await storage.getSystemSetting("feature_flags");
+        const flags = (flagsSetting?.value as Record<string, any>) || {};
+        if (flags.notifications_enabled !== false) {
+          const users = await storage.getAdminUsers();
+          for (const u of users.filter(x => x.role === "super_admin" && x.isActive)) {
+            await storage.createNotification({
+              userId: u.id,
+              type: "salary_change_pending",
+              title: "Salary change needs approval",
+              message: `A salary change for ${employee.firstName} ${employee.lastName} awaits your approval.`,
+              metadata: { link: "/admin/hr/people?tab=salary-approvals" },
+            } as any);
+          }
+        }
+      } catch { /* best-effort */ }
+
+      res.status(201).json({ status: "pending_approval", id: created.id });
+    } catch (error) {
+      console.error("Failed to create salary change:", error);
+      res.status(500).json({ error: "Failed to create salary change" });
+    }
+  });
+
+  // Super-Admin approves a pending manual change — applies it to the employee.
+  app.post("/api/hr/salary-changes/:id/approve", requireAuth, requirePermission("hr.salaryChanges.approve", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const change = await storage.getSalaryChange(req.params.id);
+      if (!change) return res.status(404).json({ error: "Not found" });
+      if (change.status !== "pending_approval") return res.status(400).json({ error: "This change is not pending approval." });
+
+      const actorId = req.session.userId!;
+      const employee = await storage.getAdminUser(change.employeeId);
+      if (!employee) return res.status(404).json({ error: "Employee not found" });
+
+      // Re-read the current salary at apply time so the recorded old value is accurate.
+      const oldSalary = employee.salary != null ? Number(employee.salary) : null;
+      const newSalary = change.newSalary != null ? Number(change.newSalary) : null;
+      if (newSalary == null) return res.status(400).json({ error: "Change has no target salary." });
+
+      // Honour the effective date: only write the live salary if the change is in
+      // effect today. Future-dated changes become "applied" in the ledger but are
+      // promoted to admin_users.salary by applyDueSalaryChanges() when due
+      // (appliedAt stays NULL until then). The salary report reads the ledger by
+      // effective date, so reporting stays correct in the meantime.
+      const today = new Date().toISOString().slice(0, 10);
+      const writeNow = !change.effectiveDate || change.effectiveDate <= today;
+      if (writeNow) {
+        await storage.updateAdminUser(change.employeeId, { salary: newSalary.toFixed(2) } as any);
+      }
+      const updated = await storage.updateSalaryChange(change.id, {
+        status: "applied",
+        oldSalary: oldSalary != null ? oldSalary.toFixed(2) : change.oldSalary,
+        approvedBy: actorId,
+        appliedAt: writeNow ? new Date() : null,
+      } as any);
+      await storage.createAuditLog({ action: "salary_change_approved", actorId, changes: { changeId: change.id, employeeId: change.employeeId, oldSalary, newSalary } });
+
+      try {
+        const flagsSetting = await storage.getSystemSetting("feature_flags");
+        const flags = (flagsSetting?.value as Record<string, any>) || {};
+        if (flags.notifications_enabled !== false && change.initiatedBy) {
+          await storage.createNotification({
+            userId: change.initiatedBy,
+            type: "salary_change_approved",
+            title: "Salary change approved",
+            message: `Your salary change for ${employee.firstName} ${employee.lastName} was approved and applied.`,
+            metadata: null,
+          } as any);
+        }
+      } catch { /* best-effort */ }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to approve salary change:", error);
+      res.status(500).json({ error: "Failed to approve salary change" });
+    }
+  });
+
+  // Super-Admin rejects a pending manual change.
+  app.post("/api/hr/salary-changes/:id/reject", requireAuth, requirePermission("hr.salaryChanges.approve", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const change = await storage.getSalaryChange(req.params.id);
+      if (!change) return res.status(404).json({ error: "Not found" });
+      if (change.status !== "pending_approval") return res.status(400).json({ error: "This change is not pending approval." });
+
+      const schema = z.object({ reason: z.string().min(1, "A rejection reason is required") });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "A rejection reason is required" });
+
+      const actorId = req.session.userId!;
+      const updated = await storage.updateSalaryChange(change.id, {
+        status: "rejected",
+        approvedBy: actorId,
+        rejectionReason: parsed.data.reason,
+      } as any);
+      await storage.createAuditLog({ action: "salary_change_rejected", actorId, changes: { changeId: change.id, employeeId: change.employeeId, reason: parsed.data.reason } });
+
+      try {
+        const flagsSetting = await storage.getSystemSetting("feature_flags");
+        const flags = (flagsSetting?.value as Record<string, any>) || {};
+        if (flags.notifications_enabled !== false && change.initiatedBy) {
+          await storage.createNotification({
+            userId: change.initiatedBy,
+            type: "salary_change_rejected",
+            title: "Salary change rejected",
+            message: `Your salary change request was rejected: ${parsed.data.reason}`,
+            metadata: null,
+          } as any);
+        }
+      } catch { /* best-effort */ }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to reject salary change:", error);
+      res.status(500).json({ error: "Failed to reject salary change" });
+    }
+  });
+
+  // ==========================================
   // SALARY SLIPS
   // ==========================================
 
@@ -8782,6 +9083,20 @@ export async function registerRoutes(
         changes: { offerId: letter.id, candidateName: letter.candidateName, acceptedName: acceptedName.trim(), ip: clientIp, authCode },
       });
 
+      // Centralized compensation: when the offer is already linked to an existing
+      // employee record (legacy employee accepting a fresh offer), write the
+      // agreed salary back at acceptance. Brand-new hires have no user record yet
+      // — their write-back happens when the account is created at start-onboarding.
+      // Idempotent per offer, so the two paths never double-write.
+      try {
+        if (letter.resultingUserId) {
+          const { applyOfferSalaryChange } = await import("./salaryLedger");
+          await applyOfferSalaryChange(letter, letter.createdBy, { employeeId: letter.resultingUserId, apply: true });
+        }
+      } catch (ledgerErr) {
+        console.error("Offer-acceptance salary write-back failed (non-fatal):", ledgerErr);
+      }
+
       // ── Seed a pending plan at offer acceptance ──────────────────────────
       // Phase 2: honor the attached plan template chosen on the offer. Fall back
       // to the legacy seed-probation checkbox so older offers keep working.
@@ -9392,6 +9707,16 @@ export async function registerRoutes(
         }
       }
 
+      // Centralized compensation: a salary-revision / combined addendum updates
+      // admin_users.salary (single source of truth) the moment it is accepted,
+      // and records the change in the salary ledger. Idempotent per addendum.
+      try {
+        const { applyAddendumSalaryChange } = await import("./salaryLedger");
+        await applyAddendumSalaryChange(addendum, actorIdForAudit);
+      } catch (salErr) {
+        console.error("[Addendum] Salary write-back failed (non-fatal):", salErr);
+      }
+
       res.json({ success: true, authCode, documentHash });
     } catch (error) {
       console.error("Accept addendum error:", error);
@@ -9883,6 +10208,15 @@ export async function registerRoutes(
         }
       }
 
+      // Centralized compensation safety net: write back the salary even if the
+      // addendum predates the accept-time hook. Idempotent per addendum.
+      try {
+        const { applyAddendumSalaryChange } = await import("./salaryLedger");
+        await applyAddendumSalaryChange(addendum, req.session.userId!);
+      } catch (salErr) {
+        console.error("[Addendum] Salary write-back on countersign failed (non-fatal):", salErr);
+      }
+
       res.json({ success: true, counterAuthCode });
     } catch (error) {
       console.error("Counter-sign addendum error:", error);
@@ -9936,6 +10270,9 @@ export async function registerRoutes(
 
       const actorId = req.session.userId!;
 
+      const { resolveOfferOpeningSalary, applyOfferSalaryChange } = await import("./salaryLedger");
+      const openingSalary = resolveOfferOpeningSalary(letter);
+
       const newUser = await storage.createAdminUser({
         email: hireInEmail.toLowerCase(),
         password: hashedPassword,
@@ -9947,7 +10284,7 @@ export async function registerRoutes(
         designation: letter.designation || null,
         departmentId: letter.departmentId || null,
         hierarchyLevel: "team_member",
-        salary: letter.salary || null,
+        salary: openingSalary != null ? openingSalary.toFixed(2) : (letter.salary || null),
         employeeId,
         managerId: letter.reportingToUserId || null,
         gender: (letter as any).gender || null,
@@ -9964,6 +10301,18 @@ export async function registerRoutes(
         resultingUserId: newUser.id,
         onboardedBy: actorId,
       });
+
+      // Centralized compensation: record the offer salary in the salary-change
+      // ledger as the new hire's opening compensation (probation salary when set;
+      // a future-dated post-probation entry is added automatically). The salary
+      // was already set on the user record above, so apply=false avoids a
+      // redundant write-back. Idempotent — if acceptance already wrote it back
+      // (legacy employee path) this is a no-op.
+      try {
+        await applyOfferSalaryChange(letter, actorId, { employeeId: newUser.id, apply: false });
+      } catch (ledgerErr) {
+        console.error("Offer-letter salary ledger entry failed (non-fatal):", ledgerErr);
+      }
 
       // Bridge policy annexures the candidate signed at offer acceptance into
       // policy-track completions so they are never asked to re-sign them.

@@ -22,6 +22,7 @@ import {
   salaryAdvanceRequests,
   salaryAdvanceRepayments,
   salaryAdvanceAuditLog,
+  salaryChanges,
   leaveAdjustments,
   employeeDocuments,
   employeeBankDetails,
@@ -84,6 +85,8 @@ import {
   type InsertSalaryAdvanceRepayment,
   type SalaryAdvanceAuditLog,
   type InsertSalaryAdvanceAuditLog,
+  type SalaryChange,
+  type InsertSalaryChange,
   type LeaveAdjustment,
   type InsertLeaveAdjustment,
   type EmployeeDocument,
@@ -625,6 +628,16 @@ export interface IStorage {
   markRepaymentDeducted(id: string, deductedAmount: string, salaryRunId: string | null): Promise<void>;
   rescheduleRepayment(id: string, year: number, month: number): Promise<void>;
   getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }>;
+  // Centralized salary-change ledger
+  createSalaryChange(data: InsertSalaryChange): Promise<SalaryChange>;
+  getSalaryChange(id: string): Promise<SalaryChange | undefined>;
+  getSalaryChangesByEmployee(employeeId: string): Promise<SalaryChange[]>;
+  getPendingSalaryChanges(): Promise<SalaryChange[]>;
+  countPendingSalaryChanges(): Promise<number>;
+  updateSalaryChange(id: string, updates: Partial<SalaryChange>): Promise<SalaryChange | undefined>;
+  getSalaryChangeBySource(sourceType: string, sourceDocumentId: string): Promise<SalaryChange | undefined>;
+  getAppliedSalaryChanges(): Promise<SalaryChange[]>;
+  getDueSalaryChanges(): Promise<SalaryChange[]>;
 }
 
 export type PublicInsightArticle = StudioArticle & {
@@ -4996,6 +5009,66 @@ export class DatabaseStorage implements IStorage {
       pendingFinal: finalRows.length,
       active: activeRows[0]?.count ?? 0,
     };
+  }
+
+  // ── Centralized salary-change ledger ──────────────────────────────────────
+  async createSalaryChange(data: InsertSalaryChange): Promise<SalaryChange> {
+    const [row] = await db.insert(salaryChanges).values(data as any).returning();
+    return row;
+  }
+
+  async getSalaryChange(id: string): Promise<SalaryChange | undefined> {
+    const [row] = await db.select().from(salaryChanges).where(eq(salaryChanges.id, id));
+    return row;
+  }
+
+  async getSalaryChangesByEmployee(employeeId: string): Promise<SalaryChange[]> {
+    return db.select().from(salaryChanges)
+      .where(eq(salaryChanges.employeeId, employeeId))
+      .orderBy(desc(salaryChanges.createdAt));
+  }
+
+  async getPendingSalaryChanges(): Promise<SalaryChange[]> {
+    return db.select().from(salaryChanges)
+      .where(eq(salaryChanges.status, "pending_approval"))
+      .orderBy(desc(salaryChanges.createdAt));
+  }
+
+  async countPendingSalaryChanges(): Promise<number> {
+    const rows = await db.select({ count: sql<number>`count(*)::int` }).from(salaryChanges)
+      .where(eq(salaryChanges.status, "pending_approval"));
+    return rows[0]?.count ?? 0;
+  }
+
+  async updateSalaryChange(id: string, updates: Partial<SalaryChange>): Promise<SalaryChange | undefined> {
+    const [row] = await db.update(salaryChanges).set(updates as any).where(eq(salaryChanges.id, id)).returning();
+    return row;
+  }
+
+  async getSalaryChangeBySource(sourceType: string, sourceDocumentId: string): Promise<SalaryChange | undefined> {
+    const [row] = await db.select().from(salaryChanges)
+      .where(and(eq(salaryChanges.sourceType, sourceType), eq(salaryChanges.sourceDocumentId, sourceDocumentId)));
+    return row;
+  }
+
+  async getAppliedSalaryChanges(): Promise<SalaryChange[]> {
+    return db.select().from(salaryChanges)
+      .where(eq(salaryChanges.status, "applied"))
+      .orderBy(asc(salaryChanges.effectiveDate));
+  }
+
+  // Future-dated salary changes whose effective date has now arrived but which
+  // have not yet been written to admin_users.salary (appliedAt IS NULL).
+  async getDueSalaryChanges(): Promise<SalaryChange[]> {
+    const today = new Date().toISOString().slice(0, 10);
+    return db.select().from(salaryChanges)
+      .where(and(
+        eq(salaryChanges.status, "applied"),
+        isNull(salaryChanges.appliedAt),
+        isNotNull(salaryChanges.newSalary),
+        lte(salaryChanges.effectiveDate, today),
+      ))
+      .orderBy(asc(salaryChanges.effectiveDate));
   }
 
 }

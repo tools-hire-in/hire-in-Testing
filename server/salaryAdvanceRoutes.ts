@@ -114,6 +114,11 @@ function nextMonth(): { year: number; month: number } {
   return { year, month };
 }
 
+function currentMonth(): { year: number; month: number } {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
 // Compute the employee's net monthly salary for cap checks.
 async function getNetSalary(userId: string): Promise<number> {
   const user = await storage.getAdminUser(userId);
@@ -795,10 +800,16 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       }
 
       const monthlyDeduction = Math.ceil((approvedAmount / repaymentMonths) * 100) / 100;
-      const start = nextMonth();
+      // Urgent (department-head-approved) advances begin recovery in the current
+      // payroll month; standard advances begin the following month.
+      const start = advance.urgentProcessing ? currentMonth() : nextMonth();
+      const now = new Date();
 
+      // Centralized lifecycle: final approval auto-disburses the advance so the
+      // payroll recovery engine (which acts on disbursed/repaying advances) picks
+      // it up immediately — no separate manual "disburse" step required.
       const updated = await storage.updateSalaryAdvance(advance.id, {
-        status: "approved",
+        status: "disbursed",
         approvedAmount: approvedAmount.toFixed(2),
         repaymentMonths,
         monthlyDeduction: monthlyDeduction.toFixed(2),
@@ -806,8 +817,10 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         repaymentStartMonth: start.month,
         outstandingBalance: approvedAmount.toFixed(2),
         finalApprovedBy: req.session.userId!,
-        finalApprovedAt: new Date(),
+        finalApprovedAt: now,
         finalNote: parsed.data.note || null,
+        disbursedBy: req.session.userId!,
+        disbursedAt: now,
       });
 
       const schedule = buildSchedule({
@@ -822,13 +835,30 @@ export function registerSalaryAdvanceRoutes(app: Express) {
 
       await storage.addSalaryAdvanceAuditEntry({
         advanceId: advance.id, actorId: req.session.userId!, action: "final_approved",
-        oldStatus: advance.status, newStatus: "approved",
-        metadata: { approvedAmount, repaymentMonths, monthlyDeduction, scheduleStart: start },
+        oldStatus: advance.status, newStatus: "disbursed",
+        metadata: { approvedAmount, repaymentMonths, monthlyDeduction, scheduleStart: start, autoDisbursed: true },
       } as any);
+
+      // Record the disbursement in the centralized salary ledger (does not change
+      // base salary). Idempotent per advance.
+      try {
+        const { recordAdvanceLedgerEntry } = await import("./salaryLedger");
+        await recordAdvanceLedgerEntry({
+          employeeId: advance.requesterId,
+          advanceId: advance.id,
+          amount: approvedAmount,
+          reason: `Salary advance ${advance.requestNumber} disbursed`,
+          effectiveDate: now,
+          initiatedBy: req.session.userId!,
+        });
+      } catch (ledgerErr) {
+        console.error("Advance ledger entry failed (non-fatal):", ledgerErr);
+      }
+
       await notify({
         userId: advance.requesterId, type: "salary_advance_approved",
-        title: "Advance request approved",
-        message: `${advance.requestNumber} approved for ${approvedAmount.toFixed(2)}, repaid over ${repaymentMonths} month(s).`,
+        title: "Advance request approved & disbursed",
+        message: `${advance.requestNumber} approved for ${approvedAmount.toFixed(2)} and disbursed. Repayment over ${repaymentMonths} month(s) begins via payroll.`,
         link: EMPLOYEE_LINK,
       });
       res.json({ ...updated, repayments: schedule });
@@ -860,6 +890,56 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       res.json(updated);
     } catch {
       res.status(500).json({ error: "Failed to disburse" });
+    }
+  });
+
+  // ── Department head: flag an advance for urgent payout. Gated to the requester's
+  // manager (de-facto department head) or super_admin/admin. Once flagged, final
+  // approval starts recovery in the current payroll month instead of the next.
+  app.post("/api/salary-advances/:id/urgent-process", requireAuth, requirePermission("salaryAdvance.managerApprove", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (["disbursed", "repaying", "closed", "rejected", "cancelled"].includes(advance.status)) {
+        return res.status(400).json({ error: "This advance can no longer be marked urgent." });
+      }
+
+      const role = req.session.role || "";
+      // Only the requester's department head (their routing manager) or a
+      // super_admin/admin may authorize an urgent payout.
+      const isDeptHead = advance.managerId === req.session.userId;
+      if (!isDeptHead && role !== "super_admin" && role !== "admin") {
+        return res.status(403).json({ error: "Only the department head can authorize urgent processing." });
+      }
+
+      const now = new Date();
+      const updated = await storage.updateSalaryAdvance(advance.id, {
+        urgentProcessing: true,
+        urgentApprovedBy: req.session.userId!,
+        urgentApprovedAt: now,
+      } as any);
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId: req.session.userId!, action: "urgent_flagged",
+        oldStatus: advance.status, newStatus: advance.status, metadata: { urgent: true },
+      } as any);
+
+      // Alert final approvers that an urgent payout is awaiting them.
+      try {
+        const users = await storage.getAdminUsers();
+        for (const u of users.filter(x => x.role === "super_admin" && x.isActive)) {
+          await notify({
+            userId: u.id, type: "salary_advance_urgent",
+            title: "Urgent advance payout flagged",
+            message: `${advance.requestNumber} was flagged for urgent processing and needs final approval.`,
+            link: "/admin/salary-advance?tab=final",
+          });
+        }
+      } catch { /* best-effort */ }
+
+      res.json(updated);
+    } catch (err) {
+      console.error("Urgent process error:", err);
+      res.status(500).json({ error: "Failed to flag urgent processing" });
     }
   });
 }

@@ -9,6 +9,7 @@ import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import Users from "./Users";
 import { SalaryReportsContent } from "./hr/SalaryReports";
+import { SalaryApprovalsContent } from "./hr/SalaryApprovals";
 import { DocumentComplianceContent } from "./hr/DocumentCompliance";
 import { PolicyComplianceContent } from "./hr/PolicyCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
@@ -141,6 +142,12 @@ export default function PeopleHR() {
           {isHR && (
             <TabsContent value="salary" className="mt-4">
               <SalaryReportsContent />
+            </TabsContent>
+          )}
+
+          {role === "super_admin" && (
+            <TabsContent value="salary-approvals" className="mt-4">
+              <SalaryApprovalsContent />
             </TabsContent>
           )}
 

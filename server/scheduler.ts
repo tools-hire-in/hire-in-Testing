@@ -1387,6 +1387,21 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ─── Future-dated salary change promotion (Task #686) ───────────────────────
+  // Daily at 00:30 IST: promote any future-dated salary changes whose effective
+  // date has now arrived to admin_users.salary. The salary report already reads
+  // the ledger by effective date, so this only keeps the live current-salary
+  // field in sync. Idempotent — only touches entries with appliedAt IS NULL.
+  cron.schedule("30 0 * * *", async () => {
+    try {
+      const { applyDueSalaryChanges } = await import("./salaryLedger");
+      const { promoted } = await applyDueSalaryChanges();
+      if (promoted > 0) console.log(`[scheduler] Salary change promotion: ${promoted} due change(s) applied to live salary.`);
+    } catch (err) {
+      console.error("[scheduler] Salary change promotion failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1399,4 +1414,5 @@ export function startScheduler() {
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
   console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
+  console.log("  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective");
 }

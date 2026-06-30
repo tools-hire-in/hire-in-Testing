@@ -3014,6 +3014,12 @@ export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
   closedAt: timestamp("closed_at"),
   // Exit handling — flagged when an employee with an outstanding advance exits
   exitRecoveryFlag: boolean("exit_recovery_flag").notNull().default(false),
+  // Urgent immediate payout — only valid once a department head approves it.
+  // The regular flow recovers via the next salary run; urgent allows an
+  // off-cycle immediate disbursement.
+  urgentProcessing: boolean("urgent_processing").notNull().default(false),
+  urgentApprovedBy: varchar("urgent_approved_by").references(() => adminUsers.id),
+  urgentApprovedAt: timestamp("urgent_approved_at"),
   // Snapshot of the policy at the time of the request (for audit)
   policySnapshot: jsonb("policy_snapshot"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -3089,6 +3095,42 @@ export type SalaryAdvanceRepayment = typeof salaryAdvanceRepayments.$inferSelect
 export type InsertSalaryAdvanceRepayment = z.infer<typeof insertSalaryAdvanceRepaymentSchema>;
 export type SalaryAdvanceAuditLog = typeof salaryAdvanceAuditLog.$inferSelect;
 export type InsertSalaryAdvanceAuditLog = z.infer<typeof insertSalaryAdvanceAuditLogSchema>;
+
+// ── Centralized salary-change ledger ─────────────────────────────────────────
+// Single source of truth for the history of every employee compensation change.
+// `admin_users.salary` always reflects the latest APPLIED entry. Sources:
+//   offer_letter — written back when a new hire is onboarded from an offer
+//   addendum     — written back when a salary-revision/combined addendum is accepted
+//   manual       — an HR/manager edit (maker-checker: super-admin must approve)
+//   advance      — informational entry so advances appear in the unified history
+// sourceType/status are plain varchar (not pg enums) to keep db:push additive and
+// avoid interactive enum prompts.
+export const salaryChanges = pgTable("salary_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  sourceType: varchar("source_type").notNull(), // offer_letter | addendum | manual | advance
+  sourceDocumentType: varchar("source_document_type"), // e.g. offer_letter | addendum
+  sourceDocumentId: varchar("source_document_id"),
+  oldSalary: numeric("old_salary"),
+  newSalary: numeric("new_salary"),
+  amount: numeric("amount"), // for advance entries (informational)
+  effectiveDate: date("effective_date"),
+  reason: text("reason"),
+  status: varchar("status").notNull().default("applied"), // pending_approval | applied | rejected
+  initiatedBy: varchar("initiated_by").references(() => adminUsers.id),
+  approvedBy: varchar("approved_by").references(() => adminUsers.id),
+  rejectionReason: text("rejection_reason"),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSalaryChangeSchema = createInsertSchema(salaryChanges).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SalaryChange = typeof salaryChanges.$inferSelect;
+export type InsertSalaryChange = z.infer<typeof insertSalaryChangeSchema>;
 
 // Attendance escalation dedup log — created by a startup ensure-block in server/index.ts.
 // Declared here so db:push recognizes it as an existing table (not an orphan/rename).

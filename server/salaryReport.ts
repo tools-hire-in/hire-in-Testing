@@ -137,6 +137,18 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     );
   }
 
+  // Centralized compensation: resolve each employee's salary as of this report
+  // month using the salary-change ledger (effective dates), falling back to the
+  // current admin_users.salary when no ledger history applies.
+  const { storage } = await import("./storage");
+  const { resolveSalaryAsOf } = await import("./salaryLedger");
+  const appliedSalaryChanges = (await storage.getAppliedSalaryChanges()).map(c => ({
+    employeeId: c.employeeId,
+    sourceType: c.sourceType,
+    newSalary: c.newSalary,
+    effectiveDate: c.effectiveDate as any,
+  }));
+
   const deptMap = new Map(allDepartments.map(d => [d.id, d.name]));
   const holidayDates = new Set(allHolidays.filter(h => h.type === "public" || h.type === "mandatory").map(h => h.date));
   const workingDays = getWorkingDaysInMonth(year, month, holidayDates);
@@ -180,7 +192,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
   let totalHoursWorked = 0;
 
   for (const user of allUsers) {
-    const monthlySalary = Number(user.salary) || 0;
+    const monthlySalary = resolveSalaryAsOf(appliedSalaryChanges, user.id, Number(user.salary) || 0, year, month);
     if (monthlySalary === 0) continue;
 
     const userAttendance = attendanceByUser.get(user.id) || [];

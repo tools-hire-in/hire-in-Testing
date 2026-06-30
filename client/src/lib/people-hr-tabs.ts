@@ -2,12 +2,13 @@ export type PeopleHrTab =
   | "users"
   | "balance-adjustments"
   | "salary"
+  | "salary-approvals"
   | "compliance"
   | "policy"
   | "audit"
   | "escalations";
 
-type TabGate = "all" | "hr" | "admin";
+type TabGate = "all" | "hr" | "admin" | "superadmin";
 
 export interface PeopleHrTabDef {
   value: PeopleHrTab;
@@ -20,6 +21,7 @@ export const PEOPLE_HR_TAB_DEFS: PeopleHrTabDef[] = [
   { value: "users", label: "User Management", testId: "tab-users", gate: "all" },
   { value: "balance-adjustments", label: "Balance Adjustments", testId: "tab-balance-adjustments", gate: "hr" },
   { value: "salary", label: "Salary Reports", testId: "tab-salary", gate: "hr" },
+  { value: "salary-approvals", label: "Salary Approvals", testId: "tab-salary-approvals", gate: "superadmin" },
   { value: "compliance", label: "Document Compliance", testId: "tab-compliance", gate: "hr" },
   { value: "policy", label: "Policy Compliance", testId: "tab-policy", gate: "hr" },
   { value: "audit", label: "Audit Logs", testId: "tab-audit", gate: "admin" },
@@ -66,6 +68,7 @@ export function isTabVisibleForRole(tab: PeopleHrTab, role: string): boolean {
   if (!def) return false;
   if (def.gate === "all") return true;
   if (def.gate === "hr") return isHrRole(role);
+  if (def.gate === "superadmin") return role === "super_admin";
   return isAdminRole(role);
 }
 

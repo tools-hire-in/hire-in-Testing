@@ -646,7 +646,7 @@ function EmployeeDetailView({
           <ProfileTab profile={profile} onEdit={onEditProfile} />
         </TabsContent>
         <TabsContent value="salary">
-          <SalaryTab salary={data.salary} />
+          <SalaryTab salary={data.salary} employeeId={userId} />
         </TabsContent>
         <TabsContent value="attendance">
           <AttendanceTab records={data.attendance} onEdit={onEditAttendance} shiftTiming={data.user.shiftTiming ?? null} />
@@ -905,7 +905,147 @@ function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: ()
   );
 }
 
-function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
+interface SalaryChangeRow {
+  id: string;
+  employeeId: string;
+  sourceType: string;
+  sourceDocumentType: string | null;
+  oldSalary: string | null;
+  newSalary: string | null;
+  amount: string | null;
+  effectiveDate: string | null;
+  reason: string | null;
+  status: string;
+  createdAt: string;
+  initiator?: { firstName: string; lastName: string } | null;
+  approver?: { firstName: string; lastName: string } | null;
+}
+
+interface ProofOption { type: string; id: string; label: string; salary: string | null }
+
+const salarySourceLabels: Record<string, string> = {
+  offer_letter: "Offer Letter",
+  addendum: "Addendum",
+  manual: "Manual Edit",
+  advance: "Salary Advance",
+};
+
+const salaryStatusStyles: Record<string, string> = {
+  applied: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  pending_approval: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: { employeeId: string; currentSalary: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const [newSalary, setNewSalary] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reason, setReason] = useState("");
+  const [proofRef, setProofRef] = useState("none");
+
+  const proofQuery = useQuery<ProofOption[]>({
+    queryKey: ["/api/hr/salary-changes/proof-options", { employeeId }],
+    enabled: open,
+  });
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const proof = (proofQuery.data || []).find(p => `${p.type}:${p.id}` === proofRef);
+      if (!proof) throw new Error("Please select a linked proof document (offer letter or addendum).");
+      return apiRequest("POST", "/api/hr/salary-changes", {
+        employeeId,
+        newSalary: Number(newSalary),
+        effectiveDate,
+        reason,
+        proofDocumentType: proof.type,
+        proofDocumentId: proof.id,
+      });
+    },
+    onSuccess: async (res: any) => {
+      const body = await res.json().catch(() => ({}));
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-changes", { employeeId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/my-team", employeeId, "details"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-changes/pending-count"] });
+      toast({
+        title: body?.status === "applied" ? "Salary updated" : "Sent for approval",
+        description: body?.status === "applied"
+          ? "The new salary has been applied."
+          : "A Super Admin must approve this change before it takes effect.",
+      });
+      onOpenChange(false);
+      setNewSalary(""); setReason(""); setProofRef("none");
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not submit", description: err?.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const canSubmit = Number(newSalary) > 0 && reason.trim().length >= 5 && !!effectiveDate && proofRef !== "none" && !!proofRef;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Salary</DialogTitle>
+          <DialogDescription>
+            Record a manual salary change. Changes you make may require Super Admin approval before they apply.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium">Current Salary</label>
+            <div className="text-sm text-muted-foreground mt-1">{formatCurrency(currentSalary)}</div>
+          </div>
+          <div>
+            <label className="text-sm font-medium" htmlFor="new-salary">New Monthly Salary</label>
+            <Input id="new-salary" data-testid="input-new-salary" type="number" min="0" step="0.01" value={newSalary} onChange={e => setNewSalary(e.target.value)} placeholder="e.g. 50000" />
+          </div>
+          <div>
+            <label className="text-sm font-medium" htmlFor="effective-date">Effective Date</label>
+            <Input id="effective-date" data-testid="input-effective-date" type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Supporting Document <span className="text-red-500">*</span></label>
+            <Select value={proofRef} onValueChange={setProofRef}>
+              <SelectTrigger data-testid="select-proof-document"><SelectValue placeholder="Select a proof document" /></SelectTrigger>
+              <SelectContent>
+                {(proofQuery.data || []).map(p => (
+                  <SelectItem key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(proofQuery.data || []).length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-no-proof-options">
+                No offer letters or addendums are linked to this employee. A salary change requires a proof document.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-sm font-medium" htmlFor="salary-reason">Reason</label>
+            <Textarea id="salary-reason" data-testid="input-salary-reason" value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this salary changing?" rows={3} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-salary-change">Cancel</Button>
+          <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-salary-change">
+            {submit.isPending ? "Submitting…" : "Submit"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; employeeId: string }) {
+  const { user } = useAuth();
+  const [editOpen, setEditOpen] = useState(false);
+  const canEdit = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
+
+  const historyQuery = useQuery<SalaryChangeRow[]>({
+    queryKey: ["/api/hr/salary-changes", { employeeId }],
+    enabled: !!employeeId,
+  });
+
   if (!salary) {
     return (
       <Card>
@@ -916,14 +1056,73 @@ function SalaryTab({ salary }: { salary: EmployeeDetails["salary"] }) {
     );
   }
 
+  const history = historyQuery.data || [];
+
   return (
     <div className="space-y-4">
-      <StatCard
-        label="Current Salary"
-        value={formatCurrency(salary.currentSalary)}
-        icon={<DollarSign className="h-5 w-5" />}
-        accentColour="text-green-600"
-      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <StatCard
+            label="Current Salary"
+            value={formatCurrency(salary.currentSalary)}
+            icon={<DollarSign className="h-5 w-5" />}
+            accentColour="text-green-600"
+          />
+        </div>
+        {canEdit && (
+          <Button onClick={() => setEditOpen(true)} data-testid="button-edit-salary" className="mt-1">
+            <DollarSign className="h-4 w-4 mr-1" /> Edit Salary
+          </Button>
+        )}
+      </div>
+
+      <SalaryChangeDialog employeeId={employeeId} currentSalary={salary.currentSalary} open={editOpen} onOpenChange={setEditOpen} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2"><History className="h-5 w-5" /> Salary Change History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {historyQuery.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : history.length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-6">No salary changes recorded yet.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 font-medium">Effective</th>
+                    <th className="text-left py-2 font-medium">Source</th>
+                    <th className="text-right py-2 font-medium">From</th>
+                    <th className="text-right py-2 font-medium">To</th>
+                    <th className="text-left py-2 font-medium">Status</th>
+                    <th className="text-left py-2 font-medium">By</th>
+                    <th className="text-left py-2 font-medium">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map(h => (
+                    <tr key={h.id} className="border-b last:border-0" data-testid={`row-salary-change-${h.id}`}>
+                      <td className="py-2">{h.effectiveDate ? new Date(h.effectiveDate).toLocaleDateString() : "—"}</td>
+                      <td className="py-2">{salarySourceLabels[h.sourceType] || h.sourceType}</td>
+                      <td className="text-right py-2">{h.sourceType === "advance" ? "—" : formatCurrency(h.oldSalary)}</td>
+                      <td className="text-right py-2 font-medium">{h.sourceType === "advance" ? `+${formatCurrency(h.amount)}` : formatCurrency(h.newSalary)}</td>
+                      <td className="py-2">
+                        <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${salaryStatusStyles[h.status] || "bg-muted text-muted-foreground"}`}>
+                          {h.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="py-2">{h.initiator ? `${h.initiator.firstName} ${h.initiator.lastName}` : "—"}</td>
+                      <td className="py-2 max-w-[200px] truncate" title={h.reason || ""}>{h.reason || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

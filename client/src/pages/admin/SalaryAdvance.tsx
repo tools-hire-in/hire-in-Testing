@@ -44,6 +44,7 @@ interface Advance {
   returnNote: string | null;
   rejectionReason: string | null;
   exitRecoveryFlag: boolean;
+  urgentProcessing?: boolean | null;
   createdAt: string;
   requester?: AdvanceUser | null;
   manager?: AdvanceUser | null;
@@ -815,7 +816,15 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                   <Button size="sm" variant="destructive" onClick={() => { const r = prompt("Rejection reason:"); if (r) action.mutate({ path: "manager-reject", body: { reason: r } }); }} disabled={action.isPending} data-testid="button-manager-reject">
                     Reject
                   </Button>
+                  {!advance.urgentProcessing && (
+                    <Button size="sm" variant="outline" className="border-amber-500 text-amber-700 hover:bg-amber-50 dark:text-amber-300" onClick={() => action.mutate({ path: "urgent-process", body: {} })} disabled={action.isPending} data-testid="button-urgent-process">
+                      Mark Urgent
+                    </Button>
+                  )}
                 </div>
+                {advance.urgentProcessing && (
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300" data-testid="text-urgent-flagged">⚡ Flagged for urgent payout — recovery will begin in the current payroll month.</p>
+                )}
               </div>
             )}
 
