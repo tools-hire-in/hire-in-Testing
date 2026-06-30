@@ -79,13 +79,6 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     category: "Content",
   },
   {
-    key: "overtime_recognition",
-    label: "Overtime Recognition",
-    description:
-      "Recognizes employees who worked overtime; sent to their managers.",
-    category: "Attendance",
-  },
-  {
     key: "attendance_escalation",
     label: "Attendance Exception Escalation",
     description:

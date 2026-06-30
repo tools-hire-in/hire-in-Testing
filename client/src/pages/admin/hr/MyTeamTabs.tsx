@@ -9,13 +9,12 @@ import TrainingProgress from "./TrainingProgress";
 import AttendanceApproval from "./AttendanceApproval";
 import TicketApprovalsTab from "./TicketApprovalsTab";
 
-const TABS = ["overview", "attendance", "exceptions", "overtime", "leave-approvals", "training-progress", "attendance-approval", "approvals"] as const;
+const TABS = ["overview", "attendance", "exceptions", "leave-approvals", "training-progress", "attendance-approval", "approvals"] as const;
 type Tab = typeof TABS[number];
 
 // Legacy nested-param aliases → current single-level section values.
 const TAB_ALIASES: Record<string, Tab> = {
   "exception-review": "exceptions",
-  "overtime-alerts": "overtime",
   "team-attendance": "attendance",
 };
 
@@ -23,7 +22,6 @@ const TAB_ALIASES: Record<string, Tab> = {
 // lightweight one here so every destination has consistent context.
 const SECTION_HEADERS: Partial<Record<Tab, { title: string; desc: string }>> = {
   exceptions: { title: "Exception Review", desc: "Short-day and attendance exceptions awaiting review" },
-  overtime: { title: "Overtime Alerts", desc: "Team members with elevated overtime" },
   "attendance-approval": { title: "Month-End Approval", desc: "Review and approve monthly attendance reports" },
   approvals: { title: "Request Approvals", desc: "Pending team requests awaiting your action" },
 };
@@ -79,7 +77,6 @@ export default function MyTeamTabs() {
           {activeTab === "overview" && <MyTeam />}
           {activeTab === "attendance" && <TeamAttendance view="attendance" />}
           {activeTab === "exceptions" && <TeamAttendance view="exceptions" />}
-          {activeTab === "overtime" && <TeamAttendance view="overtime" />}
           {activeTab === "leave-approvals" && <LeaveApprovals />}
           {activeTab === "training-progress" && <TrainingProgress />}
           {activeTab === "attendance-approval" && <AttendanceApproval />}

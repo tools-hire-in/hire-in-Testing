@@ -3301,42 +3301,6 @@ export async function sendReleaseNotesEmail(options: {
   return { sent, failed };
 }
 
-export async function sendOvertimePraiseEmail(options: {
-  to: string;
-  employeeFirstName: string;
-  managerName: string;
-  praiseNote: string;
-}): Promise<void> {
-  try {
-    const { client, fromEmail } = await getUncachableSendGridClient();
-    const msg = {
-      to: options.to,
-      from: { email: fromEmail, name: "Alina Carter" },
-      subject: `You've been recognised by ${options.managerName} — Hire'in Solutions`,
-      html: `
-        <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
-          <div style="background:linear-gradient(135deg,#1F3A6E 0%,#F47C20 100%);padding:32px;text-align:center;">
-            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">Hire'in Solutions</h1>
-            <p style="color:#fde68a;margin:8px 0 0;font-size:14px;">You've been recognised!</p>
-          </div>
-          <div style="padding:32px;">
-            <p style="font-size:16px;color:#1e293b;">Hi ${options.employeeFirstName},</p>
-            <p style="color:#475569;">Your manager <strong>${options.managerName}</strong> wanted to recognise your hard work:</p>
-            <blockquote style="border-left:4px solid #F47C20;margin:20px 0;padding:12px 20px;background:#fff7ed;color:#92400e;font-style:italic;border-radius:0 8px 8px 0;">
-              "${options.praiseNote}"
-            </blockquote>
-            <p style="color:#475569;">Keep up the great work — it makes a real difference to the team!</p>
-            ${SIGNOFF_HTML}
-          </div>
-        </div>`,
-      text: `Hi ${options.employeeFirstName},\n\nYour manager ${options.managerName} wanted to recognise your hard work:\n\n"${options.praiseNote}"\n\nKeep up the great work!${SIGNOFF_TEXT}`,
-    };
-    await dispatchAutomatedEmail("overtime_recognition", "scan:overtime_recognition", msg);
-  } catch (err: any) {
-    console.error("[praise-email] Failed to send overtime praise email:", err?.response?.body || err.message);
-  }
-}
-
 export async function sendEscalationEmail(options: {
   to: string;
   recipientName: string;

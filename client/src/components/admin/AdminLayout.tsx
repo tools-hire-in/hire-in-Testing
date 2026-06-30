@@ -43,7 +43,6 @@ import {
   Sparkles,
   ChevronDown,
   Wallet,
-  Timer,
   CalendarCheck,
   FilePlus,
   UserCog,
@@ -309,7 +308,6 @@ const MY_TEAM_SUB_ITEMS = [
   { label: "Team", tab: null, icon: Users },
   { label: "Attendance", tab: "attendance", icon: Clock },
   { label: "Exceptions", tab: "exceptions", icon: AlertTriangle },
-  { label: "Overtime", tab: "overtime", icon: Timer },
   { label: "Leave Approvals", tab: "leave-approvals", icon: CalendarCheck },
   { label: "Training", tab: "training-progress", icon: GraduationCap },
   { label: "Month Approval", tab: "attendance-approval", icon: ClipboardCheck },
@@ -382,7 +380,6 @@ function TeamSection({
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
       if (t === "exception-review") return "exceptions";
-      if (t === "overtime-alerts") return "overtime";
       if (t === "team-attendance") return "attendance";
       return t;
     } catch { return null; }

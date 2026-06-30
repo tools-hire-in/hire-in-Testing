@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil, AlertTriangle, CheckCircle, ThumbsUp } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil, AlertTriangle, CheckCircle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,12 +124,12 @@ interface AttendanceException {
   createdAt: string;
 }
 
-export default function TeamAttendance({ view }: { view?: "attendance" | "exceptions" | "overtime" } = {}) {
+export default function TeamAttendance({ view }: { view?: "attendance" | "exceptions" } = {}) {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
-  const currentView: "attendance" | "exceptions" | "overtime" =
-    view ?? (activeTab === "exceptions" ? "exceptions" : activeTab === "overtime" ? "overtime" : "attendance");
+  const currentView: "attendance" | "exceptions" =
+    view ?? (activeTab === "exceptions" ? "exceptions" : "attendance");
   // When embedded (view set), only the attendance view shows the date header + summary cards.
   const showHeader = view ? view === "attendance" : true;
   const tabsValue = view ? (view === "attendance" ? "overview" : view) : activeTab;
@@ -202,20 +202,6 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
     enabled: isAuthenticated && currentView === "exceptions",
   });
 
-  const { data: overtimeAlerts } = useQuery<Array<{ id: string; message: string; metadata: any; createdAt: string; isRead: boolean }>>({
-    queryKey: ["/api/attendance/overtime-alerts"],
-    queryFn: async () => {
-      const res = await fetch("/api/attendance/overtime-alerts", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    refetchInterval: 60000,
-    enabled: isAuthenticated && currentView === "overtime",
-  });
-
-  const [praisingAlert, setPraisingAlert] = useState<{ id: string; employeeId: string; employeeName: string } | null>(null);
-  const [praiseNote, setPraiseNote] = useState("");
-
   const resolveMutation = useMutation({
     mutationFn: async ({ id, disposition, comment }: { id: string; disposition: string; comment: string }) => {
       const res = await apiRequest("POST", `/api/attendance/exceptions/${id}/resolve`, { disposition, comment });
@@ -232,20 +218,6 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
       toast({ title: "Resolved", description: "Exception resolved." });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const praiseMutation = useMutation({
-    mutationFn: async ({ employeeId, praiseNote, notificationId }: { employeeId: string; praiseNote: string; notificationId: string }) => {
-      const res = await apiRequest("POST", "/api/attendance/overtime-alerts/praise", { employeeId, praiseNote, notificationId });
-      if (!res.ok) throw new Error("Failed to send praise");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/overtime-alerts"] });
-      setPraisingAlert(null);
-      setPraiseNote("");
-      toast({ title: "Praise Sent!", description: "Your message has been sent to the employee." });
-    },
-    onError: () => toast({ title: "Error", description: "Failed to send praise", variant: "destructive" }),
   });
 
   const { toast } = useToast();
@@ -434,9 +406,6 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
                   {pendingExcCount > 99 ? "99+" : pendingExcCount}
                 </span>
               )}
-            </TabsTrigger>
-            <TabsTrigger value="overtime" data-testid="tab-overtime-alerts">
-              Overtime Alerts
             </TabsTrigger>
           </TabsList>
           )}
@@ -687,53 +656,6 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
             </Card>
           </TabsContent>
 
-          {/* Tab 3: Overtime Alerts & Praise */}
-          <TabsContent value="overtime">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ThumbsUp className="h-4 w-4 text-blue-500" />
-                  Overtime Recognition Alerts
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {!overtimeAlerts || overtimeAlerts.length === 0 ? (
-                  <div className="text-center py-12 px-6">
-                    <ThumbsUp className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                    <p className="text-muted-foreground font-medium">No overtime alerts this week</p>
-                    <p className="text-xs text-muted-foreground mt-1">When a team member works {`>`}standard hours on 3+ days in a week, you'll see an alert here to recognise their effort.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {overtimeAlerts.map(alert => (
-                      <div key={alert.id} className={`p-4 flex items-start justify-between gap-3 ${alert.isRead ? "opacity-60" : ""}`} data-testid={`overtime-alert-${alert.id}`}>
-                        <div className="space-y-1 flex-1">
-                          <p className="text-sm font-medium">{alert.message}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(alert.createdAt).toLocaleDateString()}</p>
-                        </div>
-                        {!alert.isRead && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
-                            onClick={() => {
-                              const meta = alert.metadata;
-                              setPraisingAlert({ id: alert.id, employeeId: meta?.employeeId, employeeName: meta?.employeeName });
-                              setPraiseNote("");
-                            }}
-                            data-testid={`button-praise-${alert.id}`}
-                          >
-                            <ThumbsUp className="h-3.5 w-3.5 mr-1" />
-                            Send Praise
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </div>
 
@@ -841,47 +763,6 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
         </DialogContent>
       </Dialog>
 
-      {/* Praise Modal */}
-      <Dialog open={!!praisingAlert} onOpenChange={(open) => { if (!open) setPraisingAlert(null); }}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-praise">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ThumbsUp className="h-5 w-5 text-blue-500" />
-              Send Overtime Praise
-            </DialogTitle>
-          </DialogHeader>
-          {praisingAlert && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Recognise <span className="font-semibold text-foreground">{praisingAlert.employeeName}</span>'s extra effort this week with a personal note.
-              </p>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Praise Note</Label>
-                <Textarea
-                  rows={3}
-                  value={praiseNote}
-                  onChange={(e) => setPraiseNote(e.target.value)}
-                  placeholder="e.g. Great effort this week — your dedication made a difference!"
-                  data-testid="textarea-praise-note"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPraisingAlert(null)} data-testid="button-cancel-praise">Cancel</Button>
-            <Button
-              onClick={() => {
-                if (!praisingAlert) return;
-                praiseMutation.mutate({ employeeId: praisingAlert.employeeId, praiseNote, notificationId: praisingAlert.id });
-              }}
-              disabled={praiseMutation.isPending}
-              data-testid="button-send-praise"
-            >
-              {praiseMutation.isPending ? "Sending..." : "Send Praise"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AdminLayout>
   );
 }

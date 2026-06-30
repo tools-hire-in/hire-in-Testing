@@ -539,20 +539,6 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
-  // Weekly overtime recognition scan — runs every Monday at 9:00 AM IST
-  cron.schedule("0 9 * * 1", async () => {
-    console.log("[scheduler] Running weekly overtime recognition scan...");
-    try {
-      const { runOvertimeRecognitionScan } = await import("./attendanceExceptionRoutes");
-      await runOvertimeRecognitionScan();
-      console.log("[scheduler] Overtime recognition scan complete.");
-    } catch (err) {
-      console.error("[scheduler] Overtime recognition scan failed:", err);
-    }
-  }, {
-    timezone: "Asia/Kolkata",
-  });
-
   // Admin route to update shift grace period: handled in routes.ts
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
 
@@ -1412,6 +1398,5 @@ export function startScheduler() {
   console.log("  - Absent sweep: daily at 08:00 IST (all shifts ended by then; targets yesterday's date)");
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
-  console.log("  - Overtime recognition scan: every Monday at 09:00 IST → alerts managers of team members with 3+ OT days");
   console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
 }
