@@ -2243,14 +2243,14 @@ async function seedProbationFramework() {
 async function backfillGrowthPlansFromAddendums() {
   try {
     const rows = (await db.execute(sql`
-      SELECT a.id, a.for_employee_id, a.offer_letter_id, a.effective_date,
+      SELECT a.id, a.for_employee_id, a.offer_letter_id, a.effective_date, a.accepted_at,
              COALESCE(a.issued_by, o.created_by) AS actor_id
       FROM offer_letter_addendums a
       LEFT JOIN offer_letters o ON a.offer_letter_id = o.id
       WHERE a.include_growth_plan_clause = true
         AND a.status IN ('accepted', 'countersigned')
         AND a.for_employee_id IS NOT NULL
-    `)).rows as Array<{ id: string; for_employee_id: string; offer_letter_id: string | null; effective_date: string | null; actor_id: string | null }>;
+    `)).rows as Array<{ id: string; for_employee_id: string; offer_letter_id: string | null; effective_date: string | null; accepted_at: string | null; actor_id: string | null }>;
 
     if (rows.length === 0) return;
 
@@ -2274,6 +2274,12 @@ async function backfillGrowthPlansFromAddendums() {
           employeeId: r.for_employee_id,
           offerLetterId: r.offer_letter_id,
           effectiveDate: r.effective_date,
+          // Reactivate from the employee's signature date, not the effective date
+          // or this backfill run. ensurePlanFromDocument dedupes against BOTH the
+          // signature-derived start and the legacy effective-date start, so
+          // historical plans created under the old effective-date rule are
+          // recognized and not double-created for already-activated addendums.
+          signatureDate: r.accepted_at,
           createdBy,
         });
         if (res.created) created++;

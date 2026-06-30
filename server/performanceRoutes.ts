@@ -247,6 +247,11 @@ export async function ensurePlanFromDocument(opts: {
   employeeId?: string | null;
   offerLetterId?: string | null;
   effectiveDate?: string | null;
+  // The date the EMPLOYEE actually signed the addendum (addendum.accepted_at).
+  // Addendum-attached plans (growth/pip/etc.) start from this signature date so a
+  // late-signed addendum doesn't start a plan mid-stream or already-expired.
+  // Falls back to effectiveDate, then today, when missing.
+  signatureDate?: string | Date | null;
   createdBy: string;
   durationDays?: number;
   department?: string | null;
@@ -272,18 +277,42 @@ export async function ensurePlanFromDocument(opts: {
   if (emp.rows.length === 0) return { created: false, reason: "employee_missing" };
   const managerId = ((emp.rows[0] as any)?.manager_id as string | undefined) ?? null;
 
-  const startDate = (opts.effectiveDate && opts.effectiveDate.trim())
-    ? opts.effectiveDate.slice(0, 10)
-    : new Date().toISOString().slice(0, 10);
+  // Start the plan on the employee's signature date when known (a late-signed
+  // addendum shouldn't start its plan back on the effective date). Fall back to
+  // the effective date, then today, preserving legacy behavior.
+  const signatureDateStr = opts.signatureDate
+    ? (opts.signatureDate instanceof Date
+        ? opts.signatureDate.toISOString().slice(0, 10)
+        : String(opts.signatureDate).slice(0, 10))
+    : null;
+  const startDate = (signatureDateStr && signatureDateStr.trim())
+    ? signatureDateStr
+    : (opts.effectiveDate && opts.effectiveDate.trim())
+      ? opts.effectiveDate.slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
   const durationDays = opts.durationDays ?? PLAN_DEFAULT_DURATION_DAYS[planType];
   const endDate = new Date(new Date(startDate).getTime() + durationDays * 86400000)
     .toISOString().slice(0, 10);
 
-  // Idempotency: same employee + plan type + identical window already planned.
+  // Idempotency: a plan of this type for this employee + identical window already
+  // exists. Match the new signature-derived window OR the legacy effective-date
+  // window (both keyed on start AND end). Historical plans were created under the
+  // old rule with start_date = effective_date, so once the start source moved to
+  // the signature date the startup backfill would otherwise no longer recognize
+  // them and would double-create. Checking both windows keeps the backfill safe
+  // for already-activated addendums while preserving end-date-aware dedup.
+  const legacyEffectiveStart = (opts.effectiveDate && opts.effectiveDate.trim())
+    ? opts.effectiveDate.slice(0, 10)
+    : startDate;
+  const legacyEffectiveEnd = new Date(new Date(legacyEffectiveStart).getTime() + durationDays * 86400000)
+    .toISOString().slice(0, 10);
   const dup = await db.execute(sql`
     SELECT id FROM employee_plans
     WHERE employee_id = ${employeeId} AND plan_type = ${planType}::employee_plan_type
-      AND start_date = ${startDate} AND end_date = ${endDate}
+      AND (
+        (start_date = ${startDate} AND end_date = ${endDate})
+        OR (start_date = ${legacyEffectiveStart} AND end_date = ${legacyEffectiveEnd})
+      )
     LIMIT 1
   `);
   if (dup.rows.length > 0) return { created: false, planId: (dup.rows[0] as any).id, reason: "exists" };
@@ -329,6 +358,7 @@ export async function ensureGrowthPlanFromAddendum(opts: {
   employeeId?: string | null;
   offerLetterId?: string | null;
   effectiveDate?: string | null;
+  signatureDate?: string | Date | null;
   createdBy: string;
   durationDays?: number;
 }): Promise<{ created: boolean; planId?: string; reason?: string }> {

@@ -9377,6 +9377,8 @@ export async function registerRoutes(
             employeeId: addendum.forEmployeeId ?? null,
             offerLetterId: addendum.offerLetterId ?? null,
             effectiveDate: addendum.effectiveDate ?? null,
+            // Plan starts on the employee's signature date (this acceptance).
+            signatureDate: serverTimestamp,
             createdBy: actorIdForAudit,
             department: (addendum as any).attachedPlanDepartment ?? null,
             role: (addendum as any).attachedPlanRole ?? null,
@@ -9865,6 +9867,9 @@ export async function registerRoutes(
             employeeId: addendum.forEmployeeId ?? null,
             offerLetterId: addendum.offerLetterId ?? null,
             effectiveDate: addendum.effectiveDate ?? null,
+            // Use the EMPLOYEE's stored acceptance date (not the countersign date),
+            // since activation can happen at accept or here at countersign.
+            signatureDate: addendum.acceptedAt ?? null,
             createdBy: req.session.userId!,
             department: (addendum as any).attachedPlanDepartment ?? null,
             role: (addendum as any).attachedPlanRole ?? null,
