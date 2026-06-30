@@ -1,0 +1,64 @@
+CREATE TYPE "public"."salary_advance_kind" AS ENUM('advance', 'overpayment');
+CREATE TABLE "salary_changes" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"employee_id" varchar NOT NULL,
+	"source_type" varchar NOT NULL,
+	"source_document_type" varchar,
+	"source_document_id" varchar,
+	"old_salary" numeric,
+	"new_salary" numeric,
+	"amount" numeric,
+	"effective_date" date,
+	"reason" text,
+	"status" varchar DEFAULT 'applied' NOT NULL,
+	"initiated_by" varchar,
+	"approved_by" varchar,
+	"rejection_reason" text,
+	"applied_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+ALTER TABLE "performance_goals" DROP CONSTRAINT "performance_goals_plan_id_fkey";
+ALTER TABLE "check_ins" DROP CONSTRAINT "check_ins_plan_id_fkey";
+DROP INDEX "break_records_attendance_idx";
+DROP INDEX "break_records_user_date_idx";
+DROP INDEX "idx_policy_ack_user_type";
+DROP INDEX "hr_letters_reference_number_idx";
+DROP INDEX "idx_att_exception_status";
+DROP INDEX "idx_att_reg_date";
+DROP INDEX "idx_att_reg_employee_id";
+DROP INDEX "idx_att_reg_status";
+DROP INDEX "idx_travel_quotes_recruiter";
+DROP INDEX "idx_travel_quotes_status";
+DROP INDEX "goal_milestones_goal_id_idx";
+DROP INDEX "idx_employee_plans_employee";
+DROP INDEX "idx_att_report_mgr_approvals_run";
+DROP INDEX "idx_plan_acks_plan_id";
+DROP INDEX "idx_plan_acks_user_id";
+DROP INDEX "idx_plan_goal_templates_type_role";
+DROP INDEX "idx_plan_goal_templates_unique";
+DROP INDEX "studio_generations_article_idx";
+DROP INDEX "studio_generations_user_idx";
+DROP INDEX "idx_att_report_entries_manager";
+DROP INDEX "idx_att_report_entries_run";
+DROP INDEX "idx_att_report_edits_run";
+DROP INDEX "idx_att_report_edits_status";
+DROP INDEX "idx_signature_records_doc";
+DROP INDEX "idx_signature_records_ref";
+DROP INDEX "studio_article_versions_article_idx";
+DROP INDEX "card_templates_default_idx";
+DROP INDEX "studio_review_assignments_article_idx";
+DROP INDEX "studio_prompt_templates_global_key";
+DROP INDEX "studio_articles_project_idx";
+DROP INDEX "studio_articles_status_idx";
+ALTER TABLE "leave_types" ADD COLUMN "block_entitlement" boolean DEFAULT false NOT NULL;
+ALTER TABLE "contract_clients" ADD COLUMN "ein" varchar;
+ALTER TABLE "salary_advance_requests" ADD COLUMN "kind" "salary_advance_kind" DEFAULT 'advance' NOT NULL;
+ALTER TABLE "salary_advance_requests" ADD COLUMN "backfilled" boolean DEFAULT false NOT NULL;
+ALTER TABLE "salary_advance_requests" ADD COLUMN "urgent_processing" boolean DEFAULT false NOT NULL;
+ALTER TABLE "salary_advance_requests" ADD COLUMN "urgent_approved_by" varchar;
+ALTER TABLE "salary_advance_requests" ADD COLUMN "urgent_approved_at" timestamp;
+ALTER TABLE "salary_changes" ADD CONSTRAINT "salary_changes_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_changes" ADD CONSTRAINT "salary_changes_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_changes" ADD CONSTRAINT "salary_changes_initiated_by_admin_users_id_fk" FOREIGN KEY ("initiated_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_requests" ADD CONSTRAINT "salary_advance_requests_urgent_approved_by_admin_users_id_fk" FOREIGN KEY ("urgent_approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "employee_plans" ADD CONSTRAINT "ck_employee_plans_nonpending_has_employee" CHECK ((status = 'pending'::employee_plan_status) OR (employee_id IS NOT NULL));

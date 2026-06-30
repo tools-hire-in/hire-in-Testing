@@ -1598,25 +1598,12 @@ async function ensureHealthcarePlansTables() {
     await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS check_in_type check_in_type DEFAULT 'milestone'`);
     await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS review_scores JSONB`);
 
-    // Add FK constraints for plan_id columns (idempotent via pg_constraint check)
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'performance_goals_plan_id_fkey') THEN
-          ALTER TABLE performance_goals
-            ADD CONSTRAINT performance_goals_plan_id_fkey
-            FOREIGN KEY (plan_id) REFERENCES employee_plans(id) ON DELETE SET NULL;
-        END IF;
-      END $$;
-    `);
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_ins_plan_id_fkey') THEN
-          ALTER TABLE check_ins
-            ADD CONSTRAINT check_ins_plan_id_fkey
-            FOREIGN KEY (plan_id) REFERENCES employee_plans(id) ON DELETE SET NULL;
-        END IF;
-      END $$;
-    `);
+    // NOTE: plan_id on performance_goals and check_ins is intentionally a raw
+    // varchar with NO foreign key (see shared/schema.ts — "raw varchar to avoid
+    // circular FK"). Do NOT re-add performance_goals_plan_id_fkey /
+    // check_ins_plan_id_fkey here: schema.ts owns the schema, so a Publish/db:push
+    // drops these FKs and a boot-time re-add would just recreate the drift every
+    // release (and could fail at boot on any orphaned plan_id).
 
     // Unique index ensures idempotent upsert seeding — admin edits are never overwritten
     await db.execute(sql`
