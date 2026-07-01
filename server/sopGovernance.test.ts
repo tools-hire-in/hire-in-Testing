@@ -10,6 +10,7 @@ import {
   evaluateApprovalGate,
   latestRound,
 } from "./sopGovernance";
+import { isSopLockEligible } from "./sopRollout";
 
 // ---- Transition legality ----
 test("legal forward transitions are allowed", () => {
@@ -170,4 +171,41 @@ test("resubmitted version is not blocked by a prior round's changes_requested", 
 
 test("latestRound empty input returns empty", () => {
   assert.deepEqual(latestRound([]), []);
+});
+
+// ---- Compliance-lock eligibility (per-user, not doc-lifecycle) ----
+const lockRow = {
+  enforcement: "full" as const,
+  operational: true,
+  overdue: true,
+  acknowledgedCurrentVersion: false,
+};
+
+test("full + operational + overdue + unacked locks the individual", () => {
+  assert.equal(isSopLockEligible(lockRow), true);
+});
+
+test("regression: lock fires WITHOUT waiting for doc lifecycle 'active'", () => {
+  // The doc reaches lifecycle 'active' only after EVERY impacted user acks.
+  // A straggler must be lockable while the doc is still not 'active', else the
+  // lock is unreachable for the exact cohort it exists to compel.
+  assert.equal(isSopLockEligible({ ...lockRow }), true);
+});
+
+test("acknowledged user is never locked", () => {
+  assert.equal(isSopLockEligible({ ...lockRow, acknowledgedCurrentVersion: true }), false);
+});
+
+test("not-yet-operational SOP does not lock (grace clock not started)", () => {
+  assert.equal(isSopLockEligible({ ...lockRow, operational: false }), false);
+});
+
+test("within grace (not overdue) does not lock", () => {
+  assert.equal(isSopLockEligible({ ...lockRow, overdue: false }), false);
+});
+
+test("soft/measured enforcement never locks", () => {
+  assert.equal(isSopLockEligible({ ...lockRow, enforcement: "soft" }), false);
+  assert.equal(isSopLockEligible({ ...lockRow, enforcement: "measured" }), false);
+  assert.equal(isSopLockEligible({ ...lockRow, enforcement: null }), false);
 });

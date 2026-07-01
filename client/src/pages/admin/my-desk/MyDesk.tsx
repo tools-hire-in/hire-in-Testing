@@ -9,6 +9,7 @@ import { useNewLook } from "@/hooks/use-new-look";
 import CommandCenter from "./CommandCenter";
 import CommandCenterV2 from "./CommandCenterV2";
 import MyRegularizations from "./MyRegularizations";
+import MySops, { SopCoachingBanner } from "./MySops";
 
 const Attendance = lazy(() => import("@/pages/admin/hr/Attendance"));
 const LeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
@@ -23,6 +24,7 @@ const TABS = [
   "accrual",
   "leave-calendar",
   "regularizations",
+  "my-sops",
 ] as const;
 type Tab = typeof TABS[number];
 
@@ -35,6 +37,7 @@ const TAB_LABELS: Record<Tab, string> = {
   "accrual": "Accrual",
   "leave-calendar": "Leave Calendar",
   "regularizations": "Regularizations",
+  "my-sops": "My SOPs",
 };
 
 // Retired (nested) params → new single-level destinations, for old deep-links.
@@ -147,6 +150,10 @@ export default function MyDesk() {
           </div>
         )}
 
+        {/* Soft-enforcement SOP coaching nudge (Task #662) — shown on the dashboard
+            for users in the rollout pilot with un-acknowledged operational SOPs. */}
+        {activeTab === null && <SopCoachingBanner />}
+
         {/* Content driven by sidebar sub-nav */}
         <div>
           {activeTab === null && (newLook ? <CommandCenterV2 /> : <CommandCenter />)}
@@ -189,9 +196,14 @@ export default function MyDesk() {
           {activeTab === "regularizations" && !isComplianceLocked && (
             <MyRegularizations />
           )}
+          {/* My SOPs stays reachable even when compliance-locked so the user can
+              complete and acknowledge the SOPs that drive the lock. */}
+          {activeTab === "my-sops" && (
+            <MySops />
+          )}
 
           {/* Locked tab interstitial */}
-          {activeTab !== null && isComplianceLocked && (
+          {activeTab !== null && activeTab !== "my-sops" && isComplianceLocked && (
             <div className="flex flex-col items-center justify-center py-16 gap-4" data-testid="mydesk-locked-state">
               <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                 <Lock className="h-7 w-7 text-amber-600" />

@@ -3537,3 +3537,65 @@ export type SopAuditRecord = typeof sopAuditRecords.$inferSelect;
 export type InsertSopAuditRecord = z.infer<typeof insertSopAuditRecordSchema>;
 export type SopAuditFinding = typeof sopAuditFindings.$inferSelect;
 export type InsertSopAuditFinding = z.infer<typeof insertSopAuditFindingSchema>;
+
+// ==========================================
+// SOP WAVE ROLLOUT & ENFORCEMENT (Task #662)
+// ==========================================
+// Successive wave rollout (Wave 0-5) of the SOP launch playbook. Each wave is a
+// phase; member SOPs (linked by sopMasterId/code) become "operational" one or
+// two at a time to honor the "max 2 operational SOPs per week" cadence guardrail.
+// Enforcement escalates per wave: 'soft' shows a coaching banner; 'hard' folds
+// overdue, un-acknowledged operational SOPs into the existing training
+// compliance lock (gated by useSopAccess so non-pilot users are never locked).
+
+export const rolloutWaves = pgTable("rollout_waves", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waveNumber: integer("wave_number").notNull(),
+  name: varchar("name").notNull(),
+  // planned → active → completed. A wave must be active before its SOPs can be
+  // made operational.
+  status: varchar("status").default("planned").notNull(),
+  // soft = coaching banner only; measured = coaching + audit (no lock);
+  // full = compliance lock on overdue acks (Wave 5 milestone).
+  enforcement: varchar("enforcement").default("soft").notNull(),
+  // Who the wave targets (e.g. "All employees", "Recruitment & Operations").
+  audience: varchar("audience"),
+  description: text("description"),
+  activatedAt: timestamp("activated_at"),
+  activatedBy: varchar("activated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  waveNumberUnique: uniqueIndex("rollout_waves_wave_number_unique").on(table.waveNumber),
+}));
+
+export const waveSops = pgTable("wave_sops", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waveNumber: integer("wave_number").notNull(),
+  // Stable SOP identity (the SOP code, e.g. "OPS-001").
+  sopMasterId: varchar("sop_master_id").notNull(),
+  // When set, this SOP is "operational" for its wave — training/enforcement has
+  // begun. Null = queued behind the cadence guardrail.
+  operationalAt: timestamp("operational_at"),
+  operationalBy: varchar("operational_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  waveSopUnique: uniqueIndex("wave_sops_wave_sop_unique").on(table.waveNumber, table.sopMasterId),
+  sopIdx: index("wave_sops_sop_idx").on(table.sopMasterId),
+}));
+
+export const insertRolloutWaveSchema = createInsertSchema(rolloutWaves).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWaveSopSchema = createInsertSchema(waveSops).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type RolloutWave = typeof rolloutWaves.$inferSelect;
+export type InsertRolloutWave = z.infer<typeof insertRolloutWaveSchema>;
+export type WaveSop = typeof waveSops.$inferSelect;
+export type InsertWaveSop = z.infer<typeof insertWaveSopSchema>;

@@ -58,6 +58,7 @@ import path from "path";
 import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance, recordSignature } from "./documentSigningService";
 import * as sopGov from "./sopGovernance";
 import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress } from "./sopAssignmentEngine";
+import * as sopRollout from "./sopRollout";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
@@ -11546,33 +11547,17 @@ export async function registerRoutes(
   // always have access when the master flag is ON so governance owners can manage
   // the library during a pilot.
 
-  interface SopRolloutScope { mode: "pilot" | "all"; roles: string[]; userIds: string[]; }
+  type SopRolloutScope = sopRollout.SopRolloutScope;
 
-  async function getSopRolloutScope(): Promise<SopRolloutScope> {
-    const setting = await storage.getSystemSetting("process_governance_rollout");
-    const raw = (setting?.value as Partial<SopRolloutScope>) || {};
-    return {
-      mode: raw.mode === "all" ? "all" : "pilot",
-      roles: Array.isArray(raw.roles) ? raw.roles : [],
-      userIds: Array.isArray(raw.userIds) ? raw.userIds : [],
-    };
-  }
+  // Delegate the two-tier gate + scope to the shared module (server/sopRollout.ts)
+  // so routes, onboarding compliance, and the seed never diverge.
+  const getSopRolloutScope = sopRollout.getSopRolloutScope;
 
   async function resolveSopAccess(req: Request): Promise<{ masterOn: boolean; enabled: boolean; rollout: SopRolloutScope }> {
-    const flagSetting = await storage.getSystemSetting("feature_flags");
-    const flags = (flagSetting?.value as Record<string, boolean>) || {};
-    const masterOn = flags.process_governance === true;
-    const rollout = await getSopRolloutScope();
-    const role = req.session?.role as string | undefined;
-    const userId = req.session?.userId as string | undefined;
-    let enabled = false;
-    if (masterOn) {
-      if (role === "super_admin" || role === "admin") enabled = true;
-      else if (rollout.mode === "all") enabled = true;
-      else if (role && rollout.roles.includes(role)) enabled = true;
-      else if (userId && rollout.userIds.includes(userId)) enabled = true;
-    }
-    return { masterOn, enabled, rollout };
+    return sopRollout.resolveSopAccessForUser(
+      req.session?.userId as string | undefined,
+      req.session?.role as string | undefined,
+    );
   }
 
   // Per-user SOP access summary for the client gate (useSopAccess hook).
@@ -11611,6 +11596,131 @@ export async function registerRoutes(
     } catch (error) {
       console.error("SOP rollout update error:", error);
       res.status(500).json({ error: "Failed to update rollout scope" });
+    }
+  });
+
+  // ── SOP Wave Rollout & Enforcement (Task #662) ───────────────────────────────
+
+  // Wave board: all waves + their member SOPs + the current-calendar-week cadence count.
+  app.get("/api/sops/waves", requireAuth, requirePermission("sops.rollout"), async (_req: Request, res: Response) => {
+    try {
+      res.json(await sopRollout.getWavesWithSops());
+    } catch (error) {
+      console.error("SOP waves fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch waves" });
+    }
+  });
+
+  // Activate a wave (planned → active). SOPs can only go operational once active.
+  app.post("/api/sops/waves/:waveNumber/activate", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+      await sopRollout.activateWave(waveNumber, req.session.userId!);
+
+      // Activating a wave publishes its approved SOPs into the training-
+      // assignment lifecycle so employees actually receive obligations. SOPs
+      // that are still drafts/in-review (not yet approved) are skipped; already-
+      // published/active ones are left untouched (idempotent).
+      const memberCodes = await sopRollout.getWaveMemberMasterIds(waveNumber);
+      let published = 0;
+      let skipped = 0;
+      for (const code of memberCodes) {
+        const doc = await storage.getCurrentSopByMasterId(code);
+        if (!doc) { skipped += 1; continue; }
+        if (doc.lifecycleStatus !== "approved") { skipped += 1; continue; }
+        await storage.setSopLifecycleStatus(doc.id, "published", { effectiveDate: new Date().toISOString().slice(0, 10) });
+        await assignSopTraining(doc, req);
+        if (doc.learningTrackId) await storage.setSopLifecycleStatus(doc.id, "training_assigned");
+        published += 1;
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: String(waveNumber),
+        action: "sop_wave_activated",
+        changes: { waveNumber, sopsPublished: published, sopsSkipped: skipped },
+      });
+      res.json(await sopRollout.getWavesWithSops());
+    } catch (error) {
+      console.error("SOP wave activate error:", error);
+      res.status(500).json({ error: "Failed to activate wave" });
+    }
+  });
+
+  // Update a wave's status and/or enforcement level (soft / measured / full).
+  app.patch("/api/sops/waves/:waveNumber", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+      const { status, enforcement } = req.body as { status?: string; enforcement?: string };
+      if (status && !["planned", "active", "completed"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+      if (enforcement && !["soft", "measured", "full"].includes(enforcement)) {
+        return res.status(400).json({ error: "Invalid enforcement" });
+      }
+      await sopRollout.updateWave(waveNumber, {
+        status: status as sopRollout.WaveStatus | undefined,
+        enforcement: enforcement as sopRollout.WaveEnforcement | undefined,
+      });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: String(waveNumber),
+        action: "sop_wave_updated",
+        changes: { waveNumber, status, enforcement },
+      });
+      res.json(await sopRollout.getWavesWithSops());
+    } catch (error) {
+      console.error("SOP wave update error:", error);
+      res.status(500).json({ error: "Failed to update wave" });
+    }
+  });
+
+  // Make a wave's SOP operational, enforcing the ≤2 operational SOPs/week cadence.
+  // Pass { force: true } to override the cadence cap (audit-logged).
+  app.post("/api/sops/waves/:waveNumber/sops/:code/activate", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+      const code = req.params.code;
+      const force = req.body?.force === true;
+      const result = await sopRollout.activateSop(waveNumber, code, req.session.userId!, force);
+      if (!result.ok) {
+        if (result.cadenceBlocked) {
+          return res.status(409).json({
+            error: `Cadence guardrail: ${result.windowCount} SOPs already went operational this calendar week (max ${sopRollout.CADENCE_MAX_PER_WEEK}). Override with force to proceed.`,
+            cadenceBlocked: true,
+            windowCount: result.windowCount,
+          });
+        }
+        return res.status(400).json({ error: result.error || "Failed to make SOP operational" });
+      }
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: code,
+        action: result.overridden ? "sop_operational_cadence_override" : "sop_operational",
+        changes: { waveNumber, code, overridden: !!result.overridden },
+      });
+      res.json({ ok: true, overridden: !!result.overridden, ...(await sopRollout.getWavesWithSops()) });
+    } catch (error) {
+      console.error("SOP operational error:", error);
+      res.status(500).json({ error: "Failed to make SOP operational" });
+    }
+  });
+
+  // Employee-facing "My SOPs" — assigned published SOPs with wave/enforcement
+  // status. Returns { enabled:false, assignments:[] } for users outside the pilot.
+  app.get("/api/sops/my-assignments", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const result = await sopRollout.getMySopAssignments(
+        req.session?.userId as string | undefined,
+        req.session?.role as string | undefined,
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("SOP my-assignments error:", error);
+      res.status(500).json({ error: "Failed to fetch your SOPs" });
     }
   });
 

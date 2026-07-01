@@ -136,6 +136,7 @@ const MY_DESK_SUB_ITEMS = [
   { label: "Accrual", tab: "accrual", icon: BarChart3 },
   { label: "Leave Calendar", tab: "leave-calendar", icon: CalendarDays },
   { label: "Regularizations", tab: "regularizations", icon: ClipboardList },
+  { label: "My SOPs", tab: "my-sops", icon: ShieldCheck, sopOnly: true },
 ] as const;
 
 const GRACE_ROLES = ["hr", "admin", "super_admin", "manager"];
@@ -147,6 +148,7 @@ function CommandCenterSection({
   myDeskBadge,
   serviceDeskBadge,
   canSeeGrace,
+  hasSopAccess,
 }: {
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
@@ -154,6 +156,7 @@ function CommandCenterSection({
   myDeskBadge: number;
   serviceDeskBadge: number;
   canSeeGrace: boolean;
+  hasSopAccess: boolean;
 }) {
   const { open } = useSidebar();
 
@@ -256,10 +259,15 @@ function CommandCenterSection({
 
             {/* My Desk sub-nav — always visible */}
             <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
-              {MY_DESK_SUB_ITEMS.filter((i) => !("graceOnly" in i && i.graceOnly) || canSeeGrace).map(({ label, tab, icon: Icon }) => {
+              {MY_DESK_SUB_ITEMS.filter((i) =>
+                (!("graceOnly" in i && i.graceOnly) || canSeeGrace) &&
+                (!("sopOnly" in i && i.sopOnly) || hasSopAccess)
+              ).map(({ label, tab, icon: Icon }) => {
                 const href = tab ? `/admin/my-desk?tab=${tab}` : "/admin/my-desk";
                 const isActive = isSubItemActive(tab as string | null);
-                const locked = isComplianceLocked && tab !== null;
+                // My SOPs stays reachable even when compliance-locked so the user
+                // can complete/acknowledge the SOPs that drive the lock.
+                const locked = isComplianceLocked && tab !== null && tab !== "my-sops";
 
                 if (locked) {
                   return (
@@ -1544,6 +1552,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 myDeskBadge={myPendingLeavesCount ?? 0}
                 serviceDeskBadge={serviceDeskOpenCount ?? 0}
                 canSeeGrace={GRACE_ROLES.includes(user?.role || "")}
+                hasSopAccess={hasSopAccess}
               />
 
               {/* PERSONAL section — visible to all */}

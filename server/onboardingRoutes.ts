@@ -14,6 +14,7 @@ import crypto from "crypto";
 import { seedOnboardingContent, seedSectionAdditions, seedUniversalPolicies } from "./onboardingSeed";
 import { bridgeAnnexuresForUser } from "./annexureBridge";
 import { computeOnboardingChecklist } from "./onboardingChecklist";
+import { getEnforceableOverdueSopsForUser } from "./sopRollout";
 import {
   isRayoEnabled, getRayoTracks, getRayoUserAssignments, assignRayoTrack,
   getRayoTeamProgress, getRayoComplianceStatus, getRayoTrackProgress,
@@ -1015,6 +1016,13 @@ export function registerOnboardingRoutes(app: Express) {
       return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
     }
 
+    // Fold hard-enforced, overdue, un-acknowledged operational SOPs into the lock
+    // (Task #662). This helper returns [] for any user outside the SOP rollout
+    // pilot, so SOP enforcement never locks out non-pilot users.
+    const sopOverdue = await getEnforceableOverdueSopsForUser(userId, userRole);
+    const sopTitles = sopOverdue.map((s) => s.title);
+    const sopLocked = sopOverdue.length > 0;
+
     const now = new Date();
     const assignments = await db.select({
       id: trackAssignments.id,
@@ -1029,7 +1037,13 @@ export function registerOnboardingRoutes(app: Express) {
     );
 
     if (overdueAssignments.length === 0) {
-      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+      return {
+        locked: sopLocked,
+        overdueCount: sopOverdue.length,
+        trackTitles: sopTitles,
+        pendingExtensions: [] as any[],
+        sopOverdue,
+      };
     }
 
     const approvedExtensions = await db.select()
@@ -1054,7 +1068,13 @@ export function registerOnboardingRoutes(app: Express) {
     });
 
     if (stillOverdue.length === 0) {
-      return { locked: false, overdueCount: 0, trackTitles: [] as string[], pendingExtensions: [] as any[] };
+      return {
+        locked: sopLocked,
+        overdueCount: sopOverdue.length,
+        trackTitles: sopTitles,
+        pendingExtensions: [] as any[],
+        sopOverdue,
+      };
     }
 
     const overdueTrackIds = stillOverdue.map(a => a.trackId);
@@ -1079,10 +1099,11 @@ export function registerOnboardingRoutes(app: Express) {
 
     return {
       locked: true,
-      overdueCount: stillOverdue.length,
-      trackTitles,
+      overdueCount: stillOverdue.length + sopOverdue.length,
+      trackTitles: [...trackTitles, ...sopTitles],
       pendingExtensions: pendingExts,
       overdueAssignments: overdueAssignmentDetails,
+      sopOverdue,
     };
   }
 

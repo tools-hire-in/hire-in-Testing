@@ -36,3 +36,4 @@
 - [Centralized compensation](centralized-compensation.md) — admin_users.salary single source via salary_changes ledger; probation=opening + future-dated post-probation; manual edits need mandatory proof + maker-checker + manager direct-report scope.
 - [SOP Process Governance](sop-process-governance.md) — two-tier gate (process_governance master + rollout scope); locked published/active versions clone a new draft on edit; child tables link by sopMasterId (code).
 - [Portal URL for deep-links](portal-url-deep-links.md) — email links must use getPortalBaseUrl() (portal), never hire-in.com (marketing); protected pages need ?next= + safe Login redirect.
+- [SOP Wave Rollout & Enforcement](sop-wave-rollout.md) — WAVE_DEFS single source; ≤2 operational SOPs/week cadence (W0 exempt); soft=coaching banner, hard=compliance lock; all gated by resolveSopAccessForUser so non-pilot never locks.

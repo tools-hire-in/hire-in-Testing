@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,9 +68,14 @@ type SopDetail = SopDocument & { versions: SopDocument[]; roleAssignments: SopRo
 
 export default function SOPLibrary() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { enabled, canManage, isLoading: accessLoading } = useSopAccess();
   const { toast } = useToast();
+
+  // Wave rollout management is restricted to super_admin/admin (matches the
+  // sops.rollout permission gating the wave endpoints).
+  const canManageRollout = ["super_admin", "admin"].includes(user?.role || "");
+  const [view, setView] = useState<"library" | "rollout">("library");
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -153,13 +158,41 @@ export default function SOPLibrary() {
               The Standard Operating Procedure library. Published SOPs are version-locked; edits create a new draft version.
             </p>
           </div>
-          {canManage && (
-            <Button onClick={() => setEditDoc({} as SopDocument)} data-testid="button-new-sop">
-              <Plus className="h-4 w-4 mr-1" /> New SOP
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {canManageRollout && (
+              <div className="inline-flex rounded-md border bg-muted/40 p-0.5" data-testid="sop-view-toggle">
+                <Button
+                  size="sm"
+                  variant={view === "library" ? "default" : "ghost"}
+                  className="h-8"
+                  onClick={() => setView("library")}
+                  data-testid="button-view-library"
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1" /> Library
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === "rollout" ? "default" : "ghost"}
+                  className="h-8"
+                  onClick={() => setView("rollout")}
+                  data-testid="button-view-rollout"
+                >
+                  <Layers className="h-3.5 w-3.5 mr-1" /> Rollout
+                </Button>
+              </div>
+            )}
+            {canManage && view === "library" && (
+              <Button onClick={() => setEditDoc({} as SopDocument)} data-testid="button-new-sop">
+                <Plus className="h-4 w-4 mr-1" /> New SOP
+              </Button>
+            )}
+          </div>
         </div>
 
+        {view === "rollout" && canManageRollout ? (
+          <RolloutView />
+        ) : (
+        <>
         <Card>
           <CardContent className="pt-6">
             <div className="grid gap-3 md:grid-cols-4">
@@ -246,6 +279,8 @@ export default function SOPLibrary() {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -1017,5 +1052,231 @@ function SopEditDialog({ doc, onClose, onSaved }: { doc: SopDocument | null; onC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Wave Rollout management (Task #662) ──────────────────────────────────────
+
+interface WaveSopRow {
+  sopMasterId: string;
+  code: string;
+  title: string | null;
+  category: string | null;
+  lifecycleStatus: string | null;
+  operational: boolean;
+  operationalAt: string | null;
+}
+interface WaveView {
+  waveNumber: number;
+  name: string;
+  description: string | null;
+  audience: string | null;
+  status: "planned" | "active" | "completed";
+  enforcement: "soft" | "measured" | "full";
+  activatedAt: string | null;
+  sops: WaveSopRow[];
+  operationalCount: number;
+  totalCount: number;
+}
+
+const ENFORCEMENT_LABELS: Record<WaveView["enforcement"], string> = {
+  soft: "Soft (coaching)",
+  measured: "Measured (audit)",
+  full: "Full (lock)",
+};
+interface WavesResponse {
+  waves: WaveView[];
+  cadence: { windowCount: number; max: number };
+}
+
+function RolloutView() {
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<WavesResponse>({
+    queryKey: ["/api/sops/waves"],
+    staleTime: 15000,
+  });
+
+  const refresh = (res?: WavesResponse) => {
+    if (res?.waves) queryClient.setQueryData(["/api/sops/waves"], { waves: res.waves, cadence: res.cadence });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops/waves"] });
+  };
+
+  const activateWaveMut = useMutation({
+    mutationFn: async (waveNumber: number) =>
+      (await apiRequest("POST", `/api/sops/waves/${waveNumber}/activate`, {})).json(),
+    onSuccess: (res: WavesResponse) => { refresh(res); toast({ title: "Wave activated" }); },
+    onError: (e: any) => toast({ title: "Could not activate wave", description: e?.message, variant: "destructive" }),
+  });
+
+  const updateWaveMut = useMutation({
+    mutationFn: async (vars: { waveNumber: number; status?: string; enforcement?: string }) =>
+      (await apiRequest("PATCH", `/api/sops/waves/${vars.waveNumber}`, vars)).json(),
+    onSuccess: (res: WavesResponse) => { refresh(res); toast({ title: "Wave updated" }); },
+    onError: (e: any) => toast({ title: "Could not update wave", description: e?.message, variant: "destructive" }),
+  });
+
+  const activateSopMut = useMutation({
+    mutationFn: async (vars: { waveNumber: number; code: string; force?: boolean }) => {
+      const res = await apiRequest("POST", `/api/sops/waves/${vars.waveNumber}/sops/${vars.code}/activate`, { force: vars.force });
+      return res.json();
+    },
+    onSuccess: (res: WavesResponse & { overridden?: boolean }) => {
+      refresh(res);
+      toast({ title: res.overridden ? "SOP made operational (cadence overridden)" : "SOP made operational" });
+    },
+    onError: (e: any) => toast({ title: "Could not make SOP operational", description: e?.message, variant: "destructive" }),
+  });
+
+  const handleActivateSop = (waveNumber: number, code: string, cadenceFull: boolean) => {
+    if (cadenceFull) {
+      const ok = window.confirm(
+        "The cadence guardrail (max 2 operational SOPs per calendar week) is already reached. Override and make this SOP operational anyway? This will be recorded in the audit trail.",
+      );
+      if (!ok) return;
+      activateSopMut.mutate({ waveNumber, code, force: true });
+    } else {
+      activateSopMut.mutate({ waveNumber, code });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-3">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
+      </div>
+    );
+  }
+
+  const waves = data?.waves ?? [];
+  const cadence = data?.cadence ?? { windowCount: 0, max: 2 };
+  const cadenceFull = cadence.windowCount >= cadence.max;
+
+  return (
+    <div className="space-y-4" data-testid="rollout-view">
+      <Card>
+        <CardContent className="py-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Zap className={`h-5 w-5 ${cadenceFull ? "text-red-500" : "text-amber-500"}`} />
+            <div>
+              <p className="text-sm font-medium">Cadence guardrail</p>
+              <p className="text-xs text-muted-foreground">
+                {cadence.windowCount} of {cadence.max} SOPs made operational this calendar week
+                {cadenceFull && " — limit reached (override required)"}
+              </p>
+            </div>
+          </div>
+          <Badge variant={cadenceFull ? "destructive" : "secondary"} data-testid="badge-cadence">
+            {cadence.windowCount}/{cadence.max} this week
+          </Badge>
+        </CardContent>
+      </Card>
+
+      {waves.map((wave) => (
+        <Card key={wave.waveNumber} data-testid={`card-wave-${wave.waveNumber}`}>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Wave {wave.waveNumber}: {wave.name}
+                  <Badge
+                    variant={wave.status === "active" ? "default" : wave.status === "completed" ? "secondary" : "outline"}
+                    data-testid={`badge-wave-status-${wave.waveNumber}`}
+                  >
+                    {wave.status}
+                  </Badge>
+                  <Badge
+                    variant={wave.enforcement === "full" ? "destructive" : wave.enforcement === "measured" ? "secondary" : "outline"}
+                    data-testid={`badge-wave-enforcement-${wave.waveNumber}`}
+                  >
+                    {ENFORCEMENT_LABELS[wave.enforcement]}
+                  </Badge>
+                </CardTitle>
+                {wave.description && <p className="text-xs text-muted-foreground mt-1">{wave.description}</p>}
+                {wave.audience && <p className="text-xs text-muted-foreground mt-1">Audience: {wave.audience}</p>}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {wave.operationalCount}/{wave.totalCount} SOPs operational
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {wave.status === "planned" && (
+                  <Button
+                    size="sm"
+                    onClick={() => activateWaveMut.mutate(wave.waveNumber)}
+                    disabled={activateWaveMut.isPending}
+                    data-testid={`button-activate-wave-${wave.waveNumber}`}
+                  >
+                    <Play className="h-3.5 w-3.5 mr-1" /> Activate wave
+                  </Button>
+                )}
+                <Select
+                  value={wave.enforcement}
+                  onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, enforcement: v })}
+                >
+                  <SelectTrigger className="h-8 w-[150px]" data-testid={`select-enforcement-${wave.waveNumber}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="soft">Soft (coaching)</SelectItem>
+                    <SelectItem value="measured">Measured (audit)</SelectItem>
+                    <SelectItem value="full">Full (lock)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {wave.status === "active" && (
+                  <Select
+                    value={wave.status}
+                    onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, status: v })}
+                  >
+                    <SelectTrigger className="h-8 w-[130px]" data-testid={`select-status-${wave.waveNumber}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-1.5">
+              {wave.sops.map((sop) => (
+                <div
+                  key={sop.sopMasterId}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                  data-testid={`row-wave-sop-${sop.code}`}
+                >
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{sop.code}</span>
+                    <span className="text-sm truncate">{sop.title ?? "(not seeded)"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {sop.operational ? (
+                      <Badge variant="secondary" className="gap-1" data-testid={`badge-sop-operational-${sop.code}`}>
+                        <CheckCircle2 className="h-3 w-3" /> Operational
+                      </Badge>
+                    ) : wave.status === "active" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() => handleActivateSop(wave.waveNumber, sop.code, wave.waveNumber >= 1 && cadenceFull)}
+                        disabled={activateSopMut.isPending}
+                        data-testid={`button-activate-sop-${sop.code}`}
+                      >
+                        <Zap className="h-3.5 w-3.5 mr-1" /> Make operational
+                      </Button>
+                    ) : (
+                      <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Queued</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }

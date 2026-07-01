@@ -11,6 +11,7 @@ import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
 import { SOP_SEED } from "./sopSeedData";
+import { WAVE_DEFS, resolveWaveMembership } from "./sopRollout";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 const app = express();
@@ -2038,6 +2039,56 @@ async function seedSopLibrary() {
   }
 }
 
+// Seed the SOP wave rollout model (Wave 0-5) + memberships (Task #662).
+// Idempotent, ON CONFLICT-safe. Wave 0 (foundation/governance) is seeded active
+// with its member SOPs immediately operational (always-on, cadence-exempt); all
+// other waves start 'planned'/'soft' so an admin rolls them out successively at
+// the ≤2 operational SOPs/week cadence.
+async function seedSopWaves() {
+  try {
+    log("Ensuring SOP wave rollout model (Wave 0-5) seed...");
+    let wavesInserted = 0;
+    let membershipsInserted = 0;
+
+    for (const wave of WAVE_DEFS) {
+      const isFoundation = wave.waveNumber === 0;
+      // Self-healing backfill for rows seeded before the audience/enforcement
+      // model existed. Scoped to audience IS NULL so we only touch un-migrated
+      // rows once — this never clobbers an admin's later enforcement change.
+      await db.execute(sql`
+        UPDATE rollout_waves
+        SET audience = ${wave.audience}, enforcement = ${wave.enforcement}
+        WHERE wave_number = ${wave.waveNumber} AND audience IS NULL
+      `);
+      const wr = await db.execute(sql`
+        INSERT INTO rollout_waves
+          (wave_number, name, description, audience, status, enforcement, activated_at)
+        VALUES
+          (${wave.waveNumber}, ${wave.name}, ${wave.description}, ${wave.audience},
+           ${isFoundation ? "active" : "planned"}, ${wave.enforcement},
+           ${isFoundation ? sql`now()` : sql`NULL`})
+        ON CONFLICT (wave_number) DO NOTHING
+      `);
+      if ((wr.rowCount ?? 0) > 0) wavesInserted++;
+
+      // Wave 5 ("all active SOPs") expands dynamically from the live library.
+      const codes = await resolveWaveMembership(wave);
+      for (const code of codes) {
+        const mr = await db.execute(sql`
+          INSERT INTO wave_sops (wave_number, sop_master_id, operational_at)
+          VALUES (${wave.waveNumber}, ${code}, ${isFoundation ? sql`now()` : sql`NULL`})
+          ON CONFLICT (wave_number, sop_master_id) DO NOTHING
+        `);
+        if ((mr.rowCount ?? 0) > 0) membershipsInserted++;
+      }
+    }
+
+    log(`SOP wave seed complete: ${wavesInserted} new waves, ${membershipsInserted} new memberships.`);
+  } catch (err) {
+    console.error("[index] SOP wave seed failed:", err);
+  }
+}
+
 async function seedProbationFramework() {
   try {
     log("Ensuring probation framework seed (universal goals, role library, scoring bands)...");
@@ -3166,6 +3217,7 @@ async function runStartupTasks() {
   await ensureHealthcarePlansTables();
   await seedProbationFramework();
   await seedSopLibrary();
+  await seedSopWaves();
   await backfillGrowthPlansFromAddendums();
 
   // Travel Pay Calculator — enum types + tables (idempotent, matches shared/schema.ts exactly)
