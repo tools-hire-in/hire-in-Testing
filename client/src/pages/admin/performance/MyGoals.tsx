@@ -73,6 +73,7 @@ interface PerformanceGoal {
   status: string;
   successCriteria: string | null;
   rayoAcademyTrackId: string | null;
+  linkedSopId: string | null;
   autoProgressFromMilestones: boolean;
   sourceRef: string | null;
   createdAt: string;
@@ -153,6 +154,7 @@ interface GoalFormData {
   status: string;
   successCriteria: string;
   rayoAcademyTrackId: string;
+  linkedSopId: string;
 }
 
 const defaultFormData: GoalFormData = {
@@ -166,6 +168,7 @@ const defaultFormData: GoalFormData = {
   status: "not_started",
   successCriteria: "",
   rayoAcademyTrackId: "",
+  linkedSopId: "",
 };
 
 function GoalFormDialog({
@@ -194,6 +197,19 @@ function GoalFormDialog({
   });
   const isRayoEnabled = rayoStatus?.enabled === true;
 
+  const { data: sops } = useQuery<Array<{ id: string; code: string; title: string; kpiDescription: string | null }>>({
+    queryKey: ["/api/sops"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/sops", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
+    staleTime: 60000,
+  });
+  const hasSops = Array.isArray(sops) && sops.length > 0;
+
   const { data: rayoTracks } = useQuery<{ tracks: any[]; fromApi: boolean }>({
     queryKey: ["/api/rayo-academy/tracks"],
     queryFn: async () => {
@@ -219,6 +235,7 @@ function GoalFormDialog({
         status: editGoal.status,
         successCriteria: editGoal.successCriteria || "",
         rayoAcademyTrackId: editGoal.rayoAcademyTrackId || "",
+        linkedSopId: editGoal.linkedSopId || "",
       });
     } else {
       setForm(defaultFormData);
@@ -315,6 +332,43 @@ function GoalFormDialog({
               rows={3}
             />
           </div>
+
+          {hasSops && (
+            <div className="space-y-2">
+              <Label htmlFor="goal-linked-sop">Link to SOP (optional)</Label>
+              <Select
+                value={form.linkedSopId || "none"}
+                onValueChange={(val) => {
+                  if (val === "none") {
+                    setForm({ ...form, linkedSopId: "" });
+                    return;
+                  }
+                  const sop = sops!.find((s) => s.id === val);
+                  const kpi = sop?.kpiDescription?.trim();
+                  setForm({
+                    ...form,
+                    linkedSopId: val,
+                    description: !form.description.trim() && kpi ? kpi : form.description,
+                  });
+                }}
+              >
+                <SelectTrigger data-testid="select-goal-linked-sop">
+                  <SelectValue placeholder="No linked SOP" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No linked SOP</SelectItem>
+                  {sops!.map((sop) => (
+                    <SelectItem key={sop.id} value={sop.id}>
+                      {sop.code} — {sop.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Linking a SOP connects this goal to its KPI and rolls progress into governance reporting.
+              </p>
+            </div>
+          )}
 
           {isRayoEnabled && rayoTracks && rayoTracks.tracks.length > 0 && (
             <div className="space-y-2">

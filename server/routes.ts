@@ -32,6 +32,8 @@ import {
   insertStudioArticleSchema,
   insertStudioAuthorProfileSchema,
   studioArticles,
+  performanceGoals,
+  type PerformanceGoal,
   type StudioArticle,
   type StudioRoutingRules,
 } from "@shared/schema";
@@ -70,6 +72,7 @@ import {
   renderOfferClause, renderAddendumClause,
 } from "@shared/performanceClauses";
 import { generateHrLetterPdf } from "./hrLetterPdf";
+import { generateSopMbrPdf } from "./sopMbrPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
 import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, ensurePlanFromDocument, resolveAttachedPlanGoals, seedPlanGoals, generatePlanCheckIns, normalizeGoalCategory, type AttachablePlanType } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
@@ -12553,6 +12556,95 @@ export async function registerRoutes(
     } catch (error) {
       console.error("SOP drill-down export error:", error);
       res.status(500).json({ error: "Failed to export SOP compliance detail" });
+    }
+  });
+
+  // Performance goals linked to a SOP (Task #664). Resolves by sopMasterId so the
+  // "KPIs Tracked" section survives version clones (linked_sop_id points at the
+  // version-specific row selected at link time). 4-segment path — never shadowed
+  // by GET /api/sops/:id.
+  app.get("/api/sops/:id/goals", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const versions = await storage.getSopVersionHistory(doc.sopMasterId);
+      const versionIds = Array.from(new Set([doc.id, ...versions.map((v) => v.id)]));
+      const goals = await db.select().from(performanceGoals)
+        .where(inArray(performanceGoals.linkedSopId, versionIds))
+        .orderBy(desc(performanceGoals.createdAt));
+      const users = await storage.getAdminUsers();
+      const byId = new Map(users.map((u) => [u.id, u]));
+      res.json(goals.map((g) => {
+        const u = byId.get(g.employeeId);
+        return {
+          id: g.id,
+          title: g.title,
+          assigneeName: u ? (`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email) : "Unknown",
+          assigneeRole: u?.role ?? null,
+          progress: g.progress,
+          status: g.status,
+          targetDate: g.targetDate,
+          category: g.category,
+        };
+      }));
+    } catch (error) {
+      console.error("SOP linked goals error:", error);
+      res.status(500).json({ error: "Failed to fetch linked goals" });
+    }
+  });
+
+  // Monthly Business Review (MBR) — branded PDF export of the governance dashboard,
+  // grouped by category, with per-SOP adoption, last audit score, open findings,
+  // linked-KPI status, lifecycle status, and wave (Task #664).
+  app.get("/api/sops/mbr/export", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const report = await buildSopComplianceReport(req.query as Record<string, string>);
+
+      // Attach linked-KPI (goal) roll-up per SOP, resolved via sopMasterId.
+      const allGoals = await db.select({
+        linkedSopId: performanceGoals.linkedSopId,
+        progress: performanceGoals.progress,
+        status: performanceGoals.status,
+      }).from(performanceGoals).where(isNotNull(performanceGoals.linkedSopId));
+      // Map every version id -> its sopMasterId so goals linked to any version roll up.
+      const allDocs = await storage.getSopDocuments({ currentOnly: false });
+      const masterByVersionId = new Map(allDocs.map((d) => [d.id, d.sopMasterId]));
+      const goalsByMaster = new Map<string, { total: number; sumProgress: number; completed: number }>();
+      for (const g of allGoals) {
+        const master = g.linkedSopId ? masterByVersionId.get(g.linkedSopId) : undefined;
+        if (!master) continue;
+        const agg = goalsByMaster.get(master) ?? { total: 0, sumProgress: 0, completed: 0 };
+        agg.total += 1;
+        agg.sumProgress += g.progress ?? 0;
+        if (g.status === "completed") agg.completed += 1;
+        goalsByMaster.set(master, agg);
+      }
+
+      const sopsWithKpi = report.sops.map((s) => {
+        const agg = goalsByMaster.get(s.sopMasterId);
+        return {
+          ...s,
+          linkedGoals: agg?.total ?? 0,
+          linkedGoalsAvgProgress: agg && agg.total > 0 ? Math.round(agg.sumProgress / agg.total) : null,
+          linkedGoalsCompleted: agg?.completed ?? 0,
+        };
+      });
+
+      const pdfBuffer = await generateSopMbrPdf({
+        generatedAt: new Date(),
+        summary: report.summary,
+        sops: sopsWithKpi,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="sop_mbr_${new Date().toISOString().slice(0, 10)}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("SOP MBR export error:", error);
+      res.status(500).json({ error: "Failed to export MBR report" });
     }
   });
 

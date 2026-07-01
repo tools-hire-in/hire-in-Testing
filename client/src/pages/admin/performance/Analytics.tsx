@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Target, RefreshCw, Star, MessageSquare, TrendingUp } from "lucide-react";
+import { BarChart3, Target, RefreshCw, Star, MessageSquare, TrendingUp, ClipboardList } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,68 @@ interface DepartmentStats {
   completionRate: number;
   averageRating: number;
   feedbackCount: number;
+}
+
+interface SopScorecardRow {
+  role: string;
+  totalGoals: number;
+  avgProgress: number;
+  completed: number;
+  sops: Array<{ code: string; title: string; count: number }>;
+}
+
+function SopScorecardCard() {
+  const { data, isLoading } = useQuery<SopScorecardRow[]>({
+    queryKey: ["/api/performance/sop-scorecard"],
+  });
+
+  if (isLoading) return <Skeleton className="h-40" />;
+  if (!data || data.length === 0) return null;
+
+  return (
+    <Card data-testid="card-sop-scorecard">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ClipboardList className="h-4 w-4" />
+          Role Scorecards — SOP-Linked Goals
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Role</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Linked Goals</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Avg Progress</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Completed</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">SOPs Covered</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row) => (
+                <tr key={row.role} className="border-b last:border-0" data-testid={`scorecard-row-${row.role}`}>
+                  <td className="py-2 px-2 font-medium capitalize">{row.role.replace(/_/g, " ")}</td>
+                  <td className="py-2 px-2">{row.totalGoals}</td>
+                  <td className="py-2 px-2">{row.avgProgress}%</td>
+                  <td className="py-2 px-2">{row.completed}</td>
+                  <td className="py-2 px-2">
+                    <div className="flex flex-wrap gap-1">
+                      {row.sops.map((sop) => (
+                        <span key={sop.code} className="inline-flex items-center rounded border px-1.5 py-0.5 text-xs text-muted-foreground" title={sop.title}>
+                          {sop.code}{sop.count > 1 ? ` ×${sop.count}` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function StatCard({ icon: Icon, label, value, subtext, color }: { icon: any; label: string; value: string | number; subtext?: string; color: string }) {
@@ -184,6 +246,8 @@ export default function Analytics() {
             </CardContent>
           </Card>
         )}
+
+        <SopScorecardCard />
       </div>
     </AdminLayout>
   );

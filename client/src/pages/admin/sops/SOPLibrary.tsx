@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -425,6 +425,7 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
                 {data.kpiDescription && <Field label="KPI" value={data.kpiDescription} />}
                 {data.evidenceDescription && <Field label="Evidence" value={data.evidenceDescription} />}
+                <LinkedGoalsPanel sopId={id} />
                 {data.audienceRoles && data.audienceRoles.length > 0 && (
                   <div>
                     <p className="font-medium mb-1">Audience roles</p>
@@ -932,6 +933,52 @@ function Field({ label, value }: { label: string; value?: string | null }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p>{value}</p>
+    </div>
+  );
+}
+
+interface LinkedGoal {
+  id: string;
+  title: string;
+  assigneeName: string;
+  assigneeRole: string | null;
+  progress: number;
+  status: string;
+  targetDate: string | null;
+  category: string;
+}
+
+function LinkedGoalsPanel({ sopId }: { sopId: string }) {
+  const { data: goals, isLoading } = useQuery<LinkedGoal[]>({ queryKey: ["/api/sops", sopId, "goals"] });
+
+  if (isLoading) return null;
+  if (!goals || goals.length === 0) return null;
+
+  const avg = Math.round(goals.reduce((sum, g) => sum + (g.progress ?? 0), 0) / goals.length);
+
+  return (
+    <div data-testid="panel-linked-goals">
+      <p className="font-medium mb-1 flex items-center gap-1">
+        <Target className="h-3.5 w-3.5" /> KPIs Tracked
+        <Badge variant="secondary" className="ml-1 text-[10px]">{goals.length} goal{goals.length === 1 ? "" : "s"} · {avg}% avg</Badge>
+      </p>
+      <div className="space-y-1.5">
+        {goals.map((g) => (
+          <div key={g.id} className="rounded border px-2 py-1.5 text-xs" data-testid={`row-linked-goal-${g.id}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium truncate">{g.title}</span>
+              <span className="text-muted-foreground shrink-0">{g.progress}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded bg-muted overflow-hidden">
+              <div className="h-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, g.progress))}%` }} />
+            </div>
+            <div className="mt-1 flex items-center justify-between text-muted-foreground">
+              <span className="truncate">{g.assigneeName}{g.assigneeRole ? ` · ${g.assigneeRole.replace(/_/g, " ")}` : ""}</span>
+              <Badge variant="outline" className="text-[10px] capitalize shrink-0">{g.status.replace(/_/g, " ")}</Badge>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

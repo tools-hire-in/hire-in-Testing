@@ -2,11 +2,11 @@ import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import {
   performanceGoals, goalMilestones, checkIns, reviewCycles, reviews, performanceFeedback,
-  systemSettings, adminUsers, auditLogs,
+  systemSettings, adminUsers, auditLogs, sopDocuments,
   type PerformanceGoal, type GoalMilestone, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
 } from "@shared/schema";
 import { resolveRoles } from "@shared/accessControl";
-import { eq, and, or, inArray, sql, desc, asc, isNull } from "drizzle-orm";
+import { eq, and, or, inArray, sql, desc, asc, isNull, isNotNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
 import { sendCheckInReminderEmail, sendPlanManagerBriefingEmail } from "./email";
 import {
@@ -781,6 +781,70 @@ export function registerPerformanceRoutes(app: Express) {
     }
   });
 
+  // Role scorecard: rolls SOP-linked goal progress up by role (Task #664).
+  // Read-only aggregation for the Performance Analytics page.
+  app.get("/api/performance/sop-scorecard", async (req: Request, res: Response) => {
+    const userId = requirePermission(req, res, "performance.goals.team", MANAGER_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const rows = await db.select({
+        goalId: performanceGoals.id,
+        title: performanceGoals.title,
+        progress: performanceGoals.progress,
+        status: performanceGoals.status,
+        linkedSopId: performanceGoals.linkedSopId,
+        role: adminUsers.role,
+        sopCode: sopDocuments.code,
+        sopTitle: sopDocuments.title,
+      })
+        .from(performanceGoals)
+        .innerJoin(adminUsers, eq(performanceGoals.employeeId, adminUsers.id))
+        .leftJoin(sopDocuments, eq(performanceGoals.linkedSopId, sopDocuments.id))
+        .where(isNotNull(performanceGoals.linkedSopId))
+        .orderBy(desc(performanceGoals.createdAt));
+
+      const roleMap = new Map<string, {
+        role: string;
+        totalGoals: number;
+        sumProgress: number;
+        completed: number;
+        sops: Map<string, { code: string; title: string; count: number }>;
+      }>();
+
+      for (const r of rows) {
+        const role = r.role || "unassigned";
+        const agg = roleMap.get(role) ?? { role, totalGoals: 0, sumProgress: 0, completed: 0, sops: new Map() };
+        agg.totalGoals += 1;
+        agg.sumProgress += r.progress ?? 0;
+        if (r.status === "completed") agg.completed += 1;
+        if (r.sopCode) {
+          const key = r.sopCode;
+          const sopAgg = agg.sops.get(key) ?? { code: r.sopCode, title: r.sopTitle ?? r.sopCode, count: 0 };
+          sopAgg.count += 1;
+          agg.sops.set(key, sopAgg);
+        }
+        roleMap.set(role, agg);
+      }
+
+      const scorecard = Array.from(roleMap.values())
+        .map((a) => ({
+          role: a.role,
+          totalGoals: a.totalGoals,
+          avgProgress: a.totalGoals > 0 ? Math.round(a.sumProgress / a.totalGoals) : 0,
+          completed: a.completed,
+          sops: Array.from(a.sops.values()).sort((x, y) => x.code.localeCompare(y.code)),
+        }))
+        .sort((x, y) => y.totalGoals - x.totalGoals);
+
+      res.json(scorecard);
+    } catch (error) {
+      console.error("Error building SOP scorecard:", error);
+      res.status(500).json({ error: "Failed to build SOP scorecard" });
+    }
+  });
+
   // Grouped team goals endpoint — returns members shape expected by TeamGoals.tsx
   app.get("/api/performance/team-goals", async (req: Request, res: Response) => {
     const userId = requirePermission(req, res, "performance.teamGoals", MANAGER_ROLES);
@@ -853,7 +917,7 @@ export function registerPerformanceRoutes(app: Express) {
     const role = req.session.role!;
 
     try {
-      const { title, description, category, startDate, targetDate, weight, employeeId, rayoAcademyTrackId, autoProgressFromMilestones } = req.body;
+      const { title, description, category, startDate, targetDate, weight, employeeId, rayoAcademyTrackId, autoProgressFromMilestones, linkedSopId } = req.body;
       if (!title) return res.status(400).json({ error: "Title is required" });
 
       const targetEmployee = employeeId || userId;
@@ -875,6 +939,7 @@ export function registerPerformanceRoutes(app: Express) {
         weight: weight || 0,
         rayoAcademyTrackId: rayoAcademyTrackId || null,
         autoProgressFromMilestones: autoProgressFromMilestones === true,
+        linkedSopId: linkedSopId || null,
       }).returning();
 
       await createAuditLog(userId, "performance_goal_created", { goalId: goal.id, title }, targetEmployee !== userId ? targetEmployee : undefined);
@@ -1039,7 +1104,7 @@ export function registerPerformanceRoutes(app: Express) {
         }
       }
 
-      const { title, description, category, startDate, targetDate, weight, status, progress, rayoAcademyTrackId, autoProgressFromMilestones } = req.body;
+      const { title, description, category, startDate, targetDate, weight, status, progress, rayoAcademyTrackId, autoProgressFromMilestones, linkedSopId } = req.body;
       const updates: Partial<PerformanceGoal> = { updatedAt: new Date() };
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
@@ -1051,6 +1116,7 @@ export function registerPerformanceRoutes(app: Express) {
       if (progress !== undefined) updates.progress = Math.min(100, Math.max(0, progress));
       if (rayoAcademyTrackId !== undefined) updates.rayoAcademyTrackId = rayoAcademyTrackId;
       if (autoProgressFromMilestones !== undefined) updates.autoProgressFromMilestones = autoProgressFromMilestones === true;
+      if (linkedSopId !== undefined) updates.linkedSopId = linkedSopId || null;
 
       const [updated] = await db.update(performanceGoals).set(updates).where(eq(performanceGoals.id, req.params.id)).returning();
       // If auto-progress was just turned on, recompute from existing milestones immediately.

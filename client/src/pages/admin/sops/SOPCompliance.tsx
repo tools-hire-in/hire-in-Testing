@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, Download, AlertTriangle, ClipboardCheck, TrendingUp, Users, ChevronRight, BookOpen, ListChecks, Pencil } from "lucide-react";
+import { ShieldCheck, Download, AlertTriangle, ClipboardCheck, TrendingUp, Users, ChevronRight, BookOpen, ListChecks, Pencil, FileText } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +113,13 @@ export default function SOPCompliance() {
     window.open(`/api/sops/compliance/export${qs ? `?${qs}` : ""}`, "_blank");
   };
 
+  const exportMbr = () => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    const qs = params.toString();
+    window.open(`/api/sops/mbr/export${qs ? `?${qs}` : ""}`, "_blank");
+  };
+
   if (accessLoading) {
     return <AdminLayout><div className="p-6"><Skeleton className="h-64 w-full" /></div></AdminLayout>;
   }
@@ -140,9 +147,14 @@ export default function SOPCompliance() {
             </h1>
             <p className="text-sm text-muted-foreground">Adoption, audit coverage, and open findings across all live SOPs.</p>
           </div>
-          <Button variant="outline" size="sm" onClick={exportCsv} data-testid="button-export-csv">
-            <Download className="h-3.5 w-3.5 mr-1.5" /> Export CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportCsv} data-testid="button-export-csv">
+              <Download className="h-3.5 w-3.5 mr-1.5" /> Export CSV
+            </Button>
+            <Button variant="default" size="sm" onClick={exportMbr} data-testid="button-export-mbr">
+              <FileText className="h-3.5 w-3.5 mr-1.5" /> Download MBR
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue="overview">

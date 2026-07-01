@@ -871,6 +871,10 @@ export const performanceGoals = pgTable("performance_goals", {
   rayoAcademyTrackId: varchar("rayo_academy_track_id"),
   sourceRef: varchar("source_ref"),
   planId: varchar("plan_id"),
+  // Optional link to a SOP (Task #664) — ties this goal to a SOP's KPI so
+  // compliance rolls up into role scorecards. FK to the version-specific
+  // sop_documents row selected at link time; lookups resolve by sopMasterId.
+  linkedSopId: varchar("linked_sop_id").references((): any => sopDocuments.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
