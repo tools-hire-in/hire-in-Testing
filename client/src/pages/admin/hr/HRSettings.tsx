@@ -50,7 +50,7 @@ interface Department {
   isActive: boolean;
 }
 
-function TrainingSettingsSection() {
+export function TrainingSettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
@@ -460,7 +460,7 @@ export function PerformanceSettingsSection() {
   );
 }
 
-function RayoAcademySettingsSection() {
+export function RayoAcademySettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
@@ -1380,7 +1380,7 @@ function AbsentCorrectionSection() {
   );
 }
 
-function DataMaintenanceSection() {
+export function DataMaintenanceSection() {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -2945,10 +2945,7 @@ function AttendanceExceptionThresholdsSection() {
 
 export type SettingsGroupKey =
   | "leave-attendance"
-  | "people-access"
-  | "company"
-  | "features"
-  | "system";
+  | "organization";
 
 interface SettingsGroupItem {
   id: string;
@@ -2975,32 +2972,13 @@ export const SETTINGS_GROUPS: Record<
       { id: "salary-advance-policy", label: "Salary Advance", hrOnly: true, salaryFlag: true },
     ],
   },
-  "people-access": {
-    label: "People & Access",
-    description: "Departments and role-based access control",
+  organization: {
+    label: "Organization",
+    description: "Departments and company identity",
     items: [
       { id: "departments", label: "Departments" },
-      { id: "access-control", label: "Access Control" },
+      { id: "company-profile", label: "Company Profile" },
     ],
-  },
-  company: {
-    label: "Company",
-    description: "Company identity and branding",
-    items: [{ id: "company-profile", label: "Company Profile" }],
-  },
-  features: {
-    label: "Features",
-    description: "Feature flags, training, and external integrations",
-    items: [
-      { id: "feature-flags", label: "Feature Flags" },
-      { id: "training", label: "Training & Onboarding" },
-      { id: "rayo-academy", label: "Rayo Academy" },
-    ],
-  },
-  system: {
-    label: "System",
-    description: "Data maintenance and correction utilities",
-    items: [{ id: "data-maintenance", label: "Data Maintenance" }],
   },
 };
 
@@ -3608,23 +3586,6 @@ export default function HRSettings({ group }: { group?: string }) {
           </DialogContent>
         </Dialog>
 
-        <FeatureFlagsSection />
-
-        <AccessControlSection />
-
-        <CompanyProfileSection />
-
-        <TrainingSettingsSection />
-
-        <RegularizationPolicySection />
-
-        <AttendanceExceptionThresholdsSection />
-
-        <PerformanceSettingsSection />
-        <RayoAcademySettingsSection />
-        <GoalTemplatesSection />
-        <DataMaintenanceSection />
-
         <Dialog open={showHoliday} onOpenChange={setShowHoliday}>
           <DialogContent>
             <DialogHeader>
@@ -4058,6 +4019,7 @@ export default function HRSettings({ group }: { group?: string }) {
             <p className="text-muted-foreground text-sm">Configure regularisation and attendance rules</p>
           </div>
               <RegularizationPolicySection />
+              <AttendanceExceptionThresholdsSection />
             </>
           )}
 
@@ -4155,16 +4117,6 @@ export default function HRSettings({ group }: { group?: string }) {
             </>
           )}
 
-          {activeSection === "access-control" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-access-control">Access Control</h1>
-            <p className="text-muted-foreground text-sm">Configure role-based permissions</p>
-          </div>
-              <AccessControlSection />
-            </>
-          )}
-
           {activeSection === "company-profile" && (
             <>
           <div>
@@ -4172,57 +4124,6 @@ export default function HRSettings({ group }: { group?: string }) {
             <p className="text-muted-foreground text-sm">Manage company identity and branding</p>
           </div>
               <CompanyProfileSection />
-            </>
-          )}
-
-          {activeSection === "feature-flags" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-feature-flags">Feature Flags</h1>
-            <p className="text-muted-foreground text-sm">Toggle platform features on or off</p>
-          </div>
-              <FeatureFlagsSection />
-            </>
-          )}
-
-          {activeSection === "training" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-training">Training & Onboarding</h1>
-            <p className="text-muted-foreground text-sm">Configure onboarding tracks and SOPs</p>
-          </div>
-              <TrainingSettingsSection />
-            </>
-          )}
-
-          {activeSection === "rayo-academy" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-rayo-academy">Rayo Academy</h1>
-            <p className="text-muted-foreground text-sm">Connect the external training platform</p>
-          </div>
-              <RayoAcademySettingsSection />
-            </>
-          )}
-
-          {activeSection === "goal-templates" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-goal-templates">Goal Templates</h1>
-            <p className="text-muted-foreground text-sm">Configure goal and OKR templates</p>
-          </div>
-              <GoalTemplatesSection />
-            </>
-          )}
-
-          {activeSection === "data-maintenance" && (
-            <>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-section-data-maintenance">Data Maintenance</h1>
-            <p className="text-muted-foreground text-sm">Cleanup tools and data correction utilities</p>
-          </div>
-              <DataMaintenanceSection />
-              <AbsentCorrectionSection />
             </>
           )}
 

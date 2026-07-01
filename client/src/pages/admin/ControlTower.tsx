@@ -15,6 +15,7 @@ import {
   KeyRound,
   ScrollText,
   Settings2,
+  Wrench,
   Users,
   Loader2,
   Radar,
@@ -26,32 +27,24 @@ const FeatureFlagsSection = lazy(() =>
 const AccessControlSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.AccessControlSection })),
 );
-const HRSettings = lazy(() => import("@/pages/admin/hr/HRSettings"));
+const TrainingSettingsSection = lazy(() =>
+  import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.TrainingSettingsSection })),
+);
+const DataMaintenanceSection = lazy(() =>
+  import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.DataMaintenanceSection })),
+);
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AuditLogsContent = lazy(() =>
   import("@/pages/admin/AuditLogs").then((m) => ({ default: m.AuditLogsContent })),
 );
 
-type TowerTab =
-  | "overview"
-  | "communications"
-  | "automated-changes"
-  | "feature-flags"
-  | "access-control"
-  | "audit-logs"
-  | "system-settings"
-  | "user-management";
-
-const TAB_KEYS: TowerTab[] = [
-  "overview",
-  "communications",
-  "automated-changes",
-  "feature-flags",
-  "access-control",
-  "audit-logs",
-  "system-settings",
-  "user-management",
-];
+import {
+  type TowerTab,
+  SUPER_ADMIN_TOWER_TABS,
+  allowedTowerTabs,
+  canAccessControlTower,
+  towerLegacyTabRedirect,
+} from "@/lib/control-tower-access";
 
 function PanelFallback() {
   return (
@@ -100,9 +93,15 @@ const PANELS: ControlPanel[] = [
     icon: ScrollText,
   },
   {
+    key: "data-maintenance",
+    label: "Data Maintenance",
+    description: "Backfill, correction, and cleanup utilities for attendance and leave data.",
+    icon: Wrench,
+  },
+  {
     key: "system-settings",
     label: "System Settings",
-    description: "Leave types, holidays, departments, shifts, and system-wide configuration.",
+    description: "Leave types, holidays, attendance policy, shifts, departments, and company profile.",
     icon: Settings2,
   },
   {
@@ -120,6 +119,7 @@ const TAB_LABELS: Record<TowerTab, string> = {
   "feature-flags": "Feature Flags",
   "access-control": "Access Control",
   "audit-logs": "Audit Logs",
+  "data-maintenance": "Data Maintenance",
   "system-settings": "System Settings",
   "user-management": "Users",
 };
@@ -127,30 +127,18 @@ const TAB_LABELS: Record<TowerTab, string> = {
 export default function ControlTower() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
-  const isSuperAdmin = user?.role === "super_admin";
+  const role = user?.role;
+  const isSuperAdmin = role === "super_admin";
+  const canAccess = canAccessControlTower(role);
+  const allowedTabs = allowedTowerTabs(role);
 
   const [tab, setTab] = useState<TowerTab>(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab") as TowerTab | null;
-      if (t && TAB_KEYS.includes(t)) return t;
+      if (t && SUPER_ADMIN_TOWER_TABS.includes(t)) return t;
     } catch {}
     return "overview";
   });
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) {
-      setLocation("/admin/login");
-    } else if (!isSuperAdmin) {
-      setLocation("/admin");
-    }
-  }, [authLoading, isAuthenticated, isSuperAdmin, setLocation]);
-
-  const { data: heldData } = useQuery<{ count: number }>({
-    queryKey: ["/api/admin/communications/count"],
-    enabled: isSuperAdmin,
-  });
-  const heldCount = heldData?.count ?? 0;
 
   const changeTab = (next: TowerTab) => {
     setTab(next);
@@ -162,7 +150,42 @@ export default function ControlTower() {
     } catch {}
   };
 
-  if (authLoading || !isAuthenticated || !isSuperAdmin) return null;
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setLocation("/admin/login");
+      return;
+    }
+    if (!canAccess) {
+      setLocation("/admin");
+      return;
+    }
+    // Legacy deep-link: System Settings now lives at /admin/settings.
+    try {
+      const legacy = towerLegacyTabRedirect(new URLSearchParams(window.location.search).get("tab"));
+      if (legacy) {
+        setLocation(legacy);
+        return;
+      }
+    } catch {}
+  }, [authLoading, isAuthenticated, canAccess, setLocation]);
+
+  // Keep the active tab within what this role is allowed to see.
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !canAccess) return;
+    if (!allowedTabs.includes(tab)) {
+      changeTab(allowedTabs[0] ?? "overview");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated, canAccess, role, tab]);
+
+  const { data: heldData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/communications/count"],
+    enabled: isSuperAdmin,
+  });
+  const heldCount = heldData?.count ?? 0;
+
+  if (authLoading || !isAuthenticated || !canAccess) return null;
 
   return (
     <AdminLayout>
@@ -174,17 +197,19 @@ export default function ControlTower() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight" data-testid="text-control-tower-title">
-                Control Tower
+                {isSuperAdmin ? "Control Tower" : "Data Maintenance"}
               </h1>
               <p className="max-w-2xl text-sm text-muted-foreground">
-                Super Admin only. One audited surface for the platform's highest-privilege controls.
+                {isSuperAdmin
+                  ? "Super Admin only. One audited surface for the platform's highest-privilege controls."
+                  : "Backfill, correction, and cleanup utilities for attendance and leave data."}
               </p>
             </div>
           </div>
         </div>
 
         <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1" data-testid="tabs-control-tower">
-          {TAB_KEYS.map((key) => (
+          {allowedTabs.map((key) => (
             <button
               key={key}
               onClick={() => changeTab(key)}
@@ -204,12 +229,16 @@ export default function ControlTower() {
           ))}
         </div>
 
-        {tab === "overview" && (
+        {tab === "overview" && isSuperAdmin && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {PANELS.map((panel) => {
               const Icon = panel.icon;
+              const handleClick = () =>
+                panel.key === "system-settings"
+                  ? setLocation("/admin/settings")
+                  : changeTab(panel.key);
               return (
-                <button key={panel.key} onClick={() => changeTab(panel.key)} className="text-left">
+                <button key={panel.key} onClick={handleClick} className="text-left">
                   <Card
                     className="group h-full cursor-pointer transition-shadow hover:shadow-md"
                     data-testid={`panel-${panel.key}`}
@@ -241,7 +270,10 @@ export default function ControlTower() {
         {tab === "automated-changes" && <AutomatedChanges embedded />}
         {tab === "feature-flags" && (
           <Suspense fallback={<PanelFallback />}>
-            <FeatureFlagsSection />
+            <div className="space-y-6">
+              <FeatureFlagsSection />
+              <TrainingSettingsSection />
+            </div>
           </Suspense>
         )}
         {tab === "access-control" && (
@@ -254,9 +286,9 @@ export default function ControlTower() {
             <AuditLogsContent />
           </Suspense>
         )}
-        {tab === "system-settings" && (
+        {tab === "data-maintenance" && (
           <Suspense fallback={<PanelFallback />}>
-            <HRSettings />
+            <DataMaintenanceSection />
           </Suspense>
         )}
         {tab === "user-management" && (

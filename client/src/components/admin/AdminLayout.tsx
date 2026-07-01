@@ -40,6 +40,7 @@ import {
   Monitor,
   Headphones,
   Calculator,
+  Wrench,
   Sparkles,
   ChevronDown,
   Wallet,
@@ -737,10 +738,7 @@ function SettingsSection({
 
   const settingsSubItems: NavItem[] = [
     { href: "/admin/settings/leave-attendance", label: "Leave & Attendance", icon: CalendarDays, roles: [] },
-    { href: "/admin/settings/people-access", label: "People & Access", icon: Network, roles: [] },
-    { href: "/admin/settings/company", label: "Company", icon: Briefcase, roles: [] },
-    { href: "/admin/settings/features", label: "Features", icon: Sparkles, roles: [] },
-    { href: "/admin/settings/system", label: "System", icon: Monitor, roles: [] },
+    { href: "/admin/settings/organization", label: "Organization", icon: Briefcase, roles: [] },
   ];
 
   const isSettingsActive = location.startsWith("/admin/settings");
@@ -1427,6 +1425,11 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["super_admin"],
       badge: commsHeldCount > 0 ? commsHeldCount : undefined,
       badgeColor: "bg-amber-500",
+    }] : userRole === "hr" ? [{
+      href: "/admin/control-tower",
+      label: "Data Maintenance",
+      icon: Wrench,
+      roles: ["hr"],
     }] : []),
   ];
 

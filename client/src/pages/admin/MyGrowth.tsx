@@ -13,7 +13,7 @@ import { MyReviewsContent } from "./performance/MyReviews";
 import { TeamReviewsContent } from "./performance/TeamReviews";
 import PraiseBoard from "./performance/PraiseBoard";
 import MyPlanView from "./hr/MyPlanView";
-import { PerformanceSettingsSection, GoalTemplatesSection } from "./hr/HRSettings";
+import { PerformanceSettingsSection, GoalTemplatesSection, RayoAcademySettingsSection } from "./hr/HRSettings";
 import TrainingManagement from "./hr/TrainingManagement";
 import { HRPlansOverview } from "@/components/hr/HRPlansOverview";
 
@@ -225,7 +225,10 @@ export default function MyGrowth() {
           )}
           {isHrAdmin && (
             <TabsContent value="training-mgmt" className="mt-4">
-              <TrainingManagement />
+              <div className="space-y-6">
+                <RayoAcademySettingsSection />
+                <TrainingManagement />
+              </div>
             </TabsContent>
           )}
           {isManager && (

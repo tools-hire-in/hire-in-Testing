@@ -1,9 +1,6 @@
 export type SettingsGroupKey =
   | "leave-attendance"
-  | "people-access"
-  | "company"
-  | "features"
-  | "system";
+  | "organization";
 
 export const DEFAULT_SETTINGS_PATH = "/admin/settings/leave-attendance";
 
@@ -13,13 +10,8 @@ export const SETTINGS_TAB_TO_GROUP: Record<string, SettingsGroupKey> = {
   "attendance-policy": "leave-attendance",
   shifts: "leave-attendance",
   "salary-advance-policy": "leave-attendance",
-  departments: "people-access",
-  "access-control": "people-access",
-  "company-profile": "company",
-  "feature-flags": "features",
-  training: "features",
-  "rayo-academy": "features",
-  "data-maintenance": "system",
+  departments: "organization",
+  "company-profile": "organization",
 };
 
 const LEGACY_SETTINGS_TAB_ALIASES: Record<string, string> = {
@@ -33,6 +25,16 @@ export const RELOCATED_SETTINGS_TABS: Record<string, string> = {
   "letter-templates": "/admin/hr/tools?tab=templates",
   "whats-new": "/admin/communications?tab=whats-new",
   "release-notes": "/admin/communications?tab=release-notes",
+  // Super-admin governance + maintenance now live only in Control Tower.
+  "feature-flags": "/admin/control-tower?tab=feature-flags",
+  "access-control": "/admin/control-tower?tab=access-control",
+  "data-maintenance": "/admin/control-tower?tab=data-maintenance",
+  // Training module on/off toggle folded into Feature Flags (Control Tower).
+  training: "/admin/control-tower?tab=feature-flags",
+  // Training-specific + performance config now live in My Growth.
+  "rayo-academy": "/admin/growth?tab=training-mgmt",
+  performance: "/admin/growth?tab=settings",
+  "goal-templates": "/admin/growth?tab=settings",
 };
 
 // Returns the new home for a relocated Settings tab, or null if not relocated.
