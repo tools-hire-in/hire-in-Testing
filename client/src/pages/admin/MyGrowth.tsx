@@ -26,6 +26,7 @@ type Tab =
   | "my-goals"
   | "team-goals"
   | "check-ins"
+  | "team-check-ins"
   | "feedback"
   | "my-reviews"
   | "team-reviews"
@@ -57,15 +58,10 @@ function aliasTab(raw: string): string {
 }
 
 function getAllowedTabs(isManager: boolean, isHrAdmin: boolean, hasPlan: boolean): Tab[] {
-  const tabs: Tab[] = ["praise", "training", "my-goals"];
-  if (isManager) tabs.push("team-goals");
-  tabs.push("check-ins", "feedback", "my-reviews");
-  if (isManager) tabs.push("team-reviews");
-  if (isManager) tabs.push("settings");
+  const tabs: Tab[] = ["praise", "training", "my-goals", "check-ins", "feedback", "my-reviews"];
   if (hasPlan) tabs.push("my-plan");
-  // Admin tools relocated from People & HR.
+  if (isManager) tabs.push("team-check-ins", "team-goals", "team-reviews", "employee-plans", "settings");
   if (isHrAdmin) tabs.push("training-mgmt");
-  if (isManager) tabs.push("employee-plans");
   return tabs;
 }
 
@@ -73,6 +69,8 @@ function getAllowedTabs(isManager: boolean, isHrAdmin: boolean, hasPlan: boolean
 function resolveTab(raw: string, allowed: Tab[]): Tab {
   if (allowed.includes(raw as Tab)) return raw as Tab;
   switch (raw) {
+    case "team-check-ins":
+      return "check-ins";
     case "team-goals":
       return "my-goals";
     case "team-reviews":
@@ -155,32 +153,53 @@ export default function MyGrowth() {
           <p className="text-sm text-muted-foreground">Recognition, training, goals, check-ins, feedback, and reviews</p>
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-mygrowth">
-          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-3xl">
-            <TabsTrigger value="praise" data-testid="tab-praise">🏅 Praise</TabsTrigger>
-            <TabsTrigger value="training" data-testid="tab-training">Training</TabsTrigger>
-            <TabsTrigger value="my-goals" data-testid="tab-my-goals">My Goals</TabsTrigger>
-            {isManager && (
-              <TabsTrigger value="team-goals" data-testid="tab-team-goals">Team Goals</TabsTrigger>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* Personal Growth section */}
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none pr-1">
+              Personal Growth
+            </span>
+            <TabsList className="flex flex-wrap gap-1 h-auto bg-transparent p-0">
+              <TabsTrigger value="praise" data-testid="tab-praise">🏅 Praise</TabsTrigger>
+              <TabsTrigger value="training" data-testid="tab-training">Training</TabsTrigger>
+              <TabsTrigger value="my-goals" data-testid="tab-my-goals">My Goals</TabsTrigger>
+              <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-Ins</TabsTrigger>
+              <TabsTrigger value="feedback" data-testid="tab-feedback">Feedback</TabsTrigger>
+              <TabsTrigger value="my-reviews" data-testid="tab-my-reviews">My Reviews</TabsTrigger>
+              {hasPlan && (
+                <TabsTrigger value="my-plan" data-testid="tab-my-plan">My Plan</TabsTrigger>
+              )}
+            </TabsList>
+
+            {/* Team Growth section — manager/HR only */}
+            {(isManager || isHrAdmin) && (
+              <>
+                <div className="w-px self-stretch bg-border mx-1" aria-hidden="true" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none pr-1">
+                  Team Growth
+                </span>
+                <TabsList className="flex flex-wrap gap-1 h-auto bg-transparent p-0">
+                  {isManager && (
+                    <TabsTrigger value="team-check-ins" data-testid="tab-team-check-ins">Team Check-Ins</TabsTrigger>
+                  )}
+                  {isManager && (
+                    <TabsTrigger value="team-goals" data-testid="tab-team-goals">Team Goals</TabsTrigger>
+                  )}
+                  {isManager && (
+                    <TabsTrigger value="team-reviews" data-testid="tab-team-reviews">Team Reviews</TabsTrigger>
+                  )}
+                  {isManager && (
+                    <TabsTrigger value="employee-plans" data-testid="tab-employee-plans">Employee Plans</TabsTrigger>
+                  )}
+                  {isHrAdmin && (
+                    <TabsTrigger value="training-mgmt" data-testid="tab-training-mgmt">Training Mgmt</TabsTrigger>
+                  )}
+                  {isManager && (
+                    <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
+                  )}
+                </TabsList>
+              </>
             )}
-            <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-Ins</TabsTrigger>
-            <TabsTrigger value="feedback" data-testid="tab-feedback">Feedback</TabsTrigger>
-            <TabsTrigger value="my-reviews" data-testid="tab-my-reviews">My Reviews</TabsTrigger>
-            {isManager && (
-              <TabsTrigger value="team-reviews" data-testid="tab-team-reviews">Team Reviews</TabsTrigger>
-            )}
-            {isManager && (
-              <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-            )}
-            {hasPlan && (
-              <TabsTrigger value="my-plan" data-testid="tab-my-plan">My Plan</TabsTrigger>
-            )}
-            {isHrAdmin && (
-              <TabsTrigger value="training-mgmt" data-testid="tab-training-mgmt">Training Mgmt</TabsTrigger>
-            )}
-            {isManager && (
-              <TabsTrigger value="employee-plans" data-testid="tab-employee-plans">Employee Plans</TabsTrigger>
-            )}
-          </TabsList>
+          </div>
 
           <TabsContent value="praise" className="mt-4">
             <PraiseBoard />
@@ -191,13 +210,8 @@ export default function MyGrowth() {
           <TabsContent value="my-goals" className="mt-4">
             <MyGoalsContent />
           </TabsContent>
-          {isManager && (
-            <TabsContent value="team-goals" className="mt-4">
-              <TeamGoalsContent />
-            </TabsContent>
-          )}
           <TabsContent value="check-ins" className="mt-4">
-            <PerformanceCheckIns />
+            <PerformanceCheckIns mode="mine" />
           </TabsContent>
           <TabsContent value="feedback" className="mt-4">
             <PerformanceFeedback />
@@ -205,22 +219,29 @@ export default function MyGrowth() {
           <TabsContent value="my-reviews" className="mt-4">
             <MyReviewsContent />
           </TabsContent>
+          {hasPlan && (
+            <TabsContent value="my-plan" className="mt-4">
+              <MyPlanView />
+            </TabsContent>
+          )}
+          {isManager && (
+            <TabsContent value="team-check-ins" className="mt-4">
+              <PerformanceCheckIns mode="team" />
+            </TabsContent>
+          )}
+          {isManager && (
+            <TabsContent value="team-goals" className="mt-4">
+              <TeamGoalsContent />
+            </TabsContent>
+          )}
           {isManager && (
             <TabsContent value="team-reviews" className="mt-4">
               <TeamReviewsContent />
             </TabsContent>
           )}
           {isManager && (
-            <TabsContent value="settings" className="mt-4">
-              <div className="space-y-4 max-w-5xl">
-                <PerformanceSettingsSection />
-                <GoalTemplatesSection />
-              </div>
-            </TabsContent>
-          )}
-          {hasPlan && (
-            <TabsContent value="my-plan" className="mt-4">
-              <MyPlanView />
+            <TabsContent value="employee-plans" className="mt-4">
+              <HRPlansOverview />
             </TabsContent>
           )}
           {isHrAdmin && (
@@ -232,8 +253,11 @@ export default function MyGrowth() {
             </TabsContent>
           )}
           {isManager && (
-            <TabsContent value="employee-plans" className="mt-4">
-              <HRPlansOverview />
+            <TabsContent value="settings" className="mt-4">
+              <div className="space-y-4 max-w-5xl">
+                <PerformanceSettingsSection />
+                <GoalTemplatesSection />
+              </div>
             </TabsContent>
           )}
         </Tabs>

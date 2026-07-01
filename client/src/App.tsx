@@ -299,7 +299,7 @@ function PublicRouter() {
 
       {/* Performance pages */}
       <Route path="/admin/performance/goals">{() => <Suspense fallback={<AdminFallback />}><Goals /></Suspense>}</Route>
-      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns /></Suspense>}</Route>
+      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns mode="mine" /></Suspense>}</Route>
       <Route path="/admin/performance/reviews">{() => <Suspense fallback={<AdminFallback />}><Reviews /></Suspense>}</Route>
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>
@@ -427,7 +427,7 @@ function EmployeeRouter() {
 
       {/* Performance pages */}
       <Route path="/admin/performance/goals">{() => <Suspense fallback={<AdminFallback />}><Goals /></Suspense>}</Route>
-      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns /></Suspense>}</Route>
+      <Route path="/admin/performance/check-ins">{() => <Suspense fallback={<AdminFallback />}><PerformanceCheckIns mode="mine" /></Suspense>}</Route>
       <Route path="/admin/performance/reviews">{() => <Suspense fallback={<AdminFallback />}><Reviews /></Suspense>}</Route>
       <Route path="/admin/performance/review-cycles">{() => <Suspense fallback={<AdminFallback />}><PerformanceReviewCycles /></Suspense>}</Route>
       <Route path="/admin/performance/feedback">{() => <Suspense fallback={<AdminFallback />}><PerformanceFeedback /></Suspense>}</Route>

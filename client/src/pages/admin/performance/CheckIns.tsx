@@ -794,7 +794,11 @@ function CheckInCard({
   );
 }
 
-export default function CheckIns() {
+interface CheckInsProps {
+  mode?: "mine" | "team";
+}
+
+export default function CheckIns({ mode }: CheckInsProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState("upcoming");
@@ -805,9 +809,22 @@ export default function CheckIns() {
     queryKey: ["/api/performance/check-ins"],
   });
 
-  const checkIns = data?.checkIns || [];
+  const allCheckIns = data?.checkIns || [];
   const teamMembers = data?.teamMembers || [];
   const userRole = data?.userRole || user?.role || "employee";
+  const userId = user?.id || "";
+
+  // Default to "mine" so the standalone route (/admin/performance/check-ins)
+  // shows only the current user's own sessions, not all records.
+  const resolvedMode = mode ?? "mine";
+
+  const checkIns = resolvedMode === "mine"
+    ? allCheckIns.filter((c) => c.employeeId === userId)
+    : resolvedMode === "team"
+    ? allCheckIns.filter((c) => c.managerId === userId)
+    : allCheckIns;
+
+  const showScheduleButton = resolvedMode === "team";
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -824,6 +841,11 @@ export default function CheckIns() {
     completed: past.filter((c) => c.status === "completed").length,
   };
 
+  const title = resolvedMode === "team" ? "Team Check-Ins" : "Check-Ins";
+  const subtitle = resolvedMode === "team"
+    ? "1:1 sessions you've scheduled with your reportees"
+    : "Your scheduled 1:1 sessions with your manager";
+
   return (
     <AdminLayout>
       <div className="v2-surface p-6 max-w-5xl mx-auto space-y-6">
@@ -831,16 +853,18 @@ export default function CheckIns() {
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
               <MessageSquare className="h-6 w-6 text-primary" />
-              Check-Ins
+              {title}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              1:1 meetings and performance conversations
+              {subtitle}
             </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} data-testid="button-create-checkin">
-            <Plus className="h-4 w-4 mr-2" />
-            Schedule Check-In
-          </Button>
+          {showScheduleButton && (
+            <Button onClick={() => setCreateOpen(true)} data-testid="button-create-checkin">
+              <Plus className="h-4 w-4 mr-2" />
+              Schedule Check-In
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-4">
@@ -901,12 +925,16 @@ export default function CheckIns() {
                     No upcoming check-ins
                   </h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Schedule a check-in to start tracking your 1:1 conversations.
+                    {showScheduleButton
+                      ? "Schedule a check-in to start tracking your 1:1 conversations."
+                      : "No upcoming check-ins have been scheduled with you yet."}
                   </p>
-                  <Button onClick={() => setCreateOpen(true)} data-testid="button-schedule-first">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Schedule Your First Check-In
-                  </Button>
+                  {showScheduleButton && (
+                    <Button onClick={() => setCreateOpen(true)} data-testid="button-schedule-first">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Schedule Your First Check-In
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
