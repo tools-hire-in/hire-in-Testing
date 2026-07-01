@@ -139,12 +139,15 @@ export function registerHelpDeskRoutes(app: Express) {
         templateData: z.record(z.any()).nullable().optional(),
         requestedForId: z.string().nullable().optional(),
         attachmentUrl: z.string().url().nullable().optional(),
+        // Optional tag linking this request to a governing SOP (e.g. OPS-001)
+        // for evidence traceability (Task #665).
+        linkedSopId: z.string().nullable().optional(),
       });
 
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
 
-      const { type, title, description, priority, neededByDate, templateData, requestedForId, attachmentUrl } = parsed.data;
+      const { type, title, description, priority, neededByDate, templateData, requestedForId, attachmentUrl, linkedSopId } = parsed.data;
 
       // Type-specific template validation
       const tplValidation = validateTemplateData(type, templateData);
@@ -166,6 +169,8 @@ export function registerHelpDeskRoutes(app: Express) {
         neededByDate: neededByDate || null,
         templateData: templateData || null,
         attachmentUrl: attachmentUrl || null,
+        // Only "access" requests are tagged to a governing SOP (OPS-001).
+        linkedSopId: type === "access" ? (linkedSopId || null) : null,
       } as any);
 
       await storage.addInternalRequestAuditEntry({

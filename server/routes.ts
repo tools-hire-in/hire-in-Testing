@@ -12451,6 +12451,175 @@ export async function registerRoutes(
     }
   });
 
+  // OPS-001 access-control KPIs (Task #665) — computed from HIRD "access" requests
+  // and employee exit (deprovisioning) data. Powers the governance dashboard KPI
+  // cards and the performance scorecard's access-responsibility companion.
+  app.get("/api/sops/ops001/access-kpis", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      const accessReqs = await storage.listInternalRequestsQueue({ type: "access" });
+      const APPROVED_STATUSES = ["assigned", "in_progress", "needs_info", "resolved", "closed"];
+      const GRANTED_STATUSES = ["resolved", "closed"];
+
+      const total = accessReqs.length;
+      const pending = accessReqs.filter((r) => r.status === "pending_approval").length;
+      const rejected = accessReqs.filter((r) => r.status === "rejected").length;
+      const approved = accessReqs.filter((r) => APPROVED_STATUSES.includes(r.status as string)).length;
+      const granted = accessReqs.filter((r) => GRANTED_STATUSES.includes(r.status as string));
+
+      // Compliance: of accesses actually granted, how many carry a recorded
+      // manager approval decision (target: 100% approval before access).
+      let grantedWithApproval = 0;
+      for (const r of granted) {
+        const approvals = await storage.listInternalRequestApprovals(r.id);
+        if (approvals.some((a) => a.decision === "approved")) grantedWithApproval += 1;
+      }
+      const approvalBeforeAccessPct = granted.length === 0 ? 100 : Math.round((grantedWithApproval / granted.length) * 100);
+
+      // Deprovisioning: exited employees whose access has been removed (account
+      // deactivated) upon leaving/relieving.
+      const users = await storage.getAdminUsers();
+      const exited = users.filter((u) => !u.deletedAt && (u.employmentStatus === "relieved" || u.employmentStatus === "left_company"));
+      const accessRemoved = exited.filter((u) => !u.isActive).length;
+      const completionPct = exited.length === 0 ? 100 : Math.round((accessRemoved / exited.length) * 100);
+
+      // Per-role responsibility breakdown for the performance scorecard.
+      const roleById = new Map(users.map((u) => [u.id, u.role]));
+      const roleMap = new Map<string, { role: string; raised: number; approved: number; requesters: Set<string> }>();
+      for (const r of accessReqs) {
+        const role = (roleById.get(r.requesterId) as string) || "unknown";
+        const entry = roleMap.get(role) || { role, raised: 0, approved: 0, requesters: new Set<string>() };
+        entry.raised += 1;
+        entry.requesters.add(r.requesterId);
+        if (APPROVED_STATUSES.includes(r.status as string)) entry.approved += 1;
+        roleMap.set(role, entry);
+      }
+      const byRole = Array.from(roleMap.values())
+        .map((e) => ({ role: e.role, raised: e.raised, approved: e.approved, requesters: e.requesters.size }))
+        .sort((a, b) => a.role.localeCompare(b.role));
+
+      res.json({
+        access: { total, approved, rejected, pending, granted: granted.length, approvalBeforeAccessPct },
+        deprovisioning: { exited: exited.length, accessRemoved, completionPct },
+        byRole,
+      });
+    } catch (error) {
+      console.error("OPS-001 access KPIs error:", error);
+      res.status(500).json({ error: "Failed to build access KPIs" });
+    }
+  });
+
+  // Per-employee OPS-001 access-responsibility scorecard item (Task #665) — used
+  // inside the performance review (manager assessment) to show whether an employee
+  // self-served required tool access (raised + got approved) vs operating without it.
+  // 3-segment path — never shadowed by GET /api/sops/:id.
+  app.get("/api/sops/ops001/employee-access/:employeeId", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      const employeeId = req.params.employeeId;
+      const APPROVED_STATUSES = ["assigned", "in_progress", "needs_info", "resolved", "closed"];
+
+      // Is OPS-001 active (trained/acknowledged) for this employee?
+      const currentDocs = await storage.getSopDocuments({ currentOnly: true });
+      const ops001Doc = currentDocs.find((d) => d.code === "OPS-001");
+      let ops001Active = false;
+      if (ops001Doc) {
+        const prog = (await storage.getSopEmployeeProgressForUser(employeeId)).find((p) => p.sopMasterId === ops001Doc.sopMasterId);
+        ops001Active = !!prog && (!!prog.trainingCompletedAt || !!prog.acknowledgedAt);
+      }
+
+      const allAccess = await storage.listInternalRequestsQueue({ type: "access" });
+      const mine = allAccess.filter((r) => r.requesterId === employeeId);
+
+      const raised = mine.length;
+      const approved = mine.filter((r) => APPROVED_STATUSES.includes(r.status as string)).length;
+      const pending = mine.filter((r) => r.status === "pending_approval").length;
+      const rejected = mine.filter((r) => r.status === "rejected").length;
+      const hasApprovedAccess = approved > 0;
+
+      const decisionFor = (status: string): "approved" | "rejected" | "pending" =>
+        status === "rejected" ? "rejected" : status === "pending_approval" ? "pending" : "approved";
+
+      const requests = mine
+        .map((r) => {
+          const tpl = (r.templateData || {}) as Record<string, any>;
+          return {
+            id: r.id,
+            requestNumber: r.requestNumber,
+            system: tpl.system ?? null,
+            accessLevel: tpl.accessLevel ?? null,
+            status: r.status,
+            decision: decisionFor(r.status as string),
+            createdAt: r.createdAt,
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());
+
+      res.json({ ops001Active, raised, approved, pending, rejected, hasApprovedAccess, requests });
+    } catch (error) {
+      console.error("OPS-001 employee-access error:", error);
+      res.status(500).json({ error: "Failed to load access responsibility" });
+    }
+  });
+
+  // Access Requests evidence view for a SOP detail page (Task #665) — lists HIRD
+  // "access" requests, flagging those tagged to this SOP (OPS-001). 2-segment path
+  // is never shadowed by GET /api/sops/:id.
+  app.get("/api/sops/:id/access-requests", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+
+      const versions = await storage.getSopVersionHistory(doc.sopMasterId);
+      const versionIds = new Set(versions.map((v) => v.id));
+      versionIds.add(doc.id);
+
+      const [accessReqs, users] = await Promise.all([
+        storage.listInternalRequestsQueue({ type: "access" }),
+        storage.getAdminUsers(),
+      ]);
+      const byId = new Map(users.map((u) => [u.id, u]));
+
+      const decisionFor = (status: string): "approved" | "rejected" | "pending" =>
+        status === "rejected" ? "rejected" : status === "pending_approval" ? "pending" : "approved";
+
+      const rows = accessReqs.map((r) => {
+        const u = byId.get(r.requesterId);
+        const tpl = (r.templateData || {}) as Record<string, any>;
+        return {
+          id: r.id,
+          requestNumber: r.requestNumber,
+          title: r.title,
+          status: r.status,
+          priority: r.priority,
+          createdAt: r.createdAt,
+          requesterName: u ? (`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email) : "Unknown",
+          requesterRole: u?.role ?? null,
+          system: tpl.system ?? null,
+          accessLevel: tpl.accessLevel ?? null,
+          managerDecision: decisionFor(r.status as string),
+          taggedOps001: !!r.linkedSopId && versionIds.has(r.linkedSopId),
+        };
+      });
+      // Tagged (SOP-linked) first, then most recent.
+      rows.sort((a, b) => {
+        if (a.taggedOps001 !== b.taggedOps001) return a.taggedOps001 ? -1 : 1;
+        return new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime();
+      });
+
+      res.json({ requests: rows, taggedCount: rows.filter((r) => r.taggedOps001).length, total: rows.length });
+    } catch (error) {
+      console.error("SOP access-requests error:", error);
+      res.status(500).json({ error: "Failed to fetch access requests" });
+    }
+  });
+
   // CSV export of the governance dashboard (per-SOP rows).
   app.get("/api/sops/compliance/export", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
     try {

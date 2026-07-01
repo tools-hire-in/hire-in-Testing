@@ -42,6 +42,12 @@ interface ComplianceSummary {
   sops: SopRow[];
 }
 
+interface AccessKpis {
+  access: { total: number; approved: number; rejected: number; pending: number; granted: number; approvalBeforeAccessPct: number };
+  deprovisioning: { exited: number; accessRemoved: number; completionPct: number };
+  byRole: Array<{ role: string; raised: number; approved: number; requesters: number }>;
+}
+
 interface FindingRow {
   id: string; sopMasterId: string; sopId: string | null; sopCode: string; sopTitle: string | null;
   description: string; correctiveAction: string | null; status: string; dueDate: string | null;
@@ -101,6 +107,12 @@ export default function SOPCompliance() {
 
   const { data, isLoading } = useQuery<ComplianceSummary>({
     queryKey: ["/api/sops/compliance/summary", filters],
+    enabled: enabled && canViewGovernance,
+  });
+
+  // OPS-001 access-control KPIs (Task #665).
+  const { data: accessKpis } = useQuery<AccessKpis>({
+    queryKey: ["/api/sops/ops001/access-kpis"],
     enabled: enabled && canViewGovernance,
   });
 
@@ -203,6 +215,44 @@ export default function SOPCompliance() {
                 <SummaryCard icon={TrendingUp} label="Adoption" value={`${s.adoptionPct}%`} sub={`${s.ackGaps} ack gaps`} tone="text-green-600" />
                 <SummaryCard icon={ClipboardCheck} label="Audit Coverage" value={`${s.auditCoveragePct}%`} sub={`${s.auditedThisWeek}/${s.totalSops} this week`} tone="text-blue-600" />
                 <SummaryCard icon={AlertTriangle} label="Open Findings" value={s.openFindings} sub={`${s.overdueReviews} overdue reviews`} tone="text-amber-600" />
+              </div>
+            )}
+
+            {accessKpis && (
+              <div className="space-y-2" data-testid="section-ops001-kpis">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" /> OPS-001 — Access Control &amp; Deprovisioning
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <SummaryCard
+                    icon={ShieldCheck}
+                    label="Approval before access"
+                    value={`${accessKpis.access.approvalBeforeAccessPct}%`}
+                    sub={`${accessKpis.access.granted} granted · target 100%`}
+                    tone="text-green-600"
+                  />
+                  <SummaryCard
+                    icon={ListChecks}
+                    label="Access requests"
+                    value={accessKpis.access.total}
+                    sub={`${accessKpis.access.approved} approved · ${accessKpis.access.pending} pending`}
+                    tone="text-blue-600"
+                  />
+                  <SummaryCard
+                    icon={Users}
+                    label="Deprovisioning"
+                    value={`${accessKpis.deprovisioning.completionPct}%`}
+                    sub={`${accessKpis.deprovisioning.accessRemoved}/${accessKpis.deprovisioning.exited} exits removed`}
+                    tone="text-amber-600"
+                  />
+                  <SummaryCard
+                    icon={AlertTriangle}
+                    label="Access rejected"
+                    value={accessKpis.access.rejected}
+                    sub="not approved"
+                    tone="text-red-600"
+                  />
+                </div>
               </div>
             )}
 

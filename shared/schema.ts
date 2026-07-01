@@ -2853,6 +2853,9 @@ export const internalRequests = pgTable("internal_requests", {
   neededByDate: date("needed_by_date"),
   templateData: jsonb("template_data"),
   attachmentUrl: text("attachment_url"),
+  // Optional tag linking a request (e.g. an "access" request) to a governing SOP
+  // such as OPS-001, so it is traceable in that SOP's evidence trail (Task #665).
+  linkedSopId: varchar("linked_sop_id").references((): any => sopDocuments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

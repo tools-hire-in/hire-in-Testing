@@ -88,6 +88,60 @@ function SopScorecardCard() {
   );
 }
 
+interface AccessKpis {
+  access: { total: number; approved: number; pending: number; approvalBeforeAccessPct: number };
+  byRole: Array<{ role: string; raised: number; approved: number; requesters: number }>;
+}
+
+// OPS-001 access-responsibility scorecard (Task #665). Reuses the SOP-to-scorecard
+// surface: shows, per role, how many employees raised tool-access requests and how
+// many were approved — the individual responsibility governed by OPS-001.
+function AccessResponsibilityCard() {
+  const { data } = useQuery<AccessKpis>({
+    queryKey: ["/api/sops/ops001/access-kpis"],
+  });
+
+  if (!data || data.byRole.length === 0) return null;
+
+  return (
+    <Card data-testid="card-access-responsibility">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ClipboardList className="h-4 w-4" />
+          OPS-001 Access Responsibility
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground mb-3">
+          Tool-access requests are an individual OPS-001 responsibility. {data.access.approvalBeforeAccessPct}% of granted access was approved first.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Role</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Employees</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Requests Raised</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Approved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.byRole.map((row) => (
+                <tr key={row.role} className="border-b last:border-0" data-testid={`access-row-${row.role}`}>
+                  <td className="py-2 px-2 font-medium capitalize">{row.role.replace(/_/g, " ")}</td>
+                  <td className="py-2 px-2">{row.requesters}</td>
+                  <td className="py-2 px-2">{row.raised}</td>
+                  <td className="py-2 px-2">{row.approved}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function StatCard({ icon: Icon, label, value, subtext, color }: { icon: any; label: string; value: string | number; subtext?: string; color: string }) {
   return (
     <Card data-testid={`stat-card-${label.toLowerCase().replace(/\s/g, "-")}`}>
@@ -248,6 +302,7 @@ export default function Analytics() {
         )}
 
         <SopScorecardCard />
+        <AccessResponsibilityCard />
       </div>
     </AdminLayout>
   );

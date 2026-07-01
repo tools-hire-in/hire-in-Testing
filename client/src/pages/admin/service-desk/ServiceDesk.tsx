@@ -246,6 +246,18 @@ function NewRequestModal({
   });
 
   const isAccessTile = tile.id === "access";
+
+  // OPS-001 (Tool Access, Credential Control & Deprovisioning) awareness: when the
+  // employee has this SOP assigned, remind them of their individual responsibility
+  // and tag the access request to OPS-001 so it lands in the SOP's evidence trail.
+  const { data: mySops } = useQuery<{ enabled: boolean; assignments: Array<{ sopId: string; code: string }> }>({
+    queryKey: ["/api/sops/my-assignments"],
+    enabled: isAccessTile,
+  });
+  const ops001 = isAccessTile && mySops?.enabled
+    ? mySops.assignments.find((a) => a.code === "OPS-001")
+    : undefined;
+
   const hasSubtypes = tile.subtypes.length > 0;
   // HR and Ops require a subtype; General's is optional
   const subtypeRequired = tile.id === "hr" || tile.id === "ops";
@@ -292,6 +304,7 @@ function NewRequestModal({
         description: isAccessTile ? accessDraft.justification.trim() : description.trim(),
         priority,
         templateData: buildTemplateData(),
+        linkedSopId: isAccessTile && ops001 ? ops001.sopId : undefined,
       }),
     onSuccess: async (res: any) => {
       const data = await res.json().catch(() => ({}));
@@ -388,6 +401,17 @@ function NewRequestModal({
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+
+              {isAccessTile && ops001 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 text-xs" data-testid="note-ops001-responsibility">
+                  <Key className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-600" />
+                  <span className="text-muted-foreground">
+                    Per <span className="font-medium text-foreground">OPS-001 — Tool Access, Credential Control &amp; Deprovisioning</span>,
+                    requesting access under least privilege and awaiting approval before use is your individual responsibility.
+                    This request will be linked to OPS-001 for your access record.
+                  </span>
                 </div>
               )}
 

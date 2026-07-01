@@ -296,6 +296,22 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                     )}
                   </div>
                 )}
+
+                {sop.code === "OPS-001" && (
+                  <div className="rounded-md border border-dashed p-2.5 space-y-1.5" data-testid={`ops001-access-cta-${sop.code}`}>
+                    <p className="text-xs text-muted-foreground">
+                      Need a tool or system? Requesting access under least privilege is your responsibility — raise it here for approval.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setLocation("/admin/service-desk")}
+                      data-testid={`button-mysop-request-access-${sop.code}`}
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Request tool access
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

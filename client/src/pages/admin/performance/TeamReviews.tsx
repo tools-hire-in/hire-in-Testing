@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Users, Star, Loader2 } from "lucide-react";
+import { Users, Star, Loader2, ShieldCheck } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,70 @@ const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   submitted: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
 };
+
+interface EmployeeAccess {
+  ops001Active: boolean;
+  raised: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  hasApprovedAccess: boolean;
+  requests: Array<{ id: string; requestNumber: string; system: string | null; accessLevel: string | null; decision: "approved" | "rejected" | "pending"; createdAt: string }>;
+}
+
+// OPS-001 access-responsibility scorecard item (Task #665). Shown to the manager
+// during a review: did this employee self-serve required tool access (raised +
+// approved) as OPS-001 requires, or are they operating without proper access?
+function AccessResponsibilityReviewItem({ employeeId }: { employeeId: string }) {
+  const { data } = useQuery<EmployeeAccess>({
+    queryKey: ["/api/sops/ops001/employee-access", employeeId],
+    enabled: !!employeeId,
+  });
+
+  if (!data) return null;
+
+  const compliant = data.hasApprovedAccess;
+  const noneRaised = data.raised === 0;
+
+  return (
+    <div className="space-y-2 text-sm bg-muted/30 p-4 rounded-lg" data-testid="review-access-responsibility">
+      <div className="flex items-center gap-2">
+        <ShieldCheck className={`h-4 w-4 ${compliant ? "text-green-600" : "text-amber-600"}`} />
+        <span className="font-medium">OPS-001 Access Responsibility</span>
+        {data.ops001Active && (
+          <Badge variant={compliant ? "default" : "secondary"} data-testid="badge-access-compliant">
+            {compliant ? "Self-served" : noneRaised ? "No requests raised" : "Awaiting approval"}
+          </Badge>
+        )}
+      </div>
+      {data.ops001Active ? (
+        <>
+          <p className="text-muted-foreground text-xs">
+            After training, requesting tool access is the employee's own responsibility (raise → manager approval → access).
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <span data-testid="text-access-raised">Raised: <strong>{data.raised}</strong></span>
+            <span data-testid="text-access-approved">Approved: <strong>{data.approved}</strong></span>
+            <span data-testid="text-access-pending">Pending: <strong>{data.pending}</strong></span>
+            {data.rejected > 0 && <span data-testid="text-access-rejected">Rejected: <strong>{data.rejected}</strong></span>}
+          </div>
+          {data.requests.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {data.requests.slice(0, 5).map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 text-xs" data-testid={`access-req-${r.id}`}>
+                  <span className="truncate">{r.system || r.requestNumber}{r.accessLevel ? ` · ${r.accessLevel}` : ""}</span>
+                  <Badge variant={r.decision === "approved" ? "default" : r.decision === "rejected" ? "destructive" : "secondary"} className="shrink-0 capitalize">{r.decision}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <p className="text-muted-foreground text-xs">OPS-001 is not yet active for this employee.</p>
+      )}
+    </div>
+  );
+}
 
 function StarRating({ value, onChange, readOnly = false }: { value: number; onChange?: (v: number) => void; readOnly?: boolean }) {
   return (
@@ -244,6 +308,7 @@ export function TeamReviewsContent() {
                   ) : (
                     <p className="text-sm text-muted-foreground">Self-review not yet submitted.</p>
                   )}
+                  <AccessResponsibilityReviewItem employeeId={selectedReview.employeeId} />
                 </div>
 
                 <div className="space-y-4">

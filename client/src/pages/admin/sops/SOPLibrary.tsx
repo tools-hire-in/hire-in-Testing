@@ -401,12 +401,15 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
 
             <Tabs value={tab} onValueChange={setTab} className="mt-2">
-              <TabsList className="grid grid-cols-5 w-full">
+              <TabsList className={`grid ${data.code === "OPS-001" ? "grid-cols-6" : "grid-cols-5"} w-full`}>
                 <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
                 <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
                 <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
                 <TabsTrigger value="progress" data-testid="tab-progress">Team Progress</TabsTrigger>
                 <TabsTrigger value="audit" data-testid="tab-audit">Audit &amp; Findings</TabsTrigger>
+                {data.code === "OPS-001" && (
+                  <TabsTrigger value="access" data-testid="tab-access-requests">Access Requests</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4 text-sm mt-3">
@@ -482,6 +485,12 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
               <TabsContent value="audit" className="mt-3">
                 <AuditFindingsTab sopId={id} canManage={canManage} />
               </TabsContent>
+
+              {data.code === "OPS-001" && (
+                <TabsContent value="access" className="mt-3">
+                  <AccessRequestsTab sopId={id} />
+                </TabsContent>
+              )}
             </Tabs>
           </>
         )}
@@ -979,6 +988,72 @@ function LinkedGoalsPanel({ sopId }: { sopId: string }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface AccessRequestRow {
+  id: string;
+  requestNumber: string;
+  title: string;
+  status: string;
+  requesterName: string;
+  requesterRole: string | null;
+  system: string | null;
+  accessLevel: string | null;
+  createdAt: string;
+  managerDecision: "approved" | "rejected" | "pending";
+  taggedOps001: boolean;
+}
+
+function AccessRequestsTab({ sopId }: { sopId: string }) {
+  const { data, isLoading } = useQuery<{ requests: AccessRequestRow[]; taggedCount: number; total: number }>({
+    queryKey: ["/api/sops", sopId, "access-requests"],
+  });
+
+  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  const requests = data?.requests ?? [];
+
+  const decisionBadge = (d: AccessRequestRow["managerDecision"]) =>
+    d === "approved"
+      ? <Badge variant="outline" className="text-[10px] border-green-300 text-green-600">Approved</Badge>
+      : d === "rejected"
+      ? <Badge variant="outline" className="text-[10px] border-red-300 text-red-600">Rejected</Badge>
+      : <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">Pending</Badge>;
+
+  return (
+    <div className="space-y-3" data-testid="tab-content-access-requests">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Tool access requests raised through the Service Desk. {data?.taggedCount ?? 0} tagged to OPS-001.
+        </p>
+      </div>
+      {requests.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-6 text-center" data-testid="text-no-access-requests">
+          No access requests recorded yet.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {requests.map((r) => (
+            <div key={r.id} className="rounded border px-3 py-2 text-xs" data-testid={`row-access-request-${r.id}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[11px] text-muted-foreground">{r.requestNumber}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {r.taggedOps001 && <Badge variant="secondary" className="text-[10px]">OPS-001</Badge>}
+                  {decisionBadge(r.managerDecision)}
+                </div>
+              </div>
+              <p className="font-medium mt-1 truncate">{r.title}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>{r.requesterName}{r.requesterRole ? ` · ${r.requesterRole.replace(/_/g, " ")}` : ""}</span>
+                {r.system && <span>System: {r.system}</span>}
+                {r.accessLevel && <span className="capitalize">Level: {r.accessLevel.replace(/_/g, " ")}</span>}
+                {r.createdAt && <span data-testid={`text-access-date-${r.id}`}>Requested: {new Date(r.createdAt).toLocaleDateString()}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
