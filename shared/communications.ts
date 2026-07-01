@@ -19,6 +19,8 @@ export interface CommunicationTypeDef {
   label: string;
   description: string;
   category: string;
+  scheduleLabel: string;
+  recipientRule: string;
 }
 
 export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
@@ -28,6 +30,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Reminds Super Admins that a monthly salary report is still pending approval.",
     category: "Payroll",
+    scheduleLabel: "Monthly · 1st at 8 PM CST",
+    recipientRule: "Super Admins",
   },
   {
     key: "attendance_approval_request",
@@ -35,6 +39,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Asks managers to review and approve their team's monthly attendance report.",
     category: "Attendance",
+    scheduleLabel: "Monthly · Last working day",
+    recipientRule: "All Managers",
   },
   {
     key: "attendance_approval_reminder",
@@ -42,6 +48,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Reminds managers who haven't approved attendance as the deadline approaches.",
     category: "Attendance",
+    scheduleLabel: "Monthly · 2 hours before deadline",
+    recipientRule: "Managers with pending approvals",
   },
   {
     key: "attendance_deadline_expired",
@@ -49,6 +57,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Escalates to HR/Admin when a manager's attendance approval deadline passes.",
     category: "Attendance",
+    scheduleLabel: "Monthly · On deadline expiry",
+    recipientRule: "HR & Admins",
   },
   {
     key: "regularization_digest",
@@ -56,6 +66,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Monthly digest to managers listing pending attendance regularization requests.",
     category: "Attendance",
+    scheduleLabel: "Monthly · 1st at 9 AM IST",
+    recipientRule: "Managers with pending regularizations",
   },
   {
     key: "offer_letter_reminder",
@@ -63,6 +75,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Reminds candidates to sign an offer letter that is still unsigned.",
     category: "Onboarding",
+    scheduleLabel: "Daily · On schedule",
+    recipientRule: "Candidates with unsigned offers",
   },
   {
     key: "addendum_reminder",
@@ -70,6 +84,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Reminds recipients to sign an offer letter addendum that is still unsigned.",
     category: "Onboarding",
+    scheduleLabel: "Daily · On schedule",
+    recipientRule: "Recipients with unsigned addendums",
   },
   {
     key: "newsletter_notification",
@@ -77,6 +93,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Notifies subscribers when new Insights content is published.",
     category: "Content",
+    scheduleLabel: "On publish event",
+    recipientRule: "Newsletter subscribers",
   },
   {
     key: "attendance_escalation",
@@ -84,6 +102,8 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     description:
       "Escalates attendance exceptions through configured tiers to managers/HR.",
     category: "Attendance",
+    scheduleLabel: "On threshold breach",
+    recipientRule: "Managers & HR (tiered)",
   },
 ];
 

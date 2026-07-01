@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, KeyboardEvent } from "react";
 import DOMPurify from "dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2,
   CheckCircle2,
@@ -23,6 +25,13 @@ import {
   Mail,
   AlertTriangle,
   Send,
+  Settings,
+  Plus,
+  Trash2,
+  Save,
+  Clock,
+  Users,
+  X,
 } from "lucide-react";
 
 type Policy = "auto" | "hold";
@@ -32,6 +41,8 @@ interface CommunicationTypeDef {
   label: string;
   description: string;
   category: string;
+  scheduleLabel?: string;
+  recipientRule?: string;
 }
 
 interface CommunicationLog {
@@ -62,12 +73,39 @@ interface LogsResponse {
   logs: CommunicationLog[];
 }
 
+interface CommConfig {
+  typeKey: string;
+  label: string;
+  description: string;
+  category: string;
+  scheduleLabel: string | null;
+  recipientRule: string | null;
+  isCustom: boolean;
+  enabled: boolean;
+  cc: string[];
+  extraTo: string[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+interface ConfigResponse {
+  configs: CommConfig[];
+}
+
 const STATUS_STYLE: Record<string, string> = {
   sent: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   held: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   rejected: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
   failed: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Payroll: "bg-blue-500",
+  Attendance: "bg-violet-500",
+  Onboarding: "bg-emerald-500",
+  Content: "bg-orange-500",
+  Custom: "bg-slate-400",
 };
 
 function formatDateTime(value: string | null) {
@@ -79,10 +117,12 @@ function formatDateTime(value: string | null) {
   }
 }
 
-type CenterTab = "pending" | "activity" | "policy";
+type CenterTab = "pending" | "activity" | "policy" | "configuration";
 
 export function CommunicationsControlCenter() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   const [tab, setTab] = useState<CenterTab>("pending");
 
   const { data: typesData } = useQuery<TypesResponse>({
@@ -110,12 +150,19 @@ export function CommunicationsControlCenter() {
             <SlidersHorizontal className="mr-1.5 h-4 w-4" />
             Policy
           </TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="configuration" data-testid="tab-comms-configuration">
+              <Settings className="mr-1.5 h-4 w-4" />
+              Configuration
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
 
       {tab === "pending" && <PendingApprovals typeLabelMap={typeLabelMap} toast={toast} />}
       {tab === "activity" && <ActivityLog types={typesData?.types ?? []} typeLabelMap={typeLabelMap} />}
       {tab === "policy" && <PolicySettings typesData={typesData} toast={toast} />}
+      {tab === "configuration" && isSuperAdmin && <ConfigurationPanel toast={toast} />}
     </div>
   );
 }
@@ -522,5 +569,529 @@ function PolicySettings({
         </Card>
       ))}
     </div>
+  );
+}
+
+// ==========================================
+// EMAIL TAG INPUT
+// ==========================================
+
+function EmailTagInput({
+  emails,
+  onChange,
+  placeholder = "Add email and press Enter",
+  disabled,
+  testIdPrefix,
+}: {
+  emails: string[];
+  onChange: (emails: string[]) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  testIdPrefix?: string;
+}) {
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addEmail = (val: string) => {
+    const clean = val.trim().toLowerCase();
+    if (!clean) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return;
+    if (!emails.includes(clean)) {
+      onChange([...emails, clean]);
+    }
+    setInput("");
+  };
+
+  const removeEmail = (email: string) => {
+    onChange(emails.filter((e) => e !== email));
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addEmail(input);
+    } else if (e.key === "Backspace" && !input && emails.length > 0) {
+      removeEmail(emails[emails.length - 1]);
+    }
+  };
+
+  return (
+    <div
+      className="flex min-h-9 flex-wrap gap-1.5 rounded-md border bg-background px-2 py-1.5 text-sm focus-within:ring-1 focus-within:ring-ring cursor-text"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {emails.map((email) => (
+        <span
+          key={email}
+          className="inline-flex items-center gap-1 rounded-full bg-[#F47C20]/15 px-2 py-0.5 text-xs font-medium text-[#F47C20] dark:bg-[#F47C20]/20"
+          data-testid={`tag-email-${testIdPrefix}-${email}`}
+        >
+          {email}
+          {!disabled && (
+            <button
+              type="button"
+              onClick={(ev) => { ev.stopPropagation(); removeEmail(email); }}
+              className="ml-0.5 text-[#F47C20]/60 hover:text-[#F47C20]"
+              data-testid={`button-remove-tag-${testIdPrefix}-${email}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </span>
+      ))}
+      {!disabled && (
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => addEmail(input)}
+          placeholder={emails.length === 0 ? placeholder : ""}
+          className="min-w-[180px] flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+          data-testid={`input-email-tag-${testIdPrefix}`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// CONFIGURATION PANEL
+// ==========================================
+
+function ConfigurationPanel({ toast }: { toast: ReturnType<typeof useToast>["toast"] }) {
+  const { data, isLoading } = useQuery<ConfigResponse>({
+    queryKey: ["/api/admin/communication-config"],
+  });
+
+  const configs = data?.configs ?? [];
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, CommConfig[]>();
+    for (const c of configs) {
+      if (!map.has(c.category)) map.set(c.category, []);
+      map.get(c.category)!.push(c);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      const order = ["Payroll", "Attendance", "Onboarding", "Content", "Custom"];
+      return (order.indexOf(a) ?? 99) - (order.indexOf(b) ?? 99);
+    });
+  }, [configs]);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/communication-config"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/communications/types"] });
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Communication Configuration</CardTitle>
+              <CardDescription>
+                Configure the enabled state and CC recipients for every automated email type.
+                System type schedules and recipient rules are defined in code and shown for reference only.
+                Custom types registered here appear in the Policy tab alongside system types.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setShowAddForm((v) => !v)}
+              data-testid="button-add-comm-type"
+              className="shrink-0"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Type
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {showAddForm && (
+        <AddCustomTypeForm
+          toast={toast}
+          onClose={() => setShowAddForm(false)}
+          onSaved={() => { invalidate(); setShowAddForm(false); }}
+        />
+      )}
+
+      {grouped.map(([category, items]) => (
+        <CategoryGroup
+          key={category}
+          category={category}
+          items={items}
+          toast={toast}
+          onDeleted={invalidate}
+          onSaved={invalidate}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CategoryGroup({
+  category,
+  items,
+  toast,
+  onDeleted,
+  onSaved,
+}: {
+  category: string;
+  items: CommConfig[];
+  toast: ReturnType<typeof useToast>["toast"];
+  onDeleted: () => void;
+  onSaved: () => void;
+}) {
+  const accentColor = CATEGORY_COLORS[category] ?? "bg-slate-400";
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <div className={`h-3 w-3 rounded-full ${accentColor}`} />
+          <CardTitle className="text-sm font-semibold">{category}</CardTitle>
+          <span className="text-xs text-muted-foreground">({items.length})</span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {items.map((cfg) => (
+          <ConfigRow
+            key={cfg.typeKey}
+            config={cfg}
+            toast={toast}
+            onDeleted={onDeleted}
+            onSaved={onSaved}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConfigRow({
+  config,
+  toast,
+  onDeleted,
+  onSaved,
+}: {
+  config: CommConfig;
+  toast: ReturnType<typeof useToast>["toast"];
+  onDeleted: () => void;
+  onSaved: () => void;
+}) {
+  const [cc, setCc] = useState<string[]>(config.cc ?? []);
+  const [enabled, setEnabled] = useState(config.enabled);
+  const [dirty, setDirty] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setCc(config.cc ?? []);
+    setEnabled(config.enabled);
+    setDirty(false);
+  }, [config]);
+
+  const save = useMutation({
+    mutationFn: async () => (await apiRequest("PATCH", `/api/admin/communication-config/${config.typeKey}`, { enabled, cc })).json(),
+    onSuccess: () => {
+      toast({ title: "Saved", description: `${config.label} updated.` });
+      setDirty(false);
+      onSaved();
+    },
+    onError: (e: Error) => toast({ title: "Could not save", description: e.message, variant: "destructive" }),
+  });
+
+  const del = useMutation({
+    mutationFn: async () => (await apiRequest("DELETE", `/api/admin/communication-config/${config.typeKey}`)).json(),
+    onSuccess: () => {
+      toast({ title: "Deleted", description: `${config.label} removed.` });
+      onDeleted();
+    },
+    onError: (e: Error) => toast({ title: "Could not delete", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-md border bg-card px-4 py-3 space-y-3" data-testid={`config-row-${config.typeKey}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-sm" data-testid={`text-config-label-${config.typeKey}`}>
+              {config.label}
+            </span>
+            {config.isCustom && (
+              <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-600 dark:text-orange-400">
+                Custom
+              </Badge>
+            )}
+            {!enabled && (
+              <Badge variant="outline" className="text-[10px] border-rose-300 text-rose-600 dark:text-rose-400">
+                Disabled
+              </Badge>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{config.description}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            {config.scheduleLabel && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span data-testid={`chip-schedule-${config.typeKey}`}>{config.scheduleLabel}</span>
+              </div>
+            )}
+            {config.recipientRule && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Users className="h-3 w-3" />
+                <span data-testid={`chip-recipient-${config.typeKey}`}>{config.recipientRule}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs ${enabled ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+            {enabled ? "Enabled" : "Disabled"}
+          </span>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(v) => { setEnabled(v); setDirty(true); }}
+            data-testid={`switch-enabled-${config.typeKey}`}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          CC recipients <span className="font-normal">(added to every outgoing email of this type)</span>
+        </label>
+        <EmailTagInput
+          emails={cc}
+          onChange={(v) => { setCc(v); setDirty(true); }}
+          testIdPrefix={config.typeKey}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">
+          {config.updatedAt ? `Last saved ${formatDateTime(config.updatedAt)}` : "Not customised yet"}
+        </div>
+        <div className="flex items-center gap-2">
+          {config.isCustom && (
+            confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-rose-600">Delete this type?</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => del.mutate()}
+                  disabled={del.isPending}
+                  data-testid={`button-confirm-delete-${config.typeKey}`}
+                >
+                  {del.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Confirm"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)} data-testid={`button-cancel-delete-${config.typeKey}`}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+                data-testid={`button-delete-${config.typeKey}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )
+          )}
+          {dirty && (
+            <Button
+              size="sm"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+              data-testid={`button-save-${config.typeKey}`}
+            >
+              {save.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+              Save
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// ADD CUSTOM TYPE FORM
+// ==========================================
+
+const BUILTIN_CATEGORIES = ["Payroll", "Attendance", "Onboarding", "Content", "Custom"];
+
+function AddCustomTypeForm({
+  toast,
+  onClose,
+  onSaved,
+}: {
+  toast: ReturnType<typeof useToast>["toast"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [typeKey, setTypeKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [category, setCategory] = useState("Custom");
+  const [description, setDescription] = useState("");
+  const [scheduleLabel, setScheduleLabel] = useState("");
+  const [recipientRule, setRecipientRule] = useState("");
+  const [extraTo, setExtraTo] = useState<string[]>([]);
+  const [cc, setCc] = useState<string[]>([]);
+
+  const create = useMutation({
+    mutationFn: async () =>
+      (await apiRequest("POST", "/api/admin/communication-config", {
+        typeKey: typeKey.trim().toLowerCase().replace(/\s+/g, "_"),
+        label: label.trim(),
+        category,
+        description: description.trim() || null,
+        scheduleLabel: scheduleLabel.trim() || null,
+        recipientRule: recipientRule.trim() || null,
+        extraTo,
+        cc,
+      })).json(),
+    onSuccess: () => {
+      toast({ title: "Created", description: `${label} added as a custom communication type.` });
+      onSaved();
+    },
+    onError: (e: Error) => toast({ title: "Could not create", description: e.message, variant: "destructive" }),
+  });
+
+  const canSubmit = typeKey.trim() && label.trim() && category;
+
+  return (
+    <Card className="border-2 border-[#1F3A6E]/20 dark:border-[#1F3A6E]/40">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm">Add Communication Type</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose} data-testid="button-close-add-form">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <CardDescription>
+          Register a custom communication type. These appear in the Configuration and Policy lists.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium" htmlFor="new-type-key">Type Key <span className="text-rose-500">*</span></label>
+            <Input
+              id="new-type-key"
+              placeholder="e.g. weekly_digest"
+              value={typeKey}
+              onChange={(e) => setTypeKey(e.target.value)}
+              data-testid="input-new-type-key"
+            />
+            <p className="text-xs text-muted-foreground">Unique identifier (lowercase, underscores).</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium" htmlFor="new-type-label">Label <span className="text-rose-500">*</span></label>
+            <Input
+              id="new-type-label"
+              placeholder="e.g. Weekly Digest"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              data-testid="input-new-type-label"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium" htmlFor="new-type-category">Category <span className="text-rose-500">*</span></label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger id="new-type-category" data-testid="select-new-type-category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BUILTIN_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium" htmlFor="new-type-schedule">Schedule Note</label>
+            <Input
+              id="new-type-schedule"
+              placeholder="e.g. Weekly · Monday 9 AM IST"
+              value={scheduleLabel}
+              onChange={(e) => setScheduleLabel(e.target.value)}
+              data-testid="input-new-type-schedule"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium" htmlFor="new-type-recipient">Recipient Rule</label>
+            <Input
+              id="new-type-recipient"
+              placeholder="e.g. All HR Managers"
+              value={recipientRule}
+              onChange={(e) => setRecipientRule(e.target.value)}
+              data-testid="input-new-type-recipient"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium" htmlFor="new-type-description">Description</label>
+          <Textarea
+            id="new-type-description"
+            placeholder="What does this communication type do?"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            data-testid="textarea-new-type-description"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">To addresses</label>
+            <EmailTagInput
+              emails={extraTo}
+              onChange={setExtraTo}
+              placeholder="Add fixed To address…"
+              testIdPrefix="new-extra-to"
+            />
+            <p className="text-xs text-muted-foreground">Fixed recipients for this type.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">CC addresses</label>
+            <EmailTagInput
+              emails={cc}
+              onChange={setCc}
+              placeholder="Add CC address…"
+              testIdPrefix="new-cc"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={onClose} data-testid="button-cancel-add-form">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => create.mutate()}
+            disabled={!canSubmit || create.isPending}
+            data-testid="button-submit-add-form"
+          >
+            {create.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+            Create Type
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

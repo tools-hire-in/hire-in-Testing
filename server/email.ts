@@ -135,10 +135,44 @@ export async function dispatchAutomatedEmail(
   type: string,
   sourceJob: string,
   msg: AutomatedMsg,
-): Promise<{ success: boolean; held?: boolean; error?: string }> {
+): Promise<{ success: boolean; held?: boolean; disabled?: boolean; error?: string }> {
   const { storage } = await import("./storage");
   const recipients = toArray(msg.to);
   const cc = toArray(msg.cc);
+
+  // Check per-type enabled flag from communication_config. Default: enabled.
+  let configEnabled = true;
+  let configCc: string[] = [];
+  try {
+    const config = await storage.getCommunicationConfig(type);
+    if (config) {
+      configEnabled = config.enabled;
+      configCc = toArray(config.cc as string[]);
+    }
+  } catch (err) {
+    console.error(`[communications] config lookup failed for ${type}:`, err);
+  }
+
+  if (!configEnabled) {
+    console.log(`[communications] ${type} skipped — disabled in configuration`);
+    // Log as "disabled" (reuse "failed" status with a clear error note so it appears in activity log)
+    const { storage: s } = await import("./storage");
+    await s.createCommunicationLog({
+      type,
+      sourceJob,
+      recipients,
+      cc,
+      subject: msg.subject,
+      bodyHtml: msg.html ?? null,
+      bodyText: msg.text ?? null,
+      status: "failed",
+      error: "Skipped — type disabled in Communication Configuration",
+    } as any).catch(() => {});
+    return { success: true, disabled: true };
+  }
+
+  // Merge stored CC overrides into outgoing CC list (deduped)
+  const mergedCc = Array.from(new Set([...cc, ...configCc]));
 
   let policy: "auto" | "hold" = "auto";
   try {
@@ -151,7 +185,7 @@ export async function dispatchAutomatedEmail(
     type,
     sourceJob,
     recipients,
-    cc,
+    cc: mergedCc,
     subject: msg.subject,
     bodyHtml: msg.html ?? null,
     bodyText: msg.text ?? null,
@@ -169,9 +203,11 @@ export async function dispatchAutomatedEmail(
     return { success: true, held: true };
   }
 
+  const outMsg = { ...msg, cc: mergedCc.length > 0 ? mergedCc : undefined };
+
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
-    await client.send({ ...msg, from: msg.from ?? { email: fromEmail, name: "Alina Carter" } } as any);
+    await client.send({ ...outMsg, from: outMsg.from ?? { email: fromEmail, name: "Alina Carter" } } as any);
     await storage.createCommunicationLog({ ...baseLog, status: "sent", sentAt: new Date() } as any).catch((e) =>
       console.error(`[communications] failed to write sent log for ${type}:`, e),
     );

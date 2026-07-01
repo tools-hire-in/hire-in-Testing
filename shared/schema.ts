@@ -2201,6 +2201,36 @@ export type CommunicationLog = typeof communicationsLog.$inferSelect;
 export type InsertCommunicationLog = z.infer<typeof insertCommunicationLogSchema>;
 
 // ==========================================
+// COMMUNICATION CONFIG (Super Admin per-type overrides)
+// ==========================================
+// Stores per-type enabled flag, extra CC addresses, and custom type definitions.
+// System types (is_custom = false) are upserted by key; custom types have is_custom = true.
+export const communicationConfig = pgTable("communication_config", {
+  typeKey: varchar("type_key").primaryKey(),
+  enabled: boolean("enabled").notNull().default(true),
+  extraTo: text("extra_to").array().notNull().default(sql`ARRAY[]::text[]`),
+  cc: text("cc").array().notNull().default(sql`ARRAY[]::text[]`),
+  isCustom: boolean("is_custom").notNull().default(false),
+  scheduleLabel: text("schedule_label"),
+  recipientRule: text("recipient_rule"),
+  label: text("label"),
+  description: text("description"),
+  category: text("category"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  updatedBy: varchar("updated_by").references(() => adminUsers.id),
+  deletedAt: timestamp("deleted_at"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunicationConfigSchema = createInsertSchema(communicationConfig).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export type CommunicationConfig = typeof communicationConfig.$inferSelect;
+export type InsertCommunicationConfig = z.infer<typeof insertCommunicationConfigSchema>;
+
+// ==========================================
 
 export const roleSummaryTemplates = pgTable("role_summary_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

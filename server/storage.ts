@@ -17,6 +17,7 @@ import {
   auditLogs,
   pendingChanges,
   communicationsLog,
+  communicationConfig,
   regionalHolidaySelections,
   salarySlips,
   salaryAdvanceRequests,
@@ -75,6 +76,8 @@ import {
   type InsertPendingChange,
   type CommunicationLog,
   type InsertCommunicationLog,
+  type CommunicationConfig,
+  type InsertCommunicationConfig,
   type RegionalHolidaySelection,
   type InsertRegionalHolidaySelection,
   type SalarySlip,
@@ -380,6 +383,12 @@ export interface IStorage {
   claimCommunicationForApproval(id: string, reviewerId: string, note?: string): Promise<CommunicationLog | undefined>;
   markCommunicationFailed(id: string, error: string): Promise<void>;
   rejectCommunication(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
+  // Communication Config (super-admin per-type overrides)
+  getCommunicationConfigs(): Promise<CommunicationConfig[]>;
+  getCommunicationConfig(typeKey: string): Promise<CommunicationConfig | undefined>;
+  upsertCommunicationConfig(typeKey: string, updates: Partial<InsertCommunicationConfig>, actorId: string): Promise<CommunicationConfig>;
+  createCustomCommunicationType(data: InsertCommunicationConfig, actorId: string): Promise<CommunicationConfig>;
+  deleteCustomCommunicationType(typeKey: string, actorId: string): Promise<{ ok: boolean; reason?: string }>;
 
   // Salary Slips
   getSalarySlipsByUser(userId: string, year?: number): Promise<SalarySlip[]>;
@@ -5402,6 +5411,105 @@ export class DatabaseStorage implements IStorage {
         lte(salaryChanges.effectiveDate, today),
       ))
       .orderBy(asc(salaryChanges.effectiveDate));
+  }
+
+  // ==========================================
+  // COMMUNICATION CONFIG
+  // ==========================================
+
+  async getCommunicationConfigs(): Promise<CommunicationConfig[]> {
+    return db.select().from(communicationConfig)
+      .where(isNull(communicationConfig.deletedAt))
+      .orderBy(communicationConfig.createdAt);
+  }
+
+  async getCommunicationConfig(typeKey: string): Promise<CommunicationConfig | undefined> {
+    const [row] = await db.select().from(communicationConfig)
+      .where(and(
+        eq(communicationConfig.typeKey, typeKey),
+        isNull(communicationConfig.deletedAt),
+      ));
+    return row;
+  }
+
+  async upsertCommunicationConfig(
+    typeKey: string,
+    updates: Partial<InsertCommunicationConfig>,
+    actorId: string,
+  ): Promise<CommunicationConfig> {
+    const now = new Date();
+    const [row] = await db.insert(communicationConfig)
+      .values({
+        typeKey,
+        enabled: updates.enabled ?? true,
+        extraTo: (updates.extraTo as string[] | undefined) ?? [],
+        cc: (updates.cc as string[] | undefined) ?? [],
+        isCustom: updates.isCustom ?? false,
+        scheduleLabel: updates.scheduleLabel ?? null,
+        recipientRule: updates.recipientRule ?? null,
+        label: updates.label ?? null,
+        description: updates.description ?? null,
+        category: updates.category ?? null,
+        updatedBy: actorId,
+        updatedAt: now,
+      } as any)
+      .onConflictDoUpdate({
+        target: communicationConfig.typeKey,
+        set: {
+          ...(updates.enabled !== undefined && { enabled: updates.enabled }),
+          ...(updates.cc !== undefined && { cc: updates.cc }),
+          ...(updates.extraTo !== undefined && { extraTo: updates.extraTo }),
+          updatedBy: actorId,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    await db.insert(auditLogs).values({
+      actorId,
+      action: "communication_config_updated",
+      changes: { typeKey, ...updates },
+    }).catch(() => {});
+    return row;
+  }
+
+  async createCustomCommunicationType(
+    data: InsertCommunicationConfig,
+    actorId: string,
+  ): Promise<CommunicationConfig> {
+    const [row] = await db.insert(communicationConfig)
+      .values({
+        ...data,
+        isCustom: true,
+        createdBy: actorId,
+        updatedBy: actorId,
+        updatedAt: new Date(),
+      } as any)
+      .returning();
+    await db.insert(auditLogs).values({
+      actorId,
+      action: "communication_config_custom_created",
+      changes: { typeKey: data.typeKey, label: data.label, category: data.category },
+    }).catch(() => {});
+    return row;
+  }
+
+  async deleteCustomCommunicationType(
+    typeKey: string,
+    actorId: string,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const existing = await this.getCommunicationConfig(typeKey);
+    if (!existing) return { ok: false, reason: "Not found" };
+    if (!existing.isCustom) return { ok: false, reason: "System types cannot be deleted" };
+    // Soft-delete: set deletedAt timestamp so historical config rows are preserved
+    await db.update(communicationConfig)
+      .set({ deletedAt: new Date(), updatedBy: actorId, updatedAt: new Date() })
+      .where(eq(communicationConfig.typeKey, typeKey));
+    await db.insert(auditLogs).values({
+      actorId,
+      action: "communication_config_custom_deleted",
+      changes: { typeKey, label: existing.label },
+    }).catch(() => {});
+    return { ok: true };
   }
 
 }

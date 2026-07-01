@@ -13088,10 +13088,22 @@ export async function registerRoutes(
   // review the held queue here and approve (send + audit) or reject (discard + audit).
 
   // Type registry + current policy (for the policy settings UI).
+  // Merges system types with non-deleted custom types from communication_config.
   app.get("/api/admin/communications/types", requireSuperAdmin, async (_req: Request, res: Response) => {
     try {
       const policy = await storage.getCommunicationPolicy();
-      res.json({ types: COMMUNICATION_TYPES, policy });
+      const customConfigs = await storage.getCommunicationConfigs();
+      const customTypes = customConfigs
+        .filter((c) => c.isCustom)
+        .map((c) => ({
+          key: c.typeKey,
+          label: c.label ?? c.typeKey,
+          description: c.description ?? "",
+          category: c.category ?? "Custom",
+          scheduleLabel: c.scheduleLabel ?? undefined,
+          recipientRule: c.recipientRule ?? undefined,
+        }));
+      res.json({ types: [...COMMUNICATION_TYPES, ...customTypes], policy });
     } catch (error) {
       console.error("Communication types error:", error);
       res.status(500).json({ error: "Failed to fetch communication types" });
@@ -13102,7 +13114,10 @@ export async function registerRoutes(
   app.put("/api/admin/communications/policy", requireSuperAdmin, async (req: Request, res: Response) => {
     try {
       const incoming = (req.body?.policy ?? {}) as Record<string, unknown>;
-      const validKeys = new Set(COMMUNICATION_TYPES.map((t) => t.key));
+      // Allow policy updates for both system types AND custom types
+      const customConfigs = await storage.getCommunicationConfigs();
+      const customKeys = new Set(customConfigs.filter((c) => c.isCustom).map((c) => c.typeKey));
+      const validKeys = new Set([...COMMUNICATION_TYPES.map((t) => t.key), ...customKeys]);
       const existing = await storage.getCommunicationPolicy();
       const merged: Record<string, "auto" | "hold"> = { ...existing };
       for (const [key, value] of Object.entries(incoming)) {
@@ -13246,6 +13261,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Bulk reject communications error:", error);
       res.status(500).json({ error: "Failed to bulk reject communications" });
+    }
+  });
+
+  // ==========================================
+  // COMMUNICATION CONFIG (Super Admin per-type overrides)
+  // ==========================================
+
+  // GET: all system types merged with saved config rows + any custom types.
+  app.get("/api/admin/communication-config", requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const savedConfigs = await storage.getCommunicationConfigs();
+      const configMap = new Map(savedConfigs.map((c) => [c.typeKey, c]));
+
+      // Merge system types with any saved overrides
+      const systemRows = COMMUNICATION_TYPES.map((t) => {
+        const saved = configMap.get(t.key);
+        return {
+          typeKey: t.key,
+          label: t.label,
+          description: t.description,
+          category: t.category,
+          scheduleLabel: t.scheduleLabel,
+          recipientRule: t.recipientRule,
+          isCustom: false,
+          enabled: saved?.enabled ?? true,
+          cc: saved?.cc ?? [],
+          extraTo: saved?.extraTo ?? [],
+          updatedAt: saved?.updatedAt ?? null,
+          updatedBy: saved?.updatedBy ?? null,
+        };
+      });
+
+      // Custom types from DB only
+      const customRows = savedConfigs
+        .filter((c) => c.isCustom)
+        .map((c) => ({
+          typeKey: c.typeKey,
+          label: c.label ?? c.typeKey,
+          description: c.description ?? "",
+          category: c.category ?? "Custom",
+          scheduleLabel: c.scheduleLabel ?? null,
+          recipientRule: c.recipientRule ?? null,
+          isCustom: true,
+          enabled: c.enabled,
+          cc: c.cc ?? [],
+          extraTo: c.extraTo ?? [],
+          updatedAt: c.updatedAt ?? null,
+          updatedBy: c.updatedBy ?? null,
+        }));
+
+      res.json({ configs: [...systemRows, ...customRows] });
+    } catch (error) {
+      console.error("Get communication-config error:", error);
+      res.status(500).json({ error: "Failed to fetch communication config" });
+    }
+  });
+
+  // PATCH: update enabled flag and/or CC for a given type key (system or custom).
+  app.patch("/api/admin/communication-config/:key", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key;
+      const { enabled, cc, extraTo } = req.body ?? {};
+      const updates: Record<string, unknown> = {};
+      if (typeof enabled === "boolean") updates.enabled = enabled;
+      if (Array.isArray(cc)) updates.cc = cc.filter((e: unknown) => typeof e === "string" && e.trim());
+      if (Array.isArray(extraTo)) updates.extraTo = extraTo.filter((e: unknown) => typeof e === "string" && e.trim());
+
+      const saved = await storage.upsertCommunicationConfig(key, updates as any, req.session.userId!);
+      res.json({ ok: true, config: saved });
+    } catch (error) {
+      console.error("Update communication-config error:", error);
+      res.status(500).json({ error: "Failed to update communication config" });
+    }
+  });
+
+  // POST: create a custom communication type.
+  app.post("/api/admin/communication-config", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const { typeKey, label, category, description, scheduleLabel, recipientRule, extraTo, cc } = req.body ?? {};
+      if (!typeKey || !label || !category) {
+        return res.status(400).json({ error: "typeKey, label, and category are required" });
+      }
+      // Reject keys that collide with system types
+      const systemKeys = new Set(COMMUNICATION_TYPES.map((t) => t.key));
+      if (systemKeys.has(typeKey)) {
+        return res.status(400).json({ error: "A system type with this key already exists" });
+      }
+      const existing = await storage.getCommunicationConfig(typeKey);
+      if (existing) {
+        return res.status(409).json({ error: "A type with this key already exists" });
+      }
+      const created = await storage.createCustomCommunicationType({
+        typeKey,
+        label: String(label),
+        category: String(category),
+        description: description ? String(description) : null,
+        scheduleLabel: scheduleLabel ? String(scheduleLabel) : null,
+        recipientRule: recipientRule ? String(recipientRule) : null,
+        extraTo: Array.isArray(extraTo) ? extraTo.filter((e: unknown) => typeof e === "string") : [],
+        cc: Array.isArray(cc) ? cc.filter((e: unknown) => typeof e === "string") : [],
+        enabled: true,
+        isCustom: true,
+      } as any, req.session.userId!);
+      res.status(201).json({ ok: true, config: created });
+    } catch (error) {
+      console.error("Create custom communication type error:", error);
+      res.status(500).json({ error: "Failed to create custom communication type" });
+    }
+  });
+
+  // DELETE: remove a custom type (system types return 400).
+  app.delete("/api/admin/communication-config/:key", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const result = await storage.deleteCustomCommunicationType(req.params.key, req.session.userId!);
+      if (!result.ok) return res.status(400).json({ error: result.reason });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Delete communication type error:", error);
+      res.status(500).json({ error: "Failed to delete communication type" });
     }
   });
 
