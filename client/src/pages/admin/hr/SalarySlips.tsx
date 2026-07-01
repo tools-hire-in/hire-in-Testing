@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Receipt, Download, Calendar, IndianRupee, TrendingDown, Loader2 } from "lucide-react";
+import { Receipt, Download, Calendar, IndianRupee, TrendingDown, Loader2, CheckCircle2, Clock3, FileText } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,39 +10,39 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 
-interface SalarySlip {
+interface ApprovedRun {
   id: string;
-  userId: string;
   year: number;
   month: number;
-  basicSalary: string;
-  grossSalary: string;
-  deductions: string;
-  salaryAdvanceRecovery?: string | null;
-  netPayable: string;
-  totalWorkingDays: number;
-  daysPresent: number;
-  daysAbsent: number;
-  approvedLeaves: string;
-  totalHours: string;
-  attendancePercentage: string;
-  generatedAt: string;
-  generatedBy: string | null;
+  status: string;
+  approvedAt: string | null;
+  approverName?: string | null;
 }
 
-interface SlipDetail extends SalarySlip {
-  user?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    designation: string | null;
-    salary: string | null;
-  };
-  department?: {
-    id: string;
-    name: string;
-  };
+interface SlipData {
+  userId: string;
+  employeeName: string;
+  email: string;
+  designation: string;
+  department: string;
+  year: number;
+  month: number;
+  salary: number;
+  grossSalary: number;
+  deductions: number;
+  advanceRecovery: number;
+  netPayable: number;
+  workingDays: number;
+  presentDays: number;
+  absentDays: number;
+  paidLeaves: number;
+  lopLeaves: number;
+  totalHours: number;
+  attendancePercentage: number;
+  adjusted: boolean;
+  adjustmentComment: string | null;
+  salaryRunId: string;
+  approvedAt: string | null;
 }
 
 const MONTH_NAMES = [
@@ -56,12 +56,11 @@ function formatCurrency(value: string | number) {
   return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function generateSlipHTML(slip: SlipDetail): string {
+function generateSlipHTML(slip: SlipData): string {
   const monthName = MONTH_NAMES[slip.month - 1];
-  const employeeName = slip.user ? `${slip.user.firstName} ${slip.user.lastName}` : "Employee";
-  const employeeEmail = slip.user?.email || "";
-  const designation = slip.user?.designation || "N/A";
-  const department = slip.department?.name || "N/A";
+  const approvedDate = slip.approvedAt
+    ? new Date(slip.approvedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+    : "—";
 
   return `<!DOCTYPE html>
 <html>
@@ -92,6 +91,7 @@ function generateSlipHTML(slip: SlipDetail): string {
   .net-pay .label { font-size: 16px; font-weight: 600; }
   .net-pay .value { font-size: 24px; font-weight: 700; }
   .footer { padding: 16px 32px; font-size: 11px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; }
+  .adj-note { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 10px 16px; margin: 0 32px 12px; font-size: 12px; color: #c2410c; }
   @media print {
     body { padding: 0; }
     .slip { border: none; }
@@ -112,31 +112,35 @@ function generateSlipHTML(slip: SlipDetail): string {
   </div>
   <div class="sub-header">Salary Slip for the month of ${monthName} ${slip.year}</div>
   <div class="employee-info">
-    <div class="info-item"><span class="info-label">Employee Name:</span><span class="info-value">${employeeName}</span></div>
-    <div class="info-item"><span class="info-label">Email:</span><span class="info-value">${employeeEmail}</span></div>
-    <div class="info-item"><span class="info-label">Designation:</span><span class="info-value">${designation}</span></div>
-    <div class="info-item"><span class="info-label">Department:</span><span class="info-value">${department}</span></div>
+    <div class="info-item"><span class="info-label">Employee Name:</span><span class="info-value">${slip.employeeName}</span></div>
+    <div class="info-item"><span class="info-label">Email:</span><span class="info-value">${slip.email}</span></div>
+    <div class="info-item"><span class="info-label">Designation:</span><span class="info-value">${slip.designation || "N/A"}</span></div>
+    <div class="info-item"><span class="info-label">Department:</span><span class="info-value">${slip.department || "N/A"}</span></div>
+    <div class="info-item"><span class="info-label">Pay Period:</span><span class="info-value">${monthName} ${slip.year}</span></div>
+    <div class="info-item"><span class="info-label">Approved On:</span><span class="info-value">${approvedDate}</span></div>
   </div>
+  ${slip.adjusted && slip.adjustmentComment ? `<div class="adj-note">⚠ This slip contains a manual adjustment: ${slip.adjustmentComment}</div>` : ""}
   <div class="section">
     <div class="section-title">Attendance Summary</div>
     <table>
       <tr><th>Description</th><th class="amount">Value</th></tr>
-      <tr><td>Total Working Days</td><td class="amount">${slip.totalWorkingDays}</td></tr>
-      <tr><td>Days Present</td><td class="amount">${slip.daysPresent}</td></tr>
-      <tr><td>Days Absent</td><td class="amount">${slip.daysAbsent}</td></tr>
-      <tr><td>Approved Leaves</td><td class="amount">${parseFloat(slip.approvedLeaves)}</td></tr>
-      <tr><td>Total Hours Worked</td><td class="amount">${parseFloat(slip.totalHours).toFixed(1)}</td></tr>
-      <tr><td>Attendance Percentage</td><td class="amount">${parseFloat(slip.attendancePercentage).toFixed(1)}%</td></tr>
+      <tr><td>Total Working Days</td><td class="amount">${slip.workingDays}</td></tr>
+      <tr><td>Days Present</td><td class="amount">${slip.presentDays}</td></tr>
+      <tr><td>Days Absent</td><td class="amount">${slip.absentDays}</td></tr>
+      <tr><td>Approved Leaves</td><td class="amount">${slip.paidLeaves}</td></tr>
+      <tr><td>LOP (Unpaid) Leaves</td><td class="amount">${slip.lopLeaves}</td></tr>
+      <tr><td>Total Hours Worked</td><td class="amount">${Number(slip.totalHours).toFixed(1)}</td></tr>
+      <tr><td>Attendance Percentage</td><td class="amount">${Number(slip.attendancePercentage).toFixed(1)}%</td></tr>
     </table>
   </div>
   <div class="section">
     <div class="section-title">Earnings & Deductions</div>
     <table>
       <tr><th>Description</th><th class="amount">Amount (INR)</th></tr>
-      <tr><td>Basic Salary</td><td class="amount">${formatCurrency(slip.basicSalary)}</td></tr>
+      <tr><td>Basic Salary</td><td class="amount">${formatCurrency(slip.salary)}</td></tr>
       <tr><td>Gross Salary</td><td class="amount">${formatCurrency(slip.grossSalary)}</td></tr>
       <tr><td>Deductions (Unauthorized Absences)</td><td class="amount">- ${formatCurrency(slip.deductions)}</td></tr>
-      ${parseFloat(slip.salaryAdvanceRecovery || "0") > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.salaryAdvanceRecovery || "0")}</td></tr>` : ""}
+      ${slip.advanceRecovery > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.advanceRecovery)}</td></tr>` : ""}
       <tr class="total-row"><td>Net Payable</td><td class="amount">${formatCurrency(slip.netPayable)}</td></tr>
     </table>
   </div>
@@ -145,23 +149,11 @@ function generateSlipHTML(slip: SlipDetail): string {
     <span class="value">INR ${formatCurrency(slip.netPayable)}</span>
   </div>
   <div class="footer">
-    This is a system-generated salary slip. Generated on ${new Date(slip.generatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.
+    This is a system-generated salary slip based on approved payroll run. Generated on ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.
   </div>
 </div>
 </body>
 </html>`;
-}
-
-function downloadSlipAsPDF(slip: SlipDetail) {
-  const html = generateSlipHTML(slip);
-  const printWindow = window.open("", "_blank");
-  if (printWindow) {
-    printWindow.document.write(html);
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
-  }
 }
 
 export default function SalarySlips() {
@@ -169,10 +161,10 @@ export default function SalarySlips() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [loadingMonth, setLoadingMonth] = useState<number | null>(null);
 
-  const { data: slips, isLoading } = useQuery<SalarySlip[]>({
-    queryKey: ["/api/hr/salary-slips/my", { year: selectedYear }],
+  const { data: runs = [], isLoading } = useQuery<ApprovedRun[]>({
+    queryKey: ["/api/hr/salary-slips/my-runs"],
     enabled: isAuthenticated,
   });
 
@@ -184,26 +176,45 @@ export default function SalarySlips() {
 
   if (authLoading || !isAuthenticated) return null;
 
-  const years = [];
+  const years: string[] = [];
   for (let y = currentYear; y >= currentYear - 5; y--) {
     years.push(String(y));
   }
 
-  const handleDownload = async (slipId: string) => {
-    setDownloadingId(slipId);
+  const approvedRuns = runs
+    .filter(r => r.status === "approved" && String(r.year) === selectedYear)
+    .sort((a, b) => b.month - a.month);
+
+  const handleViewDownload = async (run: ApprovedRun) => {
+    if (!user?.id) return;
+    setLoadingMonth(run.month);
     try {
-      const res = await fetch(`/api/hr/salary-slips/my/${slipId}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch slip details");
-      const detail: SlipDetail = await res.json();
-      downloadSlipAsPDF(detail);
+      const res = await fetch(
+        `/api/hr/salary-slips/render/${user.id}/${run.month}/${run.year}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || "Could not load salary slip for this period.");
+        return;
+      }
+      const data: { slip: SlipData } = await res.json();
+      const html = generateSlipHTML(data.slip);
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      }
     } catch (err) {
-      console.error("Download error:", err);
+      console.error("Slip download error:", err);
+      alert("Failed to load salary slip. Please try again.");
     } finally {
-      setDownloadingId(null);
+      setLoadingMonth(null);
     }
   };
-
-  const sortedSlips = slips ? [...slips].sort((a, b) => b.month - a.month) : [];
 
   return (
     <AdminLayout>
@@ -211,7 +222,7 @@ export default function SalarySlips() {
         <div className="flex items-start justify-between gap-4" data-testid="text-salary-slips-title">
           <div className="min-w-0">
             <h1 className="text-xl font-semibold leading-tight">My Salary Slips</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">View and download your monthly salary slips</p>
+            <p className="text-sm text-muted-foreground mt-0.5">View and download your monthly salary slips from approved payroll runs</p>
           </div>
           <Select value={selectedYear} onValueChange={setSelectedYear}>
             <SelectTrigger className="w-32 shrink-0" data-testid="select-year">
@@ -235,83 +246,66 @@ export default function SalarySlips() {
               </Card>
             ))}
           </div>
-        ) : sortedSlips.length === 0 ? (
+        ) : approvedRuns.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
               <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-1" data-testid="text-no-slips">No Salary Slips</h3>
+              <h3 className="text-lg font-medium mb-1" data-testid="text-no-slips">No Approved Salary Runs</h3>
               <p className="text-sm text-muted-foreground">
-                No salary slips have been generated for {selectedYear} yet.
+                No approved payroll runs found for {selectedYear}. Salary slips are available after HR approves the monthly salary run.
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sortedSlips.map((slip) => (
-              <Card key={slip.id} data-testid={`card-slip-${slip.id}`}>
+            {approvedRuns.map((run) => (
+              <Card key={run.id} data-testid={`card-run-${run.id}`}>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                   <CardTitle className="text-base">
-                    {MONTH_NAMES[slip.month - 1]}
+                    {MONTH_NAMES[run.month - 1]}
                   </CardTitle>
-                  <Badge variant="secondary" data-testid={`badge-month-${slip.id}`}>
-                    {MONTH_NAMES[slip.month - 1].substring(0, 3)} {slip.year}
+                  <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs" data-testid={`badge-approved-${run.id}`}>
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Approved
                   </Badge>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                        <IndianRupee className="h-3.5 w-3.5" />
-                        Gross Salary
-                      </span>
-                      <span className="text-sm font-medium font-mono" data-testid={`text-gross-${slip.id}`}>
-                        {formatCurrency(slip.grossSalary)}
-                      </span>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>{MONTH_NAMES[run.month - 1]} {run.year}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                        <TrendingDown className="h-3.5 w-3.5" />
-                        Deductions
-                      </span>
-                      <span className="text-sm font-medium font-mono text-red-600 dark:text-red-400" data-testid={`text-deductions-${slip.id}`}>
-                        - {formatCurrency(slip.deductions)}
-                      </span>
-                    </div>
-                    {parseFloat(slip.salaryAdvanceRecovery || "0") > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                          <TrendingDown className="h-3.5 w-3.5" />
-                          Salary Advance Recovery
-                        </span>
-                        <span className="text-sm font-medium font-mono text-amber-600 dark:text-amber-400" data-testid={`text-advance-recovery-${slip.id}`}>
-                          - {formatCurrency(slip.salaryAdvanceRecovery || "0")}
+                    {run.approvedAt && (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                        <span>
+                          Approved{" "}
+                          {new Date(run.approvedAt).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
                         </span>
                       </div>
                     )}
-                    <div className="border-t pt-2 flex items-center justify-between">
-                      <span className="text-sm font-semibold">Net Payable</span>
-                      <span className="text-base font-bold font-mono" data-testid={`text-net-${slip.id}`}>
-                        {formatCurrency(slip.netPayable)}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>Slip generated on demand</span>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Present: {slip.daysPresent}/{slip.totalWorkingDays} days</span>
-                    <span>{parseFloat(slip.attendancePercentage).toFixed(0)}% attendance</span>
                   </div>
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => handleDownload(slip.id)}
-                    disabled={downloadingId === slip.id}
-                    data-testid={`button-download-${slip.id}`}
+                    onClick={() => handleViewDownload(run)}
+                    disabled={loadingMonth === run.month}
+                    data-testid={`button-view-slip-${run.id}`}
                   >
-                    {downloadingId === slip.id ? (
+                    {loadingMonth === run.month ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    {downloadingId === slip.id ? "Loading..." : "Download Slip"}
+                    {loadingMonth === run.month ? "Loading..." : "View / Download Slip"}
                   </Button>
                 </CardContent>
               </Card>

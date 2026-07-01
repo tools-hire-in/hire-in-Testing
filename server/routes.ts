@@ -52,7 +52,7 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendSalaryReportDispatch, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
 import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -7112,6 +7112,20 @@ export async function registerRoutes(
       if (!run) return res.status(404).json({ error: "Run not found" });
       if (run.status !== "pending_approval") return res.status(409).json({ error: "Only pending runs can be approved" });
 
+      // Attendance gate: the attendance report for the same month/year must be approved or overridden
+      const attRunRows = (await db.execute(
+        sql`SELECT id, status FROM attendance_report_runs WHERE month = ${run.month} AND year = ${run.year} ORDER BY created_at DESC LIMIT 1`
+      )).rows as any[];
+      const attRunRow = attRunRows[0];
+      const attStatus = attRunRow?.status ?? "none";
+      if (!["approved", "overridden"].includes(attStatus)) {
+        return res.status(400).json({
+          error: "Attendance approval required",
+          message: `The attendance report for this period must be approved before the salary run can be approved. Current attendance status: ${attStatus === "none" ? "no run created" : attStatus.replace(/_/g, " ")}.`,
+          attendanceStatus: attStatus,
+        });
+      }
+
       const actorId = req.session.userId!;
       const rows = (run.reportData as any[]) || [];
       const adjustments = (run.adjustments as Record<string, SalaryReportAdjustment>) || {};
@@ -7152,63 +7166,51 @@ export async function registerRoutes(
       const csv = [csvHeaders.join(","), ...csvRows].join("\n");
 
       const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
-      const recipients = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
-
-      const emailResult = await sendSalaryReport({
-        csvContent: csv,
-        summary,
-        recipients,
-        adjustments,
-        rows,
-      });
-
-      if (!emailResult.success) {
-        return res.status(500).json({ error: "Email dispatch failed: " + emailResult.error });
-      }
+      const recipientsConfig = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
+      const toList = recipientsConfig?.to?.filter(Boolean) ?? [];
+      const ccList = recipientsConfig?.cc?.filter(Boolean) ?? [];
 
       const now = new Date();
-      await db.update(salaryReportRuns)
-        .set({ status: "approved", approvedAt: now, approvedBy: actorId, emailSentAt: now })
-        .where(eq(salaryReportRuns.id, req.params.id));
+      let dispatched = false;
+      let dispatchSkippedReason: string | null = null;
 
-      // Upsert adjusted salary_slips records
-      const allUsers = await storage.getAdminUsers();
-      const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
-
-      let upsertedCount = 0;
-      for (const row of rows) {
-        const adj = adjustments[row.email];
-        if (!adj) continue;
-        const userId = userEmailMap.get(row.email);
-        if (!userId) continue;
-        await db.delete(salarySlips).where(and(
-          eq(salarySlips.userId, userId),
-          eq(salarySlips.year, run.year),
-          eq(salarySlips.month, run.month),
-        ));
-        await db.insert(salarySlips).values({
-          userId,
-          year: run.year,
-          month: run.month,
-          basicSalary: String(row.salary),
-          grossSalary: String(row.grossSalary),
-          deductions: String(row.deductions),
-          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
-          netPayable: String(row.netPayable),
-          totalWorkingDays: row.workingDays,
-          daysPresent: row.presentDays,
-          daysAbsent: row.absentDays,
-          approvedLeaves: String(row.paidLeaves),
-          lopLeaves: String(row.lopLeaves),
-          totalHours: String(row.totalHours),
-          attendancePercentage: String(row.attendancePercentage),
-          generatedBy: actorId,
+      if (toList.length === 0) {
+        // No recipients configured — skip dispatch but continue to approve
+        dispatchSkippedReason = "No recipients configured in salary_report_recipients setting";
+        console.warn(`[salary_run:${run.id}] ${dispatchSkippedReason}`);
+      } else {
+        // Route through dispatchAutomatedEmail so CCC policy, hold-for-approval,
+        // and audit logging are all respected automatically.
+        const emailResult = await sendSalaryReportDispatch({
+          runId: run.id,
+          csvContent: csv,
+          summary,
+          recipients: { to: toList, cc: ccList },
+          adjustments,
+          rows,
         });
-        upsertedCount++;
+
+        if (!emailResult.success && !emailResult.held && !emailResult.disabled) {
+          return res.status(500).json({ error: "Salary report email dispatch failed: " + emailResult.error });
+        }
+        dispatched = true;
       }
+
+      await db.update(salaryReportRuns)
+        .set({
+          status: "approved",
+          approvedAt: now,
+          approvedBy: actorId,
+          emailSentAt: dispatched ? now : null,
+          dispatchedTo: dispatched ? ({ to: toList, cc: ccList } as any) : null,
+          dispatchedAt: dispatched ? now : null,
+        })
+        .where(eq(salaryReportRuns.id, req.params.id));
 
       // Apply scheduled salary-advance recoveries for this run (idempotent: only
       // 'scheduled' repayments for this year/month are marked deducted).
+      const allUsers = await storage.getAdminUsers();
+      const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
       let advancesRecovered = 0;
       try {
         advancesRecovered = await applyAdvanceRecoveriesForRun({
@@ -7226,13 +7228,212 @@ export async function registerRoutes(
       await storage.createAuditLog({
         action: "salary_report_approved",
         actorId,
-        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount, advancesRecovered },
+        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered },
       });
 
-      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, slipsUpserted: upsertedCount, advancesRecovered });
+      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered });
     } catch (error) {
       console.error("Failed to approve salary run:", error);
       res.status(500).json({ error: "Failed to approve and send salary report" });
+    }
+  });
+
+  // Employee-safe: list approved salary runs that contain the current user's email.
+  // Accessible to all authenticated users (employees see their own months;
+  // HR/admin see all via the existing runs list endpoint).
+  app.get("/api/hr/salary-slips/my-runs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const actor = req.session.userId!;
+      const actorRole = (req.session as any).role as string | undefined;
+      const allUsers = await storage.getAdminUsers();
+      const actorUser = allUsers.find(u => u.id === actor);
+      if (!actorUser) return res.status(404).json({ error: "User not found" });
+
+      // HR/admin/finance/super_admin get all approved runs
+      if (["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "")) {
+        const runs = await db.select({
+          id: salaryReportRuns.id,
+          year: salaryReportRuns.year,
+          month: salaryReportRuns.month,
+          status: salaryReportRuns.status,
+          approvedAt: salaryReportRuns.approvedAt,
+        }).from(salaryReportRuns)
+          .where(eq(salaryReportRuns.status, "approved"))
+          .orderBy(desc(salaryReportRuns.approvedAt));
+        return res.json(runs);
+      }
+
+      // Employees + managers: only runs containing their email in reportData
+      const approvedRuns = await db.select({
+        id: salaryReportRuns.id,
+        year: salaryReportRuns.year,
+        month: salaryReportRuns.month,
+        status: salaryReportRuns.status,
+        approvedAt: salaryReportRuns.approvedAt,
+        reportData: salaryReportRuns.reportData,
+      }).from(salaryReportRuns)
+        .where(eq(salaryReportRuns.status, "approved"))
+        .orderBy(desc(salaryReportRuns.approvedAt));
+
+      const myEmail = actorUser.email ?? "";
+      const myRuns = approvedRuns
+        .filter(run => {
+          const rows = (run.reportData as any[]) || [];
+          return rows.some((r: any) => r.email === myEmail);
+        })
+        .map(({ reportData: _rd, ...rest }) => rest);
+
+      res.json(myRuns);
+    } catch (error) {
+      console.error("Failed to fetch my salary runs:", error);
+      res.status(500).json({ error: "Failed to fetch salary runs" });
+    }
+  });
+
+  // On-demand salary slip render — finds the approved run for the period, builds the slip JSON,
+  // writes a slim ledger row on first access (idempotent by run+user).
+  app.get("/api/hr/salary-slips/render/:userId/:month/:year", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { userId, month, year } = req.params;
+      const m = parseInt(month);
+      const y = parseInt(year);
+      if (!m || !y || m < 1 || m > 12) return res.status(400).json({ error: "Invalid month or year" });
+
+      // Access control:
+      //   - Employees may only view their own slip.
+      //   - Managers may view slips for their direct reports only (team-scoped).
+      //   - HR / admin / finance / super_admin may view any slip.
+      const actor = req.session.userId!;
+      const actorRole = (req.session as any).role as string | undefined;
+      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "");
+      const isManager = actorRole === "manager";
+      if (!isPrivileged && actor !== userId) {
+        if (isManager) {
+          // Verify the target user is a direct report of the manager
+          const directReports = await storage.getTeamMembers(actor);
+          const isDirectReport = directReports.some(dr => dr.id === userId);
+          if (!isDirectReport) {
+            return res.status(403).json({ error: "Access denied: employee is not in your team" });
+          }
+        } else {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      }
+
+      // Find the latest approved run for this period
+      const [approvedRun] = await db.select()
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "approved"),
+        ))
+        .orderBy(desc(salaryReportRuns.approvedAt))
+        .limit(1);
+
+      if (!approvedRun) {
+        return res.status(404).json({ error: "No approved salary run found for this period" });
+      }
+
+      const reportRows = (approvedRun.reportData as any[]) || [];
+      const allUsers = await storage.getAdminUsers();
+      const targetUser = allUsers.find(u => u.id === userId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
+
+      const row = reportRows.find((r: any) => r.email === targetUser.email);
+      if (!row) {
+        return res.status(404).json({ error: "Employee not found in this salary run" });
+      }
+
+      const adjustments = (approvedRun.adjustments as Record<string, any>) || {};
+      const adj = adjustments[targetUser.email ?? ""];
+
+      const slipData = {
+        userId,
+        employeeName: row.employeeName,
+        email: targetUser.email,
+        designation: row.designation,
+        department: row.department,
+        year: y,
+        month: m,
+        salary: Number(row.salary),
+        grossSalary: Number(row.grossSalary),
+        deductions: Number(row.deductions),
+        advanceRecovery: Number(row.advanceRecovery || 0),
+        netPayable: Number(row.netPayable),
+        workingDays: row.workingDays,
+        presentDays: row.presentDays,
+        absentDays: row.absentDays,
+        paidLeaves: row.paidLeaves,
+        lopLeaves: row.lopLeaves,
+        totalHours: row.totalHours,
+        attendancePercentage: row.attendancePercentage,
+        adjusted: !!adj,
+        adjustmentComment: adj?.comment ?? null,
+        salaryRunId: approvedRun.id,
+        approvedAt: approvedRun.approvedAt,
+      };
+
+      // Write / update ledger row on first access (idempotent per run+user)
+      const [existingLedger] = await db.select().from(salarySlips)
+        .where(and(
+          eq(salarySlips.userId, userId),
+          eq(salarySlips.year, y),
+          eq(salarySlips.month, m),
+          eq(salarySlips.salaryRunId, approvedRun.id),
+        ))
+        .limit(1);
+
+      if (!existingLedger) {
+        // Find max version for this user/month/year and increment
+        const maxVersionRows = (await db.execute(
+          sql`SELECT COALESCE(MAX(version), 0) AS max_ver FROM salary_slips WHERE user_id = ${userId} AND year = ${y} AND month = ${m}`
+        )).rows as any[];
+        const nextVersion = (Number(maxVersionRows[0]?.max_ver ?? 0)) + 1;
+
+        await db.insert(salarySlips).values({
+          userId,
+          year: y,
+          month: m,
+          version: nextVersion,
+          salaryRunId: approvedRun.id,
+          basicSalary: String(row.salary),
+          grossSalary: String(row.grossSalary),
+          deductions: String(row.deductions),
+          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
+          netPayable: String(row.netPayable),
+          totalWorkingDays: row.workingDays,
+          daysPresent: row.presentDays,
+          daysAbsent: row.absentDays,
+          approvedLeaves: String(row.paidLeaves),
+          lopLeaves: String(row.lopLeaves),
+          totalHours: String(row.totalHours),
+          attendancePercentage: String(row.attendancePercentage),
+          generatedBy: actor,
+        });
+      }
+
+      res.json({ slip: slipData });
+    } catch (error) {
+      console.error("Failed to render salary slip:", error);
+      res.status(500).json({ error: "Failed to render salary slip" });
+    }
+  });
+
+  // Slip count for a run — how many employees in the run have ledger rows
+  app.get("/api/hr/salary-slips/run-count/:runId", requireAuth, requirePermission("hr.salarySlips.view", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+    try {
+      const { runId } = req.params;
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, runId));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      const totalEmployees = ((run.reportData as any[]) || []).length;
+      const countRows = (await db.execute(
+        sql`SELECT COUNT(*) AS cnt FROM salary_slips WHERE salary_run_id = ${runId}`
+      )).rows as any[];
+      const generated = Number(countRows[0]?.cnt ?? 0);
+      res.json({ generated, total: totalEmployees });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get slip count" });
     }
   });
 
@@ -7693,9 +7894,29 @@ export async function registerRoutes(
         return res.json({ dryRun: true, diff, totalEmployees: diff.length, changedCount: diff.filter(d => d.changed).length });
       }
 
+      // Find the latest approved salary run for this period (to link ledger rows)
+      const [approvedRun] = await db.select()
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "approved"),
+        ))
+        .orderBy(desc(salaryReportRuns.approvedAt))
+        .limit(1);
+
       let upsertedCount = 0;
       for (const slip of slipsToUpsert) {
-        await storage.upsertSalarySlip(slip);
+        // Insert a new version row instead of overwriting
+        const maxVersionRows = (await db.execute(
+          sql`SELECT COALESCE(MAX(version), 0) AS max_ver FROM salary_slips WHERE user_id = ${slip.userId} AND year = ${y} AND month = ${m}`
+        )).rows as any[];
+        const nextVersion = (Number(maxVersionRows[0]?.max_ver ?? 0)) + 1;
+        await db.insert(salarySlips).values({
+          ...slip,
+          version: nextVersion,
+          salaryRunId: approvedRun?.id ?? null,
+        });
         upsertedCount++;
       }
 

@@ -270,6 +270,8 @@ export const salarySlips = pgTable("salary_slips", {
   userId: varchar("user_id").notNull().references(() => adminUsers.id),
   year: integer("year").notNull(),
   month: integer("month").notNull(),
+  version: integer("version").notNull().default(1),
+  salaryRunId: varchar("salary_run_id").references(() => salaryReportRuns.id),
   basicSalary: numeric("basic_salary").notNull().default("0"),
   grossSalary: numeric("gross_salary").notNull().default("0"),
   deductions: numeric("deductions").notNull().default("0"),
@@ -284,7 +286,9 @@ export const salarySlips = pgTable("salary_slips", {
   attendancePercentage: numeric("attendance_percentage").notNull().default("0"),
   generatedAt: timestamp("generated_at").defaultNow(),
   generatedBy: varchar("generated_by").references(() => adminUsers.id),
-});
+}, (table) => [
+  uniqueIndex("idx_salary_slips_user_period_version").on(table.userId, table.year, table.month, table.version),
+]);
 
 // Leave balance adjustments table
 export const leaveAdjustments = pgTable("leave_adjustments", {
@@ -2078,6 +2082,8 @@ export const salaryReportRuns = pgTable("salary_report_runs", {
   reportData: jsonb("report_data").notNull().default(sql`'[]'::jsonb`),
   adjustments: jsonb("adjustments").notNull().default(sql`'{}'::jsonb`),
   emailSentAt: timestamp("email_sent_at"),
+  dispatchedTo: jsonb("dispatched_to"),
+  dispatchedAt: timestamp("dispatched_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

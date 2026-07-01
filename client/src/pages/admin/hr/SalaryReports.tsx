@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -524,6 +524,26 @@ function RowEditPanel({
   );
 }
 
+// Small recipients preview used inside the confirm approval dialog
+function RecipientsPreviewInline() {
+  const { data: recipients } = useQuery<{ to: string[]; cc: string[] }>({ queryKey: ["/api/hr/reports/salary/recipients"] });
+  const toList = recipients?.to?.length ? recipients.to : ["accounts@hire-in.com"];
+  const ccList = recipients?.cc?.length ? recipients.cc : ["simranjeet@hire-in.com"];
+  const hasConfigured = recipients?.to?.length;
+  return (
+    <div className={`p-3 rounded-lg border text-xs space-y-1 ${hasConfigured ? "bg-muted/40" : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"}`} data-testid="recipients-preview-inline">
+      {!hasConfigured && (
+        <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300 font-medium mb-1">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          No recipients configured — defaults will be used
+        </div>
+      )}
+      <div><span className="text-muted-foreground">To: </span><span className="font-medium">{toList.join(", ")}</span></div>
+      {ccList.length > 0 && <div><span className="text-muted-foreground">CC: </span><span className="font-medium">{ccList.join(", ")}</span></div>}
+    </div>
+  );
+}
+
 // Approval table for a pending run
 function ApprovalTable({
   run,
@@ -578,16 +598,41 @@ function ApprovalTable({
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/hr/reports/salary/runs/${run.id}/approve`, {}),
+    mutationFn: async () => {
+      const res = await fetch(`/api/hr/reports/salary/runs/${run.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(body.message || body.error || "Approval failed") as any;
+        err.status = res.status;
+        err.data = body;
+        throw err;
+      }
+      return body;
+    },
     onSuccess: async () => {
-      toast({ title: "Report approved & sent", description: "The salary report has been dispatched to recipients." });
+      toast({ title: "Report approved & sent", description: "The salary report has been dispatched to recipients. Salary slips are now available on demand." });
       setConfirmApprove(false);
       queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs/pending-count"] });
       onApproved();
     },
     onError: (err: any) => {
-      toast({ title: "Approval failed", description: err.message, variant: "destructive" });
+      const data = err.data || {};
+      if (err.status === 400 && data.attendanceStatus != null) {
+        toast({
+          title: "Attendance approval required",
+          description: data.message || "The attendance report for this period must be approved before the salary run can be approved.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Approval failed", description: err.message, variant: "destructive" });
+      }
+      setConfirmApprove(false);
     },
   });
 
@@ -792,7 +837,11 @@ function ApprovalTable({
                 <p className="text-orange-700 dark:text-orange-300"><strong>{adjustedCount} row(s)</strong> have been manually adjusted. These will appear highlighted in the email and flagged in the CSV.</p>
               </div>
             )}
-            <p>The report will be emailed to all configured recipients. Adjusted rows will also update the corresponding salary slips.</p>
+            <RecipientsPreviewInline />
+            <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <Receipt className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-blue-700 dark:text-blue-300">Salary slips are generated <strong>on demand</strong> — no bulk PDF is created at this step. Employees can view and download their slip from the portal after approval.</p>
+            </div>
             <p className="text-foreground font-medium">This action cannot be undone.</p>
           </div>
           <DialogFooter>
@@ -917,7 +966,129 @@ function SalaryGateStatusPanel({ month, year }: { month: string; year: string })
   );
 }
 
+function SlipCountChip({ runId }: { runId: string }) {
+  const { data } = useQuery<{ generated: number; total: number }>({
+    queryKey: ["/api/hr/salary-slips/run-count", runId],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/salary-slips/run-count/${runId}`, { credentials: "include" });
+      if (!res.ok) return { generated: 0, total: 0 };
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+  if (!data) return null;
+  const { generated, total } = data;
+  return (
+    <span className="text-xs text-muted-foreground flex items-center gap-1" data-testid={`slip-count-chip-${runId}`}>
+      <Receipt className="h-3 w-3" />
+      {generated}/{total} slips viewed
+    </span>
+  );
+}
+
+function GenerateSlipButton({ runId, employeeId, month, year, label }: { runId: string; employeeId: string; month: number; year: number; label: string }) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const handle = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/hr/salary-slips/render/${employeeId}/${month}/${year}`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({ title: "Failed", description: body.error || "Could not generate slip", variant: "destructive" });
+        return;
+      }
+      setDone(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-slips/run-count", runId] });
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={handle} disabled={loading} data-testid={`btn-gen-slip-${employeeId}`}>
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : done ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Receipt className="h-3 w-3" />}
+      {label}
+    </Button>
+  );
+}
+
+function RunSlipPanel({ run }: { run: SalaryRun }) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const { data: allUsers } = useQuery<any[]>({ queryKey: ["/api/hr/admin/users"], enabled: expanded });
+
+  const rows: EmployeeReportRow[] = (run.reportData as any) || [];
+
+  const handleGenerateAll = async () => {
+    if (!allUsers) return;
+    setGeneratingAll(true);
+    let ok = 0;
+    for (const row of rows) {
+      const emp = allUsers.find((u: any) => u.email === row.email);
+      if (!emp) continue;
+      try {
+        await fetch(`/api/hr/salary-slips/render/${emp.id}/${run.month}/${run.year}`, { credentials: "include" });
+        ok++;
+      } catch { /* skip */ }
+    }
+    setGeneratingAll(false);
+    toast({ title: `${ok} slips generated`, description: "Ledger rows written for all employees in this run." });
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-slips/run-count", run.id] });
+  };
+
+  if (!expanded) {
+    return (
+      <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-blue-600 dark:text-blue-400" onClick={() => setExpanded(true)} data-testid={`btn-expand-slips-${run.id}`}>
+        <Layers className="h-3 w-3" />
+        Slip Controls
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full mt-2 border rounded-lg p-3 space-y-2 bg-muted/30" data-testid={`slip-panel-${run.id}`}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-medium flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" />Slip Controls — {monthName(run.month)} {run.year}</p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={handleGenerateAll}
+            disabled={generatingAll || !allUsers}
+            data-testid={`btn-generate-all-slips-${run.id}`}
+          >
+            {generatingAll ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Receipt className="h-3 w-3 mr-1" />}
+            Generate All Slips
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpanded(false)}>Close</Button>
+        </div>
+      </div>
+      <div className="max-h-48 overflow-y-auto space-y-1">
+        {rows.map((row, idx) => {
+          const emp = allUsers?.find((u: any) => u.email === row.email);
+          return (
+            <div key={idx} className="flex items-center justify-between text-xs py-1 border-b last:border-0">
+              <span className="font-medium truncate max-w-[180px]">{row.employeeName}</span>
+              {emp ? (
+                <GenerateSlipButton runId={run.id} employeeId={emp.id} month={run.month} year={run.year} label="Generate" />
+              ) : (
+                <span className="text-muted-foreground text-xs">not found</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
+  const { user } = useAuth();
+  const isAdminLevel = user?.role && ["super_admin", "admin", "hr", "finance"].includes(user.role);
+
   const statusBadge = (status: SalaryRun["status"]) => {
     if (status === "pending_approval") return <Badge variant="outline" className="border-amber-400 text-amber-600 dark:text-amber-400 text-xs"><Clock3 className="h-3 w-3 mr-1" />Pending Approval</Badge>;
     if (status === "approved") return <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Approved & Sent</Badge>;
@@ -938,22 +1109,30 @@ function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
         ) : (
           <div className="space-y-2">
             {runs.map((run, idx) => (
-              <div key={run.id} className="flex flex-wrap items-center gap-3 p-3 border rounded-lg text-sm" data-testid={`run-history-row-${idx}`}>
-                <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="font-medium">{monthName(run.month)} {run.year}</span>
-                {statusBadge(run.status)}
-                {run.adjustedCount > 0 && (
-                  <span className="text-orange-600 dark:text-orange-400 text-xs font-medium">{run.adjustedCount} adjusted</span>
-                )}
-                {run.approverName && (
-                  <span className="text-muted-foreground text-xs">Approved by {run.approverName}</span>
-                )}
-                {run.approvedAt && (
-                  <span className="text-muted-foreground text-xs">{new Date(run.approvedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                )}
-                {run.emailSentAt && !run.approvedAt && (
-                  <span className="text-muted-foreground text-xs">Sent {new Date(run.emailSentAt).toLocaleDateString()}</span>
-                )}
+              <div key={run.id} className="p-3 border rounded-lg text-sm" data-testid={`run-history-row-${idx}`}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="font-medium">{monthName(run.month)} {run.year}</span>
+                  {statusBadge(run.status)}
+                  {run.adjustedCount > 0 && (
+                    <span className="text-orange-600 dark:text-orange-400 text-xs font-medium">{run.adjustedCount} adjusted</span>
+                  )}
+                  {run.approverName && (
+                    <span className="text-muted-foreground text-xs">Approved by {run.approverName}</span>
+                  )}
+                  {run.approvedAt && (
+                    <span className="text-muted-foreground text-xs">{new Date(run.approvedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  )}
+                  {run.emailSentAt && !run.approvedAt && (
+                    <span className="text-muted-foreground text-xs">Sent {new Date(run.emailSentAt).toLocaleDateString()}</span>
+                  )}
+                  {run.status === "approved" && isAdminLevel && (
+                    <>
+                      <SlipCountChip runId={run.id} />
+                      <RunSlipPanel run={run} />
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>

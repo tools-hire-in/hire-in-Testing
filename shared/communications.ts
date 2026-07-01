@@ -105,6 +105,15 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     scheduleLabel: "On threshold breach",
     recipientRule: "Managers & HR (tiered)",
   },
+  {
+    key: "salary_report_dispatch",
+    label: "Salary Report Dispatch",
+    description:
+      "Auto-dispatch of approved monthly salary CSV to accounts and configured recipients.",
+    category: "Payroll",
+    scheduleLabel: "Monthly · On salary run approval",
+    recipientRule: "Configured accounts recipients (salary_report_recipients setting)",
+  },
 ];
 
 export const COMMUNICATION_TYPE_KEYS = COMMUNICATION_TYPES.map((t) => t.key);
