@@ -1,0 +1,202 @@
+CREATE TYPE "public"."sop_finding_status" AS ENUM('open', 'in_progress', 'resolved', 'closed');
+CREATE TYPE "public"."sop_lifecycle_status" AS ENUM('draft', 'in_review', 'changes_requested', 'approved', 'published', 'training_assigned', 'acknowledged', 'active', 'under_revision', 'retired');
+CREATE TABLE "sop_comments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"author_id" varchar NOT NULL,
+	"body" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_review_assignments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"sop_version" integer NOT NULL,
+	"round" integer DEFAULT 1 NOT NULL,
+	"reviewer_id" varchar NOT NULL,
+	"status" varchar DEFAULT 'pending' NOT NULL,
+	"due_at" timestamp,
+	"decision_at" timestamp,
+	"comment" text,
+	"assigned_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_documents" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"code" varchar NOT NULL,
+	"title" varchar NOT NULL,
+	"category" varchar NOT NULL,
+	"owner" varchar NOT NULL,
+	"approver" varchar,
+	"audience_roles" text[],
+	"launch_wave" integer DEFAULT 0 NOT NULL,
+	"lifecycle_status" "sop_lifecycle_status" DEFAULT 'draft' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"is_current" boolean DEFAULT true NOT NULL,
+	"effective_date" date,
+	"review_cycle" varchar,
+	"confidentiality" varchar,
+	"kpi_description" text,
+	"audit_owner_role" varchar,
+	"frequency" varchar,
+	"evidence_description" text,
+	"target" varchar,
+	"ai_assist_allowed" boolean DEFAULT false NOT NULL,
+	"human_signoff_required" boolean DEFAULT true NOT NULL,
+	"summary" text,
+	"superseded_by_version_id" varchar,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"learning_track_id" varchar
+);
+CREATE TABLE "sop_employee_progress" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"sop_version" integer NOT NULL,
+	"user_id" varchar NOT NULL,
+	"training_completed_at" timestamp,
+	"quiz_passed_at" timestamp,
+	"acknowledged_at" timestamp,
+	"acknowledgment_hash" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_audit_records" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"auditor_id" varchar,
+	"week_date" date,
+	"evidence_collected" boolean DEFAULT false NOT NULL,
+	"misses_count" integer DEFAULT 0 NOT NULL,
+	"audit_score" integer,
+	"notes" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_role_assignments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"role" varchar NOT NULL,
+	"training_type" varchar,
+	"quiz_required" boolean DEFAULT false NOT NULL,
+	"kpi_description" text,
+	"audit_owner_role" varchar,
+	"frequency" varchar,
+	"evidence_description" text,
+	"target" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_audit_findings" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"raised_by" varchar,
+	"description" text NOT NULL,
+	"corrective_action" text,
+	"due_date" date,
+	"status" "sop_finding_status" DEFAULT 'open' NOT NULL,
+	"resolved_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"owner_id" varchar
+);
+CREATE TABLE "rollout_waves" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"wave_number" integer NOT NULL,
+	"name" varchar NOT NULL,
+	"status" varchar DEFAULT 'planned' NOT NULL,
+	"enforcement" varchar DEFAULT 'soft' NOT NULL,
+	"audience" varchar,
+	"description" text,
+	"activated_at" timestamp,
+	"activated_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "wave_sops" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"wave_number" integer NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"operational_at" timestamp,
+	"operational_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "communication_config" (
+	"type_key" varchar PRIMARY KEY NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"extra_to" text[] DEFAULT '{}' NOT NULL,
+	"cc" text[] DEFAULT '{}' NOT NULL,
+	"is_custom" boolean DEFAULT false NOT NULL,
+	"schedule_label" text,
+	"recipient_rule" text,
+	"label" text,
+	"description" text,
+	"category" text,
+	"created_by" varchar,
+	"updated_by" varchar,
+	"deleted_at" timestamp,
+	"updated_at" timestamp DEFAULT now(),
+	"created_at" timestamp DEFAULT now()
+);
+DROP INDEX "break_records_attendance_idx";
+DROP INDEX "break_records_user_date_idx";
+DROP INDEX "hr_letters_reference_number_idx";
+DROP INDEX "idx_policy_ack_user_type";
+DROP INDEX "idx_att_exception_status";
+DROP INDEX "idx_att_reg_date";
+DROP INDEX "idx_att_reg_employee_id";
+DROP INDEX "idx_att_reg_status";
+DROP INDEX "idx_travel_quotes_recruiter";
+DROP INDEX "idx_travel_quotes_status";
+DROP INDEX "goal_milestones_goal_id_idx";
+DROP INDEX "idx_att_report_mgr_approvals_run";
+DROP INDEX "idx_plan_acks_plan_id";
+DROP INDEX "idx_plan_acks_user_id";
+DROP INDEX "idx_plan_goal_templates_type_role";
+DROP INDEX "idx_plan_goal_templates_unique";
+DROP INDEX "idx_employee_plans_employee";
+DROP INDEX "studio_generations_article_idx";
+DROP INDEX "studio_generations_user_idx";
+DROP INDEX "idx_att_report_edits_run";
+DROP INDEX "idx_att_report_edits_status";
+DROP INDEX "idx_att_report_entries_manager";
+DROP INDEX "idx_att_report_entries_run";
+DROP INDEX "idx_signature_records_doc";
+DROP INDEX "idx_signature_records_ref";
+DROP INDEX "studio_article_versions_article_idx";
+DROP INDEX "studio_review_assignments_article_idx";
+DROP INDEX "card_templates_default_idx";
+DROP INDEX "studio_articles_project_idx";
+DROP INDEX "studio_articles_status_idx";
+DROP INDEX "studio_prompt_templates_global_key";
+ALTER TABLE "performance_goals" ADD COLUMN "linked_sop_id" varchar;
+ALTER TABLE "salary_slips" ADD COLUMN "version" integer DEFAULT 1 NOT NULL;
+ALTER TABLE "salary_slips" ADD COLUMN "salary_run_id" varchar;
+ALTER TABLE "salary_report_runs" ADD COLUMN "dispatched_to" jsonb;
+ALTER TABLE "salary_report_runs" ADD COLUMN "dispatched_at" timestamp;
+ALTER TABLE "internal_requests" ADD COLUMN "linked_sop_id" varchar;
+ALTER TABLE "sop_comments" ADD CONSTRAINT "sop_comments_author_id_admin_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_documents" ADD CONSTRAINT "sop_documents_learning_track_id_learning_tracks_id_fk" FOREIGN KEY ("learning_track_id") REFERENCES "public"."learning_tracks"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "sop_employee_progress" ADD CONSTRAINT "sop_employee_progress_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_audit_records" ADD CONSTRAINT "sop_audit_records_auditor_id_admin_users_id_fk" FOREIGN KEY ("auditor_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_audit_findings" ADD CONSTRAINT "sop_audit_findings_owner_id_admin_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_audit_findings" ADD CONSTRAINT "sop_audit_findings_raised_by_admin_users_id_fk" FOREIGN KEY ("raised_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "communication_config" ADD CONSTRAINT "communication_config_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "communication_config" ADD CONSTRAINT "communication_config_updated_by_admin_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "sop_comments_master_idx" ON "sop_comments" USING btree ("sop_master_id");
+CREATE INDEX "sop_review_assignments_master_version_idx" ON "sop_review_assignments" USING btree ("sop_master_id","sop_version");
+CREATE INDEX "sop_review_assignments_reviewer_idx" ON "sop_review_assignments" USING btree ("reviewer_id");
+CREATE INDEX "sop_documents_current_idx" ON "sop_documents" USING btree ("is_current");
+CREATE INDEX "sop_documents_master_idx" ON "sop_documents" USING btree ("sop_master_id");
+CREATE UNIQUE INDEX "sop_documents_master_version_unique" ON "sop_documents" USING btree ("sop_master_id","version");
+CREATE UNIQUE INDEX "sop_employee_progress_master_user_idx" ON "sop_employee_progress" USING btree ("sop_master_id","user_id");
+CREATE INDEX "sop_employee_progress_user_idx" ON "sop_employee_progress" USING btree ("user_id");
+CREATE INDEX "sop_audit_records_master_idx" ON "sop_audit_records" USING btree ("sop_master_id");
+CREATE INDEX "sop_role_assignments_master_idx" ON "sop_role_assignments" USING btree ("sop_master_id");
+CREATE UNIQUE INDEX "sop_role_assignments_master_role_unique" ON "sop_role_assignments" USING btree ("sop_master_id","role");
+CREATE INDEX "sop_audit_findings_master_idx" ON "sop_audit_findings" USING btree ("sop_master_id");
+CREATE UNIQUE INDEX "rollout_waves_wave_number_unique" ON "rollout_waves" USING btree ("wave_number");
+CREATE INDEX "wave_sops_sop_idx" ON "wave_sops" USING btree ("sop_master_id");
+CREATE UNIQUE INDEX "wave_sops_wave_sop_unique" ON "wave_sops" USING btree ("wave_number","sop_master_id");
+ALTER TABLE "performance_goals" ADD CONSTRAINT "performance_goals_linked_sop_id_sop_documents_id_fk" FOREIGN KEY ("linked_sop_id") REFERENCES "public"."sop_documents"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "salary_slips" ADD CONSTRAINT "salary_slips_salary_run_id_salary_report_runs_id_fk" FOREIGN KEY ("salary_run_id") REFERENCES "public"."salary_report_runs"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_linked_sop_id_sop_documents_id_fk" FOREIGN KEY ("linked_sop_id") REFERENCES "public"."sop_documents"("id") ON DELETE set null ON UPDATE no action;
+CREATE UNIQUE INDEX "idx_salary_slips_user_period_version" ON "salary_slips" USING btree ("user_id","year","month","version");
