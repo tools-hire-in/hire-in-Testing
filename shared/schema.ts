@@ -3441,6 +3441,8 @@ export const sopAuditFindings = pgTable("sop_audit_findings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sopMasterId: varchar("sop_master_id").notNull(),
   raisedBy: varchar("raised_by").references(() => adminUsers.id),
+  // The person accountable for the corrective action (may differ from raisedBy).
+  ownerId: varchar("owner_id").references(() => adminUsers.id),
   description: text("description").notNull(),
   correctiveAction: text("corrective_action"),
   dueDate: date("due_date"),

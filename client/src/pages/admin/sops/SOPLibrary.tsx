@@ -19,7 +19,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSopAccess } from "@/hooks/use-sop-access";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { SopDocument, SopRoleAssignment, SopReviewAssignment, SopComment } from "@shared/schema";
+import type { SopDocument, SopRoleAssignment, SopReviewAssignment, SopComment, SopAuditRecord, SopAuditFinding } from "@shared/schema";
 
 const MANAGE_SUBMIT_STATUSES = ["draft", "changes_requested", "under_revision"];
 const REVIEW_ACTIONS: { action: string; label: string }[] = [
@@ -366,11 +366,12 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
 
             <Tabs value={tab} onValueChange={setTab} className="mt-2">
-              <TabsList className="grid grid-cols-4 w-full">
+              <TabsList className="grid grid-cols-5 w-full">
                 <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
                 <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
                 <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
                 <TabsTrigger value="progress" data-testid="tab-progress">Team Progress</TabsTrigger>
+                <TabsTrigger value="audit" data-testid="tab-audit">Audit &amp; Findings</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4 text-sm mt-3">
@@ -440,6 +441,10 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
               <TabsContent value="progress" className="mt-3">
                 <ProgressTab sopId={id} version={data.version} />
+              </TabsContent>
+
+              <TabsContent value="audit" className="mt-3">
+                <AuditFindingsTab sopId={id} canManage={canManage} />
               </TabsContent>
             </Tabs>
           </>
@@ -625,6 +630,143 @@ function ProgressTab({ sopId, version }: { sopId: string; version: number }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type AuditRecordRow = SopAuditRecord & { auditorName: string | null };
+type FindingRow = SopAuditFinding & { raisedByName: string | null; ownerName: string | null };
+type AuditTabData = { canAudit: boolean; records: AuditRecordRow[]; findings: FindingRow[] };
+
+const FINDING_STATUS_OPTIONS = ["open", "in_progress", "resolved", "closed"];
+function findingStatusVariant(s: string): "default" | "secondary" | "outline" | "destructive" {
+  if (s === "resolved" || s === "closed") return "default";
+  if (s === "open") return "destructive";
+  if (s === "in_progress") return "secondary";
+  return "outline";
+}
+
+function AuditFindingsTab({ sopId, canManage }: { sopId: string; canManage: boolean }) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  // Managers raise findings, but resolving corrective actions is HR/Ops (+ admin) only.
+  const canResolveFindings = ["super_admin", "admin", "hr", "operations"].includes((user as any)?.role ?? "");
+  const [findingDesc, setFindingDesc] = useState("");
+  const [findingAction, setFindingAction] = useState("");
+  const [findingDue, setFindingDue] = useState("");
+  const [findingOwner, setFindingOwner] = useState("none");
+  const { data, isLoading } = useQuery<AuditTabData>({ queryKey: ["/api/sops", sopId, "audits"] });
+  const { data: usersResp } = useQuery<{ users: { id: string; firstName: string | null; lastName: string | null; email: string }[] }>({ queryKey: ["/api/admin/users"], enabled: canManage });
+  const owners = usersResp?.users ?? [];
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", sopId, "audits"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops/audits/pending"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops/compliance/summary"] });
+  };
+
+  const raiseFinding = useMutation({
+    mutationFn: async () =>
+      (await apiRequest("POST", `/api/sops/${sopId}/findings`, {
+        description: findingDesc.trim(),
+        correctiveAction: findingAction.trim() || null,
+        dueDate: findingDue || null,
+        ownerId: findingOwner === "none" ? null : findingOwner,
+      })).json(),
+    onSuccess: () => { invalidate(); setFindingDesc(""); setFindingAction(""); setFindingDue(""); setFindingOwner("none"); toast({ title: "Finding raised" }); },
+    onError: (e: any) => toast({ title: "Failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const updateFinding = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) =>
+      (await apiRequest("PATCH", `/api/sops/findings/${id}`, { status })).json(),
+    onSuccess: () => { invalidate(); toast({ title: "Finding updated" }); },
+    onError: (e: any) => toast({ title: "Update failed", description: e?.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+  const records = data?.records ?? [];
+  const findings = data?.findings ?? [];
+
+  return (
+    <div className="space-y-5 text-sm">
+      <div>
+        <p className="font-medium mb-1.5 flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Audit history</p>
+        {records.length === 0 ? (
+          <p className="text-muted-foreground text-xs" data-testid="text-no-audits">No audits recorded yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {records.map((r) => (
+              <div key={r.id} className="flex items-center justify-between rounded border px-2.5 py-1.5 text-xs" data-testid={`row-audit-record-${r.id}`}>
+                <div>
+                  <span className="font-medium">{r.weekDate ?? new Date(r.createdAt as any).toLocaleDateString()}</span>
+                  {r.auditorName && <span className="text-muted-foreground ml-2">by {r.auditorName}</span>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant={r.evidenceCollected ? "default" : "outline"} className="text-[10px]">{r.evidenceCollected ? "Evidence ✓" : "No evidence"}</Badge>
+                  {r.missesCount > 0 && <Badge variant="destructive" className="text-[10px]">{r.missesCount} miss</Badge>}
+                  {r.auditScore != null && <Badge variant="secondary" className="text-[10px]">Score {r.auditScore}</Badge>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t pt-4">
+        <p className="font-medium mb-1.5 flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Findings</p>
+        {findings.length === 0 ? (
+          <p className="text-muted-foreground text-xs" data-testid="text-no-findings">No findings raised.</p>
+        ) : (
+          <div className="space-y-2">
+            {findings.map((f) => (
+              <div key={f.id} className="rounded border p-2.5 text-xs space-y-1" data-testid={`row-finding-${f.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium">{f.description}</p>
+                  <Badge variant={findingStatusVariant(f.status)} className="text-[10px] shrink-0 capitalize">{f.status.replace("_", " ")}</Badge>
+                </div>
+                {f.correctiveAction && <p className="text-muted-foreground">Action: {f.correctiveAction}</p>}
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  {f.raisedByName && <span>Raised by {f.raisedByName}</span>}
+                  {f.dueDate && <span>Due {f.dueDate}</span>}
+                  {f.ownerName && <span>Owner {f.ownerName}</span>}
+                </div>
+                {canResolveFindings && f.status !== "resolved" && f.status !== "closed" && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Select value={f.status} onValueChange={(v) => updateFinding.mutate({ id: f.id, status: v })}>
+                      <SelectTrigger className="h-7 w-36 text-xs" data-testid={`select-finding-status-${f.id}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FINDING_STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="text-xs capitalize">{s.replace("_", " ")}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {canManage && (
+        <div className="border-t pt-4 space-y-2">
+          <p className="font-medium text-xs">Raise a new finding</p>
+          <Textarea value={findingDesc} onChange={(e) => setFindingDesc(e.target.value)} rows={2} placeholder="Describe the gap or issue" data-testid="input-detail-finding-description" />
+          <Textarea value={findingAction} onChange={(e) => setFindingAction(e.target.value)} rows={2} placeholder="Corrective action (optional)" data-testid="input-detail-finding-action" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={findingOwner} onValueChange={setFindingOwner}>
+              <SelectTrigger className="w-52" data-testid="select-detail-finding-owner"><SelectValue placeholder="Owner (optional)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unassigned</SelectItem>
+                {owners.map((u) => <SelectItem key={u.id} value={u.id}>{`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input type="date" value={findingDue} onChange={(e) => setFindingDue(e.target.value)} className="w-44" data-testid="input-detail-finding-due" />
+            <Button size="sm" variant="outline" disabled={!findingDesc.trim() || raiseFinding.isPending} onClick={() => raiseFinding.mutate()} data-testid="button-detail-raise-finding">
+              {raiseFinding.isPending ? "Saving..." : "Raise Finding"}
+            </Button>
+          </div>
         </div>
       )}
     </div>

@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BreakWidget } from "@/components/admin/BreakWidget";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
+import PendingSopAuditsCard from "@/components/admin/sops/PendingSopAuditsCard";
 
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed";
@@ -439,6 +440,9 @@ export default function HRDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Pending SOP Audits — managers/audit-owners only (gated server-side) */}
+        {isManagerRole && <PendingSopAuditsCard enabled={isManagerRole} />}
 
         {/* My Shift card — employee only */}
         {isEmployeeOnly && myShift && (

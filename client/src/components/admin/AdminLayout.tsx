@@ -1403,6 +1403,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: ShieldCheck,
       roles: ["all"],
     }] : []),
+    ...(hasSopAccess ? [{
+      href: "/admin/sops/compliance",
+      label: "SOP Governance",
+      icon: ShieldCheck,
+      roles: ["super_admin", "admin", "hr", "operations"],
+    }] : []),
     ...(hasFinanceAccess ? [{
       href: "/admin/finance",
       label: "Finance & Contracts",

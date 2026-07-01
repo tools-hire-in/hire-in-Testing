@@ -77,3 +77,35 @@ NOT the row UUID — a SOP "master" spans many version rows.
   outside the pilot get a progress row but NO track assignment/notification, so a
   later rollout-expand + sync picks them up. **Why:** rollout gate must suppress
   notifications for out-of-pilot users, not just hide the UI.
+
+## Audit + findings layer (governance dashboards)
+- Weekly SOP audits are **virtual** — "audited this week" ⟺ a record exists for the
+  ISO-Monday week key; there are no pre-seeded blank rows. **Why:** coverage % is
+  derived (records present / live SOPs), so creating placeholder rows would inflate
+  coverage. **How to apply:** dedup new audits per (sop, weekDate); don't backfill rows.
+- `auditOwnerRole` on a SOP is a **human-readable label** ("Ops / CEO"), not a system
+  role — never compare it to `session.role` directly; map it through the keyword
+  resolver. super_admin/admin own all audits. **Why:** the seed authored prose owners.
+- **Authority split for findings:** anyone who can audit (incl. managers) may *raise*
+  a finding, but *resolving* corrective actions is HR/Ops (+admin) only. Gate the
+  status-change mutation on `sops.manage` (hr/operations), not `sops.view`. **Why:**
+  a manager closing their own audit finding defeats the control.
+- **Governance dashboards are CEO/Ops/HR-only** — managers run audits (pending-audits
+  widget + raise findings) but do NOT get the cross-SOP governance view. Scope the
+  compliance/findings-list/drilldown routes AND the nav/page to hr/operations(+admin);
+  keep only the per-manager pending-audits endpoint at manager level. Match backend
+  guard to UI visibility — don't leave the route open while only hiding the nav link.
+  Manager finding *creation* must also re-check callerOwnsAudit on the target SOP
+  (HR/Ops/admin bypass) — requirePermission(...,"manager") alone lets any manager
+  raise findings on SOPs they don't audit. Resolving/editing findings (PATCH) stays
+  HR/Ops(+admin) only; managers raise, they don't close.
+- Two recurring traps when wiring governance dashboards here: (1) the shared query
+  fetcher only builds a `?query` string when the secondary query-key is an **object**
+  — a string key gets `join("/")`-ed into a broken path; (2) `app.get("/api/sops/:id")`
+  matches ANY single segment after `/api/sops/`, so a sibling like `/api/sops/findings`
+  is shadowed (`:id="findings"` → "SOP not found"). Put sibling routes under a 2+
+  segment prefix that `:id` can't match (`/api/sops/compliance/findings`,
+  `/api/sops/:id/compliance/export`) — being "more specific" is NOT enough; Express
+  matches by registration order and `:id` is registered first.
+- Compliance summary (JSON) and CSV export share one builder — keep their columns in
+  lockstep, and only count SOPs in the auditable lifecycle states.

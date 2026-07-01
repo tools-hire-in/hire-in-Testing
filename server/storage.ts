@@ -170,6 +170,12 @@ import {
   type SopComment,
   type InsertSopComment,
   type SopEmployeeProgress,
+  sopAuditRecords,
+  sopAuditFindings,
+  type SopAuditRecord,
+  type InsertSopAuditRecord,
+  type SopAuditFinding,
+  type InsertSopAuditFinding,
 } from "@shared/schema";
 import { COMMUNICATION_POLICY_KEY, resolveCommunicationPolicy } from "@shared/communications";
 
@@ -648,6 +654,13 @@ export interface IStorage {
   upsertSopEmployeeProgress(sopMasterId: string, sopVersion: number, userId: string): Promise<void>;
   markSopTrainingComplete(sopMasterId: string, userId: string, at?: Date): Promise<void>;
   setSopAcknowledged(sopMasterId: string, sopVersion: number, userId: string, hash: string, at?: Date): Promise<SopEmployeeProgress | undefined>;
+  // SOP audit records & findings
+  getSopAuditRecords(sopMasterId: string): Promise<SopAuditRecord[]>;
+  getAllSopAuditRecords(): Promise<SopAuditRecord[]>;
+  createSopAuditRecord(data: InsertSopAuditRecord): Promise<SopAuditRecord>;
+  getSopAuditFindings(sopMasterId?: string): Promise<SopAuditFinding[]>;
+  createSopAuditFinding(data: InsertSopAuditFinding): Promise<SopAuditFinding>;
+  updateSopAuditFinding(id: string, updates: Partial<InsertSopAuditFinding> & { resolvedAt?: Date | null }): Promise<SopAuditFinding | undefined>;
 
   // Salary advances
   createSalaryAdvanceWithNumber(data: InsertSalaryAdvanceRequest): Promise<SalaryAdvanceRequest>;
@@ -5161,6 +5174,42 @@ export class DatabaseStorage implements IStorage {
       .set({ acknowledgedAt: at, acknowledgmentHash: hash, sopVersion, updatedAt: new Date() })
       .where(and(eq(sopEmployeeProgress.sopMasterId, sopMasterId), eq(sopEmployeeProgress.userId, userId)))
       .returning();
+    return row;
+  }
+
+  // ── SOP audit records & findings (Task #663) ────────────────────────────────
+  async getSopAuditRecords(sopMasterId: string): Promise<SopAuditRecord[]> {
+    return db.select().from(sopAuditRecords)
+      .where(eq(sopAuditRecords.sopMasterId, sopMasterId))
+      .orderBy(desc(sopAuditRecords.weekDate), desc(sopAuditRecords.createdAt));
+  }
+
+  async getAllSopAuditRecords(): Promise<SopAuditRecord[]> {
+    return db.select().from(sopAuditRecords)
+      .orderBy(desc(sopAuditRecords.weekDate), desc(sopAuditRecords.createdAt));
+  }
+
+  async createSopAuditRecord(data: InsertSopAuditRecord): Promise<SopAuditRecord> {
+    const [row] = await db.insert(sopAuditRecords).values(data as any).returning();
+    return row;
+  }
+
+  async getSopAuditFindings(sopMasterId?: string): Promise<SopAuditFinding[]> {
+    const q = db.select().from(sopAuditFindings);
+    const rows = sopMasterId
+      ? await q.where(eq(sopAuditFindings.sopMasterId, sopMasterId)).orderBy(desc(sopAuditFindings.createdAt))
+      : await q.orderBy(desc(sopAuditFindings.createdAt));
+    return rows;
+  }
+
+  async createSopAuditFinding(data: InsertSopAuditFinding): Promise<SopAuditFinding> {
+    const [row] = await db.insert(sopAuditFindings).values(data as any).returning();
+    return row;
+  }
+
+  async updateSopAuditFinding(id: string, updates: Partial<InsertSopAuditFinding> & { resolvedAt?: Date | null }): Promise<SopAuditFinding | undefined> {
+    const [row] = await db.update(sopAuditFindings).set(updates as any)
+      .where(eq(sopAuditFindings.id, id)).returning();
     return row;
   }
 

@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, sopDocuments, type SopDocument } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -12074,6 +12074,457 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to sync SOP assignments" });
     }
   });
+
+  // ── SOP Audits, Findings & Governance Dashboards (Task #663) ────────────────
+
+  // The Monday (ISO date) of the week containing `d`. Audits are weekly; a new
+  // checklist naturally regenerates every Monday because the week_date key moves.
+  function currentWeekMonday(d: Date = new Date()): string {
+    const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = dt.getUTCDay(); // 0=Sun..6=Sat
+    const diff = (day === 0 ? -6 : 1) - day; // shift back to Monday
+    dt.setUTCDate(dt.getUTCDate() + diff);
+    return dt.toISOString().slice(0, 10);
+  }
+
+  // Map a SOP's free-text audit_owner_role label (e.g. "Delivery Manager", "Ops",
+  // "Sales Director") to the set of SYSTEM roles whose holders own that audit.
+  // super_admin/admin are universal owners and handled separately.
+  function systemRolesForAuditOwner(label?: string | null): string[] {
+    const l = (label || "").toLowerCase();
+    const roles = new Set<string>();
+    if (/\bops\b|operation/.test(l)) roles.add("operations");
+    if (/\bhr\b|human/.test(l)) roles.add("hr");
+    if (/manager|director|lead|delivery|\bam\b|sales|marketing|recruit/.test(l)) roles.add("manager");
+    return Array.from(roles);
+  }
+
+  // Does the caller's role own this SOP's audit? super_admin/admin own everything.
+  function callerOwnsAudit(role: string | undefined, auditOwnerRole?: string | null): boolean {
+    if (!role) return false;
+    if (role === "super_admin" || role === "admin") return true;
+    return systemRolesForAuditOwner(auditOwnerRole).includes(role);
+  }
+
+  // SOP lifecycle states that are "live" and therefore auditable.
+  const AUDITABLE_STATUSES = ["published", "training_assigned", "acknowledged", "active", "under_revision"];
+
+  // Pending weekly audit checklist for the caller's audit-owner role. Returns the
+  // live SOPs they own that have NOT yet been audited this week (auto-regenerates
+  // each Monday). Also returns this week's already-submitted records for context.
+  app.get("/api/sops/audits/pending", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const role = req.session.role;
+      const weekDate = currentWeekMonday();
+      const docs = (await storage.getSopDocuments({ currentOnly: true }))
+        .filter((d) => AUDITABLE_STATUSES.includes(d.lifecycleStatus) && callerOwnsAudit(role, d.auditOwnerRole));
+
+      const result = [] as Array<{
+        sopId: string; sopMasterId: string; code: string; title: string; category: string;
+        auditOwnerRole: string | null; frequency: string | null; weekDate: string;
+        audited: boolean; lastAudit: { weekDate: string | null; auditScore: number | null; missesCount: number } | null;
+        openFindings: number;
+      }>;
+      for (const d of docs) {
+        const records = await storage.getSopAuditRecords(d.sopMasterId);
+        const thisWeek = records.find((r) => r.weekDate === weekDate);
+        const last = records[0] ?? null;
+        const findings = await storage.getSopAuditFindings(d.sopMasterId);
+        result.push({
+          sopId: d.id, sopMasterId: d.sopMasterId, code: d.code, title: d.title, category: d.category,
+          auditOwnerRole: d.auditOwnerRole, frequency: d.frequency, weekDate,
+          audited: !!thisWeek,
+          lastAudit: last ? { weekDate: last.weekDate, auditScore: last.auditScore, missesCount: last.missesCount } : null,
+          openFindings: findings.filter((f) => f.status === "open" || f.status === "in_progress").length,
+        });
+      }
+      // Pending first (not yet audited), then by code.
+      result.sort((a, b) => (Number(a.audited) - Number(b.audited)) || a.code.localeCompare(b.code));
+      res.json({ weekDate, pendingCount: result.filter((r) => !r.audited).length, items: result });
+    } catch (error) {
+      console.error("SOP pending audits error:", error);
+      res.status(500).json({ error: "Failed to fetch pending audits" });
+    }
+  });
+
+  // Audit history + findings for one SOP (drill-down / detail tab).
+  app.get("/api/sops/:id/audits", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const [records, findings, users] = await Promise.all([
+        storage.getSopAuditRecords(doc.sopMasterId),
+        storage.getSopAuditFindings(doc.sopMasterId),
+        storage.getAdminUsers(),
+      ]);
+      const nameById = new Map(users.map((u) => [u.id, `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email]));
+      res.json({
+        canAudit: callerOwnsAudit(req.session.role, doc.auditOwnerRole),
+        records: records.map((r) => ({ ...r, auditorName: r.auditorId ? (nameById.get(r.auditorId) ?? "Unknown") : null })),
+        findings: findings.map((f) => ({
+          ...f,
+          raisedByName: f.raisedBy ? (nameById.get(f.raisedBy) ?? "Unknown") : null,
+          ownerName: f.ownerId ? (nameById.get(f.ownerId) ?? "Unknown") : null,
+        })),
+      });
+    } catch (error) {
+      console.error("SOP audits get error:", error);
+      res.status(500).json({ error: "Failed to fetch audit history" });
+    }
+  });
+
+  // Submit a weekly audit checklist for a SOP. Only the audit owner (or override).
+  app.post("/api/sops/:id/audits", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      if (!callerOwnsAudit(req.session.role, doc.auditOwnerRole)) {
+        return res.status(403).json({ error: "You are not the audit owner for this SOP" });
+      }
+      const weekDate = currentWeekMonday();
+      const existing = (await storage.getSopAuditRecords(doc.sopMasterId)).find((r) => r.weekDate === weekDate);
+      if (existing) return res.status(409).json({ error: "This SOP has already been audited this week" });
+
+      let score = req.body?.auditScore;
+      score = score === null || score === undefined || score === "" ? null : Number(score);
+      if (score !== null && (Number.isNaN(score) || score < 0 || score > 100)) {
+        return res.status(400).json({ error: "Audit score must be between 0 and 100" });
+      }
+      const parsed = insertSopAuditRecordSchema.safeParse({
+        sopMasterId: doc.sopMasterId,
+        auditorId: req.session.userId,
+        weekDate,
+        evidenceCollected: !!req.body?.evidenceCollected,
+        missesCount: Number(req.body?.missesCount ?? 0) || 0,
+        auditScore: score,
+        notes: req.body?.notes ? String(req.body.notes).trim() : null,
+      });
+      if (!parsed.success) return res.status(400).json({ error: "Invalid audit data", details: parsed.error.flatten() });
+      const created = await storage.createSopAuditRecord(parsed.data);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("SOP audit submit error:", error);
+      res.status(500).json({ error: "Failed to submit audit" });
+    }
+  });
+
+  // Raise an audit finding against a SOP.
+  app.post("/api/sops/:id/findings", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      // Managers may only raise findings on SOPs they audit; HR/Ops/admin override.
+      const role = req.session.role as string | undefined;
+      const isGovernanceRole = ["super_admin", "admin", "hr", "operations"].includes(role || "");
+      if (!isGovernanceRole && !callerOwnsAudit(role, doc.auditOwnerRole)) {
+        return res.status(403).json({ error: "You can only raise findings on SOPs you audit" });
+      }
+      const description = (req.body?.description ?? "").toString().trim();
+      if (!description) return res.status(400).json({ error: "A description is required" });
+      const parsed = insertSopAuditFindingSchema.safeParse({
+        sopMasterId: doc.sopMasterId,
+        raisedBy: req.session.userId,
+        ownerId: req.body?.ownerId ? String(req.body.ownerId) : null,
+        description,
+        correctiveAction: req.body?.correctiveAction ? String(req.body.correctiveAction).trim() : null,
+        dueDate: req.body?.dueDate ? String(req.body.dueDate) : null,
+        status: "open",
+      });
+      if (!parsed.success) return res.status(400).json({ error: "Invalid finding data", details: parsed.error.flatten() });
+      const created = await storage.createSopAuditFinding(parsed.data);
+      // Notify the corrective-action owner, if assigned.
+      if (created.ownerId && created.ownerId !== req.session.userId) {
+        try {
+          await storage.createNotification({
+            userId: created.ownerId, type: "sop_finding_assigned", title: "SOP audit finding assigned",
+            message: `A corrective action is assigned to you on SOP ${doc.code} — ${doc.title}.`,
+            isRead: false, metadata: { sopId: doc.id, link: "/admin/sops/compliance" },
+          });
+        } catch (e) { console.error("SOP finding notify error:", e); }
+      }
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("SOP finding create error:", error);
+      res.status(500).json({ error: "Failed to raise finding" });
+    }
+  });
+
+  // Filterable findings tracker — all findings across SOPs. Lives under /compliance/*
+  // (2+ segments) so it can never be shadowed by the single-segment GET /api/sops/:id.
+  // Filters: status, sopMasterId, ownerId, overdue.
+  app.get("/api/sops/compliance/findings", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const { status, sopMasterId, ownerId, overdue } = req.query as Record<string, string>;
+      const [all, docs, users] = await Promise.all([
+        storage.getSopAuditFindings(sopMasterId || undefined),
+        storage.getSopDocuments({ currentOnly: true }),
+        storage.getAdminUsers(),
+      ]);
+      const codeByMaster = new Map(docs.map((d) => [d.sopMasterId, { code: d.code, title: d.title, sopId: d.id }]));
+      const nameById = new Map(users.map((u) => [u.id, `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email]));
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let findings = all;
+      if (status) findings = findings.filter((f) => f.status === status);
+      if (ownerId) findings = findings.filter((f) => f.ownerId === ownerId);
+      if (overdue === "true") {
+        findings = findings.filter((f) => (f.status === "open" || f.status === "in_progress") && f.dueDate && String(f.dueDate) < todayStr);
+      }
+      res.json(findings.map((f) => {
+        const sop = codeByMaster.get(f.sopMasterId);
+        return {
+          ...f,
+          sopCode: sop?.code ?? f.sopMasterId,
+          sopTitle: sop?.title ?? null,
+          sopId: sop?.sopId ?? null,
+          raisedByName: f.raisedBy ? (nameById.get(f.raisedBy) ?? "Unknown") : null,
+          ownerName: f.ownerId ? (nameById.get(f.ownerId) ?? "Unknown") : null,
+          overdue: (f.status === "open" || f.status === "in_progress") && !!f.dueDate && String(f.dueDate) < todayStr,
+        };
+      }));
+    } catch (error) {
+      console.error("SOP findings list error:", error);
+      res.status(500).json({ error: "Failed to fetch findings" });
+    }
+  });
+
+  // Update a finding (status / corrective action / owner / due date). 2-segment
+  // path so it never collides with PATCH /api/sops/:id. Restricted to HR/Ops
+  // (+ super_admin/admin) — managers raise findings but do not own resolution.
+  app.patch("/api/sops/findings/:findingId", requireAuth, requirePermission("sops.manage", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const updates: Record<string, unknown> = {};
+      const validStatuses = ["open", "in_progress", "resolved", "closed"];
+      if (req.body?.status !== undefined) {
+        if (!validStatuses.includes(req.body.status)) return res.status(400).json({ error: "Invalid status" });
+        updates.status = req.body.status;
+        updates.resolvedAt = (req.body.status === "resolved" || req.body.status === "closed") ? new Date() : null;
+      }
+      if (req.body?.correctiveAction !== undefined) updates.correctiveAction = req.body.correctiveAction ? String(req.body.correctiveAction).trim() : null;
+      if (req.body?.ownerId !== undefined) updates.ownerId = req.body.ownerId ? String(req.body.ownerId) : null;
+      if (req.body?.dueDate !== undefined) updates.dueDate = req.body.dueDate ? String(req.body.dueDate) : null;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No updates provided" });
+      const updated = await storage.updateSopAuditFinding(req.params.findingId, updates as any);
+      if (!updated) return res.status(404).json({ error: "Finding not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("SOP finding update error:", error);
+      res.status(500).json({ error: "Failed to update finding" });
+    }
+  });
+
+  // Governance dashboard summary — adoption, overdue reviews, training/ack gaps,
+  // open findings, audit coverage. Optional filters: category, wave, role, department.
+  app.get("/api/sops/compliance/summary", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const data = await buildSopComplianceReport(req.query as Record<string, string>);
+      res.json(data);
+    } catch (error) {
+      console.error("SOP compliance summary error:", error);
+      res.status(500).json({ error: "Failed to build compliance report" });
+    }
+  });
+
+  // CSV export of the governance dashboard (per-SOP rows).
+  app.get("/api/sops/compliance/export", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const data = await buildSopComplianceReport(req.query as Record<string, string>);
+      const esc = (v: unknown) => {
+        const s = v === null || v === undefined ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["Code", "Title", "Category", "Wave", "Status", "Impacted", "Trained", "Acknowledged", "Adoption %", "Open Findings", "Last Audit", "Last Score", "Overdue Reviews"];
+      const lines = data.sops.map((s) => [
+        s.code, s.title, s.category, s.launchWave, s.lifecycleStatus, s.impacted, s.trained, s.acknowledged,
+        s.adoptionPct, s.openFindings, s.lastAuditWeek ?? "", s.lastAuditScore ?? "", s.overdueReviews,
+      ].map(esc).join(","));
+      const csv = [header.join(","), ...lines].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="sop_compliance_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("SOP compliance export error:", error);
+      res.status(500).json({ error: "Failed to export compliance report" });
+    }
+  });
+
+  // Per-SOP compliance drill-down: per-employee training/ack status + audits + findings.
+  app.get("/api/sops/:id/compliance", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const [progress, records, findings, users] = await Promise.all([
+        storage.getSopEmployeeProgress(doc.sopMasterId),
+        storage.getSopAuditRecords(doc.sopMasterId),
+        storage.getSopAuditFindings(doc.sopMasterId),
+        storage.getAdminUsers(),
+      ]);
+      const byId = new Map(users.map((u) => [u.id, u]));
+      const employees = progress.map((p) => {
+        const u = byId.get(p.userId);
+        return {
+          userId: p.userId,
+          name: u ? (`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email) : "Unknown",
+          role: u?.role ?? null,
+          departmentId: u?.departmentId ?? null,
+          trained: !!p.trainingCompletedAt,
+          acknowledgedVersion: p.acknowledgedAt ? p.sopVersion : null,
+          acknowledgedAt: p.acknowledgedAt,
+          acknowledgedCurrent: !!p.acknowledgedAt && p.sopVersion === doc.version,
+        };
+      });
+      const nameById = new Map(users.map((u) => [u.id, `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email]));
+      res.json({
+        sop: { id: doc.id, code: doc.code, title: doc.title, category: doc.category, version: doc.version, lifecycleStatus: doc.lifecycleStatus, auditOwnerRole: doc.auditOwnerRole },
+        employees,
+        records: records.map((r) => ({ ...r, auditorName: r.auditorId ? (nameById.get(r.auditorId) ?? "Unknown") : null })),
+        findings: findings.map((f) => ({
+          ...f,
+          raisedByName: f.raisedBy ? (nameById.get(f.raisedBy) ?? "Unknown") : null,
+          ownerName: f.ownerId ? (nameById.get(f.ownerId) ?? "Unknown") : null,
+        })),
+      });
+    } catch (error) {
+      console.error("SOP compliance drill-down error:", error);
+      res.status(500).json({ error: "Failed to fetch SOP compliance detail" });
+    }
+  });
+
+  // CSV export of a single SOP's per-employee training/acknowledgement status.
+  // 4-segment path — never shadowed by GET /api/sops/:id.
+  app.get("/api/sops/:id/compliance/export", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const [progress, users] = await Promise.all([
+        storage.getSopEmployeeProgress(doc.sopMasterId),
+        storage.getAdminUsers(),
+      ]);
+      const byId = new Map(users.map((u) => [u.id, u]));
+      const esc = (v: unknown) => {
+        const s = v === null || v === undefined ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = ["Employee", "Role", "Trained", "Acknowledged Version", "Acknowledged At", "Acknowledged Current"];
+      const lines = progress.map((p) => {
+        const u = byId.get(p.userId);
+        return [
+          u ? (`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email) : "Unknown",
+          u?.role ?? "",
+          p.trainingCompletedAt ? "Yes" : "No",
+          p.acknowledgedAt ? p.sopVersion : "",
+          p.acknowledgedAt ? new Date(p.acknowledgedAt).toISOString().slice(0, 10) : "",
+          (!!p.acknowledgedAt && p.sopVersion === doc.version) ? "Yes" : "No",
+        ].map(esc).join(",");
+      });
+      const csv = [header.join(","), ...lines].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="sop_${doc.code}_employees_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("SOP drill-down export error:", error);
+      res.status(500).json({ error: "Failed to export SOP compliance detail" });
+    }
+  });
+
+  // Shared builder for the governance dashboard summary + CSV export.
+  async function buildSopComplianceReport(query: Record<string, string>) {
+    const { category, wave, role, department } = query;
+    let docs = (await storage.getSopDocuments({ currentOnly: true }))
+      .filter((d) => AUDITABLE_STATUSES.includes(d.lifecycleStatus));
+    if (category) docs = docs.filter((d) => d.category === category);
+    if (wave !== undefined && wave !== "") docs = docs.filter((d) => d.launchWave === Number(wave));
+
+    const users = await storage.getAdminUsers();
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const now = Date.now();
+
+    const sops = [] as Array<{
+      id: string; sopMasterId: string; code: string; title: string; category: string; launchWave: number;
+      lifecycleStatus: string; version: number; auditOwnerRole: string | null;
+      impacted: number; trained: number; acknowledged: number; adoptionPct: number;
+      openFindings: number; overdueReviews: number;
+      lastAuditWeek: string | null; lastAuditScore: number | null;
+    }>;
+    let totalImpacted = 0, totalTrained = 0, totalAck = 0, totalOpenFindings = 0, totalOverdueReviews = 0, auditedThisWeek = 0;
+    const weekDate = currentWeekMonday();
+
+    for (const d of docs) {
+      let progress = await storage.getSopEmployeeProgress(d.sopMasterId);
+      // Role/department filters scope the impacted population per SOP.
+      if (role || department) {
+        progress = progress.filter((p) => {
+          const u = userById.get(p.userId);
+          if (!u) return false;
+          if (role && u.role !== role) return false;
+          if (department && u.departmentId !== department) return false;
+          return true;
+        });
+      }
+      const impacted = progress.length;
+      const trained = progress.filter((p) => !!p.trainingCompletedAt).length;
+      const acknowledged = progress.filter((p) => !!p.acknowledgedAt && p.sopVersion === d.version).length;
+      const adoptionPct = impacted === 0 ? 0 : Math.round((acknowledged / impacted) * 100);
+
+      const findings = await storage.getSopAuditFindings(d.sopMasterId);
+      const openFindings = findings.filter((f) => f.status === "open" || f.status === "in_progress").length;
+
+      const reviews = sopGov.latestRound(await storage.getSopReviewAssignments(d.sopMasterId, d.version));
+      const overdueReviews = reviews.filter((r) => r.status === "pending" && r.dueAt && new Date(r.dueAt).getTime() < now).length;
+
+      const records = await storage.getSopAuditRecords(d.sopMasterId);
+      const last = records[0] ?? null;
+      if (records.some((r) => r.weekDate === weekDate)) auditedThisWeek += 1;
+
+      sops.push({
+        id: d.id, sopMasterId: d.sopMasterId, code: d.code, title: d.title, category: d.category, launchWave: d.launchWave,
+        lifecycleStatus: d.lifecycleStatus, version: d.version, auditOwnerRole: d.auditOwnerRole,
+        impacted, trained, acknowledged, adoptionPct, openFindings, overdueReviews,
+        lastAuditWeek: last?.weekDate ?? null, lastAuditScore: last?.auditScore ?? null,
+      });
+      totalImpacted += impacted; totalTrained += trained; totalAck += acknowledged;
+      totalOpenFindings += openFindings; totalOverdueReviews += overdueReviews;
+    }
+    sops.sort((a, b) => a.code.localeCompare(b.code));
+
+    const categories = Array.from(new Set((await storage.getSopDocuments({ currentOnly: true })).map((d) => d.category))).sort();
+    const depts = await storage.getDepartments();
+    const departments = depts.map((d) => ({ id: d.id, name: d.name })).sort((a, b) => a.name.localeCompare(b.name));
+    const roles = Array.from(new Set(users.map((u) => u.role).filter((r): r is string => !!r))).sort();
+    return {
+      summary: {
+        totalSops: sops.length,
+        adoptionPct: totalImpacted === 0 ? 0 : Math.round((totalAck / totalImpacted) * 100),
+        trainingPct: totalImpacted === 0 ? 0 : Math.round((totalTrained / totalImpacted) * 100),
+        ackGaps: totalImpacted - totalAck,
+        openFindings: totalOpenFindings,
+        overdueReviews: totalOverdueReviews,
+        auditedThisWeek,
+        auditCoveragePct: sops.length === 0 ? 0 : Math.round((auditedThisWeek / sops.length) * 100),
+      },
+      filters: { categories, departments, roles },
+      sops,
+    };
+  }
 
   // Auto-assign training on publish, filtered through the rollout gate. Returns the
   // number of users assigned and the impacted/skipped breakdown.
