@@ -6,7 +6,8 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns, offerLetters, offerLetterAddendums } from "@shared/schema";
 import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
-import { generateAttendanceReportRun } from "./attendanceReport";
+import { generateAttendanceReportRun, ensureRunForMonthAndNotify } from "./attendanceReport";
+import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
 import { refreshRecentZips } from "./gsaRateService";
 
 function isLastDayOfMonth(): boolean {
@@ -26,6 +27,24 @@ function getIstDateTime(): { year: number; month: number; day: number } {
     month: nowIst.getUTCMonth() + 1, // 1-indexed
     day: nowIst.getUTCDate(),
   };
+}
+
+/** Extract year/month/day in America/Los_Angeles (PST/PDT) for the current instant. */
+function getLaDateTime(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => parseInt(parts.find(p => p.type === t)?.value || "0", 10);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+/** True when the given LA date is the last calendar day of its month. */
+function isLastDayOfMonthLa(la: { year: number; month: number; day: number }): boolean {
+  const daysInMonth = new Date(la.year, la.month, 0).getDate();
+  return la.day === daysInMonth;
 }
 
 export interface AbsentSweepResult {
@@ -542,64 +561,36 @@ export function startScheduler() {
   // Admin route to update shift grace period: handled in routes.ts
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
 
-  // Attendance report auto-creation: 1st of month at 00:05 IST
-  // Creates the attendance report run for the prior month if none exists yet
+  // PRIMARY: Attendance report generation on the LAST DAY of the month at 22:00 PST.
+  // Cron fires daily at 22:00 America/Los_Angeles; we generate + notify only when
+  // today (in LA) is the last day of the month, for the CURRENT month.
+  cron.schedule("0 22 * * *", async () => {
+    try {
+      const la = getLaDateTime();
+      if (!isLastDayOfMonthLa(la)) return;
+      console.log(`[scheduler] Last day of month (PST) — ensuring attendance report run for ${la.month}/${la.year}...`);
+      const result = await ensureRunForMonthAndNotify(la.month, la.year);
+      console.log(`[scheduler] Attendance report ${result.created ? "created" : "reconciled"} for ${la.month}/${la.year}: run ${result.runId}, notified ${result.notified} manager(s)`);
+    } catch (error) {
+      console.error("[scheduler] Last-day attendance report generation failed:", error);
+    }
+  }, {
+    timezone: "America/Los_Angeles",
+  });
+
+  // SAFETY NET: 1st of month at 00:05 IST. If the last-day PST job was missed, this
+  // ensures the prior month's run exists and reconciles missing managers (dedupes,
+  // never re-pings managers who already responded).
   cron.schedule("5 0 1 * *", async () => {
-    console.log("[scheduler] Auto-creating attendance report run for prior month...");
     try {
       const { year, month } = getIstDateTime();
       let prevMonth = month - 1;
       let prevYear = year;
       if (prevMonth === 0) { prevMonth = 12; prevYear = year - 1; }
-
-      const existing = (await db.execute(sql`
-        SELECT id FROM attendance_report_runs WHERE month = ${prevMonth} AND year = ${prevYear} LIMIT 1
-      `)) as any[];
-
-      if (existing.length > 0) {
-        console.log(`[scheduler] Attendance report run for ${prevMonth}/${prevYear} already exists — skipping.`);
-        return;
-      }
-
-      const { runId, managerIds } = await generateAttendanceReportRun(prevMonth, prevYear);
-      console.log(`[scheduler] Attendance report run created for ${prevMonth}/${prevYear}: ${runId}, managers: ${managerIds.length}`);
-
-      if (managerIds.length > 0) {
-        const managers = await db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
-          .from(adminUsers)
-          .where(and(isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
-        const managerList = managers.filter(m => managerIds.includes(m.id));
-        const monthName = new Date(prevYear, prevMonth - 1, 1).toLocaleString("en-US", { month: "long" });
-        const { sendAttendanceApprovalRequestEmail } = await import("./email");
-        const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        const appUrl = process.env.APP_URL || "https://hire-in.com";
-
-        for (const mgr of managerList) {
-          sendAttendanceApprovalRequestEmail({
-            to: mgr.email,
-            managerName: `${mgr.firstName} ${mgr.lastName}`,
-            month: monthName,
-            year: prevYear,
-            deadlineAt,
-            approvalUrl: `${appUrl}/admin/hr/my-team?tab=attendance-approval`,
-          }).catch(console.error);
-        }
-
-        // In-app notifications for managers
-        const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-        if (flags?.notifications_enabled) {
-          for (const mgr of managerList) {
-            await storage.createNotification({
-              userId: mgr.id,
-              title: "Attendance Approval Required",
-              message: `Your team's attendance report for ${monthName} ${prevYear} is ready for review. Please approve within 24 hours.`,
-              type: "action",
-            }).catch(console.error);
-          }
-        }
-      }
+      const result = await ensureRunForMonthAndNotify(prevMonth, prevYear);
+      console.log(`[scheduler] IST safety-net: attendance report ${result.created ? "created" : "reconciled"} for ${prevMonth}/${prevYear}, notified ${result.notified} manager(s)`);
     } catch (error) {
-      console.error("[scheduler] Attendance report auto-create failed:", error);
+      console.error("[scheduler] Attendance report safety-net failed:", error);
     }
   }, {
     timezone: "Asia/Kolkata",
@@ -633,7 +624,6 @@ export function startScheduler() {
         const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
         const deadline = new Date(run.deadline_at);
         const { sendAttendanceApprovalRequestEmail } = await import("./email");
-        const appUrl = process.env.APP_URL || "https://hire-in.com";
         const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
 
         for (const mgr of pendingManagers) {
@@ -643,7 +633,7 @@ export function startScheduler() {
             month: monthName,
             year: run.year,
             deadlineAt: deadline,
-            approvalUrl: `${appUrl}/admin/hr/my-team?tab=attendance-approval`,
+            approvalUrl: attendanceApprovalUrl(),
             policyType: "attendance_approval_reminder",
           }).catch(console.error);
 
@@ -696,7 +686,7 @@ export function startScheduler() {
             toEmails: hrEmails,
             month: monthName,
             year: run.year,
-            overrideUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/reports?tab=attendance-approvals`,
+            overrideUrl: `${getPortalBaseUrl()}/admin/hr/reports?tab=attendance-approvals`,
           }).catch(console.error);
         }
 
@@ -1406,7 +1396,7 @@ export function startScheduler() {
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
-  console.log("  - Attendance report auto-create: 1st of month at 00:05 IST → generates run + notifies managers");
+  console.log("  - Attendance report generation: last day of month at 22:00 PST → generates run + notifies managers (safety net 1st of month 00:05 IST)");
   console.log("  - Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)");
   console.log("  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");

@@ -2,6 +2,7 @@ import { db } from "./db";
 import { adminUsers, attendance, leaveRequests, holidays, leaveBalances } from "@shared/schema";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { attendanceApprovalUrl } from "./portalUrl";
 
 export interface AttendanceReportEntry {
   userId: string;
@@ -161,22 +162,217 @@ export async function generateAttendanceReportRun(month: number, year: number, c
     }
   }
 
-  const managerIds = [...new Set(entries.map(e => e.managerId).filter(Boolean) as string[])];
+  // Seed approvals from a robust manager set: the snapshot's manager ids UNIONed
+  // with the current org reporting structure (admin_users.manager_id). This keeps
+  // a manager (e.g. Shafique) from being dropped if a snapshot row's manager id is
+  // missing/stale while they genuinely have direct reports for the month.
+  const snapshotManagerIds = entries.map(e => e.managerId).filter(Boolean) as string[];
+  const orgManagerIds = await resolveReportManagerIds(year, month);
+  const managerIds = [...new Set([...snapshotManagerIds, ...orgManagerIds])];
+
   for (const managerId of managerIds) {
     await db.execute(sql`
       INSERT INTO attendance_report_manager_approvals (run_id, manager_id, status)
-      VALUES (${runId}, ${managerId}, 'pending')
+      SELECT ${runId}, ${managerId}, 'pending'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM attendance_report_manager_approvals
+        WHERE run_id = ${runId} AND manager_id = ${managerId}
+      )
     `);
   }
 
   return { runId, managerIds };
 }
 
+/**
+ * Returns the distinct set of valid (active, non-deleted) manager ids who have at
+ * least one active, non-deleted, non-attendance-exempt direct report — derived
+ * directly from the current org reporting structure on admin_users. This is the
+ * authoritative recipient list and does not rely on snapshot rows.
+ */
+export async function resolveReportManagerIds(_year: number, _month: number): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT e.manager_id AS id
+    FROM admin_users e
+    JOIN admin_users m ON m.id = e.manager_id
+    WHERE e.is_active = true
+      AND e.deleted_at IS NULL
+      AND e.attendance_exempt = false
+      AND e.manager_id IS NOT NULL
+      AND m.is_active = true
+      AND m.deleted_at IS NULL
+  `)).rows as any[];
+  return rows.map(r => r.id).filter(Boolean) as string[];
+}
+
+interface RunManager {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+/**
+ * Re-syncs an already-generated run to the current org structure and returns the
+ * managers who were newly added to the approval list (so the caller can notify
+ * only them — never re-pinging managers who already responded).
+ *
+ * Self-heals two failure modes for an open run:
+ *  1. Entry rows whose stored manager id is stale → re-pointed to the employee's
+ *     current manager (only when that manager is valid and the entry's current
+ *     manager has not already approved that scope).
+ *  2. A manager with real direct reports who has no approval row → a pending row
+ *     is inserted.
+ */
+export async function reconcileManagerApprovals(runId: string): Promise<{ added: RunManager[] }> {
+  const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+  if (!run) return { added: [] };
+  // Don't disturb closed runs.
+  if (["approved", "overridden", "deadline_expired"].includes(run.status)) return { added: [] };
+
+  // 1. Re-sync stale entry manager assignments to current org structure, but never
+  //    move an entry away from a manager who already approved it.
+  await db.execute(sql`
+    UPDATE attendance_report_entries AS are
+    SET manager_id = e.manager_id
+    FROM admin_users e
+    WHERE are.run_id = ${runId}
+      AND are.user_id = e.id
+      AND e.manager_id IS NOT NULL
+      AND e.manager_id <> are.manager_id
+      AND NOT EXISTS (
+        SELECT 1 FROM attendance_report_manager_approvals ma
+        WHERE ma.run_id = ${runId}
+          AND ma.manager_id = are.manager_id
+          AND ma.status IN ('approved', 'overridden')
+      )
+  `);
+
+  // 2. Resolve the authoritative manager set and find which ones lack an approval row.
+  const orgManagerIds = await resolveReportManagerIds(run.year, run.month);
+  const entryManagerRows = (await db.execute(sql`
+    SELECT DISTINCT manager_id AS id FROM attendance_report_entries
+    WHERE run_id = ${runId} AND manager_id IS NOT NULL
+  `)).rows as any[];
+  const wantedIds = [...new Set([...orgManagerIds, ...entryManagerRows.map(r => r.id).filter(Boolean)])];
+
+  if (wantedIds.length === 0) return { added: [] };
+
+  const existing = (await db.execute(sql`
+    SELECT manager_id FROM attendance_report_manager_approvals WHERE run_id = ${runId}
+  `)).rows as any[];
+  const existingIds = new Set(existing.map(r => r.manager_id));
+  const newIds = wantedIds.filter(id => !existingIds.has(id));
+  if (newIds.length === 0) return { added: [] };
+
+  for (const managerId of newIds) {
+    await db.execute(sql`
+      INSERT INTO attendance_report_manager_approvals (run_id, manager_id, status)
+      SELECT ${runId}, ${managerId}, 'pending'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM attendance_report_manager_approvals
+        WHERE run_id = ${runId} AND manager_id = ${managerId}
+      )
+    `);
+  }
+
+  const added = await db
+    .select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+    .from(adminUsers)
+    .where(and(inArray(adminUsers.id, newIds), eq(adminUsers.isActive, true)));
+
+  return { added: added as RunManager[] };
+}
+
+/**
+ * Sends the review-and-approve email + in-app notification to the given managers
+ * for a run. Uses the canonical portal deep-link so the link actually opens the
+ * approval screen. Email/storage are imported lazily to avoid module cycles.
+ */
+export async function notifyManagersForRun(
+  runId: string,
+  managers: RunManager[],
+  opts: { reminder?: boolean } = {},
+): Promise<void> {
+  if (managers.length === 0) return;
+  const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+  if (!run) return;
+
+  const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
+  const deadlineAt = run.deadline_at ? new Date(run.deadline_at) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const approvalUrl = attendanceApprovalUrl();
+
+  const { sendAttendanceApprovalRequestEmail } = await import("./email");
+  const { storage } = await import("./storage");
+
+  let notificationsEnabled = false;
+  try {
+    const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+    notificationsEnabled = !!flags?.notifications_enabled;
+  } catch { /* notifications best-effort */ }
+
+  for (const mgr of managers) {
+    if (!mgr.email) continue;
+    sendAttendanceApprovalRequestEmail({
+      to: mgr.email,
+      managerName: `${mgr.firstName || ""} ${mgr.lastName || ""}`.trim() || mgr.email,
+      month: monthName,
+      year: run.year,
+      deadlineAt,
+      approvalUrl,
+      policyType: opts.reminder ? "attendance_approval_reminder" : "attendance_approval_request",
+    }).catch(console.error);
+
+    if (notificationsEnabled) {
+      await storage.createNotification({
+        userId: mgr.id,
+        title: opts.reminder ? "Reminder: Attendance Approval Required" : "Attendance Approval Required",
+        message: `Your team's attendance report for ${monthName} ${run.year} is ready for review. Please approve before the deadline.`,
+        type: "action",
+      }).catch(console.error);
+    }
+  }
+}
+
+/**
+ * Single entry point used by all schedulers/hooks: ensure a run exists for the
+ * given month/year and that every manager with real direct reports has been
+ * notified. Creating notifies the full seeded set; an existing run reconciles and
+ * notifies only newly-added managers (no duplicate pings).
+ */
+export async function ensureRunForMonthAndNotify(
+  month: number,
+  year: number,
+  createdBy?: string,
+): Promise<{ created: boolean; runId: string; notified: number }> {
+  const existing = (await db.execute(sql`
+    SELECT id FROM attendance_report_runs WHERE month = ${month} AND year = ${year} LIMIT 1
+  `)).rows as any[];
+
+  if (existing.length === 0) {
+    const { runId, managerIds } = await generateAttendanceReportRun(month, year, createdBy);
+    let managers: RunManager[] = [];
+    if (managerIds.length > 0) {
+      managers = (await db
+        .select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+        .from(adminUsers)
+        .where(and(inArray(adminUsers.id, managerIds), eq(adminUsers.isActive, true)))) as RunManager[];
+      await notifyManagersForRun(runId, managers);
+    }
+    return { created: true, runId, notified: managers.length };
+  }
+
+  const runId = existing[0].id;
+  const { added } = await reconcileManagerApprovals(runId);
+  if (added.length > 0) await notifyManagersForRun(runId, added);
+  return { created: false, runId, notified: added.length };
+}
+
 // Throttle for per-request auto-create check
 let lastAutoCreateCheck = 0;
 const AUTO_CREATE_THROTTLE_MS = 30 * 60 * 1000;
 
-export async function checkAndAutoCreateRun(forceNotify = false): Promise<{ created: boolean; runId?: string; managerIds?: string[] }> {
+export async function checkAndAutoCreateRun(_forceNotify = false): Promise<{ created: boolean; runId?: string; managerIds?: string[] }> {
   try {
     const { day, month, year } = getIstDate();
     if (day !== 1) return { created: false };
@@ -185,14 +381,13 @@ export async function checkAndAutoCreateRun(forceNotify = false): Promise<{ crea
     let prevYear = year;
     if (prevMonth === 0) { prevMonth = 12; prevYear = year - 1; }
 
-    const existing = await db.execute(sql`
-      SELECT id FROM attendance_report_runs WHERE month = ${prevMonth} AND year = ${prevYear} LIMIT 1
-    `);
-    if ((existing.rows as any[]).length > 0) return { created: false };
-
-    const { runId, managerIds } = await generateAttendanceReportRun(prevMonth, prevYear);
-    console.log(`[attendance-report] Auto-created attendance report run for ${prevMonth}/${prevYear}: ${runId}`);
-    return { created: true, runId, managerIds, month: prevMonth, year: prevYear } as any;
+    // Delegate to the shared ensure path so a run created here also notifies
+    // managers (and reconciles missing ones), rather than silently creating it.
+    const result = await ensureRunForMonthAndNotify(prevMonth, prevYear);
+    if (result.created) {
+      console.log(`[attendance-report] Auto-created attendance report run for ${prevMonth}/${prevYear}: ${result.runId}`);
+    }
+    return { created: result.created, runId: result.runId, month: prevMonth, year: prevYear } as any;
   } catch (err) {
     console.error("[attendance-report] Auto-create run failed:", err);
     return { created: false };

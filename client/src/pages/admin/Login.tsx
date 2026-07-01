@@ -24,9 +24,20 @@ export default function AdminLogin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [totpError, setTotpError] = useState("");
 
+  // Resolve a safe post-login destination from ?next=. Only allow same-origin
+  // app paths (single leading "/", not "//" which would be protocol-relative) so
+  // the attendance email deep-link survives login. Defaults to /admin.
+  const getNextDestination = (): string => {
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    } catch {}
+    return "/admin";
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
-      setLocation("/admin");
+      setLocation(getNextDestination());
     }
   }, [isAuthenticated, setLocation]);
 
@@ -68,7 +79,7 @@ export default function AdminLogin() {
       }
 
       queryClient.setQueryData(["/api/auth/me"], data);
-      setLocation("/admin");
+      setLocation(getNextDestination());
     } catch (error: any) {
       const message = error?.message || "Login failed. Please try again.";
       if (showTotpStep) {

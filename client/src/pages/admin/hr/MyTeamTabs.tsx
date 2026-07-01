@@ -44,7 +44,12 @@ export default function MyTeamTabs() {
   }, [search]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) setLocation("/admin/login");
+    if (!authLoading && !isAuthenticated) {
+      // Preserve the deep-link (path + query, e.g. ?tab=attendance-approval) so the
+      // email "Review & Approve" link lands on the approval screen after login.
+      const dest = `${window.location.pathname}${window.location.search}`;
+      setLocation(`/admin/login?next=${encodeURIComponent(dest)}`);
+    }
   }, [authLoading, isAuthenticated, setLocation]);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1054,6 +1054,21 @@ export function SalaryReportsContent() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const attNotifyMissedMutation = useMutation({
+    mutationFn: (runId: string) =>
+      apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/notify-missed`, {}),
+    onSuccess: async (res: any) => {
+      const data = await res.json().catch(() => ({ notified: 0 }));
+      toast({
+        title: data.notified > 0 ? `Notified ${data.notified} manager(s)` : "All managers already notified",
+        description: data.notified > 0 ? (data.managers || []).map((m: any) => m.name).join(", ") : "No missing reporting managers were found for this run.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const editReviewMutation = useMutation({
     mutationFn: ({ editId, action, rejectionNote }: { editId: string; action: string; rejectionNote?: string }) =>
       apiRequest("PATCH", `/api/hr/attendance-report/edits/${editId}/review`, { action, rejectionNote }),
@@ -1251,6 +1266,18 @@ export function SalaryReportsContent() {
               >
                 {showAttApprovalPanel ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
                 Manage Approvals
+              </Button>
+            )}
+            {attStatus.exists && !attStatus.approved && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => attStatus.runId && attNotifyMissedMutation.mutate(attStatus.runId)}
+                disabled={attNotifyMissedMutation.isPending || !attStatus.runId}
+                data-testid="button-notify-missed-managers"
+              >
+                {attNotifyMissedMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <BellRing className="h-4 w-4 mr-1" />}
+                Notify Missed Managers
               </Button>
             )}
             {attStatus.exists && !attStatus.approved && (

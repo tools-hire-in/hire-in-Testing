@@ -3,9 +3,14 @@ import { db } from "./db";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { adminUsers } from "@shared/schema";
 import { storage } from "./storage";
-import { generateAttendanceReportRun, throttledAutoCreateCheck } from "./attendanceReport";
+import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, notifyManagersForRun } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
+import { getPortalBaseUrl, attendanceApprovalUrl } from "./portalUrl";
 import { isRoleAllowed } from "@shared/accessControl";
+
+// Throttle the per-request safety-net so it runs at most once per 30 min.
+let lastEnsureCheck = 0;
+const ENSURE_THROTTLE_MS = 30 * 60 * 1000;
 
 function requireAuth(req: Request, res: Response, next: any) {
   if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -103,7 +108,7 @@ async function sendApprovalCompleteNotification(runId: string, month: number, ye
         month: monthName,
         year,
         overridden,
-        salaryRunUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/reports`,
+        salaryRunUrl: `${getPortalBaseUrl()}/admin/hr/reports`,
         entrySummary,
       }).catch(console.error);
     }
@@ -157,34 +162,27 @@ function isDeadlinePassed(deadlineAt: string | null): boolean {
 
 export function registerAttendanceReportRoutes(app: Express) {
 
-  // Per-authenticated-request auto-create hook (throttled to once per 30 min)
-  // Fires on any /api/hr request to catch missed cron windows
+  // Per-authenticated-request safety-net hook (throttled to once per 30 min).
+  // Fires on any /api/hr request to self-heal open runs: re-syncs each open run to
+  // the current org structure and notifies any managers (e.g. Shafique) who were
+  // missing from the approval list. This catches both missed cron windows and
+  // managers added/changed after the run was generated.
   app.use("/api/hr", (req: Request, _res, next) => {
     if (req.session?.userId) {
-      throttledAutoCreateCheck().then(async result => {
-        if (result.created && result.runId && result.managerIds && result.managerIds.length > 0) {
-          const { runId, managerIds, month, year } = result as any;
-          const monthName = new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long" });
-          const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          const managers = await db.select({
-            id: adminUsers.id, email: adminUsers.email,
-            firstName: adminUsers.firstName, lastName: adminUsers.lastName,
-          }).from(adminUsers).where(inArray(adminUsers.id, managerIds));
-          for (const mgr of managers) {
-            sendAttendanceApprovalRequestEmail({
-              to: mgr.email,
-              managerName: `${mgr.firstName} ${mgr.lastName}`,
-              month: monthName, year, deadlineAt,
-              approvalUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/my-team?tab=attendance-approval`,
-            }).catch(console.error);
+      const now = Date.now();
+      if (now - lastEnsureCheck >= ENSURE_THROTTLE_MS) {
+        lastEnsureCheck = now;
+        (async () => {
+          const openRuns = (await db.execute(sql`
+            SELECT id FROM attendance_report_runs
+            WHERE status NOT IN ('approved', 'overridden', 'deadline_expired')
+          `)).rows as any[];
+          for (const r of openRuns) {
+            const { added } = await reconcileManagerApprovals(r.id);
+            if (added.length > 0) await notifyManagersForRun(r.id, added);
           }
-          await notifyUsers(managerIds, {
-            title: "Attendance Approval Required",
-            message: `Your team's attendance report for ${monthName} ${year} is ready for review. Please approve within 24 hours.`,
-            type: "action",
-          });
-        }
-      }).catch(err => console.error("[attendance-report] Per-request auto-create failed:", err));
+        })().catch(err => console.error("[attendance-report] Per-request reconcile failed:", err));
+      }
     }
     next();
   });
@@ -274,25 +272,7 @@ export function registerAttendanceReportRoutes(app: Express) {
           lastName: adminUsers.lastName,
         }).from(adminUsers).where(inArray(adminUsers.id, managerIds));
 
-        const monthName = new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long" });
-        const deadlineAt = run.deadline_at ? new Date(run.deadline_at) : new Date(Date.now() + 86400000);
-
-        for (const mgr of managers) {
-          sendAttendanceApprovalRequestEmail({
-            to: mgr.email,
-            managerName: `${mgr.firstName} ${mgr.lastName}`,
-            month: monthName,
-            year,
-            deadlineAt,
-            approvalUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/my-team?tab=attendance-approval`,
-          }).catch(console.error);
-        }
-
-        await notifyUsers(managerIds, {
-          title: "Attendance Approval Required",
-          message: `Your team's attendance report for ${monthName} ${year} is ready for review. Please approve within 24 hours.`,
-          type: "action",
-        });
+        await notifyManagersForRun(runId, managers as any);
       }
 
       // Audit log the run creation
@@ -306,6 +286,33 @@ export function registerAttendanceReportRoutes(app: Express) {
     } catch (error) {
       console.error("Generate attendance report run error:", error);
       res.status(500).json({ error: "Failed to generate attendance report run" });
+    }
+  });
+
+  // Re-sync an existing run to the current org structure and notify any managers
+  // who were missed (e.g. a reporting manager who never received the request).
+  app.post("/api/hr/attendance-report/runs/:id/notify-missed", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const runId = req.params.id;
+      const [run] = (await db.execute(sql`SELECT id, status FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+      if (!run) return res.status(404).json({ error: "Run not found" });
+
+      const { added } = await reconcileManagerApprovals(runId);
+      if (added.length > 0) await notifyManagersForRun(runId, added);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "attendance_report_notify_missed",
+        changes: { runId, notified: added.map(m => m.id) },
+      });
+
+      res.json({
+        notified: added.length,
+        managers: added.map(m => ({ id: m.id, name: `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email })),
+      });
+    } catch (error) {
+      console.error("Notify-missed managers error:", error);
+      res.status(500).json({ error: "Failed to notify missed managers" });
     }
   });
 
@@ -502,7 +509,7 @@ export function registerAttendanceReportRoutes(app: Express) {
           month: monthName,
           year: run.year,
           correctionCount: editsCreated,
-          reviewUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/reports?tab=attendance-approvals`,
+          reviewUrl: `${getPortalBaseUrl()}/admin/hr/reports?tab=attendance-approvals`,
         }).catch(console.error);
 
         await notifyUsers(hrIds, {
@@ -697,7 +704,7 @@ export function registerAttendanceReportRoutes(app: Express) {
           toEmails: hrUsers.map(u => u.email),
           month: monthName,
           year: run.year,
-          overrideUrl: `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/reports?tab=attendance-approvals`,
+          overrideUrl: `${getPortalBaseUrl()}/admin/hr/reports?tab=attendance-approvals`,
         }).catch(console.error);
 
         await notifyUsers(hrUsers.map(u => u.id), {
