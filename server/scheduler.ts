@@ -285,9 +285,7 @@ export function startScheduler() {
       }
 
       const monthName = new Date(remindYear, remindMonth - 1, 1).toLocaleString("en-US", { month: "long" });
-      const portalUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.APP_URL || "https://hire-in.com");
+      const portalUrl = getPortalBaseUrl();
 
       const result = await sendSalaryReportApprovalReminder({
         to: toEmails,
@@ -749,7 +747,7 @@ export function startScheduler() {
       }
 
       const { sendManagerRegularizationDigestEmail } = await import("./email");
-      const reviewUrl = `${process.env.APP_URL || "https://hire-in.com"}/admin/hr/regularizations`;
+      const reviewUrl = `${getPortalBaseUrl()}/admin/hr/regularizations`;
 
       for (const [managerId, requests] of byManager) {
         const manager = await storage.getAdminUser(managerId);
@@ -1223,10 +1221,7 @@ export function startScheduler() {
       let offerReminders = 0;
       for (const letter of pendingOffers) {
         try {
-          const baseUrl = process.env.REPL_SLUG
-            ? `https://${process.env.REPL_SLUG}.replit.app`
-            : "https://hire-in.com";
-          const acceptUrl = `${baseUrl}/onboard/${letter.token}`;
+          const acceptUrl = `${getPortalBaseUrl()}/onboard/${letter.token}`;
           const expiresAt = new Date(letter.expiresAt);
           const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           const ccList = letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];
@@ -1263,10 +1258,7 @@ export function startScheduler() {
       let addendumReminders = 0;
       for (const addendum of pendingAddendums) {
         try {
-          const baseUrl = process.env.REPL_SLUG
-            ? `https://${process.env.REPL_SLUG}.replit.app`
-            : "https://hire-in.com";
-          const acceptUrl = `${baseUrl}/addendum/${addendum.token}`;
+          const acceptUrl = `${getPortalBaseUrl()}/addendum/${addendum.token}`;
           const expiresAt = new Date(addendum.expiresAt!);
           const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           const ccList = addendum.ccEmails ? addendum.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : [];

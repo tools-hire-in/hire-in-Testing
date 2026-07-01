@@ -12,7 +12,11 @@
 export function getPortalBaseUrl(): string {
   const raw =
     process.env.APP_URL ||
-    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "") ||
+    // Only use REPLIT_DEV_DOMAIN in dev — Replit also injects it in production,
+    // so we must skip it when REPLIT_DEPLOYMENT is "1".
+    (process.env.REPLIT_DEPLOYMENT !== "1" && process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "") ||
     process.env.BASE_URL ||
     "https://employee.hire-in.com";
   return raw.replace(/\/+$/, "");

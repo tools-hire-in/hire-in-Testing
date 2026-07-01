@@ -1,5 +1,6 @@
 // SendGrid email service
 import sgMail from '@sendgrid/mail';
+import { getPortalBaseUrl } from "./portalUrl";
 
 const FROM_EMAIL = 'alina.carter@hire-in.com'; // NOTE: alina.carter@hire-in.com must be a verified sender in SendGrid (domain or single-sender verification) for emails to deliver successfully.
 
@@ -2110,8 +2111,8 @@ export async function sendCheckInReminderEmail(options: {
 // communications hold/auto policy and are logged. Links use the same
 // hire-in.com base as the rest of this module.
 
-const PROBATION_GUIDE_URL = "https://hire-in.com/admin/probation-guide";
-const PROBATION_CHECKINS_URL = "https://hire-in.com/admin/performance/check-ins";
+const PROBATION_GUIDE_URL = () => `${getPortalBaseUrl()}/admin/probation-guide`;
+const PROBATION_CHECKINS_URL = () => `${getPortalBaseUrl()}/admin/performance/check-ins`;
 
 function probationEmailShell(heading: string, accent: string, bodyHtml: string): string {
   return `
@@ -2169,7 +2170,7 @@ function planEmailMeta(planType?: PlanCopyType): {
           "Complete the formal milestone scorecards at Day 30, 60 and 90.",
           "Log notes/evidence at every check-in and record the final outcome.",
         ],
-        guideUrl: PROBATION_GUIDE_URL,
+        guideUrl: PROBATION_GUIDE_URL(),
         guideLabel: "Read the Probation Guide",
       };
   }
@@ -2203,13 +2204,13 @@ export async function sendPlanManagerBriefingEmail(options: {
 ${cadenceHtml}
     </ul>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 10px;">Open Check-Ins</a>${guideButtonHtml}
+      <a href="${PROBATION_CHECKINS_URL()}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 10px;">Open Check-Ins</a>${guideButtonHtml}
     </div>`;
   return dispatchAutomatedEmail(`${options.planType ?? "probation"}_manager_briefing`, "plan:manager_briefing", {
     to: options.to,
     subject: `You own ${options.employeeName}'s ${meta.label}`,
     html: probationEmailShell(`${meta.label} assigned`, "#1F3A6E", body),
-    text: `Hi ${options.managerFirstName},\n\nYou are the accountable owner of the ${meta.noun} for ${options.employeeName} (${options.startDate} to ${options.endDate}, currently ${options.ackStatus}).\n\nAs the manager you must:\n${cadenceText}\n\nOpen Check-Ins: ${PROBATION_CHECKINS_URL}${guideText}${SIGNOFF_TEXT}`,
+    text: `Hi ${options.managerFirstName},\n\nYou are the accountable owner of the ${meta.noun} for ${options.employeeName} (${options.startDate} to ${options.endDate}, currently ${options.ackStatus}).\n\nAs the manager you must:\n${cadenceText}\n\nOpen Check-Ins: ${PROBATION_CHECKINS_URL()}${guideText}${SIGNOFF_TEXT}`,
   });
 }
 
@@ -2233,13 +2234,13 @@ export async function sendPlanOverdueReminderEmail(options: {
     </p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">Please complete it as soon as possible to keep the plan on track.</p>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Complete the Check-In</a>
+      <a href="${PROBATION_CHECKINS_URL()}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Complete the Check-In</a>
     </div>`;
   return dispatchAutomatedEmail(`${options.planType ?? "probation"}_overdue_reminder`, "scheduler:plan_escalation", {
     to: options.to,
     subject: `Overdue: ${options.employeeName}'s ${options.checkInLabel} ${planWord} check-in`,
     html: probationEmailShell(`${meta.label} check-in overdue`, "#b45309", body),
-    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} ${planWord} check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\nComplete it: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
+    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} ${planWord} check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\nComplete it: ${PROBATION_CHECKINS_URL()}${SIGNOFF_TEXT}`,
   });
 }
 
@@ -2262,13 +2263,13 @@ export async function sendPlanEscalationEmail(options: {
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">Owning manager: <strong>${options.managerName}</strong></p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">${options.detail}</p>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Review Check-Ins</a>
+      <a href="${PROBATION_CHECKINS_URL()}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Review Check-Ins</a>
     </div>`;
   return dispatchAutomatedEmail(`${options.planType ?? "probation"}_escalation`, "scheduler:plan_escalation", {
     to: options.to,
     subject: `${meta.label} escalation: ${options.employeeName}`,
     html: probationEmailShell(`${meta.label} escalation`, "#b91c1c", body),
-    text: `${meta.label} escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\nReview check-ins: ${PROBATION_CHECKINS_URL}${SIGNOFF_TEXT}`,
+    text: `${meta.label} escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\nReview check-ins: ${PROBATION_CHECKINS_URL()}${SIGNOFF_TEXT}`,
   });
 }
 
@@ -3044,13 +3045,13 @@ export async function sendWhatsNewEmail(options: {
   portalUrl?: string;
 }): Promise<{ sent: number; failed: number }> {
   const { client, fromEmail } = await getUncachableSendGridClient();
-  const portalUrl = options.portalUrl || "https://hire-in.com/admin/hr";
+  const portalUrl = options.portalUrl || `${getPortalBaseUrl()}/admin/hr`;
   let sent = 0;
   let failed = 0;
 
   const blockCards = options.content.blocks.map((block) => {
     const emoji = ICON_EMOJI[block.icon] || "✨";
-    const ctaUrl = block.cta_path.startsWith("http") ? block.cta_path : `https://hire-in.com${block.cta_path}`;
+    const ctaUrl = block.cta_path.startsWith("http") ? block.cta_path : `${getPortalBaseUrl()}${block.cta_path}`;
     return `
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin:0 0 16px;">
         <div style="display:flex;align-items:flex-start;gap:12px;">
@@ -3398,7 +3399,7 @@ export async function sendReleaseNotesEmail(options: {
   portalUrl?: string;
 }): Promise<{ sent: number; failed: number }> {
   const { client, fromEmail } = await getUncachableSendGridClient();
-  const portalUrl = options.portalUrl || "https://hire-in.com/admin/hr/settings";
+  const portalUrl = options.portalUrl || `${getPortalBaseUrl()}/admin/hr/settings`;
   let sent = 0;
   let failed = 0;
 
