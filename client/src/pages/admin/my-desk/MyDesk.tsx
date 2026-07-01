@@ -1,11 +1,12 @@
-import { useEffect, useMemo, lazy, Suspense } from "react";
+import { useEffect, useMemo, lazy, Suspense, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Lock, GraduationCap } from "lucide-react";
+import { Lock, Info, ChevronDown, CalendarCheck, Plus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useNewLook } from "@/hooks/use-new-look";
+import { Button } from "@/components/ui/button";
 import CommandCenter from "./CommandCenter";
 import CommandCenterV2 from "./CommandCenterV2";
 import MyRegularizations from "./MyRegularizations";
@@ -17,37 +18,21 @@ const HolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
 
 const TABS = [
   "time-card",
-  "grace",
   "leave-balance",
-  "apply-leave",
-  "leave-history",
-  "accrual",
   "leave-calendar",
-  "regularizations",
   "my-sops",
 ] as const;
 type Tab = typeof TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
-  "time-card": "Time Card",
-  "grace": "Grace Usage",
-  "leave-balance": "Leave Balance",
-  "apply-leave": "Apply Leave",
-  "leave-history": "Leave History",
-  "accrual": "Accrual",
-  "leave-calendar": "Leave Calendar",
-  "regularizations": "Regularizations",
+  "time-card": "Attendance",
+  "leave-balance": "Leaves",
+  "leave-calendar": "Holiday Calendar",
   "my-sops": "My SOPs",
 };
 
-// Retired (nested) params → new single-level destinations, for old deep-links.
-const LEGACY_TAB_MAP: Record<string, Tab> = {
-  "time-off": "leave-balance",
-  "leaves": "leave-balance",
-  "attendance": "time-card",
-  "holidays": "leave-calendar",
-};
-
+// Legacy tab slugs → new consolidated destinations.
+// Redirects run before render so activeTab never holds a retired slug.
 const GRACE_ROLES = ["hr", "admin", "super_admin", "manager"];
 
 function TabFallback() {
@@ -61,6 +46,81 @@ function TabFallback() {
   );
 }
 
+function SubTabStrip({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { key: string; label: string }[];
+  active: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 border-b border-border mb-5">
+      {tabs.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          data-testid={`subtab-${key}`}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            active === key
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AccrualInfoSection() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-5 rounded-lg border border-dashed border-border">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+        data-testid="button-accrual-info-toggle"
+      >
+        <span className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+          <Info className="h-4 w-4" />
+          How is my balance calculated?
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t pt-3 space-y-2 text-xs text-muted-foreground">
+          <p>
+            <strong className="text-foreground">Earned Leave (EL):</strong>{" "}
+            Accrues 1 day/month (2 days in January, May, September — bonus months). Max carry-forward: 45 days.
+            Balance beyond the cap lapses at year-end.
+          </p>
+          <p>
+            <strong className="text-foreground">Sick/Casual Leave (SL):</strong>{" "}
+            Accrues ~0.67 days/month. Entire unused balance lapses on 31 December each year.
+          </p>
+          <p>
+            <strong className="text-foreground">Emergency Leave (EML):</strong>{" "}
+            Up to 3 occurrences per year (bereavement, medical emergency, legal obligation). Not accrual-based.
+          </p>
+          <p>
+            <strong className="text-foreground">Comp-Off:</strong>{" "}
+            Granted by HR after approved comp-off work. Expires within 90 days of the approval date.
+          </p>
+          <p className="text-muted-foreground/70">
+            Accrual is credited on the 1st of each month for the prior month. Minimum hours worked in a month may
+            affect eligibility.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MyDesk() {
   const [, setLocation] = useLocation();
   const search = useSearch();
@@ -70,6 +130,7 @@ export default function MyDesk() {
 
   const canSeeGrace = GRACE_ROLES.includes(user?.role || "");
 
+  // Primary tab (sidebar-level)
   const activeTab: Tab | null = useMemo(() => {
     try {
       const tab = new URLSearchParams(search).get("tab");
@@ -78,33 +139,63 @@ export default function MyDesk() {
     return null;
   }, [search]);
 
-  // Normalize retired/nested deep-links to their new single-level destinations.
-  // e.g. ?tab=time-off → ?tab=leave-balance, ?tab=time-card&att=grace → ?tab=grace,
-  // and strip any leftover inner ?att= param.
+  // Secondary params for internal sub-tabs
+  const attSubTab = useMemo(() => {
+    try { return new URLSearchParams(search).get("att") || "time-card"; } catch { return "time-card"; }
+  }, [search]);
+
+  const lvSubTab = useMemo(() => {
+    try { return new URLSearchParams(search).get("lv") || "balance"; } catch { return "balance"; }
+  }, [search]);
+
+  // Redirect legacy / retired tab slugs to their new consolidated destinations.
   useEffect(() => {
     try {
       const sp = new URLSearchParams(search);
       const tab = sp.get("tab");
-      const att = sp.get("att");
-      let target: Tab | null = null;
-      if (tab === "time-card" && att === "grace") target = "grace";
-      else if (tab && LEGACY_TAB_MAP[tab]) target = LEGACY_TAB_MAP[tab];
-      if (target) {
-        setLocation(`/admin/my-desk?tab=${target}`);
-      } else if (att) {
-        sp.delete("att");
-        const qs = sp.toString();
-        setLocation(`/admin/my-desk${qs ? `?${qs}` : ""}`);
+
+      if (tab === "grace") {
+        setLocation("/admin/my-desk?tab=time-card&att=grace");
+        return;
+      }
+      if (tab === "regularizations") {
+        setLocation("/admin/my-desk?tab=time-card&att=corrections");
+        return;
+      }
+      if (tab === "apply-leave") {
+        setLocation("/admin/my-desk?tab=leave-balance&lv=apply");
+        return;
+      }
+      if (tab === "leave-history") {
+        setLocation("/admin/my-desk?tab=leave-balance&lv=history");
+        return;
+      }
+      if (tab === "accrual") {
+        setLocation("/admin/my-desk?tab=leave-balance");
+        return;
+      }
+      // Old single-word aliases
+      if (tab === "time-off" || tab === "leaves") {
+        setLocation("/admin/my-desk?tab=leave-balance");
+        return;
+      }
+      if (tab === "attendance") {
+        setLocation("/admin/my-desk?tab=time-card");
+        return;
+      }
+      if (tab === "holidays") {
+        setLocation("/admin/my-desk?tab=leave-calendar");
+        return;
       }
     } catch {}
   }, [search, setLocation]);
 
-  // Employees can't reach the Grace Usage view — bounce to Time Card.
+  // Employees can't reach Grace Usage — bounce to Time Card.
   useEffect(() => {
-    if (activeTab === "grace" && !canSeeGrace) {
+    if (activeTab === "time-card" && attSubTab === "grace" && !canSeeGrace) {
       setLocation("/admin/my-desk?tab=time-card");
     }
-  }, [activeTab, canSeeGrace, setLocation]);
+  }, [activeTab, attSubTab, canSeeGrace, setLocation]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -137,12 +228,28 @@ export default function MyDesk() {
 
   if (authLoading || !isAuthenticated) return null;
 
+  // Attendance internal sub-tabs
+  const attTabs = [
+    { key: "time-card", label: "Time Card" },
+    { key: "corrections", label: "Corrections" },
+    ...(canSeeGrace ? [{ key: "grace", label: "Grace Usage" }] : []),
+  ];
+
+  // Leaves internal sub-tabs (Balance + History only in the strip; Apply is via button)
+  const lvTabs = [
+    { key: "balance", label: "Balance" },
+    { key: "history", label: "History" },
+  ];
+
+  const setAttTab = (key: string) => setLocation(`/admin/my-desk?tab=time-card&att=${key}`);
+  const setLvTab = (key: string) => {
+    if (key === "balance") setLocation("/admin/my-desk?tab=leave-balance");
+    else setLocation(`/admin/my-desk?tab=leave-balance&lv=${key}`);
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-4 v2-surface">
-        {/* Page header — only on the default Dashboard view; sub-tabs render their own
-            headers. In the new look CommandCenterV2 renders its own hero, so the plain
-            title would be redundant — suppress it there. */}
         {activeTab === null && !newLook && (
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-mydesk-title">My Desk</h1>
@@ -150,59 +257,101 @@ export default function MyDesk() {
           </div>
         )}
 
-        {/* Soft-enforcement SOP coaching nudge (Task #662) — shown on the dashboard
-            for users in the rollout pilot with un-acknowledged operational SOPs. */}
         {activeTab === null && <SopCoachingBanner />}
 
-        {/* Content driven by sidebar sub-nav */}
         <div>
           {activeTab === null && (newLook ? <CommandCenterV2 /> : <CommandCenter />)}
 
+          {/* ── ATTENDANCE (time-card) ── */}
           {activeTab === "time-card" && !isComplianceLocked && (
-            <Suspense fallback={<TabFallback />}>
-              <Attendance view="attendance" />
-            </Suspense>
+            <div>
+              <SubTabStrip
+                tabs={attTabs}
+                active={attSubTab}
+                onChange={setAttTab}
+              />
+              {(attSubTab === "time-card" || attSubTab === null) && (
+                <Suspense fallback={<TabFallback />}>
+                  <Attendance view="attendance" />
+                </Suspense>
+              )}
+              {attSubTab === "corrections" && <MyRegularizations />}
+              {attSubTab === "grace" && canSeeGrace && (
+                <Suspense fallback={<TabFallback />}>
+                  <Attendance view="grace" />
+                </Suspense>
+              )}
+            </div>
           )}
-          {activeTab === "grace" && !isComplianceLocked && canSeeGrace && (
-            <Suspense fallback={<TabFallback />}>
-              <Attendance view="grace" />
-            </Suspense>
-          )}
+
+          {/* ── LEAVES (leave-balance) ── */}
           {activeTab === "leave-balance" && !isComplianceLocked && (
-            <Suspense fallback={<TabFallback />}>
-              <LeaveManagement view="balance" />
-            </Suspense>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <SubTabStrip
+                  tabs={lvTabs}
+                  active={lvSubTab === "apply" ? "balance" : lvSubTab}
+                  onChange={setLvTab}
+                />
+                {lvSubTab !== "apply" && (
+                  <div className="mb-5 ml-3 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={() => setLocation("/admin/my-desk?tab=leave-balance&lv=apply")}
+                      data-testid="button-apply-leave-header"
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Apply Leave
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {(lvSubTab === "balance" || lvSubTab === null) && (
+                <>
+                  <Suspense fallback={<TabFallback />}>
+                    <LeaveManagement view="balance" />
+                  </Suspense>
+                  <AccrualInfoSection />
+                </>
+              )}
+              {lvSubTab === "history" && (
+                <Suspense fallback={<TabFallback />}>
+                  <LeaveManagement view="history" />
+                </Suspense>
+              )}
+              {lvSubTab === "apply" && (
+                <>
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setLocation("/admin/my-desk?tab=leave-balance")}
+                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                      data-testid="button-back-to-balance"
+                    >
+                      ← Back to Balance
+                    </button>
+                  </div>
+                  <Suspense fallback={<TabFallback />}>
+                    <LeaveManagement view="apply" />
+                  </Suspense>
+                </>
+              )}
+            </div>
           )}
-          {activeTab === "apply-leave" && !isComplianceLocked && (
-            <Suspense fallback={<TabFallback />}>
-              <LeaveManagement view="apply" />
-            </Suspense>
-          )}
-          {activeTab === "leave-history" && !isComplianceLocked && (
-            <Suspense fallback={<TabFallback />}>
-              <LeaveManagement view="history" />
-            </Suspense>
-          )}
-          {activeTab === "accrual" && !isComplianceLocked && (
-            <Suspense fallback={<TabFallback />}>
-              <LeaveManagement view="accrual" />
-            </Suspense>
-          )}
+
+          {/* ── HOLIDAY CALENDAR ── */}
           {activeTab === "leave-calendar" && !isComplianceLocked && (
             <Suspense fallback={<TabFallback />}>
               <HolidayCalendar />
             </Suspense>
           )}
-          {activeTab === "regularizations" && !isComplianceLocked && (
-            <MyRegularizations />
-          )}
-          {/* My SOPs stays reachable even when compliance-locked so the user can
-              complete and acknowledge the SOPs that drive the lock. */}
+
+          {/* ── MY SOPs — reachable even when compliance-locked ── */}
           {activeTab === "my-sops" && (
             <MySops />
           )}
 
-          {/* Locked tab interstitial */}
+          {/* ── Compliance-locked interstitial ── */}
           {activeTab !== null && activeTab !== "my-sops" && isComplianceLocked && (
             <div className="flex flex-col items-center justify-center py-16 gap-4" data-testid="mydesk-locked-state">
               <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">

@@ -128,14 +128,9 @@ interface AdminLayoutProps {
 
 const MY_DESK_SUB_ITEMS = [
   { label: "Dashboard", tab: null, icon: LayoutDashboard },
-  { label: "Time Card", tab: "time-card", icon: Clock },
-  { label: "Grace Usage", tab: "grace", icon: AlertTriangle, graceOnly: true },
-  { label: "Leave Balance", tab: "leave-balance", icon: Wallet },
-  { label: "Apply Leave", tab: "apply-leave", icon: CalendarOff },
-  { label: "Leave History", tab: "leave-history", icon: FileText },
-  { label: "Accrual", tab: "accrual", icon: BarChart3 },
-  { label: "Leave Calendar", tab: "leave-calendar", icon: CalendarDays },
-  { label: "Regularizations", tab: "regularizations", icon: ClipboardList },
+  { label: "Attendance", tab: "time-card", icon: Clock },
+  { label: "Leaves", tab: "leave-balance", icon: Wallet },
+  { label: "Holiday Calendar", tab: "leave-calendar", icon: CalendarDays },
   { label: "My SOPs", tab: "my-sops", icon: ShieldCheck, sopOnly: true },
 ] as const;
 
@@ -149,6 +144,7 @@ function CommandCenterSection({
   serviceDeskBadge,
   canSeeGrace,
   hasSopAccess,
+  myPendingRegCount,
 }: {
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
@@ -157,6 +153,7 @@ function CommandCenterSection({
   serviceDeskBadge: number;
   canSeeGrace: boolean;
   hasSopAccess: boolean;
+  myPendingRegCount: number;
 }) {
   const { open } = useSidebar();
 
@@ -257,10 +254,9 @@ function CommandCenterSection({
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* My Desk sub-nav — always visible */}
+            {/* My Desk sub-nav — 5 items */}
             <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
               {MY_DESK_SUB_ITEMS.filter((i) =>
-                (!("graceOnly" in i && i.graceOnly) || canSeeGrace) &&
                 (!("sopOnly" in i && i.sopOnly) || hasSopAccess)
               ).map(({ label, tab, icon: Icon }) => {
                 const href = tab ? `/admin/my-desk?tab=${tab}` : "/admin/my-desk";
@@ -268,6 +264,8 @@ function CommandCenterSection({
                 // My SOPs stays reachable even when compliance-locked so the user
                 // can complete/acknowledge the SOPs that drive the lock.
                 const locked = isComplianceLocked && tab !== null && tab !== "my-sops";
+                // Badge on the Attendance entry for the user's own pending corrections.
+                const attBadge = tab === "time-card" && myPendingRegCount > 0 ? myPendingRegCount : null;
 
                 if (locked) {
                   return (
@@ -295,7 +293,12 @@ function CommandCenterSection({
                     data-testid={`nav-mydesk-sub-${tab ?? "dashboard"}`}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span>{label}</span>
+                    <span className="flex-1">{label}</span>
+                    {attBadge && (
+                      <span className="ml-auto text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center text-white bg-orange-500">
+                        {attBadge > 9 ? "9+" : attBadge}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -1242,10 +1245,26 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const trainingReqBadge = (trainingRequestsCount?.actionable ?? 0);
 
-  // Pending regularization (attendance correction) requests for the team
+  // Pending regularization (attendance correction) requests for the team (badge in My Team sidebar)
   const pendingRegCount = usePendingRegularizationCount(
     !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "")
   );
+
+  // Current user's own pending correction requests — badge on Attendance sub-item in My Desk
+  const { data: myOwnRegData } = useQuery<{ status: string }[]>({
+    queryKey: ["/api/hr/attendance/regularization/my", "sidebar-badge"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/hr/attendance/regularization/my", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
+    refetchInterval: 60000,
+    staleTime: 60000,
+    enabled: !!user,
+  });
+  const myPendingRegCount = (myOwnRegData || []).filter((r) => r.status === "pending").length;
 
   // Pending offer letters awaiting approval (New Hire > Letters badge)
   const hasNewHireSidebarAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
@@ -1483,10 +1502,10 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       try {
         const tab = new URLSearchParams(window.location.search).get("tab");
         const tabLabels: Record<string, string> = {
-          "time-card": "Time Card",
-          "time-off": "Time Off",
-          "leave-calendar": "Leave Calendar",
-          "regularizations": "Regularizations",
+          "time-card": "Attendance",
+          "leave-balance": "Leaves",
+          "leave-calendar": "Holiday Calendar",
+          "my-sops": "My SOPs",
         };
         return tab && tabLabels[tab] ? `My Desk — ${tabLabels[tab]}` : "My Desk";
       } catch { return "My Desk"; }
@@ -1553,6 +1572,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 serviceDeskBadge={serviceDeskOpenCount ?? 0}
                 canSeeGrace={GRACE_ROLES.includes(user?.role || "")}
                 hasSopAccess={hasSopAccess}
+                myPendingRegCount={myPendingRegCount}
               />
 
               {/* PERSONAL section — visible to all */}
@@ -1889,9 +1909,9 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 {
                   num: 5,
                   icon: MessageCircle,
-                  label: "Attendance Issue? Raise a Ticket",
-                  href: "/admin/my-desk?tab=regularizations",
-                  desc: "If a punch was missed or recorded incorrectly, go to My Desk → Regularizations tab and raise a correction request. Your manager will review and approve it.",
+                  label: "Attendance Issue? Raise a Correction",
+                  href: "/admin/my-desk?tab=time-card&att=corrections",
+                  desc: "If a punch was missed or recorded incorrectly, go to My Desk → Attendance → Corrections tab and raise a correction request. Your manager will review and approve it.",
                   tip: undefined,
                   tipColor: "",
                   show: true,
