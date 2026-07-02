@@ -24,6 +24,8 @@ interface ContractPublicData {
   billingFrequency?: string;
   status: string;
   authCode?: string;
+  // Synthetic field set when the server returns 410 Gone
+  expired?: boolean;
 }
 
 type FlowStep = "consent" | "setup" | "sign";
@@ -54,6 +56,17 @@ export default function ContractSign() {
   const { data: contract, isLoading, error } = useQuery<ContractPublicData>({
     queryKey: [`/api/contracts/sign/${token}`],
     enabled: !!token,
+    queryFn: async () => {
+      const res = await fetch(`/api/contracts/sign/${token}`, { credentials: "include" });
+      if (res.status === 410) {
+        return { expired: true } as ContractPublicData;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load contract");
+      }
+      return res.json();
+    },
   });
 
   const signMutation = useMutation({
@@ -95,6 +108,23 @@ export default function ContractSign() {
 
   if (error || !contract) {
     return <ErrorPage message="This signing link is invalid or has expired." />;
+  }
+
+  if (contract.expired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <Card className="max-w-md w-full shadow-md">
+          <CardContent className="pt-8 pb-8 text-center space-y-3">
+            <Clock className="h-16 w-16 text-amber-500 mx-auto" />
+            <h2 className="text-xl font-bold" data-testid="text-contract-expired">Signing Link Expired</h2>
+            <p className="text-muted-foreground text-sm">
+              This contract signing link has expired (links are valid for 30 days after sending).
+              Please contact the team to request a new link.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   if (contract.status !== "sent" && !signed) {

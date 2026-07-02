@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, CheckCircle, XCircle, FileText, ArrowRight } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, FileText, ArrowRight, Clock } from "lucide-react";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
 import { EsignConsent } from "@/components/esign/EsignConsent";
 import { EsignSetup, type EsignSetupData } from "@/components/esign/EsignSetup";
@@ -181,11 +181,13 @@ type FlowStep = "consent" | "setup" | "sign";
 
 export default function AddendumAccept() {
   const [, params] = useRoute("/addendum/:token");
+  const [, setLocation] = useLocation();
   const token = params?.token;
 
   const [loading, setLoading] = useState(true);
   const [addendum, setAddendum] = useState<AddendumData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -211,9 +213,15 @@ export default function AddendumAccept() {
     if (!token) return;
     fetch(`/api/addendum/${token}`)
       .then(async (res) => {
+        if (res.status === 401) {
+          // Not logged in — redirect to login with ?next= so user returns here after auth
+          setLocation(`/admin/login?next=${encodeURIComponent(`/addendum/${token}`)}`);
+          return;
+        }
         if (!res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           setError(data.error || "Failed to load addendum");
+          setErrorStatus(data.status || (res.status === 410 ? "expired" : null));
           return;
         }
         const data = await res.json();
@@ -266,9 +274,19 @@ export default function AddendumAccept() {
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-8 pb-8 text-center">
-            <XCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-            <h2 className="text-xl font-bold mb-2" data-testid="text-addendum-error">{error}</h2>
-            <p className="text-muted-foreground">Please check the link or contact HR for assistance.</p>
+            {errorStatus === "expired" ? (
+              <>
+                <Clock className="h-16 w-16 mx-auto text-amber-500 mb-4" />
+                <h2 className="text-xl font-bold mb-2" data-testid="text-addendum-expired">Link Expired</h2>
+                <p className="text-muted-foreground">This addendum link has expired. Please contact HR to request a renewed link.</p>
+              </>
+            ) : (
+              <>
+                <XCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
+                <h2 className="text-xl font-bold mb-2" data-testid="text-addendum-error">{error}</h2>
+                <p className="text-muted-foreground">Please check the link or contact HR for assistance.</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

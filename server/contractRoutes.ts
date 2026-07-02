@@ -10,6 +10,7 @@ import { sendContractSigningEmail, sendContractCountersignEmail } from "./email"
 import { searchCeipalCandidates } from "./ceipalService";
 import { resolveRoles } from "@shared/accessControl";
 import { z } from "zod";
+import { tokenLookupLimiter } from "./rateLimits";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
@@ -432,10 +433,21 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Public: load contract signing page data (returns data for any valid token; status communicated in payload)
-  app.get("/api/contracts/sign/:token", async (req, res) => {
+  app.get("/api/contracts/sign/:token", tokenLookupLimiter, async (req, res) => {
     try {
       const contract = await dbStorage.getContractByToken(req.params.token);
       if (!contract) return res.status(404).json({ error: "Contract not found or link expired" });
+
+      // Soft expiry: contracts sent more than 30 days ago and still awaiting signature are treated as expired.
+      const EXPIRY_DAYS = 30;
+      if (contract.status === "sent" && contract.sentAt) {
+        const sentAt = new Date(contract.sentAt);
+        const expiryMs = EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+        if (Date.now() - sentAt.getTime() > expiryMs) {
+          return res.status(410).json({ error: "This signing link has expired. Please contact the team to request a new link.", status: "expired" });
+        }
+      }
+
       // Always return contract data so public page can render the correct status message
       res.json({
         id: contract.id,

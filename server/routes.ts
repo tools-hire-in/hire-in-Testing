@@ -87,6 +87,7 @@ import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { trainingSopLinks, roleTrainingRules } from "@shared/schema";
+import { tokenLookupLimiter, verifyLetterLimiter } from "./rateLimits";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -9180,7 +9181,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/onboard/:token", async (req: Request, res: Response) => {
+  app.get("/api/onboard/:token", tokenLookupLimiter, async (req: Request, res: Response) => {
     try {
       const letter = await storage.getOfferLetterByToken(req.params.token);
       if (!letter) {
@@ -9587,6 +9588,9 @@ export async function registerRoutes(
 
       const addendum = await storage.createAddendum({
         offerLetterId: offerLetter.id,
+        // Eagerly link to the employee record when available so the ownership
+        // check on GET /api/addendum/:token works for already-onboarded candidates.
+        forEmployeeId: offerLetter.resultingUserId || null,
         token,
         addendumType,
         status: "sent",
@@ -9785,17 +9789,39 @@ export async function registerRoutes(
     }
   });
 
-  // Public: View addendum by token
-  app.get("/api/addendum/:token", async (req: Request, res: Response) => {
+  // Auth-gated: View addendum by token — employees must be logged in
+  app.get("/api/addendum/:token", tokenLookupLimiter, async (req: Request, res: Response) => {
     try {
+      // Require portal login — addendums contain sensitive compensation/promotion data.
+      // Candidates who have no portal account should contact HR for a portal invite before signing.
+      if (!req.session?.userId) {
+        return res.status(401).json({ error: "Login required to view this addendum", loginRequired: true });
+      }
+
       const addendum = await storage.getAddendumByToken(req.params.token);
       if (!addendum) {
         return res.status(404).json({ error: "Addendum not found" });
       }
 
+      // If the logged-in user is an employee (not HR/admin), verify strict ownership.
+      const sessionRole = req.session.role;
+      const isPrivilegedRole = ["super_admin", "admin", "hr", "operations", "manager"].includes(sessionRole || "");
+      if (!isPrivilegedRole) {
+        // Resolve the effective recipient: explicit forEmployeeId first, then
+        // fall back to the offer letter's resultingUserId (candidate who joined).
+        let effectiveEmployeeId = addendum.forEmployeeId;
+        if (!effectiveEmployeeId && addendum.offerLetterId) {
+          const offerLetterForAuth = await storage.getOfferLetter(addendum.offerLetterId);
+          effectiveEmployeeId = offerLetterForAuth?.resultingUserId ?? null;
+        }
+        if (!effectiveEmployeeId || effectiveEmployeeId !== req.session.userId) {
+          return res.status(403).json({ error: "You do not have permission to view this addendum" });
+        }
+      }
+
       if (addendum.expiresAt && new Date() > new Date(addendum.expiresAt) && addendum.status === "sent") {
         await storage.updateAddendumStatus(addendum.id, { status: "expired" as any });
-        return res.status(410).json({ error: "This addendum has expired", status: "expired" });
+        return res.status(410).json({ error: "This addendum has expired. Please contact HR for a renewed link.", status: "expired" });
       }
 
       let originalOfferDate: string | null = null;
@@ -9855,10 +9881,30 @@ export async function registerRoutes(
   // Public: Accept addendum
   app.post("/api/addendum/:token/accept", async (req: Request, res: Response) => {
     try {
+      // Require portal login — keeps the accept path consistent with the GET auth gate.
+      if (!req.session?.userId) {
+        return res.status(401).json({ error: "Login required to sign this addendum", loginRequired: true });
+      }
+
       const addendum = await storage.getAddendumByToken(req.params.token);
       if (!addendum) {
         return res.status(404).json({ error: "Addendum not found" });
       }
+
+      // Verify ownership for non-privileged users (same logic as GET route).
+      const acceptRole = req.session.role;
+      const acceptIsPrivileged = ["super_admin", "admin", "hr", "operations", "manager"].includes(acceptRole || "");
+      if (!acceptIsPrivileged) {
+        let effectiveId = addendum.forEmployeeId;
+        if (!effectiveId && addendum.offerLetterId) {
+          const ol = await storage.getOfferLetter(addendum.offerLetterId);
+          effectiveId = ol?.resultingUserId ?? null;
+        }
+        if (!effectiveId || effectiveId !== req.session.userId) {
+          return res.status(403).json({ error: "You do not have permission to sign this addendum" });
+        }
+      }
+
       if (addendum.status === "accepted" || addendum.status === "countersigned") {
         return res.status(400).json({ error: "This addendum has already been signed", status: addendum.status });
       }
@@ -18545,7 +18591,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/verify-letter", async (req, res) => {
+  app.get("/api/verify-letter", verifyLetterLimiter, async (req, res) => {
     try {
       const { ref, auth, documentType } = req.query;
       if (!ref || !auth) {
