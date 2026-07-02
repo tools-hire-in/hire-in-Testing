@@ -2817,17 +2817,18 @@ function AttendanceExceptionThresholdsSection() {
     tier1: number;
     tier2: number;
     tier3: number;
+    minExceptionShortfallMinutes: number;
   }>({
     queryKey: ["/api/attendance/settings"],
     queryFn: async () => {
       const res = await fetch("/api/attendance/settings", { credentials: "include" });
-      if (!res.ok) return { standardShiftHours: 9, tier1: 2, tier2: 5, tier3: 10 };
+      if (!res.ok) return { standardShiftHours: 9, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30 };
       return res.json();
     },
     enabled: isHrOrAbove,
   });
 
-  const [form, setForm] = useState({ standardShiftHours: "9", tier1: "2", tier2: "5", tier3: "10" });
+  const [form, setForm] = useState({ standardShiftHours: "9", tier1: "2", tier2: "5", tier3: "10", minExceptionShortfallMinutes: "30" });
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -2837,6 +2838,7 @@ function AttendanceExceptionThresholdsSection() {
         tier1: String(settings.tier1 ?? 2),
         tier2: String(settings.tier2 ?? 5),
         tier3: String(settings.tier3 ?? 10),
+        minExceptionShortfallMinutes: String(settings.minExceptionShortfallMinutes ?? 30),
       });
     }
   }, [settings]);
@@ -2848,6 +2850,7 @@ function AttendanceExceptionThresholdsSection() {
         tier1: parseInt(form.tier1),
         tier2: parseInt(form.tier2),
         tier3: parseInt(form.tier3),
+        minExceptionShortfallMinutes: parseInt(form.minExceptionShortfallMinutes),
       });
       if (!res.ok) throw new Error("Failed to save");
     },
@@ -2905,6 +2908,24 @@ function AttendanceExceptionThresholdsSection() {
                   />
                 ) : (
                   <p className="font-medium text-sm">{settings?.standardShiftHours ?? 9} hours</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="att-min-shortfall">Minimum Exception Shortfall (minutes)</Label>
+                <p className="text-xs text-muted-foreground">Shortfalls below this duration will not generate an exception (industry default: 30 min).</p>
+                {editing ? (
+                  <Input
+                    id="att-min-shortfall"
+                    type="number"
+                    min="0"
+                    max="480"
+                    step="5"
+                    value={form.minExceptionShortfallMinutes}
+                    onChange={(e) => setForm(f => ({ ...f, minExceptionShortfallMinutes: e.target.value }))}
+                    data-testid="input-min-exception-shortfall"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{settings?.minExceptionShortfallMinutes ?? 30} minutes</p>
                 )}
               </div>
             </div>

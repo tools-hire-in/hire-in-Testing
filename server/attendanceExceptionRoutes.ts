@@ -31,22 +31,25 @@ async function getAttendanceSettings(): Promise<{
   tier1: number;
   tier2: number;
   tier3: number;
+  minExceptionShortfallMinutes: number;
 }> {
   try {
-    const [h, t1, t2, t3] = await Promise.all([
+    const [h, t1, t2, t3, minShortfall] = await Promise.all([
       storage.getSystemSetting("standard_shift_hours"),
       storage.getSystemSetting("attendance_alert_tier1"),
       storage.getSystemSetting("attendance_alert_tier2"),
       storage.getSystemSetting("attendance_alert_tier3"),
+      storage.getSystemSetting("min_exception_shortfall_minutes"),
     ]);
     return {
       standardShiftHours: typeof h?.value === "number" ? h.value : 9.0,
       tier1: typeof t1?.value === "number" ? t1.value : 2,
       tier2: typeof t2?.value === "number" ? t2.value : 5,
       tier3: typeof t3?.value === "number" ? t3.value : 10,
+      minExceptionShortfallMinutes: typeof minShortfall?.value === "number" ? minShortfall.value : 30,
     };
   } catch {
-    return { standardShiftHours: 9.0, tier1: 2, tier2: 5, tier3: 10 };
+    return { standardShiftHours: 9.0, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30 };
   }
 }
 
@@ -610,7 +613,7 @@ export function registerAttendanceExceptionRoutes(app: Express) {
   // --- Attendance Settings (write, HR/admin only) ---
   app.put("/api/attendance/settings", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
     try {
-      const { standardShiftHours, tier1, tier2, tier3 } = req.body;
+      const { standardShiftHours, tier1, tier2, tier3, minExceptionShortfallMinutes } = req.body;
       const actorId = req.session.userId!;
 
       if (standardShiftHours !== undefined) {
@@ -632,6 +635,11 @@ export function registerAttendanceExceptionRoutes(app: Express) {
         const v = Number(tier3);
         if (isNaN(v) || v < 1) return res.status(400).json({ error: "tier3 must be >= 1" });
         await storage.upsertSystemSetting("attendance_alert_tier3", v, actorId);
+      }
+      if (minExceptionShortfallMinutes !== undefined) {
+        const v = Number(minExceptionShortfallMinutes);
+        if (isNaN(v) || v < 0 || v > 480) return res.status(400).json({ error: "minExceptionShortfallMinutes must be 0-480" });
+        await storage.upsertSystemSetting("min_exception_shortfall_minutes", v, actorId);
       }
 
       res.json({ success: true });

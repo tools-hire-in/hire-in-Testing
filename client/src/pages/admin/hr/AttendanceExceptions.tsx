@@ -217,7 +217,9 @@ export default function AttendanceExceptions({ view = "exceptions" }: { view?: "
                           </td>
                           <td className="py-2.5 px-3">
                             <p className="font-medium">{exc.workedHours.toFixed(1)}h</p>
-                            <p className="text-xs text-red-600">−{exc.shortfall.toFixed(1)}h short</p>
+                            {exc.shortfall > 0.05 && (
+                              <p className="text-xs text-red-600">−{Math.max(0, exc.shortfall).toFixed(1)}h short</p>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-muted-foreground text-xs">{exc.managerName || "—"}</td>
                           <td className="py-2.5 px-3">{statusBadge(exc.status)}</td>

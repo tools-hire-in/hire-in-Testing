@@ -2874,6 +2874,12 @@ async function runStartupTasks() {
         ('regularization_policy_version', '1')
       ON CONFLICT (key) DO NOTHING
     `);
+    // Seed minimum shortfall threshold (default 30 min; DO NOTHING so HR changes persist across restarts)
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('min_exception_shortfall_minutes', '30')
+      ON CONFLICT (key) DO NOTHING
+    `);
     log("Attendance regularization tables ensured");
   } catch (err) {
     console.error("Attendance regularization table migration error:", err);
@@ -3363,6 +3369,38 @@ async function runStartupTasks() {
     log("Access control matrix hydrated");
   } catch (err) {
     console.error("Access control hydration error (non-fatal):", err);
+  }
+
+  // ── One-time backfill: auto-resolve stale pending exceptions below the minimum shortfall threshold ──
+  // Cleans up zero-shortfall rows (floating-point artefacts like −0.0h) and any
+  // rows with shortfall ≤ current threshold that were created before this gate existed.
+  try {
+    const minShortfallSetting = await db.execute(sql`
+      SELECT value FROM system_settings WHERE key = 'min_exception_shortfall_minutes' LIMIT 1
+    `);
+    const minShortfallMinutes: number = (() => {
+      const raw = (minShortfallSetting.rows[0] as any)?.value;
+      if (typeof raw === "number") return raw;
+      if (typeof raw === "string") return parseFloat(raw) || 30;
+      return 30;
+    })();
+    const minShortfallHours = minShortfallMinutes / 60;
+
+    const backfillResult = await db.execute(sql`
+      UPDATE attendance
+      SET exception_status = 'approved_exception',
+          exception_comment = 'Auto-resolved: shortfall below minimum threshold',
+          exception_resolved_at = NOW()
+      WHERE exception_status = 'pending'
+        AND exception_standard_hours IS NOT NULL
+        AND (exception_standard_hours - COALESCE(total_hours, 0)) <= ${minShortfallHours}
+    `);
+    const affected = (backfillResult as any).rowCount ?? 0;
+    if (affected > 0) {
+      log(`Attendance exception backfill: auto-resolved ${affected} stale pending row(s) with shortfall ≤ ${minShortfallMinutes} min`);
+    }
+  } catch (err) {
+    console.error("Attendance exception backfill error (non-fatal):", err);
   }
 
   // Cron/scheduled jobs start only after schema is ensured so they query

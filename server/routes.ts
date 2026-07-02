@@ -3047,17 +3047,31 @@ export async function registerRoutes(
 
       // Auto-create attendance exception row when punch-out produces a short_day
       if (updatedStatus === "short_day") {
-        const stdHoursSetting = await storage.getSystemSetting("standard_shift_hours").catch(() => null);
+        const [stdHoursSetting, minShortfallSetting] = await Promise.all([
+          storage.getSystemSetting("standard_shift_hours").catch(() => null),
+          storage.getSystemSetting("min_exception_shortfall_minutes").catch(() => null),
+        ]);
         const standardHours = (stdHoursSetting?.value && typeof stdHoursSetting.value === "number")
           ? stdHoursSetting.value
           : 9.0;
-        createExceptionForShortDay(
-          existing.id,
-          userId,
-          currentUser?.managerId ?? null,
-          totalHoursNum,
-          standardHours,
-        ).catch((err: any) => console.error("[punch-out] createExceptionForShortDay failed:", err));
+        const minShortfallMinutes = (minShortfallSetting?.value && typeof minShortfallSetting.value === "number")
+          ? minShortfallSetting.value
+          : 30;
+        const shortfallHours = standardHours - totalHoursNum;
+        // Rounding guard: treat sub-0.05h as zero (floating-point artefact)
+        const effectiveShortfallHours = shortfallHours < 0.05 ? 0 : shortfallHours;
+        const shortfallMinutes = effectiveShortfallHours * 60;
+        if (shortfallMinutes > minShortfallMinutes) {
+          createExceptionForShortDay(
+            existing.id,
+            userId,
+            currentUser?.managerId ?? null,
+            totalHoursNum,
+            standardHours,
+          ).catch((err: any) => console.error("[punch-out] createExceptionForShortDay failed:", err));
+        } else {
+          console.log(`[punch-out] Skipping exception for ${userId}: shortfall ${shortfallMinutes.toFixed(1)}min ≤ threshold ${minShortfallMinutes}min`);
+        }
       }
 
       // Fire escalation tier check for short_day or late final status
