@@ -1213,6 +1213,11 @@ export const learningTracks = pgTable("learning_tracks", {
   createdBy: varchar("created_by").references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // SOP training catalog metadata (nullable — no migration risk to existing rows)
+  launchWave: varchar("launch_wave"),       // e.g. "Wave 0", "Wave 1"
+  sopCategory: varchar("sop_category"),     // e.g. "Foundation", "Staffing / TA Delivery"
+  trainingId: varchar("training_id"),       // external ID e.g. HIS-TRN-TA-001
+  audience: varchar("audience"),            // free-text audience description from seed
 });
 
 // Ordered sections inside a learning track
@@ -1346,6 +1351,32 @@ export const trainingExtensionRequests = pgTable("training_extension_requests", 
   resolverComment: text("resolver_comment"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// SOP ↔ training track link table (many-to-many via sopCode)
+export const trainingSopLinks = pgTable("training_sop_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackId: varchar("track_id").notNull().references(() => learningTracks.id, { onDelete: "cascade" }),
+  sopCode: text("sop_code").notNull(),
+  isGlobal: boolean("is_global").notNull().default(false), // true when sopCode = "ALL"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_training_sop_link_track_code").on(table.trackId, table.sopCode),
+]);
+
+// Role → training track mandate rules
+export const roleTrainingRules = pgTable("role_training_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleSlug: varchar("role_slug").notNull(),
+  department: varchar("department"),
+  trackId: varchar("track_id").notNull().references(() => learningTracks.id, { onDelete: "cascade" }),
+  isMandatory: boolean("is_mandatory").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTrainingSopLinkSchema = createInsertSchema(trainingSopLinks).omit({ id: true, createdAt: true });
+export const insertRoleTrainingRuleSchema = createInsertSchema(roleTrainingRules).omit({ id: true, createdAt: true });
+export type TrainingSopLink = typeof trainingSopLinks.$inferSelect;
+export type RoleTrainingRule = typeof roleTrainingRules.$inferSelect;
 
 // Insert schemas
 export const insertTrainingExtensionRequestSchema = createInsertSchema(trainingExtensionRequests).omit({ id: true, endorsedById: true, endorsedAt: true, endorserComment: true, resolvedById: true, resolvedAt: true, resolverComment: true, createdAt: true });

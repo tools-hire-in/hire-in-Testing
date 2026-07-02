@@ -675,11 +675,25 @@ function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue
 export default function MyTraining() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(() => {
+    try { return new URLSearchParams(window.location.search).get("track"); } catch { return null; }
+  });
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [trainingTypeFilter, setTrainingTypeFilter] = useState<"all" | "onboarding" | "sop">("all");
   const [showExtensionFor, setShowExtensionFor] = useState<string | null>(null);
   const [showExceptionFor, setShowExceptionFor] = useState<string | null>(null);
   const [showRequestsCard, setShowRequestsCard] = useState(false);
+
+  useEffect(() => {
+    const trackParam = new URLSearchParams(window.location.search).get("track");
+    if (trackParam) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("track");
+        window.history.replaceState({}, "", url.toString());
+      } catch {}
+    }
+  }, []);
 
   const { data: rayoStatus } = useQuery<{ enabled: boolean }>({
     queryKey: ["/api/rayo-academy/status"],
@@ -794,6 +808,14 @@ export default function MyTraining() {
   });
 
   const isLocked = !isLockExempt && complianceStatus?.locked === true;
+
+  const filteredAssignments = (assignments as any[]).filter((a: any) => {
+    if (trainingTypeFilter === "all") return true;
+    const hasSopMeta = !!(a.track?.sopCategory || a.track?.launchWave || a.track?.trainingId);
+    if (trainingTypeFilter === "sop") return hasSopMeta;
+    if (trainingTypeFilter === "onboarding") return !hasSopMeta;
+    return true;
+  });
 
   const now = new Date();
   const in3days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -983,8 +1005,31 @@ export default function MyTraining() {
           </Card>
         )}
 
+        {!isLoading && assignments.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap" data-testid="filter-training-type">
+            {[
+              { key: "all", label: "All" },
+              { key: "onboarding", label: "Onboarding" },
+              { key: "sop", label: "SOP Compliance" },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setTrainingTypeFilter(opt.key as "all" | "onboarding" | "sop")}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  trainingTypeFilter === opt.key
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-muted-foreground border-border hover:bg-muted"
+                }`}
+                data-testid={`filter-${opt.key}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assignments.map((a: any) => {
+          {filteredAssignments.map((a: any) => {
             const now = new Date();
             let status = a.status;
             if (status !== "completed" && a.dueDate && new Date(a.dueDate) < now) status = "overdue";
@@ -1015,10 +1060,20 @@ export default function MyTraining() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <CardTitle className="text-base leading-tight">{a.track?.title}</CardTitle>
-                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2 flex-wrap justify-end">
                         {a.fromRayo && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700" data-testid={`badge-rayo-${a.id}`}>
                             Rayo Academy
+                          </span>
+                        )}
+                        {a.track?.launchWave && !a.fromRayo && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700" data-testid={`badge-wave-${a.id}`}>
+                            {a.track.launchWave}
+                          </span>
+                        )}
+                        {a.track?.sopCategory && !a.fromRayo && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-100 text-violet-700" data-testid={`badge-sop-category-${a.id}`}>
+                            SOP
                           </span>
                         )}
                         {isDueSoon && (

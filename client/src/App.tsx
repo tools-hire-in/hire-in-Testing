@@ -99,6 +99,7 @@ const Communications = lazy(() => import("@/pages/admin/Communications"));
 const SOPLibrary = lazy(() => import("@/pages/admin/sops/SOPLibrary"));
 const SOPCompliance = lazy(() => import("@/pages/admin/sops/SOPCompliance"));
 const MySopReviews = lazy(() => import("@/pages/admin/sops/MySopReviews"));
+const TrainingCatalog = lazy(() => import("@/pages/admin/training/TrainingCatalog"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -237,6 +238,9 @@ function PublicRouter() {
       <Route path="/admin/sops/my-reviews">{() => <Suspense fallback={<AdminFallback />}><MySopReviews /></Suspense>}</Route>
       <Route path="/admin/sops">{() => <Suspense fallback={<AdminFallback />}><SOPLibrary /></Suspense>}</Route>
 
+      {/* Training Catalog */}
+      <Route path="/admin/training/catalog">{() => <Suspense fallback={<AdminFallback />}><TrainingCatalog /></Suspense>}</Route>
+
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>
       <Route path="/admin/hr/attendance">{() => <Redirect to="/admin/my-desk?tab=time-card" />}</Route>
@@ -365,6 +369,9 @@ function EmployeeRouter() {
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
       <Route path="/admin/sops/my-reviews">{() => <Suspense fallback={<AdminFallback />}><MySopReviews /></Suspense>}</Route>
       <Route path="/admin/sops">{() => <Suspense fallback={<AdminFallback />}><SOPLibrary /></Suspense>}</Route>
+
+      {/* Training Catalog */}
+      <Route path="/admin/training/catalog">{() => <Suspense fallback={<AdminFallback />}><TrainingCatalog /></Suspense>}</Route>
 
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
       <Route path="/admin/hr/dashboard">{() => <Redirect to="/admin/my-desk" />}</Route>

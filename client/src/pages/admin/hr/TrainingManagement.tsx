@@ -35,6 +35,12 @@ export default function TrainingManagement() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTrackId, setAssignTrackId] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [sopCatalogImporting, setSopCatalogImporting] = useState(false);
+  const [showBulkRoleModal, setShowBulkRoleModal] = useState(false);
+  const [bulkRoleTrackId, setBulkRoleTrackId] = useState<string>("");
+  const [bulkRoleSlug, setBulkRoleSlug] = useState<string>("");
+  const [bulkRoleDepartment, setBulkRoleDepartment] = useState<string>("");
+  const [bulkRoleDueDate, setBulkRoleDueDate] = useState<string>("");
   const [showPreview, setShowPreview] = useState(false);
   const [showExtensions, setShowExtensions] = useState(false);
   const [showEndorsements, setShowEndorsements] = useState(false);
@@ -127,6 +133,40 @@ export default function TrainingManagement() {
       }
     },
     enabled: isEndorser,
+  });
+
+  const { data: catalogTracks = [] } = useQuery<any[]>({
+    queryKey: ["/api/training/catalog"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/training/catalog", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
+    enabled: showBulkRoleModal,
+    staleTime: 60000,
+  });
+
+  const bulkAssignByRole = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/training/bulk-assign-by-role", {
+        trackId: bulkRoleTrackId,
+        roleSlug: bulkRoleSlug,
+        department: bulkRoleDepartment || undefined,
+        dueDate: bulkRoleDueDate || undefined,
+      }),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
+      setShowBulkRoleModal(false);
+      setBulkRoleTrackId("");
+      setBulkRoleSlug("");
+      setBulkRoleDepartment("");
+      setBulkRoleDueDate("");
+      toast({ title: `Assigned to ${data.assigned ?? 0} employee(s) · ${data.skipped ?? 0} already had it` });
+    },
+    onError: () => toast({ title: "Bulk assign failed", variant: "destructive" }),
   });
 
   const endorseExtension = useMutation({
@@ -332,6 +372,24 @@ export default function TrainingManagement() {
     onError: () => toast({ title: "Failed to assign track", variant: "destructive" }),
   });
 
+  const handleSopCatalogImport = async () => {
+    setSopCatalogImporting(true);
+    try {
+      const res = await apiRequest("POST", "/api/training/seed-import");
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
+      const parts: string[] = [];
+      if (data.tracksUpserted) parts.push(`${data.tracksUpserted} module(s) upserted`);
+      if (data.linksCreated) parts.push(`${data.linksCreated} SOP link(s) created`);
+      if (data.rulesCreated) parts.push(`${data.rulesCreated} role rule(s) created`);
+      toast({ title: parts.join(" · ") || "Catalog already up to date" });
+    } catch {
+      toast({ title: "Import failed", variant: "destructive" });
+    } finally {
+      setSopCatalogImporting(false);
+    }
+  };
+
   const handleSeed = async () => {
     setSeeding(true);
     try {
@@ -446,6 +504,18 @@ export default function TrainingManagement() {
                     {pendingExtensions.length}
                   </span>
                 )}
+              </Button>
+            )}
+            {["super_admin", "admin"].includes(user?.role || "") && (
+              <Button variant="outline" onClick={handleSopCatalogImport} disabled={sopCatalogImporting} data-testid="button-import-sop-catalog">
+                {sopCatalogImporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <BookOpen className="h-4 w-4 mr-2" />}
+                Import SOP Catalog
+              </Button>
+            )}
+            {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+              <Button variant="outline" onClick={() => setShowBulkRoleModal(true)} data-testid="button-bulk-assign-by-role">
+                <Users className="h-4 w-4 mr-2" />
+                Bulk Assign by Role
               </Button>
             )}
             {user?.role === "super_admin" && (
@@ -1421,6 +1491,83 @@ export default function TrainingManagement() {
                 Publish Track
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assign by Role Dialog */}
+      <Dialog open={showBulkRoleModal} onOpenChange={setShowBulkRoleModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Bulk Assign by Role
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>SOP Training Module</Label>
+              <Select value={bulkRoleTrackId} onValueChange={setBulkRoleTrackId}>
+                <SelectTrigger data-testid="select-bulk-role-track">
+                  <SelectValue placeholder={catalogTracks.length === 0 ? "Import catalog first…" : "Select a module"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalogTracks.map((t: any) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                      {t.launchWave && <span className="ml-1 text-muted-foreground text-xs">({t.launchWave})</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Target Role</Label>
+              <Select value={bulkRoleSlug} onValueChange={setBulkRoleSlug}>
+                <SelectTrigger data-testid="select-bulk-role-slug">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"].map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Department filter (optional)</Label>
+              <Input
+                value={bulkRoleDepartment}
+                onChange={e => setBulkRoleDepartment(e.target.value)}
+                placeholder="e.g. Engineering, Healthcare…"
+                className="h-9"
+                data-testid="input-bulk-role-department"
+              />
+              <p className="text-xs text-muted-foreground">Leave blank to assign all employees with the selected role.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Due Date (optional)</Label>
+              <input
+                type="date"
+                value={bulkRoleDueDate}
+                onChange={e => setBulkRoleDueDate(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                data-testid="input-bulk-role-due-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowBulkRoleModal(false); setBulkRoleTrackId(""); setBulkRoleSlug(""); setBulkRoleDepartment(""); setBulkRoleDueDate(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => bulkAssignByRole.mutate()}
+              disabled={bulkAssignByRole.isPending || !bulkRoleTrackId || !bulkRoleSlug}
+              data-testid="button-confirm-bulk-assign"
+            >
+              {bulkAssignByRole.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Assign to All {bulkRoleSlug || "…"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1467,6 +1467,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: ShieldCheck,
       roles: ["super_admin", "admin", "hr", "operations"],
     }] : []),
+    ...(hasHRAccess ? [{
+      href: "/admin/training/catalog",
+      label: "SOP Training Catalog",
+      icon: BookOpen,
+      roles: ["super_admin", "admin", "hr"],
+    }] : []),
     ...(hasFinanceAccess ? [{
       href: "/admin/finance",
       label: "Finance & Contracts",

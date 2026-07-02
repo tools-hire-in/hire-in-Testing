@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -418,11 +418,12 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
 
             <Tabs value={tab} onValueChange={setTab} className="mt-2">
-              <TabsList className={`grid ${data.code === "OPS-001" ? "grid-cols-6" : "grid-cols-5"} w-full`}>
+              <TabsList className={`grid ${data.code === "OPS-001" ? "grid-cols-7" : "grid-cols-6"} w-full`}>
                 <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
                 <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
                 <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
                 <TabsTrigger value="progress" data-testid="tab-progress">Team Progress</TabsTrigger>
+                <TabsTrigger value="training" data-testid="tab-training">Training</TabsTrigger>
                 <TabsTrigger value="audit" data-testid="tab-audit">Audit &amp; Findings</TabsTrigger>
                 {data.code === "OPS-001" && (
                   <TabsTrigger value="access" data-testid="tab-access-requests">Access Requests</TabsTrigger>
@@ -497,6 +498,10 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
               <TabsContent value="progress" className="mt-3">
                 <ProgressTab sopId={id} version={data.version} />
+              </TabsContent>
+
+              <TabsContent value="training" className="mt-3">
+                <SopTrainingTab sopCode={data.code} />
               </TabsContent>
 
               <TabsContent value="audit" className="mt-3">
@@ -708,6 +713,98 @@ function findingStatusVariant(s: string): "default" | "secondary" | "outline" | 
   if (s === "open") return "destructive";
   if (s === "in_progress") return "secondary";
   return "outline";
+}
+
+function SopTrainingTab({ sopCode }: { sopCode: string }) {
+  const { data: tracks = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/training/by-sop", sopCode],
+    queryFn: async () => {
+      const res = await fetch(`/api/training/by-sop/${encodeURIComponent(sopCode)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground py-6">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading training modules...
+      </div>
+    );
+  }
+
+  if (tracks.length === 0) {
+    return (
+      <div className="py-8 text-center text-muted-foreground">
+        <p className="font-medium text-sm">No training modules linked to this SOP</p>
+        <p className="text-xs mt-1">Import the SOP training catalog from Training Management to link modules.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {tracks.map((track: any) => {
+        const statusColors: Record<string, string> = {
+          not_assigned: "bg-gray-100 text-gray-600",
+          not_started: "bg-amber-100 text-amber-700",
+          in_progress: "bg-blue-100 text-blue-700",
+          completed: "bg-green-100 text-green-700",
+        };
+        return (
+          <div key={track.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-sop-training-${track.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium text-sm leading-tight">{track.title}</p>
+              <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[track.myStatus] || statusColors.not_assigned}`}>
+                {track.myStatus.replace("_", " ")}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {track.sopCategory && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{track.sopCategory}</span>
+              )}
+              {track.launchWave && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">{track.launchWave}</span>
+              )}
+              {track.trainingId && (
+                <span className="text-[10px] text-muted-foreground font-mono">{track.trainingId}</span>
+              )}
+            </div>
+            {track.audience && (
+              <p className="text-xs text-muted-foreground">Audience: {track.audience}</p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+              <span>{track.sectionCount} section{track.sectionCount !== 1 ? "s" : ""}</span>
+              <span>{track.totalAssignments} assigned · {track.completedAssignments} completed ({track.totalAssignments > 0 ? Math.round((track.completedAssignments / track.totalAssignments) * 100) : 0}%)</span>
+              {track.isGlobal && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold uppercase tracking-wide">
+                  Prerequisite
+                </span>
+              )}
+            </div>
+            {track.myAssignment?.id ? (
+              <a
+                href={`/admin/growth?tab=training&track=${track.myAssignment.id}`}
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
+                data-testid={`link-start-training-${track.id}`}
+              >
+                <Play className="h-3 w-3" />
+                {track.myStatus === "completed" ? "View certificate →" : track.myStatus === "in_progress" ? "Resume →" : "Start →"}
+              </a>
+            ) : (
+              <a
+                href="/admin/growth?tab=training"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+                data-testid={`link-view-training-${track.id}`}
+              >
+                <Play className="h-3 w-3" /> View in My Training →
+              </a>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function AuditFindingsTab({ sopId, canManage }: { sopId: string; canManage: boolean }) {

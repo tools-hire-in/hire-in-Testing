@@ -457,6 +457,66 @@ export default function TrainingProgress() {
             })}
           </div>
         )}
+
+        {/* Wave / Category breakdown — SOP training catalog tracks */}
+        {!isLoading && matrix.length > 0 && tracks.some((t: any) => t.launchWave || t.sopCategory) && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <GraduationCap className="h-5 w-5 text-indigo-600" />
+                SOP Training Catalog Breakdown
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {(() => {
+                  const sopTracks = tracks.filter((t: any) => t.launchWave || t.sopCategory);
+                  const waves = [...new Set(sopTracks.map((t: any) => t.launchWave).filter(Boolean))].sort() as string[];
+                  if (waves.length === 0) {
+                    const cats = [...new Set(sopTracks.map((t: any) => t.sopCategory).filter(Boolean))].sort() as string[];
+                    return cats.map((cat) => {
+                      const catTracks = sopTracks.filter((t: any) => t.sopCategory === cat);
+                      const total = matrix.reduce((s: number, r: any) => s + r.trackProgress.filter((p: any) => catTracks.some((t: any) => t.id === p.trackId)).length, 0);
+                      const done = matrix.reduce((s: number, r: any) => s + r.trackProgress.filter((p: any) => p.status === "completed" && catTracks.some((t: any) => t.id === p.trackId)).length, 0);
+                      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                      return (
+                        <div key={cat} className="space-y-1" data-testid={`wave-row-${cat}`}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium truncate max-w-xs">{cat}</span>
+                            <span className="text-muted-foreground shrink-0 ml-2">{done}/{total} · {pct}%</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    });
+                  }
+                  return waves.map((wave) => {
+                    const waveTracks = sopTracks.filter((t: any) => t.launchWave === wave);
+                    const total = matrix.reduce((s: number, r: any) => s + r.trackProgress.filter((p: any) => waveTracks.some((t: any) => t.id === p.trackId)).length, 0);
+                    const done = matrix.reduce((s: number, r: any) => s + r.trackProgress.filter((p: any) => p.status === "completed" && waveTracks.some((t: any) => t.id === p.trackId)).length, 0);
+                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    return (
+                      <div key={wave} className="space-y-1" data-testid={`wave-row-${wave}`}>
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">{wave}</span>
+                            <span className="text-muted-foreground text-xs">{waveTracks.length} module{waveTracks.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          <span className="text-muted-foreground shrink-0">{done}/{total} · {pct}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Employee Detail Modal */}

@@ -85,6 +85,8 @@ import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCredits
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
+import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
+import { trainingSopLinks, roleTrainingRules } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -12648,6 +12650,44 @@ export async function registerRoutes(
 
       const published = await storage.setSopLifecycleStatus(doc.id, "published", { effectiveDate: new Date().toISOString().slice(0, 10) });
 
+      // SOP retraining trigger — reset completed training assignments for linked tracks.
+      // This is a mandatory compliance step: errors propagate and fail the publish.
+      const links = await db.select({ trackId: trainingSopLinks.trackId })
+        .from(trainingSopLinks)
+        .where(eq(trainingSopLinks.sopCode, doc.code ?? ""));
+      if (links.length > 0) {
+        const trackIds = links.map((l) => l.trackId);
+        const affected = await db.select({ id: trackAssignments.id, userId: trackAssignments.userId, trackId: trackAssignments.trackId })
+          .from(trackAssignments)
+          .where(and(
+            inArray(trackAssignments.trackId, trackIds),
+            eq(trackAssignments.status, "completed"),
+          ));
+        if (affected.length > 0) {
+          await db.update(trackAssignments)
+            .set({ status: "not_started", completedAt: null })
+            .where(inArray(trackAssignments.id, affected.map((a) => a.id)));
+          // Emit one audit event per impacted track for per-track compliance reporting
+          for (const trackId of trackIds) {
+            const trackAffected = affected.filter((a) => a.trackId === trackId);
+            if (trackAffected.length === 0) continue;
+            await db.insert(onboardingAuditEvents).values({
+              userId: req.session.userId!,
+              eventType: "sop_retraining_triggered",
+              metadata: {
+                sopCode: doc.code,
+                sopId: doc.id,
+                trackId,
+                reason: "sop_republished",
+                resetCount: trackAffected.length,
+                affectedUsers: trackAffected.map((a) => a.userId),
+                resetAssignmentIds: trackAffected.map((a) => a.id),
+              },
+            });
+          }
+        }
+      }
+
       // Auto-assign training to impacted roles (rollout-aware) → TRAINING_ASSIGNED.
       // The lifecycle advances to training_assigned whenever the SOP requires
       // training (a learning track is linked); the rollout filter only governs
@@ -19141,6 +19181,7 @@ export async function registerRoutes(
   registerSalaryAdvanceRoutes(app);
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
+  registerTrainingCatalogRoutes(app);
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);
