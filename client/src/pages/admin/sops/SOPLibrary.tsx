@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useSopAccess } from "@/hooks/use-sop-access";
 import { useToast } from "@/hooks/use-toast";
@@ -75,7 +76,8 @@ export default function SOPLibrary() {
   // Wave rollout management is restricted to super_admin/admin (matches the
   // sops.rollout permission gating the wave endpoints).
   const canManageRollout = ["super_admin", "admin"].includes(user?.role || "");
-  const [view, setView] = useState<"library" | "rollout">("library");
+  const canManageReviewers = ["super_admin", "admin"].includes(user?.role || "");
+  const [view, setView] = useState<"library" | "rollout" | "reviewer">("library");
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -159,7 +161,7 @@ export default function SOPLibrary() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {canManageRollout && (
+            {(canManageRollout || canManageReviewers) && (
               <div className="inline-flex rounded-md border bg-muted/40 p-0.5" data-testid="sop-view-toggle">
                 <Button
                   size="sm"
@@ -170,15 +172,28 @@ export default function SOPLibrary() {
                 >
                   <FileText className="h-3.5 w-3.5 mr-1" /> Library
                 </Button>
-                <Button
-                  size="sm"
-                  variant={view === "rollout" ? "default" : "ghost"}
-                  className="h-8"
-                  onClick={() => setView("rollout")}
-                  data-testid="button-view-rollout"
-                >
-                  <Layers className="h-3.5 w-3.5 mr-1" /> Rollout
-                </Button>
+                {canManageRollout && (
+                  <Button
+                    size="sm"
+                    variant={view === "rollout" ? "default" : "ghost"}
+                    className="h-8"
+                    onClick={() => setView("rollout")}
+                    data-testid="button-view-rollout"
+                  >
+                    <Layers className="h-3.5 w-3.5 mr-1" /> Rollout
+                  </Button>
+                )}
+                {canManageReviewers && (
+                  <Button
+                    size="sm"
+                    variant={view === "reviewer" ? "default" : "ghost"}
+                    className="h-8"
+                    onClick={() => setView("reviewer")}
+                    data-testid="button-view-reviewer"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 mr-1" /> Reviewers
+                  </Button>
+                )}
               </div>
             )}
             {canManage && view === "library" && (
@@ -191,6 +206,8 @@ export default function SOPLibrary() {
 
         {view === "rollout" && canManageRollout ? (
           <RolloutView />
+        ) : view === "reviewer" && canManageReviewers ? (
+          <ReviewerAssignmentView />
         ) : (
         <>
         <Card>
@@ -1174,6 +1191,612 @@ function SopEditDialog({ doc, onClose, onSaved }: { doc: SopDocument | null; onC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Reviewer Assignment Panel (Task #744) ────────────────────────────────────
+
+interface ReviewerDetail {
+  id: string;
+  sopMasterId: string;
+  sopVersion: number;
+  round: number;
+  reviewerId: string;
+  reviewerName: string;
+  status: string;
+  dueAt: string | null;
+  decisionAt: string | null;
+  comment: string | null;
+  overdue: boolean;
+}
+
+interface AssignmentRow {
+  id: string;
+  sopMasterId: string;
+  code: string;
+  title: string;
+  category: string;
+  lifecycleStatus: string;
+  version: number;
+  round: number;
+  noReviewer: boolean;
+  slaStatus: "none" | "on_track" | "overdue";
+  reviewers: ReviewerDetail[];
+  gate: { strictApprove: boolean; noObjectionEligible: boolean; hasBlocking: boolean; pendingCount: number; overdueCount: number };
+}
+
+interface AssignmentOverview {
+  rows: AssignmentRow[];
+  summary: { total: number; unassigned: number; inReview: number; overdue: number };
+}
+
+const BULK_VALID_STATUSES = ["draft", "changes_requested", "under_revision"];
+// Statuses where reviewers can be added (new round for bulk/submit; same round for in_review via add-reviewers)
+const ADD_REVIEWER_STATUSES = ["draft", "changes_requested", "under_revision", "in_review"];
+
+function maxDaysOverdue(row: AssignmentRow): number {
+  const now = Date.now();
+  return row.reviewers
+    .filter((r) => r.overdue && r.dueAt)
+    .reduce((max, r) => {
+      const days = Math.ceil((now - new Date(r.dueAt!).getTime()) / 86400000);
+      return Math.max(max, days);
+    }, 0);
+}
+
+function slaBadge(row: AssignmentRow) {
+  if (row.slaStatus === "overdue") {
+    const days = maxDaysOverdue(row);
+    return (
+      <Badge variant="destructive" className="text-[10px]" data-testid={`badge-sla-overdue-${row.code}`}>
+        <AlertTriangle className="h-3 w-3 mr-0.5" /> {days > 0 ? `${days}d overdue` : "Overdue"}
+      </Badge>
+    );
+  }
+  if (row.slaStatus === "on_track") {
+    return <Badge variant="outline" className="text-[10px] border-green-400 text-green-600" data-testid={`badge-sla-ontrack-${row.code}`}><Clock className="h-3 w-3 mr-0.5" /> On track</Badge>;
+  }
+  return <Badge variant="outline" className="text-[10px] text-muted-foreground" data-testid={`badge-sla-none-${row.code}`}>None</Badge>;
+}
+
+function ReviewerAssignmentView() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [noReviewerOnly, setNoReviewerOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [drawerRow, setDrawerRow] = useState<AssignmentRow | null>(null);
+  const [addReviewerOpen, setAddReviewerOpen] = useState(false);
+
+  const { data, isLoading, refetch } = useQuery<AssignmentOverview>({
+    queryKey: ["/api/sops/reviewer-assignments"],
+  });
+
+  const rows = data?.rows ?? [];
+  const summary = data?.summary ?? { total: 0, unassigned: 0, inReview: 0, overdue: 0 };
+
+  const categories = useMemo(() => Array.from(new Set(rows.map((r) => r.category).filter(Boolean))).sort(), [rows]);
+
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (statusFilter !== "all" && r.lifecycleStatus !== statusFilter) return false;
+      if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
+      if (noReviewerOnly && !r.noReviewer) return false;
+      return true;
+    });
+  }, [rows, statusFilter, categoryFilter, noReviewerOnly]);
+
+  const allFilteredIds = filtered.map((r) => r.id);
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedRows = filtered.filter((r) => selectedIds.has(r.id));
+  const bulkEligible = selectedRows.filter((r) => BULK_VALID_STATUSES.includes(r.lifecycleStatus));
+
+  const bulkMut = useMutation({
+    mutationFn: async (reviewerIds: string[]) => {
+      const res = await apiRequest("POST", "/api/sops/bulk-submit-review", {
+        sopIds: bulkEligible.map((r) => r.id),
+        reviewerIds,
+      });
+      return res.json() as Promise<{ submitted: number; skipped: number }>;
+    },
+    onSuccess: (res) => {
+      toast({ title: `${res.submitted} SOP${res.submitted !== 1 ? "s" : ""} submitted${res.skipped > 0 ? `, ${res.skipped} skipped` : ""}` });
+      setSelectedIds(new Set());
+      setBulkDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/reviewer-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sops"] });
+    },
+    onError: (e: any) => toast({ title: "Bulk submit failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const addToRoundMut = useMutation({
+    mutationFn: async ({ sopId, sopStatus, reviewerIds }: { sopId: string; sopStatus: string; reviewerIds: string[] }) => {
+      // in_review SOPs: append to current round (preserves existing decisions)
+      // other valid statuses: open a new round via submit-review
+      const endpoint = sopStatus === "in_review"
+        ? `/api/sops/${sopId}/add-reviewers`
+        : `/api/sops/${sopId}/submit-review`;
+      const res = await apiRequest("POST", endpoint, { reviewerIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reviewers added" });
+      setAddReviewerOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/reviewer-assignments"] });
+      if (drawerRow) {
+        refetch().then((res) => {
+          const fresh = res.data?.rows.find((r) => r.id === drawerRow.id);
+          if (fresh) setDrawerRow(fresh);
+        });
+      }
+    },
+    onError: (e: any) => toast({ title: "Failed to add reviewers", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-5" data-testid="reviewer-assignment-view">
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="summary-strip">
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-xs text-muted-foreground">Total SOPs</p>
+            <p className="text-2xl font-bold" data-testid="text-summary-total">{summary.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-xs text-muted-foreground">Awaiting Assignment</p>
+            <p className="text-2xl font-bold text-amber-600" data-testid="text-summary-unassigned">{summary.unassigned}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-xs text-muted-foreground">In Review</p>
+            <p className="text-2xl font-bold text-blue-600" data-testid="text-summary-in-review">{summary.inReview}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-xs text-muted-foreground">Overdue</p>
+            <p className="text-2xl font-bold text-destructive" data-testid="text-summary-overdue">{summary.overdue}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filter bar */}
+      <Card>
+        <CardContent className="pt-4 pb-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44" data-testid="select-ra-status"><SelectValue placeholder="Lifecycle status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {Object.entries(LIFECYCLE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-44" data-testid="select-ra-category"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <label className="flex items-center gap-2 text-sm cursor-pointer" data-testid="filter-no-reviewer">
+              <Checkbox checked={noReviewerOnly} onCheckedChange={(v) => setNoReviewerOnly(Boolean(v))} />
+              No reviewer assigned
+            </label>
+
+            <div className="ml-auto flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">{selectedIds.size} selected · {bulkEligible.length} eligible</span>
+                  <Button
+                    size="sm"
+                    disabled={bulkEligible.length === 0}
+                    onClick={() => setBulkDialogOpen(true)}
+                    data-testid="button-bulk-assign"
+                  >
+                    <Users className="h-3.5 w-3.5 mr-1" /> Assign Reviewers
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="p-10 text-center text-muted-foreground" data-testid="ra-empty">
+          <UserCheck className="h-8 w-8 mx-auto mb-2" />
+          No SOPs match your filters.
+        </div>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-reviewer-assignments">
+              <thead className="border-b bg-muted/40">
+                <tr>
+                  <th className="w-10 px-3 py-2 text-left">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleAll}
+                      data-testid="checkbox-select-all"
+                    />
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Code</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">SOP Name</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Version</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Status</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Reviewers</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">SLA</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Round</th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="border-b last:border-0 hover:bg-muted/30"
+                    data-testid={`row-ra-${row.code}`}
+                  >
+                    <td className="px-3 py-2">
+                      <Checkbox
+                        checked={selectedIds.has(row.id)}
+                        onCheckedChange={() => toggleOne(row.id)}
+                        data-testid={`checkbox-ra-${row.code}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className="font-mono text-[11px]" data-testid={`text-ra-code-${row.code}`}>{row.code}</Badge>
+                    </td>
+                    <td className="px-3 py-2 max-w-[220px]">
+                      <p className="truncate font-medium" data-testid={`text-ra-title-${row.code}`}>{row.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">{row.category}</p>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">v{row.version}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant={lifecycleVariant(row.lifecycleStatus)} className="text-[10px]" data-testid={`badge-ra-status-${row.code}`}>
+                        {LIFECYCLE_LABELS[row.lifecycleStatus] ?? row.lifecycleStatus}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.noReviewer ? (
+                        <span className="text-xs text-muted-foreground italic" data-testid={`text-ra-no-reviewer-${row.code}`}>None</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {row.reviewers.map((r) => {
+                            const daysOverdue = r.overdue && r.dueAt
+                              ? Math.ceil((Date.now() - new Date(r.dueAt).getTime()) / 86400000)
+                              : 0;
+                            return (
+                              <span
+                                key={r.reviewerId}
+                                title={r.overdue ? `${r.reviewerName} — ${daysOverdue}d overdue` : r.reviewerName}
+                                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${r.overdue ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-muted text-muted-foreground"}`}
+                                data-testid={`chip-reviewer-${row.code}-${r.reviewerId}`}
+                              >
+                                {r.reviewerName.split(" ")[0]}
+                                {r.overdue && (
+                                  <span className="ml-0.5 flex items-center gap-0.5">
+                                    <AlertTriangle className="h-2.5 w-2.5" />
+                                    {daysOverdue > 0 && <span>{daysOverdue}d</span>}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{slaBadge(row)}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {row.round > 0 ? `R${row.round}` : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => setDrawerRow(row)}
+                        data-testid={`button-manage-reviewers-${row.code}`}
+                      >
+                        Manage
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Bulk assign dialog */}
+      {bulkDialogOpen && (
+        <BulkAssignDialog
+          eligibleCount={bulkEligible.length}
+          selectedCount={selectedIds.size}
+          currentUserId={user?.id}
+          onClose={() => setBulkDialogOpen(false)}
+          onConfirm={(reviewerIds) => bulkMut.mutate(reviewerIds)}
+          isPending={bulkMut.isPending}
+        />
+      )}
+
+      {/* Per-row manage reviewers drawer */}
+      <Sheet open={!!drawerRow} onOpenChange={(o) => { if (!o) { setDrawerRow(null); setAddReviewerOpen(false); } }}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" data-testid="sheet-manage-reviewers">
+          {drawerRow && (
+            <ManageReviewersDrawer
+              row={drawerRow}
+              currentUserId={user?.id}
+              addReviewerOpen={addReviewerOpen}
+              onAddReviewerOpen={() => setAddReviewerOpen(true)}
+              onAddReviewerClose={() => setAddReviewerOpen(false)}
+              onAddReviewers={(reviewerIds) => addToRoundMut.mutate({ sopId: drawerRow.id, sopStatus: drawerRow.lifecycleStatus, reviewerIds })}
+              isPending={addToRoundMut.isPending}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function BulkAssignDialog({
+  eligibleCount,
+  selectedCount,
+  currentUserId,
+  onClose,
+  onConfirm,
+  isPending,
+}: {
+  eligibleCount: number;
+  selectedCount: number;
+  currentUserId?: string;
+  onClose: () => void;
+  onConfirm: (reviewerIds: string[]) => void;
+  isPending: boolean;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const { data: usersResp, isLoading } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; role: string }[] }>({
+    queryKey: ["/api/admin/users", "active"],
+    queryFn: async () => (await apiRequest("GET", "/api/admin/users?status=active")).json(),
+  });
+
+  const eligible = (usersResp?.users ?? []).filter((u) => u.id !== currentUserId && ["super_admin", "admin", "hr", "operations", "manager"].includes(u.role));
+  const toggle = (id: string) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md" data-testid="dialog-bulk-assign">
+        <DialogHeader>
+          <DialogTitle>Assign Reviewers to {eligibleCount} SOP{eligibleCount !== 1 ? "s" : ""}</DialogTitle>
+        </DialogHeader>
+        {selectedCount > eligibleCount && (
+          <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-md p-2">
+            {selectedCount - eligibleCount} of your selected SOP{selectedCount !== 1 ? "s" : ""} will be skipped (already in review or retired).
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">Reviewers get a 5 business-day SLA. Each SOP opens a new review round.</p>
+        {isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
+          <div className="max-h-72 overflow-y-auto space-y-1.5">
+            {eligible.map((u) => (
+              <label key={u.id} className="flex items-center gap-2 rounded border p-2 text-sm cursor-pointer hover:bg-muted/40" data-testid={`option-bulk-reviewer-${u.id}`}>
+                <Checkbox checked={selected.includes(u.id)} onCheckedChange={() => toggle(u.id)} />
+                <span className="flex-1">{u.firstName} {u.lastName} <span className="text-muted-foreground capitalize">· {u.role.replace(/_/g, " ")}</span></span>
+              </label>
+            ))}
+            {eligible.length === 0 && <p className="text-xs text-muted-foreground">No eligible reviewers found.</p>}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-bulk-cancel">Cancel</Button>
+          <Button
+            disabled={selected.length === 0 || isPending}
+            onClick={() => onConfirm(selected)}
+            data-testid="button-bulk-confirm"
+          >
+            {isPending ? "Submitting..." : `Submit (${selected.length} reviewer${selected.length !== 1 ? "s" : ""})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ManageReviewersDrawer({
+  row,
+  currentUserId,
+  addReviewerOpen,
+  onAddReviewerOpen,
+  onAddReviewerClose,
+  onAddReviewers,
+  isPending,
+}: {
+  row: AssignmentRow;
+  currentUserId?: string;
+  addReviewerOpen: boolean;
+  onAddReviewerOpen: () => void;
+  onAddReviewerClose: () => void;
+  onAddReviewers: (ids: string[]) => void;
+  isPending: boolean;
+}) {
+  const [newReviewers, setNewReviewers] = useState<string[]>([]);
+  const { data: usersResp, isLoading } = useQuery<{ users: { id: string; firstName: string; lastName: string; email: string; role: string }[] }>({
+    queryKey: ["/api/admin/users", "active"],
+    queryFn: async () => (await apiRequest("GET", "/api/admin/users?status=active")).json(),
+  });
+  const eligible = (usersResp?.users ?? []).filter((u) => u.id !== currentUserId && ["super_admin", "admin", "hr", "operations", "manager"].includes(u.role));
+  const toggle = (id: string) => setNewReviewers((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+
+  const now = Date.now();
+
+  return (
+    <div className="space-y-4">
+      <SheetHeader>
+        <SheetTitle className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="font-mono">{row.code}</Badge>
+          <span className="text-base font-semibold truncate">{row.title}</span>
+        </SheetTitle>
+      </SheetHeader>
+
+      <div className="flex flex-wrap gap-2 items-center text-xs text-muted-foreground">
+        <Badge variant={lifecycleVariant(row.lifecycleStatus)}>{LIFECYCLE_LABELS[row.lifecycleStatus] ?? row.lifecycleStatus}</Badge>
+        <span>v{row.version}</span>
+        {row.round > 0 && <span>Round {row.round}</span>}
+        {slaBadge(row)}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-medium">Current Reviewers</p>
+          {ADD_REVIEWER_STATUSES.includes(row.lifecycleStatus) && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onAddReviewerOpen} data-testid="button-add-reviewers-drawer">
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              {row.lifecycleStatus === "in_review" ? "Add to Round" : "Add Reviewers"}
+            </Button>
+          )}
+        </div>
+
+        {row.noReviewer ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-drawer-no-reviewers">No reviewers assigned for this round.</p>
+        ) : (
+          <div className="space-y-2">
+            {row.reviewers.map((r) => {
+              const due = r.dueAt ? new Date(r.dueAt) : null;
+              const daysLeft = due ? Math.ceil((due.getTime() - now) / 86400000) : null;
+              return (
+                <div key={r.reviewerId} className="rounded border p-2.5 text-sm" data-testid={`row-drawer-reviewer-${r.reviewerId}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{r.reviewerName}</span>
+                    <Badge
+                      variant={r.status === "pending" ? (r.overdue ? "destructive" : "outline") : r.status === "changes_requested" || r.status === "rejected" ? "destructive" : "default"}
+                      className="text-[10px]"
+                    >
+                      {r.status.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-3">
+                    {r.status === "pending" && due && (
+                      r.overdue ? (
+                        <span className="flex items-center gap-1 text-destructive">
+                          <AlertTriangle className="h-3 w-3" />
+                          Overdue (due {due.toLocaleDateString()})
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {daysLeft} day{daysLeft === 1 ? "" : "s"} left (due {due.toLocaleDateString()})
+                        </span>
+                      )
+                    )}
+                    {r.decisionAt && <span>Decided {new Date(r.decisionAt).toLocaleDateString()}</span>}
+                  </div>
+                  {r.comment && <p className="text-xs mt-1.5 border-l-2 pl-2 italic">{r.comment}</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Gate summary */}
+      {!row.noReviewer && (
+        <div className="rounded-md border p-2.5 space-y-1 text-xs" data-testid="panel-drawer-gate">
+          <p className="font-medium text-sm">Approval Gate</p>
+          <div className="flex flex-wrap gap-1.5">
+            {row.gate.strictApprove && <Badge variant="default" className="text-[10px]">Clear — all approved</Badge>}
+            {row.gate.noObjectionEligible && <Badge variant="secondary" className="text-[10px]">No-objection eligible</Badge>}
+            {row.gate.hasBlocking && <Badge variant="destructive" className="text-[10px]">Changes requested</Badge>}
+            {row.gate.pendingCount > 0 && (
+              <Badge variant="outline" className="text-[10px]">{row.gate.pendingCount} pending{row.gate.overdueCount > 0 ? ` (${row.gate.overdueCount} overdue)` : ""}</Badge>
+            )}
+            {!row.gate.strictApprove && !row.gate.noObjectionEligible && !row.gate.hasBlocking && row.gate.pendingCount === 0 && row.reviewers.length === 0 && (
+              <span className="text-muted-foreground">No reviewers</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add reviewers inline */}
+      {addReviewerOpen && (
+        <div className="border rounded-md p-3 space-y-2 bg-muted/20" data-testid="panel-add-reviewers-inline">
+          <div>
+            <p className="text-sm font-medium">
+              {row.lifecycleStatus === "in_review" ? "Add to current round" : "Submit for review"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {row.lifecycleStatus === "in_review"
+                ? "Appends reviewers to the active round — existing decisions are preserved."
+                : "Opens a new review round with a 5 business-day SLA."}
+            </p>
+          </div>
+          {isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            <div className="max-h-48 overflow-y-auto space-y-1.5">
+              {eligible.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 rounded border p-2 text-sm cursor-pointer hover:bg-muted/40" data-testid={`option-add-reviewer-${u.id}`}>
+                  <Checkbox checked={newReviewers.includes(u.id)} onCheckedChange={() => toggle(u.id)} />
+                  <span className="flex-1">{u.firstName} {u.lastName} <span className="text-muted-foreground capitalize">· {u.role.replace(/_/g, " ")}</span></span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={onAddReviewerClose} data-testid="button-add-reviewers-cancel">Cancel</Button>
+            <Button
+              size="sm"
+              disabled={newReviewers.length === 0 || isPending}
+              onClick={() => onAddReviewers(newReviewers)}
+              data-testid="button-add-reviewers-confirm"
+            >
+              {isPending ? "Adding..." : `Add (${newReviewers.length})`}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

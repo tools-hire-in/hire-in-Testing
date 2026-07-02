@@ -12049,6 +12049,224 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Reviewer Assignment Overview (Task #744) ────────────────────────────
+  // Admin/super_admin bulk reviewer management panel.
+  // Returns every current SOP with its latest review round assignments + SLA.
+  app.get("/api/sops/reviewer-assignments", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      const docs = await storage.getSopDocuments({ currentOnly: true });
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map((u) => [u.id, u]));
+      const now = new Date();
+
+      const rows = await Promise.all(
+        docs.map(async (doc) => {
+          const allAssignments = await storage.getSopReviewAssignments(doc.sopMasterId, doc.version);
+          const latest = sopGov.latestRound(allAssignments);
+          const maxRound = allAssignments.reduce((m, a) => Math.max(m, a.round ?? 1), 0);
+
+          const reviewerDetails = latest.map((a) => {
+            const u = userMap.get(a.reviewerId);
+            const name = u ? `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email : a.reviewerId;
+            const overdue = a.status === "pending" && !!a.dueAt && new Date(a.dueAt) < now;
+            return { ...a, reviewerName: name, overdue };
+          });
+
+          const noReviewer = latest.length === 0;
+          const gate = sopGov.evaluateApprovalGate(
+            latest.map((r) => ({
+              status: r.status,
+              dueAt: r.dueAt ? new Date(r.dueAt) : null,
+              decisionAt: r.decisionAt ? new Date(r.decisionAt) : null,
+            })),
+          );
+          const overallOverdue = gate.overdueCount > 0;
+
+          const slaStatus = noReviewer
+            ? "none"
+            : overallOverdue
+            ? "overdue"
+            : "on_track";
+
+          return {
+            id: doc.id,
+            sopMasterId: doc.sopMasterId,
+            code: doc.code,
+            title: doc.title,
+            category: doc.category,
+            lifecycleStatus: doc.lifecycleStatus,
+            version: doc.version,
+            round: maxRound,
+            noReviewer,
+            slaStatus,
+            reviewers: reviewerDetails,
+            gate,
+          };
+        }),
+      );
+
+      // Summary counts
+      const summary = {
+        total: rows.length,
+        unassigned: rows.filter((r) => r.noReviewer).length,
+        inReview: rows.filter((r) => r.lifecycleStatus === "in_review").length,
+        overdue: rows.filter((r) => r.slaStatus === "overdue").length,
+      };
+
+      res.json({ rows, summary });
+    } catch (error) {
+      console.error("SOP reviewer-assignments error:", error);
+      res.status(500).json({ error: "Failed to fetch reviewer assignments" });
+    }
+  });
+
+  // Bulk submit SOPs for review — admin/super_admin only (Task #744).
+  // Wraps each SOP operation atomically so partial failures don't leave orphan assignments.
+  app.post("/api/sops/bulk-submit-review", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      const sopIds: string[] = Array.isArray(req.body?.sopIds)
+        ? req.body.sopIds.filter((x: unknown) => typeof x === "string")
+        : [];
+      const reviewerIds: string[] = Array.isArray(req.body?.reviewerIds)
+        ? req.body.reviewerIds.filter((x: unknown) => typeof x === "string")
+        : [];
+
+      if (sopIds.length === 0) return res.status(400).json({ error: "At least one SOP is required" });
+      if (reviewerIds.length === 0) return res.status(400).json({ error: "At least one reviewer is required" });
+
+      const VALID_STATES = ["draft", "changes_requested", "under_revision"];
+      const results: Array<{ sopId: string; code: string; status: "submitted" | "skipped"; reason?: string }> = [];
+      const dueAt = sopGov.addBusinessDays(new Date(), sopGov.REVIEWER_SLA_BUSINESS_DAYS);
+      const uniqueReviewerIds = Array.from(new Set(reviewerIds));
+
+      for (const sopId of sopIds) {
+        const doc = await storage.getSopDocumentById(sopId);
+        if (!doc) {
+          results.push({ sopId, code: sopId, status: "skipped", reason: "Not found" });
+          continue;
+        }
+        if (!VALID_STATES.includes(doc.lifecycleStatus as string)) {
+          results.push({ sopId, code: doc.code, status: "skipped", reason: `Status is '${doc.lifecycleStatus}'` });
+          continue;
+        }
+
+        // Each SOP is processed atomically — assignments + status change together.
+        await db.transaction(async () => {
+          const priorRounds = await storage.getSopReviewAssignments(doc.sopMasterId, doc.version);
+          const nextRound = priorRounds.reduce((max, r) => Math.max(max, r.round ?? 1), 0) + 1;
+
+          for (const reviewerId of uniqueReviewerIds) {
+            await storage.createSopReviewAssignment({
+              sopMasterId: doc.sopMasterId,
+              sopVersion: doc.version,
+              round: nextRound,
+              reviewerId,
+              status: "pending",
+              dueAt,
+              assignedBy: req.session.userId!,
+            });
+          }
+          await storage.setSopLifecycleStatus(doc.id, "in_review");
+        });
+
+        // Notifications are fire-and-forget outside the transaction.
+        for (const reviewerId of uniqueReviewerIds) {
+          try {
+            await storage.createNotification({
+              userId: reviewerId,
+              type: "sop_review_assigned",
+              title: "SOP to review",
+              message: `You have a SOP to review: ${doc.code} — ${doc.title} (due ${dueAt.toLocaleDateString()})`,
+              isRead: false,
+              metadata: { sopId: doc.id, link: "/admin/sops" },
+            });
+          } catch (e) {
+            console.error("SOP bulk review notify error:", e);
+          }
+        }
+        results.push({ sopId, code: doc.code, status: "submitted" });
+      }
+
+      const submitted = results.filter((r) => r.status === "submitted").length;
+      const skipped = results.filter((r) => r.status === "skipped").length;
+      res.json({ results, submitted, skipped });
+    } catch (error) {
+      console.error("SOP bulk-submit-review error:", error);
+      res.status(500).json({ error: "Failed to bulk submit SOPs for review" });
+    }
+  });
+
+  // Add reviewers to the CURRENT round of an in_review SOP — admin/super_admin only (Task #744).
+  // Unlike submit-review (which opens a new round), this appends to the existing round
+  // without resetting or disturbing decisions already recorded in that round.
+  app.post("/api/sops/:id/add-reviewers", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      const reviewerIds: string[] = Array.isArray(req.body?.reviewerIds)
+        ? req.body.reviewerIds.filter((r: unknown) => typeof r === "string")
+        : [];
+      if (reviewerIds.length === 0) return res.status(400).json({ error: "At least one reviewer is required" });
+
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      if (doc.lifecycleStatus !== "in_review") {
+        return res.status(409).json({ error: "SOP must be in_review to add reviewers to the current round" });
+      }
+
+      const existing = await storage.getSopReviewAssignments(doc.sopMasterId, doc.version);
+      const currentRound = existing.reduce((max, r) => Math.max(max, r.round ?? 1), 1);
+      const currentRoundReviewerIds = new Set(
+        existing.filter((r) => (r.round ?? 1) === currentRound).map((r) => r.reviewerId),
+      );
+
+      // Only add reviewers not already in this round.
+      const toAdd = Array.from(new Set(reviewerIds)).filter((id) => !currentRoundReviewerIds.has(id));
+      if (toAdd.length === 0) {
+        return res.json({ added: 0, message: "All specified reviewers are already in the current round" });
+      }
+
+      const dueAt = sopGov.addBusinessDays(new Date(), sopGov.REVIEWER_SLA_BUSINESS_DAYS);
+      const created = [];
+      for (const reviewerId of toAdd) {
+        const assignment = await storage.createSopReviewAssignment({
+          sopMasterId: doc.sopMasterId,
+          sopVersion: doc.version,
+          round: currentRound,
+          reviewerId,
+          status: "pending",
+          dueAt,
+          assignedBy: req.session.userId!,
+        });
+        created.push(assignment);
+        try {
+          await storage.createNotification({
+            userId: reviewerId,
+            type: "sop_review_assigned",
+            title: "SOP to review",
+            message: `You have been added as a reviewer: ${doc.code} — ${doc.title} (due ${dueAt.toLocaleDateString()})`,
+            isRead: false,
+            metadata: { sopId: doc.id, link: "/admin/sops" },
+          });
+        } catch (e) {
+          console.error("SOP add-reviewers notify error:", e);
+        }
+      }
+
+      res.json({ added: created.length, assignments: created });
+    } catch (error) {
+      console.error("SOP add-reviewers error:", error);
+      res.status(500).json({ error: "Failed to add reviewers" });
+    }
+  });
+
   // Single SOP + its version history + role assignments.
   app.get("/api/sops/:id", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
     try {
