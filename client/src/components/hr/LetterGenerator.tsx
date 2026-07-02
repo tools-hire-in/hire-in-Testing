@@ -182,6 +182,7 @@ export function LetterGenerator() {
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
+  const [amendmentPolicyAnnexures, setAmendmentPolicyAnnexures] = useState<string[]>([]);
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
   const isAmendmentType = (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(form.templateType);
@@ -349,6 +350,7 @@ export function LetterGenerator() {
       setManualEmployeeEmail("");
       setSendEmail(false);
       setAnnexures([]);
+      setAmendmentPolicyAnnexures([]);
       setStep(0);
     },
     onError: (err: Error) => {
@@ -491,6 +493,9 @@ export function LetterGenerator() {
       }
       if (amendmentMeta.reason) {
         metadata.reason = amendmentMeta.reason;
+      }
+      if (amendmentPolicyAnnexures.length > 0) {
+        metadata.policyAnnexures = amendmentPolicyAnnexures;
       }
 
       if (isManualEntry) {
@@ -964,6 +969,45 @@ export function LetterGenerator() {
                     />
                   </div>
                 )}
+
+                <Separator />
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Policy Annexures (optional)</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+                      Attach Engineering Pack annexures to this amendment letter. Engineering annexures include a two-column execution/signature block in the DOCX.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Engineering Pack</p>
+                    <div className="space-y-2">
+                      {([
+                        { key: "eng_nda", label: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information" },
+                        { key: "eng_ip", label: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment" },
+                        { key: "eng_byod", label: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy" },
+                        { key: "eng_data_protection", label: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling" },
+                        { key: "eng_access_policy", label: "Eng-E — Access, Password, AI Tool & Communication Policy" },
+                        { key: "eng_exit_certification", label: "Eng-F — Exit, Return, Deletion & Certification" },
+                      ] as const).map(({ key, label }) => (
+                        <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-amendment-policy-${key}`}>
+                          <input
+                            type="checkbox"
+                            checked={amendmentPolicyAnnexures.includes(key)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setAmendmentPolicyAnnexures(prev => [...prev, key]);
+                              } else {
+                                setAmendmentPolicyAnnexures(prev => prev.filter(k => k !== key));
+                              }
+                            }}
+                            className="rounded border-border"
+                          />
+                          <span className="text-sm">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </>
             )}
 

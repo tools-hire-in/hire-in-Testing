@@ -1638,34 +1638,69 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
           <div>
             <p className="text-sm font-medium mb-0.5">Policy Annexures</p>
             <p className="text-xs text-muted-foreground mb-3">
-              Select policies to append as Annexures A–G in the DOCX. The candidate will be asked to acknowledge them at acceptance.
+              Select policies to append as annexures in the DOCX. The candidate will be asked to acknowledge them at acceptance.
             </p>
-            <div className="space-y-2">
-              {([
-                { key: "leave_policy", label: "Annexure A — Leave Policy" },
-                { key: "attendance_policy", label: "Annexure B — Attendance & Regularization Policy" },
-                { key: "code_of_conduct", label: "Annexure C — Code of Conduct" },
-                { key: "nda", label: "Annexure D — Confidentiality & Non-Disclosure Agreement" },
-                { key: "marketing_nda", label: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement" },
-                { key: "marketing_content_policy", label: "Annexure F — Marketing, Social Media & Content Policy" },
-                { key: "marketing_code_of_conduct", label: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards" },
-              ] as const).map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
-                  <input
-                    type="checkbox"
-                    checked={policyAnnexures.includes(key)}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setPolicyAnnexures(prev => [...prev, key]);
-                      } else {
-                        setPolicyAnnexures(prev => prev.filter(k => k !== key));
-                      }
-                    }}
-                    className="rounded border-border"
-                  />
-                  <span className="text-sm">{label}</span>
-                </label>
-              ))}
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">General</p>
+                <div className="space-y-2">
+                  {([
+                    { key: "leave_policy", label: "Annexure A — Leave Policy" },
+                    { key: "attendance_policy", label: "Annexure B — Attendance & Regularization Policy" },
+                    { key: "code_of_conduct", label: "Annexure C — Code of Conduct" },
+                    { key: "nda", label: "Annexure D — Confidentiality & Non-Disclosure Agreement" },
+                    { key: "marketing_nda", label: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement" },
+                    { key: "marketing_content_policy", label: "Annexure F — Marketing, Social Media & Content Policy" },
+                    { key: "marketing_code_of_conduct", label: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards" },
+                  ] as const).map(({ key, label }) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
+                      <input
+                        type="checkbox"
+                        checked={policyAnnexures.includes(key)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setPolicyAnnexures(prev => [...prev, key]);
+                          } else {
+                            setPolicyAnnexures(prev => prev.filter(k => k !== key));
+                          }
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-sm">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Engineering Pack</p>
+                <p className="text-xs text-muted-foreground mb-2">Includes per-annexure two-column execution/signature blocks in the DOCX.</p>
+                <div className="space-y-2">
+                  {([
+                    { key: "eng_nda", label: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement" },
+                    { key: "eng_ip", label: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment" },
+                    { key: "eng_byod", label: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy" },
+                    { key: "eng_data_protection", label: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling" },
+                    { key: "eng_access_policy", label: "Eng-E — Access, Password, AI Tool & Communication Policy" },
+                    { key: "eng_exit_certification", label: "Eng-F — Exit, Return, Deletion & Certification" },
+                  ] as const).map(({ key, label }) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
+                      <input
+                        type="checkbox"
+                        checked={policyAnnexures.includes(key)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setPolicyAnnexures(prev => [...prev, key]);
+                          } else {
+                            setPolicyAnnexures(prev => prev.filter(k => k !== key));
+                          }
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-sm">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>

@@ -13,6 +13,7 @@ import {
   WidthType,
   BorderStyle,
 } from "docx";
+import { POLICY_ANNEXURES, ENGINEERING_ANNEXURE_KEYS, type PolicyAnnexureKey } from "./annexureContent";
 
 export interface DeviceItem {
   description: string;
@@ -57,6 +58,8 @@ export interface AddendumData {
   reason?: string;
   annexures?: AnnexureItem[];
   growthPlanClauseText?: string;
+  policyAnnexures?: string[];
+  annexureInitials?: Record<string, string>;
 }
 
 function heading(text: string): Paragraph {
@@ -274,6 +277,96 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
     nextSectionNum++;
   }
 
+  // Policy annexures (engineering pack + general policy annexures)
+  const policyAnnexureChildren: (Paragraph | Table)[] = [];
+  if (data.policyAnnexures && data.policyAnnexures.length > 0) {
+    for (const key of data.policyAnnexures) {
+      const policy = POLICY_ANNEXURES[key as PolicyAnnexureKey];
+      if (!policy) continue;
+      policyAnnexureChildren.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+      policyAnnexureChildren.push(new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ text: policy.title, bold: true, size: 26, underline: {} })],
+      }));
+      const initials = data.annexureInitials?.[key]?.trim();
+      if (initials) {
+        policyAnnexureChildren.push(new Paragraph({
+          spacing: { after: 200 },
+          children: [new TextRun({ text: `Reviewed & acknowledged — Initials: ${initials}`, italics: true, size: 18 })],
+        }));
+      }
+      const lines = policy.body.split(/\r?\n/);
+      for (const line of lines) {
+        if (line.trim() === "") {
+          policyAnnexureChildren.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+        } else {
+          policyAnnexureChildren.push(new Paragraph({
+            spacing: { after: 60 },
+            children: [new TextRun({ text: line, size: 20 })],
+          }));
+        }
+      }
+      if (ENGINEERING_ANNEXURE_KEYS.includes(key)) {
+        policyAnnexureChildren.push(new Paragraph({
+          spacing: { before: 300, after: 100 },
+          children: [new TextRun({ text: "Execution / Signature Block", bold: true, size: 20 })],
+        }));
+        policyAnnexureChildren.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 },
+            insideHorizontal: { style: BorderStyle.NONE, size: 0 },
+            insideVertical: { style: BorderStyle.SINGLE, size: 1 },
+          },
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: 50, type: WidthType.PERCENTAGE },
+                  borders: {
+                    top: { style: BorderStyle.SINGLE, size: 1 },
+                    bottom: { style: BorderStyle.SINGLE, size: 1 },
+                    left: { style: BorderStyle.SINGLE, size: 1 },
+                    right: { style: BorderStyle.SINGLE, size: 1 },
+                  },
+                  children: [
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Employee / Signatory", bold: true, size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Employee Name: ___________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Signature: _______________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Date: ___________________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Personal Email: __________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Employee Initials: _______________________", size: 20 })] }),
+                  ],
+                }),
+                new TableCell({
+                  width: { size: 50, type: WidthType.PERCENTAGE },
+                  borders: {
+                    top: { style: BorderStyle.SINGLE, size: 1 },
+                    bottom: { style: BorderStyle.SINGLE, size: 1 },
+                    left: { style: BorderStyle.SINGLE, size: 1 },
+                    right: { style: BorderStyle.SINGLE, size: 1 },
+                  },
+                  children: [
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "For Hire'in Solutions", bold: true, size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Authorized Signature: ____________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Date: ___________________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Name & Title: ___________________________", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Company Seal:", size: 20 })] }),
+                    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: " ", size: 20 })] }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        }));
+        policyAnnexureChildren.push(new Paragraph({ spacing: { after: 100 }, children: [] }));
+      }
+    }
+  }
+
   // Annexure sections (appended after signature via extra section children)
   const annexureChildren: (Paragraph | Table)[] = [];
   if (data.annexures && data.annexures.length > 0) {
@@ -398,6 +491,7 @@ export async function generateAddendumDocx(data: AddendumData): Promise<Buffer> 
           signatureTable,
 
           ...annexureChildren,
+          ...policyAnnexureChildren,
         ],
       },
     ],

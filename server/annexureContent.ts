@@ -5,8 +5,31 @@ export interface PolicyAnnexure {
   body: string;
 }
 
-export const POLICY_ANNEXURE_KEYS = ["leave_policy", "attendance_policy", "code_of_conduct", "nda", "marketing_nda", "marketing_content_policy", "marketing_code_of_conduct"] as const;
+export const POLICY_ANNEXURE_KEYS = [
+  "leave_policy",
+  "attendance_policy",
+  "code_of_conduct",
+  "nda",
+  "marketing_nda",
+  "marketing_content_policy",
+  "marketing_code_of_conduct",
+  "eng_nda",
+  "eng_ip",
+  "eng_byod",
+  "eng_data_protection",
+  "eng_access_policy",
+  "eng_exit_certification",
+] as const;
 export type PolicyAnnexureKey = typeof POLICY_ANNEXURE_KEYS[number];
+
+export const ENGINEERING_ANNEXURE_KEYS: readonly string[] = [
+  "eng_nda",
+  "eng_ip",
+  "eng_byod",
+  "eng_data_protection",
+  "eng_access_policy",
+  "eng_exit_certification",
+];
 
 export const POLICY_ANNEXURES: Record<PolicyAnnexureKey, PolicyAnnexure> = {
   leave_policy: {
@@ -338,128 +361,31 @@ Commission plans, incentive plans, salary information, performance plans, intern
 Internal client/candidate notes, job matching logic, rate negotiation strategies, candidate pay positioning, and account delivery strategy.
 
 D. Technology, AI, Data, and Platform Information
-Internal systems, ATS/CRM data, portal designs, product workflows, AI tools, automation logic, prompts, scripts, code, system architecture, technical documentation, security controls, internal product roadmaps, and operational designs.
-Proprietary tools or workflows used for healthcare staffing, IT staffing, candidate credentialing, document collection, resume formatting, candidate packets, compliance tracking, analytics, or recruiter productivity.
-Credentials, API keys, tokens, encryption keys, system architecture, access logs, audit logs, security procedures, and internal data protection controls.
-
-E. Financial, Strategic, and Leadership Information
-Company revenue, expenses, profit margins, payroll information, cash flow, financial projections, investor discussions, expansion plans, acquisition plans, product plans, and business model decisions.
-Founder/CEO discussions, leadership strategy, internal restructuring, hiring plans, compensation philosophy, client prioritization, vendor negotiation strategy, and confidential management decisions.
-Any information disclosed during management meetings, leadership meetings, internal planning sessions, HR discussions, or business review meetings.
-
-F. HR and Employee Information
-Employee records, compensation, attendance, performance reviews, disciplinary matters, resignation details, internal complaints, investigation records, leave records, medical/accommodation information, personnel files, and internal HR decisions.
-Confidential information related to employees, contractors, consultants, vendors, and internal team members.
+Proprietary AI tools, prompts, automation workflows, datasets, training data, model outputs, fine-tuning approaches, and AI-generated business tools.
+Internal platforms, portal login credentials, software configurations, database structures, API keys, workflow automations, and system integrations.
+Internal dashboards, analytics reports, performance data, candidate sourcing tools, and business intelligence outputs.
 
 3. Confidentiality Obligations
 
-The individual agrees to:
+The individual agrees to: hold all Confidential Information in strict confidence; use Confidential Information solely for authorized Company purposes; not disclose Confidential Information to any third party without prior written authorization; take reasonable precautions to protect the secrecy of Confidential Information; and promptly notify the Company of any actual or suspected unauthorized disclosure or breach.
 
-Use Confidential Information only for authorized Hire'in Solutions business purposes.
-Protect Confidential Information with the same level of care expected from a professional staffing, recruitment, healthcare, and technology-driven organization.
-Not disclose Confidential Information to any person or entity without prior written authorization.
-Not copy, download, export, transfer, screenshot, photograph, forward, print, or store Confidential Information except as required for authorized business purposes.
-Not use Confidential Information for personal benefit, side business, competing business, external recruiting activity, or any unauthorized purpose.
-Not share Confidential Information with family members, friends, former employees, competitors, candidates, clients, vendors, or other employees who do not have a legitimate business need to know.
-Maintain confidentiality during and after employment/engagement.
+4. Non-Use Obligation
 
-4. Candidate and Client Data Ownership
+The individual must not use Confidential Information for any personal benefit, outside business, competing venture, personal enrichment, or any purpose other than the performance of assigned duties for Hire'in Solutions.
 
-All client data, job order data, candidate data, applicant data, consultant data, submission records, communication records, pipeline records, candidate lists, client lists, and related business information created, received, updated, enriched, stored, or processed during employment/engagement belong exclusively to Hire'in Solutions, unless otherwise governed by a client agreement or applicable law.
+5. Obligations Survive Separation
 
-The individual may not use Hire'in client or candidate information after separation for personal recruiting, competing business, outside staffing work, third-party placement activity, vendor introductions, client solicitation, candidate solicitation using confidential data, or any unauthorized commercial purpose.
+Confidentiality and non-use obligations survive the end of employment or engagement and remain in effect until the information enters the public domain through no act or omission of the individual.
 
-5. Employment Agency Customer and Applicant Lists
+6. Remedies
 
-To the fullest extent permitted by applicable law, Hire'in Solutions considers its employer customer lists, job order history, client contact information, candidate/applicant lists, candidate ownership records, active pipelines, submission records, and related non-public business information to be confidential and proprietary.
+Unauthorized disclosure or misuse of Confidential Information may cause irreparable harm. The Company may seek available legal remedies, including injunctive relief, damages, recovery of costs, disciplinary action, and termination.
 
-This clause is intended to protect confidential information and trade secrets, not to unlawfully restrict lawful work after separation.
+7. Governing Law
 
-6. Healthcare, PHI, PII, and Compliance Data
+This Agreement is governed by the laws applicable to the employment agreement and the jurisdiction stated therein.
 
-Where the individual accesses healthcare-related candidate documents, credentialing files, onboarding records, immunization records, background documents, or any protected health information or personally identifiable information, the individual must:
-
-Access only what is necessary for the assigned business purpose.
-Follow Company, client, MSP/VMS, HIPAA-related, state, and healthcare compliance requirements.
-Avoid sending sensitive documents through unauthorized channels.
-Never store candidate documents in personal drives, personal email, personal devices, or unauthorized systems.
-Immediately report suspected data loss, misdirected emails, unauthorized downloads, accidental disclosure, system compromise, or credential misuse.
-
-7. System Access and Security
-
-The individual must:
-
-Keep all passwords, access credentials, portal credentials, and authentication methods confidential.
-Use only approved devices, systems, applications, and communication channels for Company work.
-Not share logins or allow another person to use Company systems under their identity.
-Not bypass, disable, or weaken security controls.
-Not access candidate, client, employee, or Company data beyond their role or business need.
-Immediately notify the Company of any suspected unauthorized access, phishing attempt, lost device, password compromise, or security incident.
-
-8. No Unauthorized Copying or Data Removal
-
-Without written authorization, the individual may not:
-
-Export ATS/CRM data.
-Download candidate or client lists.
-Copy resumes, licenses, certifications, or credentialing packets to personal folders.
-Transfer files to personal email, personal cloud storage, USB drives, external hard drives, or unauthorized software.
-Screenshot internal dashboards, rate cards, candidate lists, client lists, submissions, margin information, business discussions, or leadership communications.
-Retain copies of Company documents after separation.
-
-9. Return and Deletion of Company Information
-
-Upon request, role change, resignation, termination, or end of engagement, the individual must immediately return, delete, and stop using all Company information, including:
-
-Documents, files, records, notes, reports, resumes, candidate data, client data, rate data, business plans, HR records, and internal communications.
-Company equipment, devices, access cards, phone numbers, software access, portal credentials, and accounts.
-Any copies stored on personal devices, personal email, personal cloud accounts, messaging apps, or external storage.
-
-The Company may require written confirmation that all such information has been returned or deleted.
-
-10. Work Product and Company Materials
-
-All work product created, contributed, modified, compiled, processed, or developed in connection with Hire'in Solutions business belongs to Hire'in Solutions, including but not limited to:
-
-Candidate packets, resumes formatted for submission, screening notes, sourcing lists, outreach templates, business reports, client presentations, proposals, decks, pricing models, SOPs, training materials, AI prompts, automation workflows, documentation, spreadsheets, dashboards, and process designs.
-Product concepts, platform workflows, internal portal documentation, recruiting tools, compliance checklists, and operational playbooks.
-
-11. Public Information Exception
-
-Confidential Information does not include information that becomes publicly available through no fault or unauthorized action of the individual. Information is not considered public merely because parts of it may be available from public sources if the Company has compiled, organized, enriched, analyzed, or maintained it in a non-public business format.
-
-12. Protected Rights and Legal Exceptions
-
-Nothing in this Agreement prohibits the individual from:
-
-Discussing wages, hours, or working conditions as protected by applicable law.
-Reporting discrimination, harassment, retaliation, wage violations, safety concerns, fraud, legal violations, or compliance concerns to a government agency.
-Filing a charge or complaint with the EEOC, NLRB, OSHA, DOL, or another government agency.
-Cooperating with a government investigation.
-Making disclosures protected by whistleblower laws.
-Exercising any legally protected rights.
-
-Under federal trade secret law, an individual may have immunity from liability for confidential disclosure of a trade secret to a government official or attorney solely for reporting or investigating a suspected violation of law, or in a legal filing made under seal, as provided under 18 U.S.C. § 1833(b).
-
-13. Duration of Confidentiality Obligations
-
-The confidentiality obligations continue during and after employment/engagement. Trade secret obligations continue for as long as the information remains a trade secret under applicable law. Other Confidential Information must remain protected for as long as it remains non-public, sensitive, proprietary, or confidential, or for the maximum period permitted by applicable law.
-
-14. Breach and Remedies
-
-The individual understands that unauthorized disclosure, misuse, copying, export, retention, or destruction of Confidential Information may cause significant harm to Hire'in Solutions, its clients, candidates, employees, vendors, and business partners.
-
-A breach may result in disciplinary action, termination of employment/engagement, loss of incentives or discretionary benefits where permitted by law and Company policy, removal of system access, legal action, injunctive relief, damages, recovery of Company property, and any other remedies available under applicable law.
-
-15. No Waiver
-
-Failure by Hire'in Solutions to enforce any provision of this Agreement at any time does not waive the Company's right to enforce the same or any other provision later.
-
-16. Acknowledgment
-
-I acknowledge that I have read and understood this Confidentiality and Non-Disclosure Agreement. I understand that confidentiality, data protection, client trust, candidate trust, and delivery discipline are core obligations of my employment/engagement with Hire'in Solutions.
-
-I agree to comply with this Agreement during and after my employment/engagement with Hire'in Solutions.`,
+Acknowledged and agreed.`,
   },
 
   marketing_nda: {
@@ -468,57 +394,55 @@ I agree to comply with this Agreement during and after my employment/engagement 
     title: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
     body: `Hire'in Solutions
 Annexure E – Marketing & Social Media Confidentiality, NDA & IP Agreement
-Applicable to: Marketing, brand, social media, influencer, creator, content, PR, email, blog, website, video, design, and campaign team members working for or on behalf of Hire'in Solutions and its portfolio brands.
+Applicable to: All marketing, brand, social media, content, influencer, email, design, PR, campaign, and creator team members, employees, contractors, consultants, agencies, and interns working for or on behalf of Hire'in Solutions or its portfolio brands (including ProKred, Hire'in Solutions, and any associated ventures).
 
-This Agreement is entered into between the Company and the Team Member named on the cover page. It applies during employment/engagement and after separation, as permitted by applicable law.
+1. Scope of confidential information
 
-1. Purpose and scope
-The Team Member may receive access to non-public information relating to Hire'in, ProKred, portfolio brands, clients, candidates, employees, partners, software, product launches, marketing plans, campaigns, social media credentials, pricing, strategy, and business operations. This Agreement protects that information and confirms ownership of work product created for the Company.
+The Team Member may access, create, process, or become aware of Confidential Information including: brand strategy, campaign plans, go-to-market plans, positioning, tone guidance, scripts, briefs, budgets, ad spend, audience targeting data, lead lists, client/candidate/partner contacts, unpublished content, creative assets, design files, performance analytics, engagement data, email lists, ad account credentials, social media account access, influencer relationships, partnership terms, pricing, and leadership/business strategy.
 
-2. Confidential Information
-Confidential Information includes any non-public information disclosed directly or indirectly, whether written, verbal, visual, digital, or inferred from access, including:
-product roadmaps, unreleased features, SaaS launch plans, business plans, pricing, packaging, GTM strategy, investor/partner material, and internal decision-making;
-marketing strategies, content calendars, campaign briefs, drafts, prompts, brand positioning, design systems, creative concepts, taglines, scripts, content pillars, audience strategy, and launch assets;
-client, candidate, employee, vendor, partner, lead, prospect, and contact information;
-login credentials, social media account access, analytics, ad accounts, automation tools, CRM/ATS data, email marketing systems, and internal tools;
-documents, resumes, credentials, contracts, financials, compensation data, performance information, and operational processes;
-AI prompts, proprietary workflows, templates, SOPs, checklists, product demos, screenshots, unreleased UI, source files, and internal communications.
+2. Non-disclosure and non-use
 
-3. Team Member obligations
-Use limitation: Use Confidential Information only for authorized Company work.
-No disclosure: Do not disclose, publish, forward, screenshot, upload, copy, export, or discuss Confidential Information with anyone outside the Company without written approval.
-Need-to-know access: Do not share internal information with coworkers or contractors unless they are authorized and need it for assigned work.
-No personal storage: Do not save Company information to personal drives, personal email, personal messaging apps, or personal devices unless approved.
-Protection: Use reasonable care to protect Company information, including strong passwords, MFA, secure devices, and approved tools.
-Incident reporting: Immediately report suspected loss, unauthorized access, phishing, credential compromise, accidental disclosure, or social media account issues.
-No personal benefit: Do not use Company information for personal branding, portfolio, side projects, competing work, or outside clients without written approval.
+The Team Member must: hold all Confidential Information in strict confidence; use it only for authorized Company work; not disclose it to any third party, competitor, agency, or personal contact without written approval; not use it for personal brand benefit, freelance work, consulting, or competing business.
 
-4. Social media and public communication confidentiality
-No Company initiative, client/candidate information, internal meeting insight, unreleased product feature, campaign idea, screenshot, founder quote, brand strategy, or internal result may be posted publicly or privately without written approval. This includes LinkedIn, Instagram, Facebook, X/Twitter, WhatsApp, Discord, Reddit, portfolio websites, creator profiles, and case studies.
+3. Platform credentials and account access
 
-5. AI tools and third-party platforms
-The Team Member must not enter Confidential Information, client/candidate information, credentials, internal strategy, unpublished campaign plans, private source documents, screenshots, or proprietary prompts into public AI tools, social media tools, design platforms, or third-party systems unless the Company has approved that tool and the specific use case.
+All social media accounts, advertising accounts, email platforms, CMS access, design tool accounts, and analytics platforms provided or shared are Company property. The Team Member must not share, export, screenshot, or retain any credentials, contacts, audience lists, or access after separation, and must cooperate with account recovery and access removal on request.
+
+4. AI tools and content ownership
+
+Any AI-generated content, prompts, outputs, automations, templates, datasets, or workflows created or used for Company purposes belong to the Company. The Team Member must not input Confidential Information, client/candidate information, credentials, internal strategy, unpublished campaign plans, private source documents, screenshots, or proprietary prompts into public AI tools, social media tools, design platforms, or third-party systems unless the Company has approved that tool and the specific use case.
+
+5. Non-solicitation and conflict of interest
+
+During employment/engagement and for the period permitted by applicable law after separation, the Team Member must not use Company information or relationships to solicit Company clients, candidates, employees, contractors, vendors, partners, prospects, or brand collaborators for personal or competing business purposes. The Team Member must disclose outside work, freelance projects, creator partnerships, or conflicts that may overlap with Company business, clients, campaigns, or competitors.
 
 6. Work Product and intellectual property
+
 All work created, developed, drafted, designed, edited, researched, conceptualized, posted, scheduled, or delivered by the Team Member for the Company is Company work product. This includes posts, captions, reels, scripts, blogs, images, campaigns, prompts, design files, templates, videos, ad copy, calendars, strategy notes, analytics reports, and derivative works.
 To the fullest extent permitted by law, the Team Member assigns to the Company all rights, title, and interest in such work product, including copyrights, moral rights waivers where legally permitted, trade secrets, know-how, and other intellectual property rights. No separate payment is due for such assignment beyond agreed compensation unless required by law or a separate written agreement.
 
 7. Portfolio use and attribution
+
 The Team Member may not use Company work, client/candidate examples, unreleased concepts, ProKred/Hire'in strategy, analytics, screenshots, or campaign performance in any portfolio, resume case study, public post, interview assignment, freelance pitch, or personal brand content without prior written approval from the Company.
 
 8. Return and deletion
+
 Upon request or separation, the Team Member must return or delete all Company information, files, documents, credentials, notes, copies, drafts, screenshots, recordings, and work product from all personal devices, accounts, drives, tools, and storage locations, and certify completion if requested.
 
 9. Non-solicitation and conflict of interest
+
 During employment/engagement and for the period permitted by applicable law after separation, the Team Member must not use Company information or relationships to solicit Company clients, candidates, employees, contractors, vendors, partners, prospects, or brand collaborators for personal or competing business purposes. The Team Member must disclose outside work, freelance projects, creator partnerships, or conflicts that may overlap with Company business, clients, campaigns, or competitors.
 
 10. Remedies
+
 Unauthorized disclosure or misuse may cause serious harm. The Company may seek available remedies, including injunctive relief, recovery of damages, return/deletion of materials, disciplinary action, termination, and other remedies available under applicable law.
 
 11. Survival
+
 Confidentiality, IP ownership, return/deletion, non-use, portfolio restriction, and related obligations survive the end of employment/engagement.
 
 12. Governing law
+
 This Agreement will be governed by the laws and jurisdiction stated in the employment/engagement agreement or as determined by the Company's legal entity and applicable law. Insert final jurisdiction after counsel review: [Insert governing law and dispute forum].
 
 Acknowledged and agreed.`,
@@ -532,16 +456,19 @@ Acknowledged and agreed.`,
 Annexure F – Marketing, Social Media & Content Policy
 
 1. Policy purpose
+
 This policy applies to all marketing, brand, social media, influencer, creator, content, PR, email, blog, website, video, design, and campaign work performed for the Company and its portfolio brands.
 
 2. Brand and content approval rules
+
 All external content must follow approved brand positioning, tone, values, compliance guidance, and leadership direction.
 No post, campaign, article, reel, carousel, press note, ad, email, or public comment may be published without approval from the assigned reviewer or leadership.
 Healthcare, staffing, credentialing, compliance, security, privacy, and SaaS claims must be reviewed carefully. Do not make unsupported legal, medical, compliance, HIPAA, TJC, security, or performance claims.
-Avoid absolute statements such as “guaranteed compliance,” “fully HIPAA compliant” unless approved by legal/leadership. Prefer risk-aware phrasing such as “supports audit readiness,” “designed to reduce document-control risk,” or “built with security-first controls.”
+Avoid absolute statements such as "guaranteed compliance," "fully HIPAA compliant" unless approved by legal/leadership. Prefer risk-aware phrasing such as "supports audit readiness," "designed to reduce document-control risk," or "built with security-first controls."
 Do not publish client, candidate, employee, recruiter, salary, placement, margin, internal performance, or private company information without written approval.
 
 3. Content workflow
+
 Brief: Understand objective, audience, channel, offer, CTA, brand, and approval owner.
 Draft: Create original content with clear source references where factual claims are made.
 Review: Submit drafts for review before posting or scheduling.
@@ -551,6 +478,7 @@ Measure: Track performance, engagement, reach, clicks, readership, and learnings
 Archive: Maintain approved copies, campaign notes, asset links, and performance snapshots in Company-approved storage.
 
 4. Social media account conduct
+
 Company accounts, passwords, MFA devices, page roles, ad accounts, and analytics access must be treated as confidential and used only for approved work.
 Do not change account ownership, admin roles, handles, bios, passwords, recovery email/phone, ad billing, or integrations without approval.
 Do not respond to sensitive comments, complaints, legal threats, media inquiries, client disputes, candidate complaints, or security/privacy concerns without approval.
@@ -558,15 +486,18 @@ Do not delete comments, messages, posts, analytics, or campaign history unless a
 No personal opinions, political/religious commentary, offensive language, discriminatory content, harassment, or unapproved humor from Company accounts.
 
 5. Personal social media and influencer activity
+
 The Team Member may maintain personal social media accounts. However, personal accounts must not disclose Company Confidential Information, imply unauthorized representation, use Company intellectual property without approval, or discuss clients/candidates/internal plans. If Company asks the Team Member to appear in or promote content using a personal creator profile, the scope, content, approvals, usage rights, and any compensation/boosting arrangements should be documented separately.
 
 6. AI-assisted content rules
+
 AI may be used only for approved drafting, ideation, grammar, formatting, or research support.
 Do not input Confidential Information, client/candidate data, credentials, resumes, strategy docs, pricing, internal screenshots, proprietary prompts, or unreleased product information into unapproved AI tools.
 All AI-assisted content must be reviewed by a human before use. The Team Member is responsible for accuracy, originality, tone, and compliance.
 Do not copy third-party copyrighted content, competitor copy, influencer scripts, or source material without permission or proper transformation and approval.
 
 7. Content standards
+
 Content must be truthful, professional, respectful, non-discriminatory, and aligned with Company values.
 Content must not mislead candidates, clients, healthcare professionals, partners, or the public.
 Use only licensed, Company-owned, approved, or properly attributed assets. Do not use random internet images, music, templates, or fonts in violation of license terms.
@@ -574,6 +505,7 @@ Avoid publishing sensitive or regulated claims without approval.
 Respect privacy, confidentiality, and dignity of candidates, clients, employees, healthcare workers, and partners.
 
 8. Violations
+
 Violations may result in content removal, access restriction, disciplinary action, termination, legal action, or other remedies available under Company policy and applicable law.
 
 Acknowledged and agreed.`,
@@ -587,6 +519,7 @@ Acknowledged and agreed.`,
 Annexure G – Marketing Code of Conduct, Data Security & Professional Standards
 
 1. Professional conduct
+
 Act with honesty, integrity, accountability, respect, and professionalism.
 Represent the Company responsibly in internal and external communication.
 Respect managers, team members, candidates, clients, partners, creators, and vendors.
@@ -594,6 +527,7 @@ Avoid harassment, discrimination, retaliation, bullying, intimidation, or unprof
 Meet commitments, communicate blockers early, and maintain reliable responsiveness during working hours.
 
 2. Security and access
+
 Use only approved email, storage, communication, design, social media, and project tools for Company work.
 Use strong passwords and MFA wherever available. Do not share passwords or OTPs.
 Do not use unauthorized personal accounts, drives, WhatsApp groups, or consumer tools to store or transfer Company data.
@@ -601,6 +535,7 @@ Lock devices when away. Keep devices updated with reasonable security protection
 Immediately report phishing, suspicious links, account lockouts, lost devices, accidental disclosure, or unauthorized access.
 
 3. Data handling
+
 Access only information needed for assigned work.
 Do not download/export bulk data unless authorized.
 Do not copy sensitive information into content drafts, AI tools, personal notes, or external platforms.
@@ -608,18 +543,334 @@ Do not use client/candidate/employee data in examples, mocks, screenshots, testi
 Use approved redaction or anonymization before sharing examples internally or externally.
 
 4. Conflict of interest
+
 The Team Member must disclose outside employment, freelance work, brand collaborations, influencer partnerships, affiliate promotions, consulting, or creator commitments that could conflict with Company work, overlap with Company clients/competitors, or affect availability, neutrality, or confidentiality.
 
 5. Communications and approvals
+
 Do not speak on behalf of the Company to media, clients, candidates, vendors, partners, or public audiences unless authorized.
 Escalate legal, compliance, security, privacy, public relations, or candidate/client complaint matters to leadership.
 Use professional written communication and avoid commitments that have not been approved.
 
 6. Attendance, responsiveness, and remote work
+
 The Team Member is expected to remain responsive during agreed working hours, attend scheduled meetings, update tasks, meet timelines, and communicate availability or blockers in advance. Remote work does not reduce confidentiality, productivity, conduct, or security obligations.
 
 7. Disciplinary action
+
 Failure to follow this Code may result in coaching, warning, access restriction, compensation review impact, termination, legal action, or other action depending on severity and applicable law.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_nda: {
+    key: "eng_nda",
+    label: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+    title: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-A: Confidentiality, Non-Disclosure & Proprietary Information Agreement
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. Purpose
+
+This Agreement protects Hire'in Solutions' confidential and proprietary technical information, trade secrets, client data, business strategy, and intellectual property that the Engineer may access, generate, or encounter during their engagement.
+
+2. Definition of Confidential & Proprietary Information
+
+"Confidential Information" includes, without limitation:
+— Source code, repositories, codebases, scripts, modules, libraries, APIs, SDKs, and build configurations.
+— Algorithms, system architectures, data models, database schemas, query logic, and ML/AI models and prompts.
+— Internal tools, automation workflows, CI/CD pipelines, infrastructure-as-code configurations, and deployment scripts.
+— Client-facing and internal system credentials, API keys, tokens, secrets, environment variables, and authentication configurations.
+— Product roadmaps, technical specifications, design documents, sprint plans, architecture decision records (ADRs), and internal wikis.
+— Client data, candidate data, applicant records, employee data, business intelligence outputs, and analytics dashboards.
+— Security controls, vulnerability assessments, penetration test findings, and incident reports.
+— Vendor agreements, SaaS subscriptions, licensing terms, and commercial terms with technology providers.
+
+3. Obligations
+
+The Engineer agrees to:
+— Hold all Confidential Information in strict confidence and take at least the same degree of care to protect it as they use for their own confidential information.
+— Use Confidential Information solely for the performance of assigned duties for Hire'in Solutions.
+— Not disclose Confidential Information to any third party, personal contact, or external system without explicit written authorization.
+— Not copy, export, screenshot, cache, or transmit Confidential Information outside Company-approved systems.
+— Promptly notify the Company of any actual or suspected unauthorized access, disclosure, or breach.
+
+4. Exclusions
+
+These obligations do not apply to information that: (a) is or becomes publicly known through no act of the Engineer; (b) was rightfully known to the Engineer prior to engagement and without restriction; (c) is received from a third party without restriction; or (d) must be disclosed by applicable law (with prompt prior written notice to the Company where permitted).
+
+5. Post-Separation
+
+All confidentiality and non-use obligations survive termination or expiry of employment/engagement and remain in effect until the information enters the public domain without fault of the Engineer.
+
+6. Remedies
+
+Unauthorized disclosure or misuse may cause irreparable harm. The Company may seek injunctive relief, damages, disciplinary action, and any other available legal remedy.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_ip: {
+    key: "eng_ip",
+    label: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
+    title: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-B: Intellectual Property, Code Ownership & Work Product Assignment
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. Work Product Definition
+
+"Work Product" means any and all inventions, discoveries, developments, improvements, software, code, scripts, algorithms, data models, AI/ML models, prompts, datasets, automation workflows, system designs, architecture decisions, technical documentation, research, prototypes, tools, and derivative works — whether or not patentable, copyrightable, or reduced to practice — that are:
+(a) created, developed, or conceived by the Engineer (alone or jointly) during the term of employment/engagement; OR
+(b) made using Company resources, systems, time, equipment, data, or Confidential Information; OR
+(c) related to the Company's current or reasonably anticipated business, products, or research.
+
+2. Assignment of Ownership
+
+The Engineer hereby irrevocably assigns to Hire'in Solutions all rights, title, and interest in and to all Work Product, including all copyrights, patent rights, trade secret rights, moral rights (to the fullest extent waivable by law), and any other intellectual property rights worldwide. This assignment is perpetual, royalty-free, and without further consideration beyond agreed compensation.
+
+3. Code Repositories & Commits
+
+All code committed to Company or client repositories — including branches, forks, pull requests, and merge history — is Company Work Product. The Engineer must not: commit code containing personal projects, third-party code without proper licensing clearance, or open-source components without disclosing their license obligations to the Company.
+
+4. Pre-Existing IP
+
+The Engineer must disclose in writing any pre-existing inventions, code, or materials they wish to exclude from this assignment ("Prior IP"). Undisclosed Prior IP incorporated into Work Product may be treated as assigned to the Company.
+
+5. Open Source
+
+The Engineer must obtain written approval before incorporating any open-source code, libraries, or components into Company systems. License obligations (GPL, LGPL, AGPL, etc.) must be disclosed and reviewed before use.
+
+6. AI-Generated Output
+
+Any output generated using AI tools (including code, text, designs, or models) while performing Company work is Work Product and belongs to the Company. The Engineer must not use personal AI subscriptions funded by the Company to generate work stored exclusively outside Company systems.
+
+7. Moral Rights Waiver
+
+To the fullest extent permitted by applicable law, the Engineer waives all moral rights in Work Product in favour of the Company and its assignees and successors.
+
+8. Further Assurances
+
+The Engineer will, upon request, execute any documents or take any actions necessary to perfect or record the Company's ownership of Work Product, at the Company's expense.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_byod: {
+    key: "eng_byod",
+    label: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
+    title: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-C: BYOD, Cloud-Only Development, Security & Data Access Policy
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. BYOD Policy
+
+Engineers may use personal devices (laptop, desktop, mobile) for Company work subject to the following mandatory controls:
+— Operating system must be maintained with current security patches and updates.
+— Full-disk encryption must be enabled (BitLocker, FileVault, LUKS, or equivalent).
+— Licensed antivirus/endpoint protection software must be installed and active.
+— Screen-lock with password/PIN must be set to activate after a maximum of 5 minutes of inactivity.
+— Personal devices used for Company work are subject to remote wipe of Company data/containers upon separation or security incident.
+
+2. Cloud-Only Development Mandate
+
+All development, testing, and production work must be conducted within Company-approved cloud environments, version control systems, and collaboration platforms. The Engineer must not:
+— Store source code, credentials, client data, or Work Product exclusively on local device storage without a synchronized backup to an approved cloud repository.
+— Run production workloads, databases, or client-facing services on personal hardware or unapproved infrastructure.
+— Use personal cloud storage accounts (personal Google Drive, Dropbox, iCloud, OneDrive, etc.) to store Company code, data, credentials, or Work Product.
+
+3. Approved Tools & Platforms
+
+The Engineer must use only Company-approved IDEs, version control platforms, CI/CD tools, container orchestration systems, communication channels, and project management tools for work activities. Requests for new tools must be submitted to engineering leadership for approval before use.
+
+4. Credential & Secret Management
+
+— All credentials, API keys, tokens, secrets, and environment variables must be stored in Company-approved secrets management systems (e.g., Vault, AWS Secrets Manager, GitHub Secrets).
+— Credentials must never be hard-coded in source code, committed to repositories, included in documentation, or transmitted via unencrypted channels.
+— Shared or service account credentials must be rotated immediately upon any team member separation.
+
+5. Network Security
+
+— Personal Wi-Fi used for Company work must be secured with WPA2 or WPA3 encryption.
+— Public or unsecured networks must not be used for Company work without an approved VPN.
+— VPN and/or SSO must be used when accessing internal systems, admin panels, or production environments as required by the Company's security policy.
+
+6. Data Access Controls
+
+— Engineers must access only the data, systems, and environments required for their assigned tasks (principle of least privilege).
+— Production data must not be accessed, copied, or used in development/test environments without explicit approval and appropriate anonymization.
+— Access to production environments must be logged and must follow the Company's change management process.
+
+7. Incident Reporting
+
+Any device loss, theft, suspected breach, unauthorized access, or security incident involving Company data or systems must be reported to the IT/security team within 24 hours of discovery.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_data_protection: {
+    key: "eng_data_protection",
+    label: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
+    title: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-D: Data Protection, Privacy & Client/Candidate Information Handling
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. Data Categories
+
+The Engineer may encounter the following categories of data in the course of their work:
+— Personal Data: Names, email addresses, phone numbers, addresses, dates of birth, national ID numbers (PAN, Aadhaar, SSN, etc.), passport details, and other personal identifiers.
+— Candidate & Applicant Data: Resumes, employment histories, skills assessments, interview notes, compensation details, work authorization status, and onboarding records.
+— Client Data: Client company information, contacts, contracts, rate information, submission records, and business correspondence.
+— Sensitive Data: Financial records, health-related information, background check results, and any data classified as sensitive under applicable data protection law.
+— Technical Data: System logs, audit trails, analytics, and behavioural data.
+
+2. Data Minimization
+
+The Engineer must access, process, and retain only the minimum data necessary to complete an assigned task. Bulk export, download, or aggregation of personal data beyond task requirements is prohibited without written authorization.
+
+3. Development & Testing Data
+
+Production data (real personal data) must not be used in development, testing, staging, or demonstration environments. The Engineer must use anonymized, synthetic, or mocked datasets for non-production purposes. Where production data is required for debugging, explicit written approval must be obtained and a record kept.
+
+4. Data Retention & Disposal
+
+The Engineer must not retain copies of personal data, client data, or candidate data beyond the period required for the assigned task. Upon task completion or separation, such data must be securely deleted from personal devices, local storage, and any unapproved systems.
+
+5. Third-Party Data Sharing
+
+Personal data must not be shared with third-party tools, APIs, AI services, analytics platforms, or external systems unless: (a) the Company has an approved Data Processing Agreement (DPA) with the third party; and (b) the sharing is explicitly authorized by the Company's data governance team.
+
+6. Privacy by Design
+
+The Engineer is expected to implement privacy-protective technical controls in all systems they design or build, including: appropriate encryption at rest and in transit; access controls and role-based permissions; audit logging for data access and modification; data retention policies enforced at the system level; and user consent mechanisms where required by applicable law.
+
+7. Regulatory Compliance
+
+The Engineer must be aware of applicable data protection obligations relevant to Company operations, which may include the Information Technology Act 2000 (India), the Digital Personal Data Protection Act 2023 (India), GDPR (where applicable), HIPAA (where applicable to healthcare data), and any client-specific data handling requirements communicated by the Company.
+
+8. Breach Notification
+
+Any actual or suspected data breach, unauthorized access, or loss of personal data must be reported to the engineering lead and compliance/security team immediately and in no case later than 24 hours after discovery.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_access_policy: {
+    key: "eng_access_policy",
+    label: "Eng-E — Access, Password, AI Tool & Communication Policy",
+    title: "Eng-E — Access, Password, AI Tool & Communication Policy",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-E: Access, Password, AI Tool & Communication Policy
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. Access Management
+
+1.1 Provisioning: Access to Company systems, repositories, cloud environments, databases, admin panels, and third-party platforms is provisioned based on role and task requirements. The Engineer must not request, obtain, or retain access beyond what is required for assigned duties.
+
+1.2 Principle of Least Privilege: The Engineer must operate with the minimum level of permissions necessary. Elevated privileges (admin, root, superuser) must be used only for specific tasks that require them and must not be retained as default access.
+
+1.3 Shared Accounts: Sharing of individual access credentials is prohibited. Each Engineer must use their own uniquely provisioned credentials for all Company systems.
+
+1.4 Access Review: The Engineer must cooperate with periodic access reviews and promptly respond to deprovisioning requests upon role change or separation.
+
+2. Password & Authentication Policy
+
+2.1 Password Complexity: All passwords for Company systems must meet the following minimum requirements: at least 12 characters; combination of uppercase, lowercase, numbers, and symbols; not reused from personal accounts or previous Company passwords.
+
+2.2 Password Managers: Engineers are encouraged to use approved password manager tools for storing and generating strong, unique passwords. Storage of passwords in plain text (notes, spreadsheets, source code, or documentation) is prohibited.
+
+2.3 Multi-Factor Authentication (MFA): MFA must be enabled on all accounts that support it, including: email, version control platforms, cloud provider consoles, CI/CD systems, VPNs, and any production system access. Use of SMS-based MFA is permitted but hardware tokens or authenticator apps are preferred.
+
+2.4 Credential Rotation: Credentials must be rotated immediately upon: suspected compromise; team member separation; and periodically as required by Company security policy.
+
+3. AI Tool Usage Policy
+
+3.1 Approved Tools: Engineers may use AI coding assistants (e.g., GitHub Copilot, Cursor, or other Company-approved tools) subject to the conditions in this policy. Use of unapproved AI tools for Company work requires written authorization from engineering leadership.
+
+3.2 Prohibited Inputs: Engineers must not submit the following to any AI tool (whether approved or otherwise): source code containing credentials, secrets, or tokens; personally identifiable information (PII) of candidates, clients, or employees; client data, business strategy, or proprietary algorithms; unpublished product roadmaps or architecture details; or any information classified as Confidential under this Agreement.
+
+3.3 Output Review: All AI-generated code, logic, or content must be reviewed by the Engineer before use. The Engineer is responsible for the correctness, security, originality, and licensing compliance of AI-generated output incorporated into Work Product.
+
+3.4 Licensing: Engineers must be aware that AI-generated code may carry licensing obligations depending on the training data. Any AI-generated output intended for production use must be reviewed for potential intellectual property conflicts.
+
+4. Communication Policy
+
+4.1 Approved Channels: All work-related communication must occur through Company-approved channels (e.g., Company email, approved messaging platforms, project management tools, and video conferencing tools). Use of personal email, personal WhatsApp, or unapproved platforms for business communication is prohibited.
+
+4.2 Sensitive Information in Communication: Credentials, secrets, API keys, or personal data must not be transmitted via chat, email, or any messaging platform without encryption. Use approved secrets-sharing tools or secrets management systems for this purpose.
+
+4.3 Code Review & Documentation: Pull requests, code reviews, technical documentation, and architecture discussions must be conducted through approved platforms and must not contain live credentials, PII, or sensitive business information.
+
+4.4 Incident Communication: Security incidents, suspected breaches, or access anomalies must be reported immediately through the designated incident reporting channel, not via public group chats or informal messaging.
+
+Acknowledged and agreed.`,
+  },
+
+  eng_exit_certification: {
+    key: "eng_exit_certification",
+    label: "Eng-F — Exit, Return, Deletion & Certification",
+    title: "Eng-F — Exit, Return, Deletion & Certification",
+    body: `Hire'in Solutions — Engineering Pack
+Annexure Eng-F: Exit, Return, Deletion & Certification
+Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
+
+1. Purpose
+
+This Annexure sets out the Engineer's obligations upon the cessation of employment or engagement with Hire'in Solutions, whether by resignation, termination, contract expiry, or any other reason. Compliance with these obligations is a condition of final settlement and clearance.
+
+2. System Access Revocation
+
+2.1 The Engineer agrees to cooperate fully with the Company's IT/security team to facilitate the immediate revocation of all access upon separation, including:
+— Version control platforms (GitHub, GitLab, Bitbucket, or equivalent).
+— Cloud provider accounts (AWS, GCP, Azure, or equivalent) and their IAM roles/policies.
+— CI/CD systems, container registries, and deployment pipelines.
+— Databases, admin panels, internal tools, and SaaS platforms.
+— VPN, SSO, and MFA-linked accounts.
+— Communication platforms, project management tools, and collaboration systems.
+
+2.2 The Engineer must not access any Company system after their last authorized working day, even if access has not yet been technically revoked.
+
+3. Return of Company Property
+
+The Engineer must return all Company-owned or Company-issued property within 3 working days of separation, including:
+— Hardware devices (laptops, monitors, peripherals, access tokens, MFA devices).
+— Physical media containing Company data or software.
+— Any physical documents, printed materials, or notebooks containing Company information.
+Failure to return Company property may result in cost recovery from final settlement as permitted by law.
+
+4. Data Deletion Obligations
+
+4.1 The Engineer must permanently delete all Company Confidential Information, Work Product, source code, credentials, client data, candidate data, and business information from:
+— Personal devices (including laptops, phones, tablets, and external drives).
+— Personal cloud storage accounts (Google Drive, Dropbox, iCloud, OneDrive, or equivalent).
+— Personal email accounts, messaging applications, and note-taking tools.
+— Any other personal or unapproved storage location.
+
+4.2 Deletion must be performed using a secure deletion method (overwrite or equivalent) where technically feasible. Emptying the recycle bin or trash alone is not sufficient for sensitive data.
+
+4.3 Local repositories cloned from Company version control systems must be deleted from personal devices.
+
+5. Credential Handover
+
+Before separation, the Engineer must:
+— Transfer ownership of all Company accounts, repositories, and service accounts to the designated Company representative.
+— Provide credentials or transfer administrative access for any Company-owned tools, services, or systems where the Engineer was the sole administrator.
+— Remove personal SSH keys, GPG keys, and personal tokens from all Company repositories and systems.
+
+6. Data Deletion Certificate
+
+The Engineer must, upon request, provide a signed written declaration confirming that all Company data has been deleted from personal devices, accounts, and storage locations ("Data Deletion Certificate"). The Company may make final settlement conditional upon receipt of this Certificate.
+
+7. Post-Separation Restrictions
+
+The Engineer's obligations under Annexure Eng-A (Confidentiality), Annexure Eng-B (IP Assignment), and this Annexure survive the termination of employment/engagement and remain binding indefinitely with respect to Confidential Information and Work Product created during the engagement.
+
+8. Cooperation
+
+The Engineer agrees to cooperate with the Company during any post-separation audit, security review, or legal matter involving systems, code, or data they worked with during their engagement, for a reasonable period not to exceed 12 months.
 
 Acknowledged and agreed.`,
   },
@@ -633,4 +884,10 @@ export const POLICY_ANNEXURE_LABELS: Record<PolicyAnnexureKey, string> = {
   marketing_nda: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
   marketing_content_policy: "Annexure F — Marketing, Social Media & Content Policy",
   marketing_code_of_conduct: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
+  eng_nda: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+  eng_ip: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
+  eng_byod: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
+  eng_data_protection: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
+  eng_access_policy: "Eng-E — Access, Password, AI Tool & Communication Policy",
+  eng_exit_certification: "Eng-F — Exit, Return, Deletion & Certification",
 };
