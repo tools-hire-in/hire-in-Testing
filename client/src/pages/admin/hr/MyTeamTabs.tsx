@@ -8,8 +8,9 @@ import LeaveApprovals from "./LeaveApprovals";
 import TrainingProgress from "./TrainingProgress";
 import AttendanceApproval from "./AttendanceApproval";
 import TicketApprovalsTab from "./TicketApprovalsTab";
+import TeamSopCompliance from "./TeamSopCompliance";
 
-const TABS = ["overview", "attendance", "exceptions", "leave-approvals", "training-progress", "attendance-approval", "approvals"] as const;
+const TABS = ["overview", "attendance", "exceptions", "leave-approvals", "training-progress", "attendance-approval", "approvals", "sop-compliance"] as const;
 type Tab = typeof TABS[number];
 
 // Legacy nested-param aliases → current single-level section values.
@@ -86,6 +87,7 @@ export default function MyTeamTabs() {
           {activeTab === "training-progress" && <TrainingProgress />}
           {activeTab === "attendance-approval" && <AttendanceApproval />}
           {activeTab === "approvals" && <TicketApprovalsTab />}
+          {activeTab === "sop-compliance" && <TeamSopCompliance />}
         </div>
       </div>
     </AdminLayout>

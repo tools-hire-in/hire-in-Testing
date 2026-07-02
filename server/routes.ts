@@ -11975,6 +11975,58 @@ export async function registerRoutes(
     }
   });
 
+  // Team SOP compliance view — manager sees direct reports; hr/admin/super_admin see all.
+  app.get("/api/sops/team-compliance", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role!;
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+
+      let teamMembers: AdminUser[];
+      if (["manager", "operations"].includes(role)) {
+        teamMembers = await storage.getTeamMembers(userId);
+      } else if (["super_admin", "admin", "hr"].includes(role)) {
+        const allUsers = await storage.getAdminUsers();
+        teamMembers = allUsers.filter((u) => u.isActive && !u.deletedAt);
+      } else {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const result: Array<{
+        userId: string; name: string; role: string | null;
+        total: number; acknowledged: number; trainingPending: number; overdue: number;
+        sops: Array<{ code: string; title: string; state: string; overdue: boolean; dueAt: string | null; acknowledgedAt: string | null }>;
+      }> = [];
+
+      for (const member of teamMembers) {
+        const { assignments } = await sopRollout.getMySopAssignments(member.id, member.role ?? undefined);
+        result.push({
+          userId: member.id,
+          name: `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim() || member.email,
+          role: member.role ?? null,
+          total: assignments.length,
+          acknowledged: assignments.filter((a) => a.state === "acknowledged").length,
+          trainingPending: assignments.filter((a) => a.state === "training_pending").length,
+          overdue: assignments.filter((a) => a.overdue).length,
+          sops: assignments.map((a) => ({
+            code: a.code,
+            title: a.title,
+            state: a.state,
+            overdue: a.overdue,
+            dueAt: a.dueAt ? a.dueAt.toISOString() : null,
+            acknowledgedAt: a.acknowledgedAt ? a.acknowledgedAt.toISOString() : null,
+          })),
+        });
+      }
+
+      res.json({ members: result });
+    } catch (error) {
+      console.error("SOP team compliance error:", error);
+      res.status(500).json({ error: "Failed to fetch team SOP compliance" });
+    }
+  });
+
   // List SOPs (current versions by default), with optional filters.
   app.get("/api/sops", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
     try {

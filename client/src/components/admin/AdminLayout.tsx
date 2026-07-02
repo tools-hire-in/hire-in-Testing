@@ -325,6 +325,7 @@ const MY_TEAM_SUB_ITEMS = [
   { label: "Training", tab: "training-progress", icon: GraduationCap },
   { label: "Month Approval", tab: "attendance-approval", icon: ClipboardCheck },
   { label: "Req. Approvals", tab: "approvals", icon: ClipboardList },
+  { label: "SOP Compliance", tab: "sop-compliance", icon: ShieldCheck, sopOnly: true },
 ] as const;
 
 const NEW_HIRE_SUB_ITEMS = [
@@ -337,6 +338,7 @@ const NEW_HIRE_SUB_ITEMS = [
 function TeamSection({
   hasTeamAccess,
   hasNewHireAccess,
+  hasSopAccess,
   isNavActive,
   isComplianceLocked,
   location,
@@ -349,6 +351,7 @@ function TeamSection({
 }: {
   hasTeamAccess: boolean;
   hasNewHireAccess: boolean;
+  hasSopAccess: boolean;
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
   location: string;
@@ -495,7 +498,9 @@ function TeamSection({
 
                 {/* My Team sub-nav — single level, replaces in-page nested tabs */}
                 <div className="ml-3 pl-3 border-l border-border/60 space-y-0.5 mb-1">
-                  {MY_TEAM_SUB_ITEMS.map(({ label, tab, icon: Icon }) => {
+                  {MY_TEAM_SUB_ITEMS.filter((i) =>
+                    !("sopOnly" in i && i.sopOnly) || hasSopAccess
+                  ).map(({ label, tab, icon: Icon }) => {
                     const href = tab ? `/admin/hr/my-team?tab=${tab}` : "/admin/hr/my-team";
                     const isActive = isSubItemActive(tab as string | null);
                     const badge = subBadge(tab as string | null);
@@ -1598,6 +1603,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
               <TeamSection
                 hasTeamAccess={hasTeamAccess}
                 hasNewHireAccess={hasNewHireAccess}
+                hasSopAccess={hasSopAccess}
                 isNavActive={isNavActive}
                 isComplianceLocked={isComplianceLocked}
                 location={location}
