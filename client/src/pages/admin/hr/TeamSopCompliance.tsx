@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, ChevronDown, ChevronUp, Users } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, ChevronDown, ChevronUp, Users, FileText, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { useSopAccess } from "@/hooks/use-sop-access";
 
 interface SopRow {
@@ -14,6 +15,8 @@ interface SopRow {
   overdue: boolean;
   dueAt: string | null;
   acknowledgedAt: string | null;
+  evidenceText: string | null;
+  evidenceFileUrl: string | null;
 }
 
 interface MemberRow {
@@ -44,19 +47,70 @@ function fmtDate(d: string | null) {
   catch { return "—"; }
 }
 
+function EvidencePanel({ sop }: { sop: SopRow }) {
+  const [open, setOpen] = useState(false);
+  const hasEvidence = !!(sop.evidenceText?.trim() || sop.evidenceFileUrl?.trim());
+  if (!hasEvidence) return null;
+
+  return (
+    <div className="mt-1.5">
+      <button
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setOpen((v) => !v)}
+        data-testid={`button-evidence-expand-${sop.code}`}
+      >
+        <FileText className="h-3 w-3" />
+        View evidence
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded-md border bg-muted/20 p-2.5 space-y-2 text-xs" data-testid={`panel-evidence-${sop.code}`}>
+          {sop.evidenceText?.trim() && (
+            <div>
+              <p className="font-medium text-muted-foreground mb-1">Written response</p>
+              <p className="text-foreground whitespace-pre-wrap">{sop.evidenceText}</p>
+            </div>
+          )}
+          {sop.evidenceFileUrl?.trim() && (
+            <div>
+              <p className="font-medium text-muted-foreground mb-1">Attached file</p>
+              <a
+                href={sop.evidenceFileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
+                data-testid={`link-evidence-download-${sop.code}`}
+              >
+                <Download className="h-3 w-3" /> Download file
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SopChip({ sop }: { sop: SopRow }) {
   const meta = sop.overdue ? { label: "Overdue", variant: "destructive" as const } : STATE_META[sop.state];
+  const hasEvidence = !!(sop.evidenceText?.trim() || sop.evidenceFileUrl?.trim());
   return (
     <div
-      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
+      className="rounded-md border px-2 py-1.5 text-xs space-y-1"
       data-testid={`chip-sop-${sop.code}`}
     >
-      <span className="font-mono text-[10px] text-muted-foreground">{sop.code}</span>
-      <span className="truncate max-w-[120px]" title={sop.title}>{sop.title}</span>
-      <Badge variant={meta.variant} className="text-[10px] shrink-0">{meta.label}</Badge>
-      {sop.overdue && sop.dueAt && (
-        <span className="text-[10px] text-destructive shrink-0">since {fmtDate(sop.dueAt)}</span>
-      )}
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-[10px] text-muted-foreground">{sop.code}</span>
+        <span className="truncate max-w-[120px]" title={sop.title}>{sop.title}</span>
+        <Badge variant={meta.variant} className="text-[10px] shrink-0">{meta.label}</Badge>
+        {hasEvidence && (
+          <Badge variant="outline" className="text-[10px] shrink-0 border-emerald-300 text-emerald-600">Evidence</Badge>
+        )}
+        {sop.overdue && sop.dueAt && (
+          <span className="text-[10px] text-destructive shrink-0">since {fmtDate(sop.dueAt)}</span>
+        )}
+      </div>
+      <EvidencePanel sop={sop} />
     </div>
   );
 }
@@ -154,7 +208,7 @@ export default function TeamSopCompliance() {
           <ShieldCheck className="h-5 w-5 text-primary" /> My Team's SOPs
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Read-only view of your direct reports' SOP acknowledgement status. Expand a row to see per-SOP details.
+          Read-only view of your direct reports' SOP acknowledgement status. Expand a row to see per-SOP details and submitted evidence.
         </p>
       </div>
 

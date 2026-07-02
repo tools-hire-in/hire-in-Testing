@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, Lock, X } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, Lock, X, FileUp, Upload, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -31,6 +32,9 @@ interface MySopAssignment {
   dueAt: string | null;
   overdue: boolean;
   state: "queued" | "training_pending" | "ready" | "acknowledged";
+  evidenceText: string | null;
+  evidenceFileUrl: string | null;
+  evidenceDescription: string | null;
 }
 
 interface MyAssignmentsResponse {
@@ -136,11 +140,6 @@ export default function MySops() {
   );
 }
 
-// Soft-enforcement coaching nudge for the dashboard. Shows when the user has
-// operational SOPs in soft/measured-enforced waves that they haven't
-// acknowledged yet. Full-enforcement overdue SOPs are handled by the compliance
-// lock, not this banner. The banner is dismissible for the current session
-// (sessionStorage), so it reappears on the user's next login.
 const SOP_BANNER_DISMISS_KEY = "sop-coaching-banner-dismissed";
 
 export function SopCoachingBanner() {
@@ -221,6 +220,158 @@ function SummaryStat({ label, value, tone, testid }: { label: string; value: num
   );
 }
 
+function EvidenceSection({ sop }: { sop: MySopAssignment }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(sop.evidenceText ?? "");
+  const [fileUploading, setFileUploading] = useState(false);
+  const [fileUrl, setFileUrl] = useState(sop.evidenceFileUrl ?? "");
+  const [fileName, setFileName] = useState<string | null>(sop.evidenceFileUrl ? sop.evidenceFileUrl.split("/").pop() ?? null : null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const saveMut = useMutation({
+    mutationFn: async (updates: { evidenceText?: string; evidenceFileUrl?: string }) =>
+      (await apiRequest("PATCH", `/api/sops/${sop.sopMasterId}/evidence`, updates)).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/my-assignments"] });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const handleBlur = () => {
+    saveMut.mutate({ evidenceText: text });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/sops/${sop.sopMasterId}/evidence-upload`, {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Upload failed");
+      }
+      const { url } = await res.json();
+      setFileUrl(url);
+      setFileName(file.name);
+      await saveMut.mutateAsync({ evidenceFileUrl: url });
+      toast({ title: "File uploaded", description: file.name });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setFileUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const hasEvidence = text.trim() || fileUrl.trim();
+
+  if (!open) {
+    return (
+      <button
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setOpen(true)}
+        data-testid={`button-mysop-evidence-expand-${sop.code}`}
+      >
+        <FileUp className="h-3.5 w-3.5" />
+        {hasEvidence ? (
+          <span className="text-emerald-600 font-medium">Evidence submitted</span>
+        ) : (
+          <span>Add evidence</span>
+        )}
+        <ChevronDown className="h-3 w-3" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`section-mysop-evidence-${sop.code}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <FileUp className="h-3.5 w-3.5" /> Evidence
+          {hasEvidence && <span className="text-emerald-600">✓</span>}
+        </p>
+        <button
+          className="text-muted-foreground hover:text-foreground"
+          onClick={() => setOpen(false)}
+          data-testid={`button-mysop-evidence-collapse-${sop.code}`}
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {sop.evidenceDescription && (
+        <p className="text-xs text-muted-foreground italic">
+          {sop.evidenceDescription}
+        </p>
+      )}
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">Written response</Label>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={handleBlur}
+          placeholder="Describe how you applied this SOP in your work…"
+          rows={3}
+          className="text-sm resize-none"
+          data-testid={`textarea-mysop-evidence-text-${sop.code}`}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">File attachment (PDF, PNG, JPG, DOCX — max 10 MB)</Label>
+        {fileUrl ? (
+          <div className="flex items-center gap-2 text-xs text-emerald-600">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{fileName ?? "File uploaded"}</span>
+            <button
+              className="text-muted-foreground hover:text-destructive ml-auto shrink-0"
+              onClick={async () => {
+                setFileUrl("");
+                setFileName(null);
+                await saveMut.mutateAsync({ evidenceFileUrl: "" });
+              }}
+              data-testid={`button-mysop-evidence-remove-file-${sop.code}`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.docx"
+              className="hidden"
+              onChange={handleFileChange}
+              data-testid={`input-mysop-evidence-file-${sop.code}`}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={() => fileRef.current?.click()}
+              disabled={fileUploading}
+              data-testid={`button-mysop-evidence-upload-${sop.code}`}
+            >
+              <Upload className="h-3 w-3" />
+              {fileUploading ? "Uploading…" : "Choose file"}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment[]; onAck: (s: MySopAssignment) => void }) {
   const [, setLocation] = useLocation();
   return (
@@ -230,6 +381,9 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
         {sops.map((sop) => {
           const meta = STATE_META[sop.state];
           const Icon = meta.icon;
+          const evidenceRequired = !!(sop.evidenceDescription?.trim());
+          const hasEvidence = !!(sop.evidenceText?.trim() || sop.evidenceFileUrl?.trim());
+          const ackBlocked = evidenceRequired && !hasEvidence;
           return (
             <Card key={sop.sopId} data-testid={`card-mysop-${sop.code}`}>
               <CardHeader className="pb-2">
@@ -275,7 +429,11 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                 </div>
 
                 {sop.state !== "queued" && !sop.acknowledgedCurrentVersion && (
-                  <div className="flex gap-2">
+                  <EvidenceSection sop={sop} />
+                )}
+
+                {sop.state !== "queued" && !sop.acknowledgedCurrentVersion && (
+                  <div className="flex gap-2 items-center">
                     {sop.state === "training_pending" ? (
                       <Button
                         size="sm"
@@ -286,13 +444,22 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                         <GraduationCap className="h-3.5 w-3.5 mr-1" /> Complete training
                       </Button>
                     ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => onAck(sop)}
-                        data-testid={`button-mysop-ack-${sop.code}`}
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Acknowledge
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => onAck(sop)}
+                          disabled={ackBlocked}
+                          data-testid={`button-mysop-ack-${sop.code}`}
+                          title={ackBlocked ? "Add evidence first" : undefined}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Acknowledge
+                        </Button>
+                        {ackBlocked && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-mysop-evidence-required-${sop.code}`}>
+                            Add evidence first
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -332,7 +499,14 @@ function AcknowledgeDialog({ sop, onClose }: { sop: MySopAssignment; onClose: ()
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
       onClose();
     },
-    onError: (e: any) => toast({ title: "Cannot acknowledge", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => {
+      const msg = e?.message ?? "";
+      if (msg.includes("evidence")) {
+        toast({ title: "Evidence required", description: "Please add your evidence before acknowledging this SOP.", variant: "destructive" });
+      } else {
+        toast({ title: "Cannot acknowledge", description: msg, variant: "destructive" });
+      }
+    },
   });
 
   return (

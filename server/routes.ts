@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, type SopDocument } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -11996,7 +11996,7 @@ export async function registerRoutes(
       const result: Array<{
         userId: string; name: string; role: string | null;
         total: number; acknowledged: number; trainingPending: number; overdue: number;
-        sops: Array<{ code: string; title: string; state: string; overdue: boolean; dueAt: string | null; acknowledgedAt: string | null }>;
+        sops: Array<{ code: string; title: string; state: string; overdue: boolean; dueAt: string | null; acknowledgedAt: string | null; evidenceText: string | null; evidenceFileUrl: string | null }>;
       }> = [];
 
       for (const member of teamMembers) {
@@ -12016,6 +12016,8 @@ export async function registerRoutes(
             overdue: a.overdue,
             dueAt: a.dueAt ? a.dueAt.toISOString() : null,
             acknowledgedAt: a.acknowledgedAt ? a.acknowledgedAt.toISOString() : null,
+            evidenceText: a.evidenceText ?? null,
+            evidenceFileUrl: a.evidenceFileUrl ?? null,
           })),
         });
       }
@@ -12422,6 +12424,16 @@ export async function registerRoutes(
         await storage.markSopTrainingComplete(doc.sopMasterId, userId, assignment.completedAt ?? new Date());
       }
 
+      // Gate on evidence if the role assignment requires it.
+      const [roleAssignmentRow] = await db.select()
+        .from(sopRoleAssignments)
+        .where(and(eq(sopRoleAssignments.sopMasterId, doc.sopMasterId), eq(sopRoleAssignments.role, req.session.role!)));
+      if (roleAssignmentRow?.evidenceDescription?.trim()) {
+        if (!myProgress.evidenceText?.trim() && !myProgress.evidenceFileUrl?.trim()) {
+          return res.status(412).json({ code: "evidence_required", error: "You must add evidence (written response or file) before acknowledging this SOP" });
+        }
+      }
+
       const typedName = (req.body?.typedName ?? "").toString().trim();
       if (!typedName) return res.status(400).json({ error: "Typed name is required to acknowledge" });
 
@@ -12472,6 +12484,98 @@ export async function registerRoutes(
     } catch (error) {
       console.error("SOP acknowledge error:", error);
       res.status(500).json({ error: "Failed to acknowledge SOP" });
+    }
+  });
+
+  const evidenceUploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single("file");
+
+  // Upload a single evidence file for a SOP (stores under .private/sop-evidence/).
+  app.post("/api/sops/:masterId/evidence-upload", requireAuth, async (req: Request, res: Response) => {
+    // Run multer inline so we can catch LIMIT_FILE_SIZE and return a tidy 400.
+    await new Promise<void>((resolve, reject) => evidenceUploadMiddleware(req, res, (err) => err ? reject(err) : resolve()))
+      .catch((err: any) => {
+        if (err?.code === "LIMIT_FILE_SIZE") {
+          res.status(400).json({ error: "File too large. Maximum 10 MB allowed" });
+        } else {
+          res.status(500).json({ error: "Upload failed" });
+        }
+      });
+    if (res.headersSent) return;
+
+    try {
+      const { masterId } = req.params;
+      const userId = req.session.userId!;
+
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
+
+      // Validate file type.
+      const ALLOWED_MIME = ["application/pdf", "image/png", "image/jpeg", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      if (!ALLOWED_MIME.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: "Invalid file type. Allowed: PDF, PNG, JPG, DOCX" });
+      }
+
+      // Gate: user must have a progress row for this SOP.
+      const myProgress = (await storage.getSopEmployeeProgressForUser(userId)).find((p) => p.sopMasterId === masterId);
+      if (!myProgress) return res.status(403).json({ error: "This SOP is not assigned to you" });
+
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+      const relativePath = `sop-evidence/${masterId}/${userId}/${crypto.randomUUID()}-${safeName}`;
+
+      await objectStorageService.uploadBuffer(req.file.buffer, relativePath, req.file.mimetype);
+
+      // Store as a canonical /objects/<relativePath> so the existing /objects/* serve
+      // route can resolve it directly without any double-prefix issues.
+      const storedPath = `/objects/${relativePath}`;
+
+      res.json({ url: storedPath });
+    } catch (error) {
+      console.error("SOP evidence upload error:", error);
+      res.status(500).json({ error: "Failed to upload evidence file" });
+    }
+  });
+
+  // Save / update evidence text and/or file URL for a SOP progress row.
+  app.patch("/api/sops/:masterId/evidence", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { masterId } = req.params;
+      const userId = req.session.userId!;
+
+      const myProgress = (await storage.getSopEmployeeProgressForUser(userId)).find((p) => p.sopMasterId === masterId);
+      if (!myProgress) return res.status(403).json({ error: "This SOP is not assigned to you" });
+
+      const evidenceText = req.body?.evidenceText !== undefined ? String(req.body.evidenceText).slice(0, 5000) : undefined;
+      let evidenceFileUrl: string | undefined;
+      if (req.body?.evidenceFileUrl !== undefined) {
+        const raw = String(req.body.evidenceFileUrl);
+        // Only accept blank (clear) or canonical internal paths from our upload route.
+        const EVIDENCE_PATH_RE = /^\/objects\/sop-evidence\/[^/]+\/[^/]+\/[^/]+$/;
+        if (raw !== "" && !EVIDENCE_PATH_RE.test(raw)) {
+          return res.status(400).json({ error: "Invalid evidenceFileUrl — must be a path generated by the evidence upload endpoint" });
+        }
+        evidenceFileUrl = raw;
+      }
+
+      const updates: { evidenceText?: string | null; evidenceFileUrl?: string | null } = {};
+      if (evidenceText !== undefined) updates.evidenceText = evidenceText || null;
+      if (evidenceFileUrl !== undefined) updates.evidenceFileUrl = evidenceFileUrl || null;
+
+      const updated = await storage.updateSopEvidence(masterId, userId, updates);
+
+      // If an audit record exists for the current ISO week and evidence is now present, mark it collected.
+      try {
+        const hasEvidence = !!(updated?.evidenceText?.trim() || updated?.evidenceFileUrl?.trim());
+        if (hasEvidence) {
+          const weekDate = currentWeekMonday();
+          await db.update(sopAuditRecords)
+            .set({ evidenceCollected: true })
+            .where(and(eq(sopAuditRecords.sopMasterId, masterId), eq(sopAuditRecords.weekDate, weekDate)));
+        }
+      } catch { /* non-fatal */ }
+
+      res.json({ progress: updated });
+    } catch (error) {
+      console.error("SOP evidence save error:", error);
+      res.status(500).json({ error: "Failed to save evidence" });
     }
   });
 

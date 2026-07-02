@@ -663,6 +663,7 @@ export interface IStorage {
   upsertSopEmployeeProgress(sopMasterId: string, sopVersion: number, userId: string): Promise<void>;
   markSopTrainingComplete(sopMasterId: string, userId: string, at?: Date): Promise<void>;
   setSopAcknowledged(sopMasterId: string, sopVersion: number, userId: string, hash: string, at?: Date): Promise<SopEmployeeProgress | undefined>;
+  updateSopEvidence(sopMasterId: string, userId: string, updates: { evidenceText?: string | null; evidenceFileUrl?: string | null }): Promise<SopEmployeeProgress | undefined>;
   // SOP audit records & findings
   getSopAuditRecords(sopMasterId: string): Promise<SopAuditRecord[]>;
   getAllSopAuditRecords(): Promise<SopAuditRecord[]>;
@@ -5182,6 +5183,15 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db
       .update(sopEmployeeProgress)
       .set({ acknowledgedAt: at, acknowledgmentHash: hash, sopVersion, updatedAt: new Date() })
+      .where(and(eq(sopEmployeeProgress.sopMasterId, sopMasterId), eq(sopEmployeeProgress.userId, userId)))
+      .returning();
+    return row;
+  }
+
+  async updateSopEvidence(sopMasterId: string, userId: string, updates: { evidenceText?: string | null; evidenceFileUrl?: string | null }): Promise<SopEmployeeProgress | undefined> {
+    const [row] = await db
+      .update(sopEmployeeProgress)
+      .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(sopEmployeeProgress.sopMasterId, sopMasterId), eq(sopEmployeeProgress.userId, userId)))
       .returning();
     return row;

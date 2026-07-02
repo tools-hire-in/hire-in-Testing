@@ -3469,6 +3469,8 @@ export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   quizPassedAt: timestamp("quiz_passed_at"),
   acknowledgedAt: timestamp("acknowledged_at"),
   acknowledgmentHash: varchar("acknowledgment_hash"),
+  evidenceText: text("evidence_text"),
+  evidenceFileUrl: varchar("evidence_file_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

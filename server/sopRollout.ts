@@ -13,7 +13,7 @@
 
 import { db } from "./db";
 import { storage } from "./storage";
-import { rolloutWaves, waveSops, sopDocuments } from "@shared/schema";
+import { rolloutWaves, waveSops, sopDocuments, sopRoleAssignments } from "@shared/schema";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 // Lifecycle states at which a SOP is "live enough" to create employee obligations.
@@ -323,9 +323,12 @@ export interface MySopAssignment {
   dueAt: Date | null;
   overdue: boolean;
   state: "queued" | "training_pending" | "ready" | "acknowledged";
+  evidenceText: string | null;
+  evidenceFileUrl: string | null;
+  evidenceDescription: string | null;
 }
 
-async function buildAssignmentRows(userId: string): Promise<MySopAssignment[]> {
+async function buildAssignmentRows(userId: string, role?: string): Promise<MySopAssignment[]> {
   const progress = await storage.getSopEmployeeProgressForUser(userId);
   if (progress.length === 0) return [];
   const masterIds = Array.from(new Set(progress.map((p) => p.sopMasterId)));
@@ -335,6 +338,14 @@ async function buildAssignmentRows(userId: string): Promise<MySopAssignment[]> {
     .from(sopDocuments)
     .where(and(eq(sopDocuments.isCurrent, true), inArray(sopDocuments.sopMasterId, masterIds)));
   const docByMaster = new Map(docs.map((d) => [d.sopMasterId, d]));
+
+  // Fetch role assignments for evidenceDescription (per user's role).
+  const roleAssignmentRows = role
+    ? await db.select().from(sopRoleAssignments).where(
+        and(inArray(sopRoleAssignments.sopMasterId, masterIds), eq(sopRoleAssignments.role, role))
+      )
+    : [];
+  const evidenceDescByMaster = new Map(roleAssignmentRows.map((r) => [r.sopMasterId, r.evidenceDescription ?? null]));
 
   const members = await db.select().from(waveSops).where(inArray(waveSops.sopMasterId, masterIds));
   const waveNumbers = Array.from(new Set(members.map((m) => m.waveNumber)));
@@ -414,6 +425,9 @@ async function buildAssignmentRows(userId: string): Promise<MySopAssignment[]> {
       dueAt,
       overdue,
       state,
+      evidenceText: (p as any).evidenceText ?? null,
+      evidenceFileUrl: (p as any).evidenceFileUrl ?? null,
+      evidenceDescription: evidenceDescByMaster.get(p.sopMasterId) ?? null,
     });
   }
   return rows;
@@ -426,7 +440,7 @@ export async function getMySopAssignments(
   if (!userId) return { enabled: false, assignments: [] };
   const { enabled } = await resolveSopAccessForUser(userId, role);
   if (!enabled) return { enabled: false, assignments: [] };
-  const assignments = await buildAssignmentRows(userId);
+  const assignments = await buildAssignmentRows(userId, role);
   return { enabled: true, assignments };
 }
 
