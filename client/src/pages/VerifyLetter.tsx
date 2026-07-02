@@ -8,10 +8,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TEMPLATE_LABELS } from "@shared/hrLetterConstants";
+import {
+  inferDocType, refMatchesDocType, AUTH_CODE_EXAMPLE,
+  type AllowedDocType,
+} from "@shared/verifySchema";
 
 const rayomindLogoPath = "/rayomind-logo.png";
+
+const DOC_TYPE_LABELS: Record<AllowedDocType, string> = {
+  hr_letter: "HR Letter (Experience, Internship, Relieving)",
+  contract: "Staffing Services Agreement (Contract)",
+  offer_letter: "Offer Letter",
+  addendum: "Amendment / Addendum Letter",
+};
+
+const REF_PLACEHOLDERS: Record<AllowedDocType, string> = {
+  hr_letter: "e.g. RL/EXP/2026/0001",
+  contract: "e.g. CTR/2026/ABCD1234",
+  offer_letter: "e.g. OL/2026/0042",
+  addendum: "e.g. AM/SAL/2026/0007",
+};
 
 interface HrLetterVerifyResult {
   documentType?: "hr_letter";
@@ -75,25 +92,11 @@ interface AddendumVerifyResult {
   warning?: string;
 }
 
-interface PolicyVerifyResult {
-  documentType: "policy";
-  employeeName: string;
-  policyTitle: string | null;
-  policyVersion: number | null;
-  signedAt: string | null;
-  referenceNumber: string;
-  status: string;
-  verified: boolean;
-  tamperDetected?: boolean;
-  warning?: string;
-}
-
 type VerifyResult =
   | HrLetterVerifyResult
   | ContractVerifyResult
   | OfferLetterVerifyResult
-  | AddendumVerifyResult
-  | PolicyVerifyResult;
+  | AddendumVerifyResult;
 
 function formatDate(dateStr?: string | null) {
   if (!dateStr) return "—";
@@ -119,9 +122,6 @@ function isAddendum(r: VerifyResult): r is AddendumVerifyResult {
   return (r as any).documentType === "addendum";
 }
 
-function isPolicy(r: VerifyResult): r is PolicyVerifyResult {
-  return (r as any).documentType === "policy";
-}
 
 export default function VerifyLetter() {
   useSEO({
@@ -132,19 +132,75 @@ export default function VerifyLetter() {
   });
   const [refNumber, setRefNumber] = useState("");
   const [authCode, setAuthCode] = useState("");
-  const [docType, setDocType] = useState("hr_letter");
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [notFound, setNotFound] = useState(false);
 
+  const [refError, setRefError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const inferredDocType: AllowedDocType | null = inferDocType(refNumber);
+
+  const AUTH_CODE_RE = /^[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}$/;
+
+  function validateRef(value: string): string | null {
+    if (!value.trim()) return null;
+    const upper = value.trim().toUpperCase();
+    const docType = inferDocType(upper);
+    if (!docType) {
+      return "Unrecognised prefix. Start with RL/, CTR/, OL/, or AM/";
+    }
+    if (!refMatchesDocType(upper, docType)) {
+      const examples: Record<AllowedDocType, string> = {
+        hr_letter: "RL/EXP/2026/0001",
+        contract: "CTR/2026/ABCD1234",
+        offer_letter: "OL/2026/0042",
+        addendum: "AM/SAL/2026/0007",
+      };
+      return `Invalid format for ${docType}. Example: ${examples[docType]}`;
+    }
+    return null;
+  }
+
+  function validateAuth(value: string): string | null {
+    if (!value.trim()) return null;
+    if (!AUTH_CODE_RE.test(value.trim())) {
+      return `Must be XXXX-XXXX (8 hex digits, e.g. ${AUTH_CODE_EXAMPLE})`;
+    }
+    return null;
+  }
+
+  function handleRefChange(value: string) {
+    setRefNumber(value);
+    setRefError(validateRef(value));
+  }
+
+  function handleAuthChange(value: string) {
+    setAuthCode(value);
+    setAuthError(validateAuth(value));
+  }
+
   const verifyMutation = useMutation({
     mutationFn: async () => {
-      const params = new URLSearchParams({ ref: refNumber, auth: authCode });
-      if (docType !== "hr_letter") params.set("documentType", docType);
+      const docType = inferredDocType;
+      if (!docType) throw new Error("Cannot determine document type from reference number.");
+      const params = new URLSearchParams({
+        ref: refNumber.trim().toUpperCase(),
+        auth: authCode.trim().toUpperCase(),
+        documentType: docType,
+      });
       const res = await fetch(`/api/verify-letter?${params.toString()}`);
       if (res.status === 404) {
         setNotFound(true);
         setResult(null);
         return null;
+      }
+      if (res.status === 400) {
+        setNotFound(true);
+        setResult(null);
+        return null;
+      }
+      if (res.status === 429) {
+        throw new Error("Too many requests. Please wait a minute before trying again.");
       }
       if (!res.ok) throw new Error("Verification failed");
       return res.json();
@@ -163,9 +219,28 @@ export default function VerifyLetter() {
 
   function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!refNumber || !authCode) return;
+
+    const rErr = validateRef(refNumber);
+    const aErr = validateAuth(authCode);
+    setRefError(rErr);
+    setAuthError(aErr);
+    if (rErr || aErr || !refNumber.trim() || !authCode.trim()) return;
+
     verifyMutation.mutate();
   }
+
+  const placeholder = inferredDocType
+    ? REF_PLACEHOLDERS[inferredDocType]
+    : "e.g. RL/EXP/2026/0001, CTR/2026/..., OL/2026/..., or AM/SAL/2026/...";
+
+  const detectedLabel = inferredDocType ? DOC_TYPE_LABELS[inferredDocType] : null;
+
+  const canSubmit =
+    !!refNumber.trim() &&
+    !!authCode.trim() &&
+    !refError &&
+    !authError &&
+    !verifyMutation.isPending;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white dark:from-gray-900 dark:to-gray-950">
@@ -186,44 +261,38 @@ export default function VerifyLetter() {
           <CardContent>
             <form onSubmit={handleVerify} className="space-y-4">
               <div>
-                <Label>Document Type</Label>
-                <Select value={docType} onValueChange={setDocType}>
-                  <SelectTrigger data-testid="select-doc-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hr_letter">HR Letter (Experience, Internship, Relieving)</SelectItem>
-                    <SelectItem value="contract">Staffing Services Agreement (Contract)</SelectItem>
-                    <SelectItem value="offer_letter">Offer Letter</SelectItem>
-                    <SelectItem value="addendum">Amendment / Addendum Letter</SelectItem>
-                    <SelectItem value="policy">Policy Acknowledgement</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
                 <Label>Reference Number</Label>
+                {detectedLabel && (
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Detected: <span className="font-medium text-foreground">{detectedLabel}</span>
+                  </p>
+                )}
                 <Input
-                  placeholder={
-                    docType === "contract" ? "e.g. CTR/2026/ABCD1234"
-                    : docType === "policy" ? "e.g. POL/2026/ABCD1234"
-                    : docType === "offer_letter" || docType === "addendum" ? "Document ID"
-                    : "e.g. RL/EXP/2026/0001"
-                  }
+                  placeholder={placeholder}
                   value={refNumber}
-                  onChange={e => setRefNumber(e.target.value)}
+                  onChange={e => handleRefChange(e.target.value)}
                   data-testid="input-verify-ref"
+                  className={refError ? "border-red-400 focus-visible:ring-red-400" : ""}
                 />
+                {refError && (
+                  <p className="text-xs text-red-500 mt-1" data-testid="text-ref-error">{refError}</p>
+                )}
               </div>
+
               <div>
                 <Label>Auth Code</Label>
                 <Input
-                  placeholder="e.g. A7F3-B92E"
+                  placeholder={`e.g. ${AUTH_CODE_EXAMPLE}`}
                   value={authCode}
-                  onChange={e => setAuthCode(e.target.value)}
+                  onChange={e => handleAuthChange(e.target.value)}
                   data-testid="input-verify-auth"
+                  className={authError ? "border-red-400 focus-visible:ring-red-400" : ""}
                 />
+                {authError && (
+                  <p className="text-xs text-red-500 mt-1" data-testid="text-auth-error">{authError}</p>
+                )}
               </div>
-              <Button type="submit" className="w-full" disabled={!refNumber || !authCode || verifyMutation.isPending} data-testid="btn-verify">
+              <Button type="submit" className="w-full" disabled={!canSubmit} data-testid="btn-verify">
                 {verifyMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Shield className="h-4 w-4 mr-2" />}
                 Verify Document
               </Button>
@@ -253,7 +322,6 @@ export default function VerifyLetter() {
               <Separator className="mb-4" />
 
               {isOfferLetter(result) ? (
-                /* ── Offer letter result ─────────────────────────────────────── */
                 <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Document Type</p>
@@ -303,7 +371,6 @@ export default function VerifyLetter() {
                   </div>
                 </div>
               ) : isAddendum(result) ? (
-                /* ── Addendum result ─────────────────────────────────────────── */
                 <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Document Type</p>
@@ -346,46 +413,7 @@ export default function VerifyLetter() {
                     <p className="font-mono text-xs">{result.referenceNumber}</p>
                   </div>
                 </div>
-              ) : isPolicy(result) ? (
-                /* ── Policy acknowledgement result ───────────────────────────── */
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Document Type</p>
-                    <p className="font-medium">Policy Acknowledgement</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Status</p>
-                    <Badge data-testid="badge-verify-status">Signed</Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Employee Name</p>
-                    <p className="font-medium" data-testid="text-verify-name">{result.employeeName}</p>
-                  </div>
-                  {result.policyTitle && (
-                    <div>
-                      <p className="text-muted-foreground">Policy</p>
-                      <p className="font-medium">{result.policyTitle}</p>
-                    </div>
-                  )}
-                  {result.policyVersion != null && (
-                    <div>
-                      <p className="text-muted-foreground">Version</p>
-                      <p className="font-medium">v{result.policyVersion}</p>
-                    </div>
-                  )}
-                  {result.signedAt && (
-                    <div>
-                      <p className="text-muted-foreground">Signed On</p>
-                      <p className="font-medium">{formatDateTime(result.signedAt)}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-muted-foreground">Reference</p>
-                    <p className="font-mono text-xs">{result.referenceNumber}</p>
-                  </div>
-                </div>
               ) : isContract(result) ? (
-                /* ── Contract result ─────────────────────────────────────────── */
                 <div className="space-y-3 text-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -459,7 +487,6 @@ export default function VerifyLetter() {
                   )}
                 </div>
               ) : (
-                /* ── HR letter result ────────────────────────────────────────── */
                 <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Document Type</p>

@@ -9,7 +9,7 @@ import { startScheduler } from "./scheduler";
 import { checkAndAutoCreateRun } from "./attendanceReport";
 import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
-import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters } from "@shared/schema";
+import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters, offerLetters, offerLetterAddendums } from "@shared/schema";
 import { SOP_SEED } from "./sopSeedData";
 import { WAVE_DEFS, resolveWaveMembership } from "./sopRollout";
 import { isNull, eq, or, and, gte, lte, inArray, sql } from "drizzle-orm";
@@ -902,6 +902,120 @@ async function ensureOfferLetterAddendumsTable() {
     `);
   } catch (err) {
     console.error("Offer letter addendums table migration error:", err);
+  }
+}
+
+async function ensureOfferLetterReferenceNumbers() {
+  try {
+    const { computeOfferLetterVerifyAuth, computeAddendumVerifyAuth, ADDENDUM_PREFIX } = await import("./documentSigningService");
+
+    // ── Offer letters ────────────────────────────────────────────────────────
+    const letters = await db.select({
+      id: offerLetters.id,
+      createdAt: offerLetters.createdAt,
+      candidateName: offerLetters.candidateName,
+      designation: offerLetters.designation,
+      salary: offerLetters.salary,
+      probationSalary: offerLetters.probationSalary,
+      proposedStartDate: offerLetters.proposedStartDate,
+      departmentId: offerLetters.departmentId,
+      location: offerLetters.location,
+      employmentType: offerLetters.employmentType,
+      offerDate: offerLetters.offerDate,
+    }).from(offerLetters).where(isNull(offerLetters.referenceNumber)).orderBy(offerLetters.createdAt);
+
+    // Group by year, assigning sequential numbers within each year
+    const byYear = new Map<number, typeof letters>();
+    for (const l of letters) {
+      const year = l.createdAt ? new Date(l.createdAt).getFullYear() : new Date().getFullYear();
+      if (!byYear.has(year)) byYear.set(year, []);
+      byYear.get(year)!.push(l);
+    }
+    for (const [year, rows] of byYear) {
+      // Find the highest existing sequence for this year
+      const existing = await db
+        .select({ ref: offerLetters.referenceNumber })
+        .from(offerLetters)
+        .where(sql`${offerLetters.referenceNumber} LIKE ${`OL/${year}/%`}`);
+      let maxSeq = existing.reduce((m, r) => {
+        const n = parseInt(r.ref?.split("/").pop() || "0", 10);
+        return Math.max(m, n);
+      }, 0);
+      for (const l of rows) {
+        maxSeq++;
+        const refNumber = `OL/${year}/${String(maxSeq).padStart(4, "0")}`;
+        const authCode = computeOfferLetterVerifyAuth({
+          referenceNumber: refNumber,
+          candidateName: l.candidateName,
+          designation: l.designation,
+          salary: l.salary,
+          probationSalary: l.probationSalary ? String(l.probationSalary) : null,
+          proposedStartDate: l.proposedStartDate,
+          departmentId: l.departmentId,
+          location: l.location,
+          employmentType: l.employmentType,
+          offerDate: l.offerDate,
+        });
+        await db.update(offerLetters)
+          .set({ referenceNumber: refNumber, verifyAuthCode: authCode })
+          .where(eq(offerLetters.id, l.id));
+      }
+    }
+
+    // ── Addendums ────────────────────────────────────────────────────────────
+    const addendums = await db.select({
+      id: offerLetterAddendums.id,
+      createdAt: offerLetterAddendums.createdAt,
+      candidateName: offerLetterAddendums.candidateName,
+      addendumType: offerLetterAddendums.addendumType,
+      oldDesignation: offerLetterAddendums.oldDesignation,
+      newDesignation: offerLetterAddendums.newDesignation,
+      oldSalary: offerLetterAddendums.oldSalary,
+      newSalary: offerLetterAddendums.newSalary,
+      effectiveDate: offerLetterAddendums.effectiveDate,
+      reason: offerLetterAddendums.reason,
+    }).from(offerLetterAddendums).where(isNull(offerLetterAddendums.referenceNumber)).orderBy(offerLetterAddendums.createdAt);
+
+    const addByYearPrefix = new Map<string, typeof addendums>();
+    for (const a of addendums) {
+      const year = a.createdAt ? new Date(a.createdAt).getFullYear() : new Date().getFullYear();
+      const prefix = ADDENDUM_PREFIX[a.addendumType] || "OTH";
+      const key = `${prefix}/${year}`;
+      if (!addByYearPrefix.has(key)) addByYearPrefix.set(key, []);
+      addByYearPrefix.get(key)!.push(a);
+    }
+    for (const [key, rows] of addByYearPrefix) {
+      const existing = await db
+        .select({ ref: offerLetterAddendums.referenceNumber })
+        .from(offerLetterAddendums)
+        .where(sql`${offerLetterAddendums.referenceNumber} LIKE ${`AM/${key}/%`}`);
+      let maxSeq = existing.reduce((m, r) => {
+        const n = parseInt(r.ref?.split("/").pop() || "0", 10);
+        return Math.max(m, n);
+      }, 0);
+      for (const a of rows) {
+        maxSeq++;
+        const refNumber = `AM/${key}/${String(maxSeq).padStart(4, "0")}`;
+        const authCode = computeAddendumVerifyAuth({
+          referenceNumber: refNumber,
+          candidateName: a.candidateName,
+          oldDesignation: a.oldDesignation,
+          newDesignation: a.newDesignation,
+          oldSalary: a.oldSalary,
+          newSalary: a.newSalary,
+          effectiveDate: a.effectiveDate,
+          addendumType: a.addendumType,
+          reason: a.reason,
+        });
+        await db.update(offerLetterAddendums)
+          .set({ referenceNumber: refNumber, verifyAuthCode: authCode })
+          .where(eq(offerLetterAddendums.id, a.id));
+      }
+    }
+
+    log("Offer letter and addendum reference numbers backfilled");
+  } catch (err) {
+    console.error("Offer letter reference number backfill error:", err);
   }
 }
 
@@ -2647,6 +2761,7 @@ async function runStartupTasks() {
   }
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
+  await ensureOfferLetterReferenceNumbers();
   await ensureContentStudioTables();
   await ensureCardTemplatesAndBrand();
   try {

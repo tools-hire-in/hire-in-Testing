@@ -714,6 +714,10 @@ export const offerLetters = pgTable("offer_letters", {
   attachedPlanRole: varchar("attached_plan_role"),
   attachedPlanLevel: varchar("attached_plan_level"),
   reminderSentAt: timestamp("reminder_sent_at"),
+  // Verify-page canonical ref + HMAC auth code (OL/{YEAR}/{SEQ4} format).
+  // Nullable — backfilled for existing rows by ensureOfferLetterReferenceNumbers().
+  referenceNumber: varchar("reference_number").unique(),
+  verifyAuthCode: varchar("verify_auth_code"),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
@@ -1476,6 +1480,10 @@ export const offerLetterAddendums = pgTable("offer_letter_addendums", {
   reminderSentAt: timestamp("reminder_sent_at"),
 
   createdAt: timestamp("created_at").defaultNow(),
+  // Verify-page canonical ref + HMAC auth code (AM/{PREFIX}/{YEAR}/{SEQ4} format).
+  // Nullable — backfilled for existing rows by ensureOfferLetterReferenceNumbers().
+  referenceNumber: varchar("reference_number").unique(),
+  verifyAuthCode: varchar("verify_auth_code"),
 });
 
 export const insertOfferLetterAddendumSchema = createInsertSchema(offerLetterAddendums).omit({

@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, type SopDocument } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -52,6 +52,9 @@ import {
   AiGenerationError,
 } from "./services/aiDraftService";
 import { z } from "zod";
+// express-rate-limit kept for other potential uses; verify endpoint uses a
+// custom sliding-window implementation (see slidingWindowVerifyLimiter below).
+import { verifyInputSchema } from "@shared/verifySchema";
 import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendSalaryReportDispatch, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
 import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
@@ -18591,17 +18594,94 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/verify-letter", verifyLetterLimiter, async (req, res) => {
-    try {
-      const { ref, auth, documentType } = req.query;
-      if (!ref || !auth) {
-        return res.status(400).json({ error: "Reference number and auth code are required" });
-      }
+  // Security headers applied to every /verify response (defined before rate limiter
+  // so the limiter's own handler can also set them on 429 responses).
+  function setVerifySecurityHeaders(res: Response): void {
+    res.set("Cache-Control", "no-store, no-cache");
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("X-Frame-Options", "DENY");
+    res.set("Content-Security-Policy", "default-src 'none'");
+  }
 
+  /**
+   * Log an anomalous /verify request without recording sensitive data.
+   * Only the first 3 chars of ref are emitted (honeypot signal).
+   * The user-agent is SHA-256 hashed to prevent log injection while
+   * preserving a fingerprint for correlation.  Full ref and auth code
+   * are never written to logs.
+   */
+  function logVerifyAnomaly(ip: string, rawRef: string, userAgent: string): void {
+    const refPrefix = (rawRef || "").substring(0, 3).replace(/[^\w/]/g, "?");
+    const uaHash = crypto
+      .createHash("sha256")
+      .update((userAgent || "").slice(0, 512))
+      .digest("hex")
+      .substring(0, 8);
+    console.warn(
+      `[verify-anomaly] ${new Date().toISOString()} ip=${ip} ref_prefix=${refPrefix} ua_hash=${uaHash} reason=invalid_format`,
+    );
+  }
+
+  // ── /verify rate limiter — true sliding window ──────────────────────────────
+  // express-rate-limit uses a fixed window by default. We implement a true
+  // sliding window here: for each IP we keep an array of hit timestamps,
+  // prune any older than VERIFY_WINDOW_MS, and reject if ≥ VERIFY_MAX remain.
+  // req.ip is correct because auth.ts already calls app.set("trust proxy", 1).
+  const _verifyWindow = new Map<string, number[]>();
+  const VERIFY_WINDOW_MS = 60_000;
+  const VERIFY_MAX = 30;
+
+  function verifyRateLimiter(req: Request, res: Response, next: NextFunction) {
+    const ip = (req.ip || req.socket.remoteAddress || "unknown").trim();
+    const now = Date.now();
+    const hits = (_verifyWindow.get(ip) || []).filter((t) => now - t < VERIFY_WINDOW_MS);
+    if (hits.length >= VERIFY_MAX) {
+      setVerifySecurityHeaders(res);
+      return res.status(429).set("Retry-After", "60").json({ error: "too_many_requests" });
+    }
+    hits.push(now);
+    _verifyWindow.set(ip, hits);
+    // Periodic GC: evict IPs whose whole window has expired to prevent unbounded growth
+    if (_verifyWindow.size > 10_000) {
+      for (const [k, v] of _verifyWindow) {
+        if (v.every((t) => now - t >= VERIFY_WINDOW_MS)) _verifyWindow.delete(k);
+      }
+    }
+    next();
+  }
+
+  app.get("/api/verify-letter", verifyRateLimiter, async (req, res) => {
+    // Security headers present on every response (including 400)
+    setVerifySecurityHeaders(res);
+
+    // req.ip is correctly resolved via the trust proxy=1 setting in auth.ts
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const userAgent = String(req.headers["user-agent"] ?? "");
+
+    // ── 1. Format validation before any DB access ────────────────────────────
+    const rawRef = String(req.query.ref ?? "");
+    const rawAuth = String(req.query.auth ?? "");
+    // documentType is required — no silent default. Missing/invalid → 400.
+    const rawDocType = String(req.query.documentType ?? "");
+
+    const parsed = verifyInputSchema.safeParse({
+      ref: rawRef,
+      auth: rawAuth,
+      documentType: rawDocType,
+    });
+
+    if (!parsed.success) {
+      logVerifyAnomaly(ip, rawRef, userAgent);
+      return res.status(400).json({ error: "invalid_format" });
+    }
+
+    const { ref, auth, documentType } = parsed.data;
+
+    try {
       // ── Contract verification branch ────────────────────────────────────────
       if (documentType === "contract") {
         const { verifyDocument } = await import("./documentSigningService");
-        const result = await verifyDocument("contract", ref as string, auth as string);
+        const result = await verifyDocument("contract", ref, auth);
 
         if (result.error === "not_found") {
           return res.status(404).json({ error: "Document not found or auth code does not match" });
@@ -18629,68 +18709,91 @@ export async function registerRoutes(
         });
       }
 
-      // ── Offer letter / addendum / policy verification (unified recompute) ──
-      if (documentType === "offer_letter" || documentType === "addendum" || documentType === "policy") {
-        const { verifyDocument } = await import("./documentSigningService");
-        const result = await verifyDocument(documentType as any, ref as string, auth as string);
-        if (result.error === "not_found") {
+      // ── Offer letter verification ─────────────────────────────────────────
+      if (documentType === "offer_letter") {
+        const {
+          computeOfferLetterVerifyAuth, timingSafeAuthEqual,
+        } = await import("./documentSigningService");
+        const [l] = await db.select().from(offerLetters)
+          .where(eq(offerLetters.referenceNumber, ref)).limit(1);
+        if (!l || !l.verifyAuthCode) {
           return res.status(404).json({ error: "Document not found or auth code does not match" });
         }
-        if (result.error) {
-          return res.status(500).json({ error: "Verification service error" });
+        const recomputed = computeOfferLetterVerifyAuth({
+          referenceNumber: ref,
+          candidateName: l.candidateName,
+          designation: l.designation,
+          salary: l.salary,
+          probationSalary: l.probationSalary ? String(l.probationSalary) : null,
+          proposedStartDate: l.proposedStartDate,
+          departmentId: l.departmentId,
+          location: l.location,
+          employmentType: l.employmentType,
+          offerDate: l.offerDate,
+        });
+        if (!timingSafeAuthEqual(recomputed, auth)) {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
         }
-        const r = result.record as any;
-        const tamper = result.tamperDetected ? { warning: "Document content may have been modified after issuance" } : {};
-
-        if (documentType === "offer_letter") {
-          return res.json({
-            documentType: "offer_letter",
-            employeeName: r.candidateName,
-            designation: r.designation,
-            location: r.location,
-            startDate: r.proposedStartDate,
-            offerDate: r.offerDate,
-            acceptedName: r.acceptedName,
-            acceptedAt: r.acceptedAt,
-            referenceNumber: r.id,
-            status: r.status,
-            verified: result.valid,
-            tamperDetected: result.tamperDetected,
-            ...tamper,
-          });
-        }
-        if (documentType === "addendum") {
-          return res.json({
-            documentType: "addendum",
-            employeeName: r.candidateName,
-            addendumType: r.addendumType,
-            effectiveDate: r.effectiveDate,
-            acceptedName: r.acceptedName,
-            acceptedAt: r.acceptedAt,
-            referenceNumber: r.id,
-            status: r.status,
-            verified: result.valid,
-            tamperDetected: result.tamperDetected,
-            ...tamper,
-          });
-        }
-        // policy
+        const tamperDetected = l.verifyAuthCode !== recomputed;
         return res.json({
-          documentType: "policy",
-          employeeName: r.signerName,
-          policyTitle: r.policyTitle,
-          policyVersion: r.policyVersion,
-          signedAt: r.signedAt,
-          referenceNumber: r.referenceNumber,
-          status: "signed",
-          verified: result.valid,
-          tamperDetected: result.tamperDetected,
-          ...tamper,
+          documentType: "offer_letter",
+          employeeName: l.candidateName,
+          designation: l.designation,
+          location: l.location,
+          startDate: l.proposedStartDate,
+          offerDate: l.offerDate,
+          acceptedName: l.acceptedName,
+          acceptedAt: l.acceptedAt,
+          referenceNumber: ref,
+          status: l.status,
+          verified: !tamperDetected,
+          tamperDetected,
+          ...(tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
         });
       }
 
-      // ── HR letter verification branch (existing) ───────────────────────────
-      const letter = await storage.getHrLetterByRef(ref as string);
+      // ── Addendum verification ─────────────────────────────────────────────
+      if (documentType === "addendum") {
+        const {
+          computeAddendumVerifyAuth, timingSafeAuthEqual,
+        } = await import("./documentSigningService");
+        const [a] = await db.select().from(offerLetterAddendums)
+          .where(eq(offerLetterAddendums.referenceNumber, ref)).limit(1);
+        if (!a || !a.verifyAuthCode) {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        const recomputed = computeAddendumVerifyAuth({
+          referenceNumber: ref,
+          candidateName: a.candidateName,
+          oldDesignation: a.oldDesignation,
+          newDesignation: a.newDesignation,
+          oldSalary: a.oldSalary,
+          newSalary: a.newSalary,
+          effectiveDate: a.effectiveDate,
+          addendumType: a.addendumType,
+          reason: a.reason,
+        });
+        if (!timingSafeAuthEqual(recomputed, auth)) {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        const tamperDetected = a.verifyAuthCode !== recomputed;
+        return res.json({
+          documentType: "addendum",
+          employeeName: a.candidateName,
+          addendumType: a.addendumType,
+          effectiveDate: a.effectiveDate,
+          acceptedName: a.acceptedName,
+          acceptedAt: a.acceptedAt,
+          referenceNumber: ref,
+          status: a.status,
+          verified: !tamperDetected,
+          tamperDetected,
+          ...(tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
+        });
+      }
+
+      // ── HR letter verification branch ───────────────────────────────────────
+      const letter = await storage.getHrLetterByRef(ref);
       if (!letter) {
         return res.status(404).json({ error: "Document not found or auth code does not match" });
       }
@@ -18720,7 +18823,14 @@ export async function registerRoutes(
         issueDate: letter.issueDate,
       });
 
-      if (recomputedAuth !== (auth as string).toUpperCase()) {
+      // Timing-safe comparison — auth is already uppercased from verifyInputSchema
+      const authBuf = Buffer.from(auth, "utf8");
+      const recomputedBuf = Buffer.from(recomputedAuth, "utf8");
+      const authMatch =
+        authBuf.length === recomputedBuf.length &&
+        crypto.timingSafeEqual(authBuf, recomputedBuf);
+
+      if (!authMatch) {
         return res.status(404).json({ error: "Document not found or auth code does not match" });
       }
 

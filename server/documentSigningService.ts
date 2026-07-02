@@ -42,6 +42,19 @@ function getSigningKey(): string {
   return key;
 }
 
+/**
+ * Timing-safe comparison of two auth code strings (case-normalised to uppercase).
+ * Always runs in constant time relative to the length of the longer string,
+ * eliminating timing side-channels.  Returns false on any length mismatch
+ * (rather than throwing) so callers never need to pre-check lengths.
+ */
+export function timingSafeAuthEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a.toUpperCase(), "utf8");
+  const bufB = Buffer.from(b.toUpperCase(), "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 function getLetterHmacSecret(): string {
   return process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY || "";
 }
@@ -358,7 +371,7 @@ export async function verifyDocument(
         projectName: l.projectName, customOverrideText: l.customOverrideText,
         issueDate: l.issueDate,
       });
-      if (recomputed !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (!timingSafeAuthEqual(recomputed, providedAuthCode)) return { valid: false, tamperDetected: false, error: "not_found" };
       const tamperDetected = l.authCode !== recomputed;
       return { valid: !tamperDetected, tamperDetected, record: l as any };
     }
@@ -369,7 +382,7 @@ export async function verifyDocument(
       if (!c) return { valid: false, tamperDetected: false, error: "not_found" };
 
       // Auth-code mismatch → not found (don't reveal which field was wrong)
-      if (!c.authCode || c.authCode.toUpperCase() !== providedAuthCode.toUpperCase()) {
+      if (!c.authCode || !timingSafeAuthEqual(c.authCode, providedAuthCode)) {
         return { valid: false, tamperDetected: false, error: "not_found" };
       }
 
@@ -405,7 +418,7 @@ export async function verifyDocument(
         new Date(l.acceptedAt),
         (l.annexureInitials as any) || null,
       );
-      if (recomputed.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (!timingSafeAuthEqual(recomputed, providedAuthCode)) return { valid: false, tamperDetected: false, error: "not_found" };
       const tamperDetected = l.authCode !== recomputed;
       return { valid: !tamperDetected, tamperDetected, record: l as any };
     }
@@ -418,7 +431,7 @@ export async function verifyDocument(
         a.acceptedName || "",
         new Date(a.acceptedAt),
       );
-      if (recomputed.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (!timingSafeAuthEqual(recomputed, providedAuthCode)) return { valid: false, tamperDetected: false, error: "not_found" };
       const tamperDetected = a.authCode !== recomputed;
       return { valid: !tamperDetected, tamperDetected, record: a as any };
     }
@@ -429,7 +442,7 @@ export async function verifyDocument(
       const [rec] = await db.select().from(signatureRecords)
         .where(eq(signatureRecords.referenceNumber, refNumber)).limit(1);
       if (!rec || rec.documentType !== "policy" || !rec.authCode) return { valid: false, tamperDetected: false, error: "not_found" };
-      if (rec.authCode.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (!timingSafeAuthEqual(rec.authCode, providedAuthCode)) return { valid: false, tamperDetected: false, error: "not_found" };
       // Recompute from the linked signature → request → policy document to detect tamper.
       const [sig] = await db.select().from(policySignatures).where(eq(policySignatures.id, rec.documentId)).limit(1);
       if (!sig || !sig.signedAt) {
@@ -460,7 +473,7 @@ export async function verifyDocument(
       const [rec] = await db.select().from(signatureRecords)
         .where(eq(signatureRecords.referenceNumber, refNumber)).limit(1);
       if (!rec || rec.documentType !== "sop" || !rec.authCode) return { valid: false, tamperDetected: false, error: "not_found" };
-      if (rec.authCode.toUpperCase() !== providedAuthCode.toUpperCase()) return { valid: false, tamperDetected: false, error: "not_found" };
+      if (!timingSafeAuthEqual(rec.authCode, providedAuthCode)) return { valid: false, tamperDetected: false, error: "not_found" };
       return { valid: true, tamperDetected: false, record: rec as any };
     }
 
@@ -468,4 +481,75 @@ export async function verifyDocument(
   } catch (err: any) {
     return { valid: false, tamperDetected: false, error: err.message };
   }
+}
+
+// ─── Addendum type → AM prefix mapping ──────────────────────────────────────
+export const ADDENDUM_PREFIX: Record<string, string> = {
+  salary_revision: "SAL",
+  role_change: "ROL",
+  combined: "CMB",
+  device_allocation: "DEV",
+  probation_extension: "PRB",
+  custom: "CST",
+};
+
+// ─── Offer letter /verify HMAC (9-char short auth code) ─────────────────────
+// Separate from the acceptance auth code; keyed on canonical offer-letter fields.
+// Ref number (OL/{YEAR}/{SEQ4}) is included in the payload so the auth code
+// is bound to the specific reference number printed on the document.
+export function computeOfferLetterVerifyAuth(fields: {
+  referenceNumber: string;
+  candidateName: string;
+  designation?: string | null;
+  salary?: string | null;
+  probationSalary?: string | null;
+  proposedStartDate?: string | null;
+  departmentId?: string | null;
+  location?: string | null;
+  employmentType?: string | null;
+  offerDate?: string | null;
+}): string {
+  const secret = getSigningKey();
+  const payload = [
+    fields.referenceNumber,
+    fields.candidateName,
+    fields.designation || "",
+    fields.salary || "",
+    fields.probationSalary ? String(fields.probationSalary) : "",
+    fields.proposedStartDate || "",
+    fields.departmentId || "",
+    fields.location || "",
+    fields.employmentType || "",
+    fields.offerDate || "",
+  ].join("|");
+  const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return hmac.substring(0, 4).toUpperCase() + "-" + hmac.substring(4, 8).toUpperCase();
+}
+
+// ─── Addendum /verify HMAC (9-char short auth code) ─────────────────────────
+export function computeAddendumVerifyAuth(fields: {
+  referenceNumber: string;
+  candidateName: string;
+  oldDesignation?: string | null;
+  newDesignation?: string | null;
+  oldSalary?: string | null;
+  newSalary?: string | null;
+  effectiveDate?: string | null;
+  addendumType: string;
+  reason?: string | null;
+}): string {
+  const secret = getSigningKey();
+  const payload = [
+    fields.referenceNumber,
+    fields.candidateName,
+    fields.oldDesignation || "",
+    fields.newDesignation || "",
+    fields.oldSalary || "",
+    fields.newSalary || "",
+    fields.effectiveDate || "",
+    fields.addendumType,
+    fields.reason || "",
+  ].join("|");
+  const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return hmac.substring(0, 4).toUpperCase() + "-" + hmac.substring(4, 8).toUpperCase();
 }
