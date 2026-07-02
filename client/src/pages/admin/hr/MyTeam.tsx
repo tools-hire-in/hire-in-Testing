@@ -1228,10 +1228,13 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
   // ── Record dialog state ──────────────────────────────────────────────────
   const [showRecord, setShowRecord] = useState(false);
   const now = new Date();
-  const [recKind, setRecKind] = useState<"overpayment" | "salary_credit">("overpayment");
+  const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [recKind, setRecKind] = useState<"advance" | "overpayment" | "salary_credit">("overpayment");
   const [recAmount, setRecAmount] = useState("");
   const [recReason, setRecReason] = useState("");
   const [recMonths, setRecMonths] = useState("1");
+  const [recStartMonth, setRecStartMonth] = useState(String(defaultStart.getMonth() + 1));
+  const [recStartYear, setRecStartYear] = useState(String(defaultStart.getFullYear()));
   const [recTargetMonth, setRecTargetMonth] = useState(String(now.getMonth() + 1));
   const [recTargetYear, setRecTargetYear] = useState(String(now.getFullYear()));
 
@@ -1241,8 +1244,13 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
       if (isNaN(amt) || amt <= 0) throw new Error("Amount must be positive");
       const body: any = { employeeId, kind: recKind, amount: amt };
       if (recReason.trim()) body.reason = recReason.trim();
-      if (recKind === "overpayment") body.repaymentMonths = parseInt(recMonths, 10) || 1;
-      if (recKind === "salary_credit") {
+      if (recKind === "advance") {
+        body.repaymentMonths = parseInt(recMonths, 10) || 1;
+        body.startMonth = parseInt(recStartMonth, 10);
+        body.startYear = parseInt(recStartYear, 10);
+      } else if (recKind === "overpayment") {
+        body.repaymentMonths = parseInt(recMonths, 10) || 1;
+      } else if (recKind === "salary_credit") {
         body.targetMonth = parseInt(recTargetMonth, 10);
         body.targetYear = parseInt(recTargetYear, 10);
       }
@@ -1252,7 +1260,12 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
       return json;
     },
     onSuccess: () => {
-      toast({ title: recKind === "salary_credit" ? "Salary credit submitted for approval" : "Overpayment submitted for approval" });
+      const toastMsg = recKind === "advance"
+        ? "Advance recorded and active."
+        : recKind === "salary_credit"
+          ? "Salary credit submitted for approval"
+          : "Overpayment submitted for approval";
+      toast({ title: toastMsg });
       setShowRecord(false);
       setRecAmount(""); setRecReason(""); setRecMonths("1");
       refetch();
@@ -1384,21 +1397,44 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
               <div className="space-y-2">
                 <Label className="text-xs">Type</Label>
                 <div className="flex gap-2">
+                  <Button size="sm" variant={recKind === "advance" ? "default" : "outline"}
+                    onClick={() => setRecKind("advance")} data-testid="btn-kind-advance">Advance</Button>
                   <Button size="sm" variant={recKind === "overpayment" ? "default" : "outline"}
                     onClick={() => setRecKind("overpayment")} data-testid="btn-kind-overpayment">Overpayment</Button>
                   <Button size="sm" variant={recKind === "salary_credit" ? "default" : "outline"}
                     onClick={() => setRecKind("salary_credit")} data-testid="btn-kind-salary-credit">Salary Credit</Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {recKind === "overpayment"
-                    ? "Records an overpayment to be recovered from salary in installments."
-                    : "Records a one-time credit to be added to a specific payroll month."}
+                  {recKind === "advance"
+                    ? "Backfill an already-given advance. Recovery runs over the chosen months. Created active immediately."
+                    : recKind === "overpayment"
+                      ? "Records an overpayment to be recovered from salary in installments."
+                      : "Records a one-time credit to be added to a specific payroll month."}
                 </p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Amount (₹)</Label>
                 <Input type="number" min={1} value={recAmount} onChange={e => setRecAmount(e.target.value)} placeholder="e.g. 5000" data-testid="input-adj-amount" />
               </div>
+              {recKind === "advance" && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Repayment months</Label>
+                    <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Start month</Label>
+                    <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
+                      className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-start-month">
+                      {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Start year</Label>
+                    <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-start-year" />
+                  </div>
+                </div>
+              )}
               {recKind === "overpayment" && (
                 <div className="space-y-1">
                   <Label className="text-xs">Recovery months</Label>
@@ -1421,17 +1457,21 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                 </div>
               )}
               <div className="space-y-1">
-                <Label className="text-xs">Reason (optional)</Label>
+                <Label className="text-xs">Description / Context (optional)</Label>
                 <Textarea value={recReason} onChange={e => setRecReason(e.target.value)} rows={2} placeholder="Why is this adjustment needed?" data-testid="input-adj-reason" />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowRecord(false)}>Cancel</Button>
               <Button
-                disabled={!recAmount || parseFloat(recAmount) <= 0 || submitRecord.isPending}
+                disabled={
+                  !recAmount || parseFloat(recAmount) <= 0 ||
+                  (recKind === "advance" && (parseInt(recMonths, 10) <= 0 || !recStartMonth)) ||
+                  submitRecord.isPending
+                }
                 onClick={() => submitRecord.mutate()}
                 data-testid="button-submit-adj">
-                Submit for Approval
+                {recKind === "advance" ? "Record Advance" : "Submit for Approval"}
               </Button>
             </DialogFooter>
           </DialogContent>
