@@ -927,6 +927,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { isEnabled } = useFeatureFlags();
   const { enabled: hasSopAccess } = useSopAccess();
   const { can } = usePermissions();
+  const SOP_REVIEWER_ROLES = ["super_admin", "admin", "hr", "operations", "manager"];
+  const hasSopReviewAccess = hasSopAccess && SOP_REVIEWER_ROLES.includes(user?.role ?? "");
   const { enabled: newLook, available: newLookAvailable, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
   const { toast } = useToast();
   const notificationsEnabled = isEnabled("notifications_enabled");
@@ -1360,6 +1362,22 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0);
 
+  // SOP review inbox pending count — badge on "My SOP Reviews" sidebar link
+  const { data: sopReviewCountData } = useQuery<{ pending: number }>({
+    queryKey: ["/api/sops/my-reviews/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/sops/my-reviews/count", { credentials: "include" });
+        if (!res.ok) return { pending: 0 };
+        return res.json();
+      } catch { return { pending: 0 }; }
+    },
+    refetchInterval: 120000,
+    staleTime: 60000,
+    enabled: !!user && hasSopReviewAccess,
+  });
+  const sopReviewPendingCount = sopReviewCountData?.pending ?? 0;
+
   // Manual salary-change requests awaiting Super-Admin approval (maker-checker)
   const { data: salaryChangePending } = useQuery<{ count: number }>({
     queryKey: ["/api/hr/salary-changes/pending-count"],
@@ -1435,6 +1453,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: ShieldCheck,
       roles: ["all"],
     }] : []),
+    ...(hasSopReviewAccess ? [{
+      href: "/admin/sops/my-reviews",
+      label: "My SOP Reviews",
+      icon: ClipboardCheck,
+      roles: ["super_admin", "admin", "hr", "operations", "manager"],
+      badge: sopReviewPendingCount > 0 ? sopReviewPendingCount : undefined,
+      badgeColor: "bg-blue-500",
+    }] : []),
     ...(hasSopAccess ? [{
       href: "/admin/sops/compliance",
       label: "SOP Governance",
@@ -1499,6 +1525,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
     if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");
+    if (href === "/admin/sops/my-reviews") return location === "/admin/sops/my-reviews" || location.startsWith("/admin/sops/my-reviews");
     return location.startsWith(href);
   };
 

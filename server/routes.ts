@@ -11975,6 +11975,119 @@ export async function registerRoutes(
     }
   });
 
+  // ─── My SOP Reviews Inbox (Task #745) ───────────────────────────────────────
+  // Returns sopReviewAssignments for the current user, enriched with SOP details
+  // and a server-computed slaStatus. Static path — must stay above /:id.
+
+  // Lightweight count endpoint for the sidebar badge.
+  app.get("/api/sops/my-reviews/count", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db
+        .select({ status: sopReviewAssignments.status })
+        .from(sopReviewAssignments)
+        .where(and(
+          eq(sopReviewAssignments.reviewerId, userId),
+          eq(sopReviewAssignments.status, "pending"),
+        ));
+      res.json({ pending: rows.length });
+    } catch (error) {
+      console.error("SOP my-reviews/count error:", error);
+      res.status(500).json({ error: "Failed to fetch pending count" });
+    }
+  });
+
+  // Full my-reviews list with SOP enrichment and SLA computation.
+  app.get("/api/sops/my-reviews", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const statusFilter = (req.query.status as string) || "pending";
+
+      // Fetch assignments for this reviewer.
+      const assignments = await db
+        .select()
+        .from(sopReviewAssignments)
+        .where(eq(sopReviewAssignments.reviewerId, userId))
+        .orderBy(desc(sopReviewAssignments.createdAt));
+
+      // Filter by pending vs completed.
+      const isPending = statusFilter === "pending";
+      const filtered = assignments.filter((a) =>
+        isPending ? a.status === "pending" : a.status !== "pending"
+      );
+
+      if (filtered.length === 0) return res.json([]);
+
+      // Bulk-fetch all SOP documents and index by masterId::version.
+      const allDocs = await db
+        .select({
+          id: sopDocuments.id,
+          sopMasterId: sopDocuments.sopMasterId,
+          code: sopDocuments.code,
+          title: sopDocuments.title,
+          category: sopDocuments.category,
+          version: sopDocuments.version,
+          lifecycleStatus: sopDocuments.lifecycleStatus,
+          owner: sopDocuments.owner,
+          approver: sopDocuments.approver,
+          summary: sopDocuments.summary,
+          aiAssistAllowed: sopDocuments.aiAssistAllowed,
+          humanSignoffRequired: sopDocuments.humanSignoffRequired,
+        })
+        .from(sopDocuments);
+
+      const docIndex = new Map<string, typeof allDocs[0]>();
+      for (const d of allDocs) {
+        docIndex.set(`${d.sopMasterId}::${d.version}`, d);
+      }
+
+      // Fetch the assignedBy user display names.
+      const allUsers = await storage.getAdminUsers();
+      const userMap = new Map(allUsers.map((u) => [u.id, u]));
+
+      const now = new Date();
+      const results = filtered.map((a) => {
+        const doc = docIndex.get(`${a.sopMasterId}::${a.sopVersion}`) ?? null;
+        const assignedByUser = a.assignedBy ? userMap.get(a.assignedBy) : null;
+        const assignedByName = assignedByUser
+          ? `${assignedByUser.firstName ?? ""} ${assignedByUser.lastName ?? ""}`.trim() || assignedByUser.email
+          : "Unknown";
+
+        let slaStatus: "on_track" | "at_risk" | "overdue" = "on_track";
+        if (a.status === "pending" && a.dueAt) {
+          const dueMs = new Date(a.dueAt).getTime();
+          const diffMs = dueMs - now.getTime();
+          if (diffMs < 0) {
+            slaStatus = "overdue";
+          } else if (diffMs < 24 * 60 * 60 * 1000) {
+            slaStatus = "at_risk";
+          }
+        }
+
+        return {
+          ...a,
+          sopTitle: doc?.title ?? "(SOP not found)",
+          sopCode: doc?.code ?? a.sopMasterId,
+          sopCategory: doc?.category ?? "",
+          sopLifecycleStatus: doc?.lifecycleStatus ?? "",
+          sopDocumentId: doc?.id ?? null,
+          sopOwner: doc?.owner ?? "",
+          sopApprover: doc?.approver ?? null,
+          sopSummary: doc?.summary ?? null,
+          sopAiAssistAllowed: doc?.aiAssistAllowed ?? false,
+          sopHumanSignoffRequired: doc?.humanSignoffRequired ?? true,
+          assignedByName,
+          slaStatus,
+        };
+      });
+
+      res.json(results);
+    } catch (error) {
+      console.error("SOP my-reviews error:", error);
+      res.status(500).json({ error: "Failed to fetch your review assignments" });
+    }
+  });
+
   // Team SOP compliance view — manager sees direct reports; hr/admin/super_admin see all.
   app.get("/api/sops/team-compliance", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
     try {

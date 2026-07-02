@@ -98,6 +98,7 @@ const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
 const SOPLibrary = lazy(() => import("@/pages/admin/sops/SOPLibrary"));
 const SOPCompliance = lazy(() => import("@/pages/admin/sops/SOPCompliance"));
+const MySopReviews = lazy(() => import("@/pages/admin/sops/MySopReviews"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -233,6 +234,7 @@ function PublicRouter() {
 
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
+      <Route path="/admin/sops/my-reviews">{() => <Suspense fallback={<AdminFallback />}><MySopReviews /></Suspense>}</Route>
       <Route path="/admin/sops">{() => <Suspense fallback={<AdminFallback />}><SOPLibrary /></Suspense>}</Route>
 
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
@@ -361,6 +363,7 @@ function EmployeeRouter() {
 
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
+      <Route path="/admin/sops/my-reviews">{() => <Suspense fallback={<AdminFallback />}><MySopReviews /></Suspense>}</Route>
       <Route path="/admin/sops">{() => <Suspense fallback={<AdminFallback />}><SOPLibrary /></Suspense>}</Route>
 
       {/* Personal My Work routes → redirected to Command Center / My Desk tabs */}
