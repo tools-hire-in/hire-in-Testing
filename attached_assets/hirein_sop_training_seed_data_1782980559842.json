@@ -1,0 +1,3591 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-07-02T08:06:13.985127",
+  "description": "Hire'in SOP training catalog seed data. Import training modules and associate with SOP records by sopCode.",
+  "trainingModules": [
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "sopTitle": "Hire\u2019in Values, Operating Standards & SOP Rollout Foundation",
+      "category": "Foundation",
+      "launchWave": "Wave 0",
+      "moduleTitle": "Hire\u2019in Values, Operating Standards & Why SOPs Matter",
+      "audience": "All Employees",
+      "durationMinutes": 45,
+      "modality": "CEO/Leadership kickoff + recorded micro-training + acknowledgment",
+      "purpose": "Explain why Hire\u2019in is strengthening processes, what values guide the company, and how SOPs protect candidates, clients, employees, and the business.",
+      "learningObjectives": [
+        "Explain Hire\u2019in\u2019s core values and operating standards.",
+        "Understand why SOPs are being launched in waves and how they help reduce staffing communication chaos.",
+        "Commit to using approved systems, documentation, and escalation paths."
+      ],
+      "practicalExercise": "Team discussion: identify one process gap, one communication gap, and one tool/adoption improvement.",
+      "assessment": "Acknowledgment + manager discussion attendance",
+      "passingCriteria": "Attended/recording completed + acknowledgment submitted",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual or major operating model change",
+      "expectedBehavior": "Team understands SOPs are business operating standards, not paperwork",
+      "primaryKPI": "Foundation completion >= 95% before Wave 1 starts",
+      "replitAssociationRule": "Display as global required training on the Training Dashboard and as prerequisite for all SOP-specific trainings."
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "sopTitle": "Manager Certification for SOP Coaching, Adoption & Audit",
+      "category": "Manager Certification",
+      "launchWave": "Wave 0 / Manager Track",
+      "moduleTitle": "Manager Certification: Turning SOPs into Team Behavior",
+      "audience": "Managers, Leads, AMs, Ops, HR",
+      "durationMinutes": 90,
+      "modality": "Manager workshop + live case practice + certification checklist",
+      "purpose": "Certify managers to train teams, coach behavior, audit adoption, and prevent SOPs from becoming unused documents.",
+      "learningObjectives": [
+        "Run a short SOP training session using the role-based template.",
+        "Audit team behavior against SOP checkpoints and document findings.",
+        "Coach gaps using scorecards, not opinions."
+      ],
+      "practicalExercise": "Manager completes one mock audit and one coaching note from a scenario.",
+      "assessment": "Manager certification checklist + audit sample + coaching sample",
+      "passingCriteria": "Trainer/CEO approval of checklist and sample artifacts",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Every 6 months",
+      "expectedBehavior": "Managers actively drive adoption instead of forwarding documents",
+      "primaryKPI": "100% managers certified before full enforcement",
+      "replitAssociationRule": "Display as manager-only prerequisite under AUDIT-001, HR-001, and TPL-001."
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "sopTitle": "SOP Governance, Document Control & Change Management",
+      "category": "General / Governance",
+      "launchWave": "Wave 0 / Manager Track",
+      "moduleTitle": "SOP Ownership, Version Control & Approval Governance",
+      "audience": "Manager + Ops Governance",
+      "durationMinutes": 30,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Managers/Ops can control SOP versions, reviews, approvals, publication, and revision without creating uncontrolled documents.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-GOV-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Submit SOP version 1.1 change request",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "SOP versioning and approval lifecycle followed",
+      "primaryKPI": "No uncontrolled SOP changes",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-GOV-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "sopTitle": "AI-Driven Requirement Synthesis, Hiring Manager Alignment & Execution Brief",
+      "category": "Requirement Clarity",
+      "launchWave": "Wave 1",
+      "moduleTitle": "Requirement Clarity & AI-Driven Execution Brief Training",
+      "audience": "All Delivery + Sales",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Recruiters and managers can turn JDs, VMS notes, emails, and intake discussion into a unified requirement brief before sourcing starts.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-REQ-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Scenario: convert messy JD + email into role brief",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Unified Requirement Brief created before sourcing",
+      "primaryKPI": "Intake completeness >= 95%",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-REQ-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "sopTitle": "Requisition Intake, Rate Alignment & Delivery Kickoff",
+      "category": "Staffing / TA Delivery",
+      "launchWave": "Wave 1",
+      "moduleTitle": "Requisition Intake, Rate Alignment & Delivery Kickoff Training",
+      "audience": "TA + Sales + Managers",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Teams understand when a role is ready to work, what must be clarified first, and how rate/pay/margin guardrails affect delivery.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-TA-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Scenario: identify missing rate, location, schedule, must-have details",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Ready-to-work requisition with rate/pay alignment",
+      "primaryKPI": "No sourcing starts without kickoff checklist",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-TA-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "sopTitle": "Sourcing, Outreach, Candidate Ownership & Consent",
+      "category": "Staffing / TA Delivery",
+      "launchWave": "Wave 2",
+      "moduleTitle": "Sourcing, Outreach, Ownership & Candidate Consent Training",
+      "audience": "Recruiters + Leads",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Recruiters source ethically, avoid duplication, document ownership, and secure candidate consent before submission.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-TA-002.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Role-play: outreach + consent conversation",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Ethical sourcing and candidate ownership documented",
+      "primaryKPI": "RTR/consent captured before submission",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-TA-002'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "sopTitle": "Screening, Qualification & Submission QC",
+      "category": "Staffing / TA Delivery",
+      "launchWave": "Wave 1",
+      "moduleTitle": "Screening, Qualification & Submission QC Training",
+      "audience": "Recruiters + Leads + Managers",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Recruiters learn what a submission-ready profile means and how to reduce client rejection and rework.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-TA-003.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Review sample candidate packet and find gaps",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Submission QC completed before client/VMS submission",
+      "primaryKPI": "Submission QC score >= 95%",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-TA-003'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "sopTitle": "Interview, Offer, Start & Retention Follow-Through",
+      "category": "Staffing / TA Delivery",
+      "launchWave": "Wave 2",
+      "moduleTitle": "Interview, Offer, Start & Retention Follow-Through Training",
+      "audience": "TA + Sales + Managers",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Teams manage the full interview-to-start lifecycle with clear handoffs, follow-up, and retention check-ins.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-TA-004.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Scenario: offer coordination + start risk mitigation",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Interview-to-start follow-through documented",
+      "primaryKPI": "Interview feedback and start follow-up logged same day",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-TA-004'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "sopTitle": "Healthcare Credential Packet & Compliance Readiness",
+      "category": "Healthcare",
+      "launchWave": "Wave 2",
+      "moduleTitle": "Healthcare Credential Packet & Compliance Readiness Training",
+      "audience": "Healthcare Delivery Team",
+      "durationMinutes": 60,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Healthcare recruiters understand license/cert/document readiness and how ProKred can support candidate packets.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-HC-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Review license/cert/ID packet and flag missing items",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Healthcare packet readiness and credential risks identified",
+      "primaryKPI": "Credential readiness score >= 95%",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-HC-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "sopTitle": "IT Staffing Delivery, Technical Screening & Submission Governance",
+      "category": "IT Staffing",
+      "launchWave": "Wave 2",
+      "moduleTitle": "IT Staffing Delivery & Technical Screening Training",
+      "audience": "IT Delivery Team",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "IT recruiters validate technical fit, work authorization considerations, rate/pay alignment, and client-ready technical summaries.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-IT-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Analyze resume against must-have technical stack",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Technical match summary and work authorization notes documented",
+      "primaryKPI": "Technical screening notes present in 95% submissions",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-IT-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "sopTitle": "Engineering & Professional Services Delivery Standards",
+      "category": "Engineering / Professional Services",
+      "launchWave": "Wave 3",
+      "moduleTitle": "Engineering & Professional Services Delivery Training",
+      "audience": "Delivery + BD",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Delivery teams understand discipline-specific screening standards for Engineering and Professional Services requirements.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-ENG-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Build screening checklist for engineering/professional services role",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Engineering/professional services role mapped to discipline-specific screening",
+      "primaryKPI": "Submission notes cover regulated/technical requirements",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-ENG-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "sopTitle": "Client, MSP/VMS, Rate Governance & Escalation",
+      "category": "Sales / Client",
+      "launchWave": "Wave 1",
+      "moduleTitle": "Client, MSP/VMS, Rate Governance & Escalation Training",
+      "audience": "Sales + AM + Delivery Managers",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Sales and account teams manage client communication, rate integrity, escalation, and MSP/VMS expectations consistently.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-SALES-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Scenario: low-rate role escalation",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Client/MSP/VMS communication and rate governance followed",
+      "primaryKPI": "Rate exception approval before submission",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-SALES-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "sopTitle": "New Client Acquisition, Proposals, RFPs & Client Onboarding",
+      "category": "Business Development",
+      "launchWave": "Wave 3",
+      "moduleTitle": "New Client Acquisition, Proposal & Onboarding Training",
+      "audience": "BD + Sales + Leadership",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "BD team runs prospecting, qualification, proposal, RFP, and client onboarding with repeatable discipline.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-BD-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Create discovery brief for new client",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Prospect qualification, proposal, and onboarding standard followed",
+      "primaryKPI": "Qualified prospects converted to discovery calls/proposals",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-BD-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "sopTitle": "Employer Brand, Digital Marketing & Lead Generation",
+      "category": "Marketing",
+      "launchWave": "Wave 3",
+      "moduleTitle": "Employer Brand, Digital Marketing & Lead Generation Training",
+      "audience": "Marketing + BD + Leadership",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Marketing creates compliant, brand-aligned content that supports candidate attraction, client trust, and lead generation.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-MKT-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Create content brief and approval request",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Marketing content supports brand, candidates, clients, and compliance",
+      "primaryKPI": "Campaigns mapped to audience and approved before publishing",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-MKT-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "sopTitle": "Candidate Experience, Communication SLA & Re-Engagement",
+      "category": "Candidate Experience",
+      "launchWave": "Wave 2",
+      "moduleTitle": "Candidate Experience, Communication SLA & Re-Engagement Training",
+      "audience": "All Candidate-Facing Roles",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Candidate-facing teams communicate with empathy, speed, professionalism, and accurate next steps across the candidate journey.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-CX-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Draft candidate status/rejection/re-engagement messages",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Candidate communication SLA and re-engagement discipline followed",
+      "primaryKPI": "Candidate response SLA and rejection closure tracked",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-CX-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "sopTitle": "Tool Access, Credential Control & Deprovisioning",
+      "category": "Operations",
+      "launchWave": "Wave 1",
+      "moduleTitle": "Tool Access, Credential Control & Deprovisioning Training",
+      "audience": "All Employees + Managers + Ops",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Employees and managers understand approved tool use, access requests, credential protection, and exit deprovisioning.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-OPS-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Process tool access request and exit removal scenario",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Least-privilege tool access and same-day exit controls followed",
+      "primaryKPI": "Access/removal SLA met 100%",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-OPS-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "sopTitle": "Training, Acknowledgment, Goals & Performance Linkage",
+      "category": "HR / Performance",
+      "launchWave": "Wave 4",
+      "moduleTitle": "Training Acknowledgment, Goals & Performance Linkage Training",
+      "audience": "HR + Managers + All Employees",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "HR and managers link SOP completion to role expectations, coaching, scorecards, and performance management.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-HR-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Assign training and map to scorecard",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "SOP training tied to goals and acknowledgment",
+      "primaryKPI": "Training completion >= 95%",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-HR-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "sopTitle": "Contracts, Data Privacy, EEOC & Immigration Compliance",
+      "category": "Legal / Compliance",
+      "launchWave": "Wave 4",
+      "moduleTitle": "Contracts, Privacy, EEOC & Immigration Compliance Training",
+      "audience": "Leadership + Sales + TA + HR",
+      "durationMinutes": 60,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Teams understand legal boundaries around contracts, data privacy, fair screening, confidentiality, and immigration/work authorization handling.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-LEGAL-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Identify legal/compliance risk in case study",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Privacy, contracts, EEOC, immigration boundaries understood",
+      "primaryKPI": "Zero unauthorized document/rate/client data sharing",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-LEGAL-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "sopTitle": "Invoicing, Contractor Payroll, AR/AP & Margin Governance",
+      "category": "Finance",
+      "launchWave": "Wave 4",
+      "moduleTitle": "Billing, Payroll, Timesheet & Margin Governance Training",
+      "audience": "Finance + Sales + Managers",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Finance, Sales, and Managers protect invoicing accuracy, timesheet discipline, payroll readiness, AR/AP, and margin integrity.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-FIN-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Validate timesheet-to-invoice scenario",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Timesheet, invoice, payroll, and margin records aligned",
+      "primaryKPI": "Billing exception rate reduced",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-FIN-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "sopTitle": "KPI Dashboard, Weekly Audit & Monthly Business Review",
+      "category": "Management / Audit",
+      "launchWave": "Wave 4",
+      "moduleTitle": "KPI Dashboard, Weekly Audit & MBR Training",
+      "audience": "Leadership + Managers + Ops",
+      "durationMinutes": 45,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Managers learn how to audit SOP adoption, coach gaps, track KPIs, and run monthly business reviews.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-AUDIT-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Analyze resume against must-have technical stack",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Technical match summary and work authorization notes documented",
+      "primaryKPI": "Technical screening notes present in 95% submissions",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-AUDIT-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "sopTitle": "Role-Based Training Curriculum & Certification Plan",
+      "category": "Training",
+      "launchWave": "Wave 0 / Manager Track",
+      "moduleTitle": "Role-Based Training Curriculum & Certification Administration",
+      "audience": "HR + Managers + Trainers",
+      "durationMinutes": 30,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Trainers/HR can assign role-based training, track completion, measure learning, and refresh training by SOP version.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-TRAIN-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Build training assignment for a new hire",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Role-based training assigned and measured",
+      "primaryKPI": "Completion, quiz, behavior, result metrics tracked",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-TRAIN-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "sopTitle": "Manager Acknowledgment, Audit Checklists & Field Templates",
+      "category": "Templates / Field Tools",
+      "launchWave": "Wave 0 / Manager Track",
+      "moduleTitle": "Manager Templates, Checklists & Field Tool Usage Training",
+      "audience": "Managers + Ops + HR",
+      "durationMinutes": 30,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Managers use field templates consistently for acknowledgments, audits, coaching, QC, and handoffs.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-TPL-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Complete manager QC checklist",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Field checklists used consistently",
+      "primaryKPI": "Manager reviews documented in templates",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-TPL-001'. Assign based on role mapping and training_mandatory flag."
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "sopTitle": "KleriQ.ai & ProKred.com SaaS Platform Usage, Candidate Adoption & Cross-Brand Governance",
+      "category": "SaaS Platform Usage",
+      "launchWave": "Wave 3",
+      "moduleTitle": "KleriQ.ai & ProKred Candidate Adoption / Cross-Brand Governance Training",
+      "audience": "All Relevant Roles",
+      "durationMinutes": 60,
+      "modality": "Live micro-training + job aid + scenario practice + quiz",
+      "purpose": "Teams understand KleriQ and ProKred as separate SaaS platforms, how Hire\u2019in uses them, and how to promote/introduce ProKred responsibly to placed candidates.",
+      "learningObjectives": [
+        "Explain the purpose and business value of HIS-SOP-SAAS-001.",
+        "Apply the SOP steps in the actual Hire\u2019in workflow using approved systems.",
+        "Identify risks, exceptions, documentation requirements, and escalation paths."
+      ],
+      "practicalExercise": "Role-play: introduce ProKred without overclaiming or confusing it as internal-only",
+      "assessment": "5-question quiz + scenario checklist review",
+      "passingCriteria": "80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "acknowledgmentRequired": true,
+      "renewalCycle": "Annual, plus when SOP version changes materially",
+      "expectedBehavior": "Teams explain SaaS tool separation and candidate value accurately",
+      "primaryKPI": "ProKred adoption introduced to placed candidates where appropriate",
+      "replitAssociationRule": "Display this module under SOP detail where sop_documents.sop_code = 'HIS-SOP-SAAS-001'. Assign based on role mapping and training_mandatory flag."
+    }
+  ],
+  "lessons": [
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if ALL is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Team discussion: identify one process gap, one communication gap, and one tool/adoption improvement.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "Acknowledgment + manager discussion attendance; Attended/recording completed + acknowledgment submitted",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Manager completes one mock audit and one coaching note from a scenario.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "Manager certification checklist + audit sample + coaching sample; Trainer/CEO approval of checklist and sample artifacts",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-GOV-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Submit SOP version 1.1 change request",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-REQ-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Scenario: convert messy JD + email into role brief",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-TA-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Scenario: identify missing rate, location, schedule, must-have details",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-TA-002 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Role-play: outreach + consent conversation",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-TA-003 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Review sample candidate packet and find gaps",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-TA-004 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Scenario: offer coordination + start risk mitigation",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-HC-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Review license/cert/ID packet and flag missing items",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-IT-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Analyze resume against must-have technical stack",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-ENG-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Build screening checklist for engineering/professional services role",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-SALES-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Scenario: low-rate role escalation",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-BD-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Create discovery brief for new client",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-MKT-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Create content brief and approval request",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-CX-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Draft candidate status/rejection/re-engagement messages",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-OPS-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Process tool access request and exit removal scenario",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-HR-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Assign training and map to scorecard",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-LEGAL-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Identify legal/compliance risk in case study",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-FIN-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Validate timesheet-to-invoice scenario",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-AUDIT-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Analyze resume against must-have technical stack",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-TRAIN-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Build training assignment for a new hire",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-TPL-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Complete manager QC checklist",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "lessonSequence": "01",
+      "lessonTitle": "Why this matters",
+      "lessonDescription": "Business value, candidate/client impact, and risk if HIS-SOP-SAAS-001 is not followed.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "lessonSequence": "02",
+      "lessonTitle": "SOP steps and system workflow",
+      "lessonDescription": "Walkthrough of the approved process, tools, fields, owner, and handoff.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "lessonSequence": "03",
+      "lessonTitle": "Scenario practice",
+      "lessonDescription": "Role-play: introduce ProKred without overclaiming or confusing it as internal-only",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "lessonSequence": "04",
+      "lessonTitle": "Mistakes to avoid",
+      "lessonDescription": "Common gaps, examples of non-compliance, escalation rules, and documentation expectations.",
+      "required": true
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "lessonSequence": "05",
+      "lessonTitle": "Assessment and acknowledgment",
+      "lessonDescription": "5-question quiz + scenario checklist review; 80% quiz score + completed scenario/checklist + digital acknowledgment",
+      "required": true
+    }
+  ],
+  "questionBank": [
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of ALL?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-GOV-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-REQ-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-TA-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-TA-002?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-TA-003?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-TA-004?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-HC-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-IT-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-ENG-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-SALES-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-BD-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-MKT-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-CX-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-OPS-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-HR-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-LEGAL-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-FIN-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-AUDIT-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-TRAIN-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-TPL-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "questionNumber": 1,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What is the main business purpose of HIS-SOP-SAAS-001?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "questionNumber": 2,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which system or tracker must be updated before the process is considered complete?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "questionNumber": 3,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What should you do if a required step cannot be completed on time?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "questionNumber": 4,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "Which of the following is the best example of following the SOP correctly?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "questionNumber": 5,
+      "questionType": "Multiple choice / scenario",
+      "questionPrompt": "What acknowledgment or evidence is required after training?",
+      "answerGuidance": "Answer should match the SOP workflow, approved system usage, documentation requirement, and escalation rule.",
+      "points": 1
+    }
+  ],
+  "roleAssignmentRules": [
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FOUND-001",
+      "sopCode": "ALL",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MGR-001",
+      "sopCode": "HIS-SOP-AUDIT-001;HIS-SOP-HR-001;HIS-TPL-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 7,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "All Employees",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Sr Recruiter",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Lead / AM",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Sales / BD",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Marketing",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "HR",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Ops",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Finance",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Leadership",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Healthcare Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "IT Team",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    },
+    {
+      "trainingId": "HIS-TRN-SAAS-001",
+      "sopCode": "HIS-SOP-SAAS-001",
+      "role": "Engineering / Professional Services",
+      "mandatory": true,
+      "dueDaysAfterAssignment": 10,
+      "assignmentTrigger": "SOP published OR employee role assigned OR SOP version materially updated"
+    }
+  ]
+}

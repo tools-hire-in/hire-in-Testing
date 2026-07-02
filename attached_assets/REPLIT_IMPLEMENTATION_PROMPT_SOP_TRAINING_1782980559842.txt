@@ -1,0 +1,51 @@
+
+Build SOP-linked training inside the existing Hire'in multi-portal app.
+
+IMPORTANT:
+Do not create a separate training-only app and do not duplicate the existing review/discussion/approval workflow service. Reuse the central workflow/audit/RBAC/notification patterns already in the application.
+
+Goal:
+Every SOP record must show its associated training modules under a Training tab. Every training module must link back to one or more SOPs by sopCode. Employees should see required trainings based on role/department. Managers should see completion, quiz score, acknowledgment, and overdue status.
+
+Seed data:
+Use the JSON file: hirein_sop_training_seed_data.json
+
+Association rule:
+- Primary key for association: sop_documents.sop_code
+- Training module field: training_modules.sop_code or training_sop_links.sop_code
+- If sopCode = "ALL", show as global prerequisite.
+- If sopCode contains semicolon-separated codes, create multiple training_sop_links.
+
+Required UI:
+1. SOP Library
+2. SOP Detail Page -> Training tab
+3. Training Catalog
+4. Training Module Detail
+5. Employee My Required Trainings
+6. Manager Team Training Dashboard
+7. HR/Ops Training Compliance Dashboard
+8. Training Completion / Acknowledgment Report
+
+Required statuses:
+DRAFT, IN_REVIEW, APPROVED, PUBLISHED, ASSIGNED, IN_PROGRESS, COMPLETED, ACKNOWLEDGED, EXPIRED, RETIRED
+
+Required tables:
+- training_modules
+- training_lessons
+- training_question_bank
+- training_assignments
+- training_completion
+- training_acknowledgments
+- training_sop_links
+- role_training_rules
+
+Acceptance criteria:
+1. Admin can import the seed JSON and create modules.
+2. Each SOP detail page displays linked trainings.
+3. Employees only see training assigned by role/department and published status.
+4. Managers can track team completion and overdue modules.
+5. Training cannot be completed unless required lessons, quiz, scenario/checklist, and acknowledgment are complete.
+6. Acknowledgment is tied to SOP version and training module version.
+7. Any material SOP version change can trigger retraining.
+8. All training assignment/completion/acknowledgment actions are audit logged.
+9. No duplicate approval, comment, notification, RBAC, or audit logic is created.
