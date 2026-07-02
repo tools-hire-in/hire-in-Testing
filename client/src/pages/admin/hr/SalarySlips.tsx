@@ -31,6 +31,8 @@ interface SlipData {
   grossSalary: number;
   deductions: number;
   advanceRecovery: number;
+  advanceRecoveryBreakdown?: { advance: number; overpayment: number } | null;
+  salaryCredit?: number | null;
   netPayable: number;
   workingDays: number;
   presentDays: number;
@@ -140,7 +142,13 @@ function generateSlipHTML(slip: SlipData): string {
       <tr><td>Basic Salary</td><td class="amount">${formatCurrency(slip.salary)}</td></tr>
       <tr><td>Gross Salary</td><td class="amount">${formatCurrency(slip.grossSalary)}</td></tr>
       <tr><td>Deductions (Unauthorized Absences)</td><td class="amount">- ${formatCurrency(slip.deductions)}</td></tr>
-      ${slip.advanceRecovery > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.advanceRecovery)}</td></tr>` : ""}
+      ${(slip.salaryCredit ?? 0) > 0 ? `<tr><td>Salary Adjustment Credit</td><td class="amount">+ ${formatCurrency(slip.salaryCredit!)}</td></tr>` : ""}
+      ${slip.advanceRecoveryBreakdown
+        ? [
+            slip.advanceRecoveryBreakdown.advance > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.advanceRecoveryBreakdown.advance)}</td></tr>` : "",
+            slip.advanceRecoveryBreakdown.overpayment > 0 ? `<tr><td>Overpayment Recovery</td><td class="amount">- ${formatCurrency(slip.advanceRecoveryBreakdown.overpayment)}</td></tr>` : "",
+          ].join("")
+        : slip.advanceRecovery > 0 ? `<tr><td>Salary Advance Recovery</td><td class="amount">- ${formatCurrency(slip.advanceRecovery)}</td></tr>` : ""}
       <tr class="total-row"><td>Net Payable</td><td class="amount">${formatCurrency(slip.netPayable)}</td></tr>
     </table>
   </div>

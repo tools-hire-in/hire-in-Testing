@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { adminUsers, attendance, leaveRequests, holidays, departments, leaveBalances, salaryAdvanceRepayments, salaryAdvanceRequests } from "@shared/schema";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 interface EmployeeReportRow {
   employeeName: string;
@@ -22,6 +22,10 @@ interface EmployeeReportRow {
   // Salary advance installment recovered from this month's pay (scheduled, not yet
   // deducted at report-generation time). Subtracted from netPayable.
   advanceRecovery: number;
+  // Advance recovery breakdown by kind for payslip labelling.
+  advanceRecoveryBreakdown: { advance: number; overpayment: number };
+  // Approved salary credit to be added to gross this month.
+  salaryCredit: number;
   netPayable: number;
 }
 
@@ -40,6 +44,10 @@ export interface SalaryReportResult {
   rows: EmployeeReportRow[];
   summary: SalaryReportSummary;
   csv: string;
+  // IDs of salary_credit rows that were snapshotted into this run's gross pay.
+  // Passed to applyCreditsForRun at approval time so only included credits
+  // are marked `applied` — credits approved after generation are excluded.
+  salaryCreditIds: string[];
 }
 
 function getMonthName(month: number): string {
@@ -97,7 +105,7 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
   const daysInMonth = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments, allLeaveBalances, advanceRepayments] = await Promise.all([
+  const [allUsers, allAttendance, allLeaveRequests, allHolidays, allDepartments, allLeaveBalances, advanceRepayments, salaryCredits] = await Promise.all([
     db.select().from(adminUsers).where(eq(adminUsers.isActive, true)),
     db.select().from(attendance).where(and(gte(attendance.date, startDate), lte(attendance.date, endDate))),
     db.select().from(leaveRequests).where(
@@ -110,11 +118,12 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
     db.select().from(holidays).where(and(gte(holidays.date, startDate), lte(holidays.date, endDate))),
     db.select().from(departments),
     db.select().from(leaveBalances).where(eq(leaveBalances.year, year)),
-    // Only recover repayments whose advance has actually been disbursed —
-    // never deduct against an approved-but-not-yet-disbursed advance.
+    // Recover repayments for disbursed/repaying advances (existing advance flow)
+    // AND approved overpayments (HR-recorded, approved by super_admin).
     db.select({
       userId: salaryAdvanceRepayments.userId,
       scheduledAmount: salaryAdvanceRepayments.scheduledAmount,
+      kind: salaryAdvanceRequests.kind,
     })
       .from(salaryAdvanceRepayments)
       .innerJoin(salaryAdvanceRequests, eq(salaryAdvanceRepayments.advanceId, salaryAdvanceRequests.id))
@@ -124,17 +133,55 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
           eq(salaryAdvanceRepayments.month, month),
           eq(salaryAdvanceRepayments.status, "scheduled"),
           inArray(salaryAdvanceRequests.status, ["disbursed", "repaying"]),
+          inArray(salaryAdvanceRequests.kind, ["advance", "overpayment"]),
+        )
+      ),
+    // Salary credits approved for this specific month — to be added to gross.
+    db.select({
+      id: salaryAdvanceRequests.id,
+      requesterId: salaryAdvanceRequests.requesterId,
+      approvedAmount: salaryAdvanceRequests.approvedAmount,
+      requestedAmount: salaryAdvanceRequests.requestedAmount,
+    })
+      .from(salaryAdvanceRequests)
+      .where(
+        and(
+          eq(salaryAdvanceRequests.kind, "salary_credit" as any),
+          eq(salaryAdvanceRequests.status, "approved" as any),
+          eq((salaryAdvanceRequests as any).targetMonth, month),
+          eq((salaryAdvanceRequests as any).targetYear, year),
         )
       ),
   ]);
 
-  // Sum scheduled advance recovery per employee for this month.
+  // Sum scheduled advance/overpayment recovery per employee for this month.
   const advanceRecoveryByUser = new Map<string, number>();
+  const overpaymentRecoveryByUser = new Map<string, number>();
   for (const rep of advanceRepayments) {
-    advanceRecoveryByUser.set(
-      rep.userId,
-      (advanceRecoveryByUser.get(rep.userId) || 0) + Number(rep.scheduledAmount || 0),
+    const isOverpayment = rep.kind === "overpayment";
+    if (isOverpayment) {
+      overpaymentRecoveryByUser.set(
+        rep.userId,
+        (overpaymentRecoveryByUser.get(rep.userId) || 0) + Number(rep.scheduledAmount || 0),
+      );
+    } else {
+      advanceRecoveryByUser.set(
+        rep.userId,
+        (advanceRecoveryByUser.get(rep.userId) || 0) + Number(rep.scheduledAmount || 0),
+      );
+    }
+  }
+
+  // Sum salary credits per employee for this month.
+  const salaryCreditByUser = new Map<string, number>();
+  const salaryCreditIds: string[] = [];
+  for (const credit of salaryCredits) {
+    const amt = Number(credit.approvedAmount || credit.requestedAmount || 0);
+    salaryCreditByUser.set(
+      credit.requesterId,
+      (salaryCreditByUser.get(credit.requesterId) || 0) + amt,
     );
+    salaryCreditIds.push(credit.id);
   }
 
   // Centralized compensation: resolve each employee's salary as of this report
@@ -237,14 +284,32 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
 
     const dailyRate = workingDays > 0 ? monthlySalary / workingDays : 0;
     const deductions = absentDays * dailyRate;
-    const netBeforeAdvance = Math.max(0, monthlySalary - deductions);
+    // Add approved salary credit to gross before netting.
+    const salaryCredit = Math.round((salaryCreditByUser.get(user.id) || 0) * 100) / 100;
+    const grossWithCredit = monthlySalary + salaryCredit;
+    const netBeforeAdvance = Math.max(0, grossWithCredit - deductions);
     // Recover the scheduled advance installment, capped at what's left after
     // attendance deductions so net pay never goes negative.
+    const rawAdvance = advanceRecoveryByUser.get(user.id) || 0;
+    const rawOverpayment = overpaymentRecoveryByUser.get(user.id) || 0;
+    const rawAdvanceRecovery = rawAdvance + rawOverpayment;
     const advanceRecovery = Math.min(
-      Math.round((advanceRecoveryByUser.get(user.id) || 0) * 100) / 100,
+      Math.round(rawAdvanceRecovery * 100) / 100,
       netBeforeAdvance,
     );
     const netPayable = Math.max(0, netBeforeAdvance - advanceRecovery);
+
+    // Allocate the capped total proportionally between advance and overpayment
+    // so breakdown.advance + breakdown.overpayment === advanceRecovery exactly
+    // (prevents payslip line-item sum exceeding actual deducted amount).
+    let breakdownAdvance = 0;
+    let breakdownOverpayment = 0;
+    if (rawAdvanceRecovery > 0 && advanceRecovery > 0) {
+      const ratio = advanceRecovery / rawAdvanceRecovery;
+      breakdownAdvance = Math.round(rawAdvance * ratio * 100) / 100;
+      // Assign remainder to overpayment to absorb rounding
+      breakdownOverpayment = Math.round((advanceRecovery - breakdownAdvance) * 100) / 100;
+    }
 
     const row: EmployeeReportRow = {
       employeeName: `${user.firstName} ${user.lastName}`,
@@ -261,9 +326,14 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
       regionalHolidayDays,
       totalHours: Math.round(totalHours * 100) / 100,
       attendancePercentage,
-      grossSalary: monthlySalary,
+      grossSalary: grossWithCredit,
       deductions: Math.round(deductions * 100) / 100,
       advanceRecovery: Math.round(advanceRecovery * 100) / 100,
+      advanceRecoveryBreakdown: {
+        advance: breakdownAdvance,
+        overpayment: breakdownOverpayment,
+      },
+      salaryCredit,
       netPayable: Math.round(netPayable * 100) / 100,
     };
 
@@ -298,5 +368,5 @@ export async function generateMonthlySalaryReport(year: number, month: number): 
   ].join(","));
   const csv = [csvHeaders.join(","), ...csvRows].join("\n");
 
-  return { rows, summary, csv };
+  return { rows, summary, csv, salaryCreditIds };
 }

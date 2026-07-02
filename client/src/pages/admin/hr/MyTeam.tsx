@@ -1159,7 +1159,285 @@ function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; 
           )}
         </CardContent>
       </Card>
+
+      <EmployeeAdvancesCard employeeId={employeeId} role={user?.role || ""} />
     </div>
+  );
+}
+
+// ── Advances & Adjustments card for MyTeam SalaryTab ─────────────────────────
+const ADJ_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+interface EmpAdvanceRow {
+  id: string;
+  requestNumber: string;
+  kind?: string;
+  status: string;
+  requestedAmount: string;
+  approvedAmount?: string | null;
+  outstandingBalance: string;
+  repaymentMonths?: number | null;
+  targetMonth?: number | null;
+  targetYear?: number | null;
+  reason: string;
+  backfilled?: boolean;
+  createdAt: string;
+  recordedBy?: { firstName: string; lastName: string } | null;
+  reviewerComment?: string | null;
+}
+
+function adjKindLabel(kind?: string) {
+  if (kind === "overpayment") return "Overpayment";
+  if (kind === "salary_credit") return "Salary Credit";
+  return "Advance";
+}
+
+function adjStatusStyle(status: string) {
+  const map: Record<string, string> = {
+    pending_review: "bg-violet-100 text-violet-700",
+    approved: "bg-green-100 text-green-700",
+    disbursed: "bg-emerald-100 text-emerald-700",
+    repaying: "bg-cyan-100 text-cyan-700",
+    applied: "bg-teal-100 text-teal-700",
+    rejected: "bg-red-100 text-red-700",
+    returned: "bg-rose-100 text-rose-700",
+    closed: "bg-slate-100 text-slate-600",
+    cancelled: "bg-slate-100 text-slate-500",
+  };
+  return map[status] || "bg-muted text-muted-foreground";
+}
+
+const ADJ_RECORD_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: string }) {
+  const { toast } = useToast();
+  const canSeeAdjustments = ["super_admin", "admin", "hr", "manager", "finance"].includes(role);
+  const canRecord = ["super_admin", "admin", "hr"].includes(role);
+  const canApprove = role === "super_admin";
+
+  const { data: rows = [], isLoading, refetch } = useQuery<EmpAdvanceRow[]>({
+    queryKey: ["/api/salary-advances/employee", employeeId],
+    queryFn: async () => {
+      const res = await fetch(`/api/salary-advances/employee/${employeeId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: canSeeAdjustments && !!employeeId,
+  });
+
+  // ── Record dialog state ──────────────────────────────────────────────────
+  const [showRecord, setShowRecord] = useState(false);
+  const now = new Date();
+  const [recKind, setRecKind] = useState<"overpayment" | "salary_credit">("overpayment");
+  const [recAmount, setRecAmount] = useState("");
+  const [recReason, setRecReason] = useState("");
+  const [recMonths, setRecMonths] = useState("1");
+  const [recTargetMonth, setRecTargetMonth] = useState(String(now.getMonth() + 1));
+  const [recTargetYear, setRecTargetYear] = useState(String(now.getFullYear()));
+
+  const submitRecord = useMutation({
+    mutationFn: async () => {
+      const amt = parseFloat(recAmount);
+      if (isNaN(amt) || amt <= 0) throw new Error("Amount must be positive");
+      const body: any = { employeeId, kind: recKind, amount: amt };
+      if (recReason.trim()) body.reason = recReason.trim();
+      if (recKind === "overpayment") body.repaymentMonths = parseInt(recMonths, 10) || 1;
+      if (recKind === "salary_credit") {
+        body.targetMonth = parseInt(recTargetMonth, 10);
+        body.targetYear = parseInt(recTargetYear, 10);
+      }
+      const res = await apiRequest("POST", "/api/salary-advances/backfill", body);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: recKind === "salary_credit" ? "Salary credit submitted for approval" : "Overpayment submitted for approval" });
+      setShowRecord(false);
+      setRecAmount(""); setRecReason(""); setRecMonths("1");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/pending-adjustments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
+    },
+    onError: (e: any) => toast({ title: "Failed to submit", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Inline approve/return/reject state (super_admin) ────────────────────
+  const [actionRowId, setActionRowId] = useState<string | null>(null);
+  const [actionType, setActionType] = useState<"return" | "reject" | null>(null);
+  const [actionComment, setActionComment] = useState("");
+
+  const submitReview = useMutation({
+    mutationFn: async ({ id, type, comment }: { id: string; type: "approve" | "return" | "reject"; comment?: string }) => {
+      const endpoint = type === "approve" ? "approve-adjustment" : type === "return" ? "return-adjustment" : "reject-adjustment";
+      const body = type === "approve" ? {} : { comment };
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/${endpoint}`, body);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: (_d, vars) => {
+      const labels = { approve: "Approved", return: "Returned for edit", reject: "Rejected" };
+      toast({ title: labels[vars.type] });
+      setActionRowId(null); setActionType(null); setActionComment("");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/pending-adjustments"] });
+    },
+    onError: (e: any) => toast({ title: "Action failed", description: e.message, variant: "destructive" }),
+  });
+
+  if (!canSeeAdjustments) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-lg">Advances &amp; Adjustments</CardTitle>
+          {canRecord && (
+            <Button size="sm" variant="outline" onClick={() => setShowRecord(true)} data-testid="button-record-adjustment">
+              Record Adjustment
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : rows.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-4">No advances or adjustments on record.</div>
+        ) : (
+          <div className="space-y-2">
+            {rows.map(row => (
+              <div key={row.id} className="rounded-lg border" data-testid={`row-advance-${row.id}`}>
+                <div className="flex items-start justify-between gap-3 px-3 py-2 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-muted-foreground">{row.requestNumber}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-medium">{adjKindLabel(row.kind)}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${adjStatusStyle(row.status)}`}>{row.status.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {row.reason || "—"}
+                      {row.kind === "salary_credit" && row.targetMonth && row.targetYear
+                        ? ` · Target: ${ADJ_MONTHS[row.targetMonth]} ${row.targetYear}` : ""}
+                    </div>
+                    {row.reviewerComment && (row.status === "returned" || row.status === "rejected") && (
+                      <div className="text-xs text-rose-600 mt-0.5">Note: {row.reviewerComment}</div>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-mono font-semibold">₹{formatCurrency(row.requestedAmount)}</div>
+                      {Number(row.outstandingBalance) > 0 && row.kind !== "salary_credit" && (
+                        <div className="text-xs text-muted-foreground">Bal: ₹{formatCurrency(row.outstandingBalance)}</div>
+                      )}
+                    </div>
+                    {canApprove && row.status === "pending_review" && actionRowId !== row.id && (
+                      <div className="flex gap-1 flex-wrap">
+                        <Button size="sm" variant="outline" className="text-xs text-rose-600 border-rose-200 h-7 px-2"
+                          onClick={() => { setActionRowId(row.id); setActionType("return"); setActionComment(""); }}
+                          data-testid={`button-return-adj-${row.id}`}>Return</Button>
+                        <Button size="sm" variant="outline" className="text-xs text-red-600 border-red-200 h-7 px-2"
+                          onClick={() => { setActionRowId(row.id); setActionType("reject"); setActionComment(""); }}
+                          data-testid={`button-reject-adj-${row.id}`}>Reject</Button>
+                        <Button size="sm" className="text-xs h-7 px-2"
+                          onClick={() => submitReview.mutate({ id: row.id, type: "approve" })}
+                          disabled={submitReview.isPending}
+                          data-testid={`button-approve-adj-${row.id}`}>Approve</Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {canApprove && actionRowId === row.id && actionType && (
+                  <div className="border-t px-3 py-2 bg-muted/30 space-y-2">
+                    <Label className="text-xs">{actionType === "return" ? "Return note (required)" : "Rejection reason (required)"}</Label>
+                    <Textarea
+                      value={actionComment}
+                      onChange={e => setActionComment(e.target.value)}
+                      placeholder={actionType === "return" ? "What needs to be corrected?" : "Why is this being rejected?"}
+                      className="text-sm" rows={2}
+                      data-testid={`input-adj-comment-${row.id}`} />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="h-7" onClick={() => { setActionRowId(null); setActionType(null); }}>Cancel</Button>
+                      <Button size="sm" className="h-7"
+                        disabled={!actionComment.trim() || submitReview.isPending}
+                        onClick={() => submitReview.mutate({ id: row.id, type: actionType!, comment: actionComment.trim() })}
+                        data-testid={`button-confirm-adj-${row.id}`}>
+                        Confirm
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Record adjustment dialog */}
+        <Dialog open={showRecord} onOpenChange={(o) => !o && setShowRecord(false)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Record Salary Adjustment</DialogTitle>
+              <DialogDescription>Submitted adjustments require super admin approval before affecting payroll.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Type</Label>
+                <div className="flex gap-2">
+                  <Button size="sm" variant={recKind === "overpayment" ? "default" : "outline"}
+                    onClick={() => setRecKind("overpayment")} data-testid="btn-kind-overpayment">Overpayment</Button>
+                  <Button size="sm" variant={recKind === "salary_credit" ? "default" : "outline"}
+                    onClick={() => setRecKind("salary_credit")} data-testid="btn-kind-salary-credit">Salary Credit</Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {recKind === "overpayment"
+                    ? "Records an overpayment to be recovered from salary in installments."
+                    : "Records a one-time credit to be added to a specific payroll month."}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Amount (₹)</Label>
+                <Input type="number" min={1} value={recAmount} onChange={e => setRecAmount(e.target.value)} placeholder="e.g. 5000" data-testid="input-adj-amount" />
+              </div>
+              {recKind === "overpayment" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Recovery months</Label>
+                  <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                </div>
+              )}
+              {recKind === "salary_credit" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Target month</Label>
+                    <select value={recTargetMonth} onChange={e => setRecTargetMonth(e.target.value)}
+                      className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-target-month">
+                      {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Target year</Label>
+                    <Input type="number" min={2000} max={2100} value={recTargetYear} onChange={e => setRecTargetYear(e.target.value)} data-testid="input-adj-target-year" />
+                  </div>
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Reason (optional)</Label>
+                <Textarea value={recReason} onChange={e => setRecReason(e.target.value)} rows={2} placeholder="Why is this adjustment needed?" data-testid="input-adj-reason" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRecord(false)}>Cancel</Button>
+              <Button
+                disabled={!recAmount || parseFloat(recAmount) <= 0 || submitRecord.isPending}
+                onClick={() => submitRecord.mutate()}
+                data-testid="button-submit-adj">
+                Submit for Approval
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
   );
 }
 

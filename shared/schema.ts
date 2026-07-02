@@ -2993,9 +2993,11 @@ export type InsertInternalRequestAuditLog = z.infer<typeof insertInternalRequest
 export const salaryAdvanceStatusEnum = pgEnum("salary_advance_status", [
   "pending_manager",
   "pending_final",
+  "pending_review",
   "approved",
   "disbursed",
   "repaying",
+  "applied",
   "closed",
   "rejected",
   "cancelled",
@@ -3011,6 +3013,7 @@ export const salaryAdvanceRepaymentStatusEnum = pgEnum("salary_advance_repayment
 export const salaryAdvanceKindEnum = pgEnum("salary_advance_kind", [
   "advance",
   "overpayment",
+  "salary_credit",
 ]);
 
 export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
@@ -3065,6 +3068,13 @@ export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
   urgentApprovedAt: timestamp("urgent_approved_at"),
   // Snapshot of the policy at the time of the request (for audit)
   policySnapshot: jsonb("policy_snapshot"),
+  // Salary Credit: the specific payroll month this credit should be applied to.
+  targetMonth: integer("target_month"),
+  targetYear: integer("target_year"),
+  // HR-recorded adjustments: who submitted the record (differs from requesterId = target employee).
+  recordedById: varchar("recorded_by_id").references(() => adminUsers.id),
+  // Super admin review comment when returning or rejecting an HR-recorded adjustment.
+  reviewerComment: text("reviewer_comment"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

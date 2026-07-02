@@ -79,11 +79,13 @@ const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   pending_manager: { label: "Pending Manager", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
   pending_final: { label: "Pending Final Approval", color: "bg-blue-100 text-blue-700 border-blue-200", icon: ShieldCheck },
+  pending_review: { label: "Pending Review", color: "bg-violet-100 text-violet-700 border-violet-200", icon: ShieldCheck },
   approved: { label: "Approved", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
   disbursed: { label: "Disbursed", color: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: Banknote },
   repaying: { label: "Repaying", color: "bg-cyan-100 text-cyan-700 border-cyan-200", icon: RotateCcw },
+  applied: { label: "Applied", color: "bg-teal-100 text-teal-700 border-teal-200", icon: CheckCircle2 },
   closed: { label: "Closed", color: "bg-slate-100 text-slate-600 border-slate-200", icon: CheckCircle2 },
-  returned: { label: "Returned for Info", color: "bg-rose-100 text-rose-700 border-rose-200", icon: AlertCircle },
+  returned: { label: "Returned for Edit", color: "bg-rose-100 text-rose-700 border-rose-200", icon: AlertCircle },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
   cancelled: { label: "Cancelled", color: "bg-slate-100 text-slate-500 border-slate-200", icon: XCircle },
 };
@@ -103,6 +105,13 @@ function KindBadge({ kind }: { kind?: string }) {
     return (
       <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200" data-testid="badge-kind-overpayment">
         Overpayment
+      </Badge>
+    );
+  }
+  if (kind === "salary_credit") {
+    return (
+      <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200" data-testid="badge-kind-salary-credit">
+        Salary Credit
       </Badge>
     );
   }
@@ -152,15 +161,19 @@ export default function SalaryAdvance() {
     if (!flagsLoading && !advanceEnabled && !canRecord) setLocation("/admin/hr");
   }, [flagsLoading, advanceEnabled, canRecord, setLocation]);
 
-  // When the flag is off but the user can record, only the Active Advances tab is
-  // meaningful (the self-service request/approval flow is disabled).
+  // When the flag is off but the user can record, the Active Advances, Pending
+  // Adjustments, and My Submissions tabs are still meaningful.
   const recordOnly = !advanceEnabled && canRecord;
 
   const params = new URLSearchParams(location.split("?")[1] || "");
-  const initialTab = recordOnly ? "active" : (params.get("tab") || "mine");
+  const defaultTab = recordOnly ? (isFinal ? "pending-adjustments" : canRecord ? "active" : "mine") : (params.get("tab") || "mine");
+  const initialTab = params.get("tab") || defaultTab;
   const [tab, setTab] = useState(initialTab);
   useEffect(() => {
-    setTab(recordOnly ? "active" : (params.get("tab") || "mine"));
+    const p = new URLSearchParams(location.split("?")[1] || "");
+    const t = p.get("tab");
+    if (t) { setTab(t); return; }
+    setTab(recordOnly ? (isFinal ? "pending-adjustments" : "active") : "mine");
     /* eslint-disable-next-line */
   }, [location, recordOnly]);
 
@@ -191,37 +204,41 @@ export default function SalaryAdvance() {
           </div>
         </div>
 
-        {recordOnly ? (
-          <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />
-        ) : (
-          <>
-            <Tabs value={tab} onValueChange={setTabAndUrl}>
-              <TabsList className="flex flex-wrap gap-1 h-auto">
-                <TabsTrigger value="mine" data-testid="tab-mine">My Requests</TabsTrigger>
-                {isManager && (
-                  <TabsTrigger value="approvals" data-testid="tab-approvals">
-                    Approvals {stats?.pendingManager ? <Badge className="ml-1.5 bg-amber-500">{stats.pendingManager}</Badge> : null}
-                  </TabsTrigger>
-                )}
-                {isFinal && (
-                  <TabsTrigger value="final" data-testid="tab-final">
-                    Final Approval {stats?.pendingFinal ? <Badge className="ml-1.5 bg-blue-500">{stats.pendingFinal}</Badge> : null}
-                  </TabsTrigger>
-                )}
-                {isAccounts && (
-                  <TabsTrigger value="active" data-testid="tab-active">Active Advances</TabsTrigger>
-                )}
-                <TabsTrigger value="policy" data-testid="tab-policy">Policy</TabsTrigger>
-              </TabsList>
-            </Tabs>
+        <Tabs value={tab} onValueChange={setTabAndUrl}>
+          <TabsList className="flex flex-wrap gap-1 h-auto">
+            {!recordOnly && <TabsTrigger value="mine" data-testid="tab-mine">My Requests</TabsTrigger>}
+            {!recordOnly && isManager && (
+              <TabsTrigger value="approvals" data-testid="tab-approvals">
+                Approvals {stats?.pendingManager ? <Badge className="ml-1.5 bg-amber-500">{stats.pendingManager}</Badge> : null}
+              </TabsTrigger>
+            )}
+            {!recordOnly && isFinal && (
+              <TabsTrigger value="final" data-testid="tab-final">
+                Final Approval {stats?.pendingFinal ? <Badge className="ml-1.5 bg-blue-500">{stats.pendingFinal}</Badge> : null}
+              </TabsTrigger>
+            )}
+            {isAccounts && (
+              <TabsTrigger value="active" data-testid="tab-active">Active Advances</TabsTrigger>
+            )}
+            {isFinal && (
+              <TabsTrigger value="pending-adjustments" data-testid="tab-pending-adjustments">
+                Pending Adjustments
+              </TabsTrigger>
+            )}
+            {canRecord && (
+              <TabsTrigger value="my-submissions" data-testid="tab-my-submissions">My Submissions</TabsTrigger>
+            )}
+            {!recordOnly && <TabsTrigger value="policy" data-testid="tab-policy">Policy</TabsTrigger>}
+          </TabsList>
+        </Tabs>
 
-            {tab === "mine" && <MyRequestsTab policy={policy} onOpen={setDetailId} />}
-            {tab === "approvals" && isManager && <ManagerQueueTab policy={policy} onOpen={setDetailId} />}
-            {tab === "final" && isFinal && <FinalQueueTab policy={policy} onOpen={setDetailId} />}
-            {tab === "active" && isAccounts && <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />}
-            {tab === "policy" && <PolicyView policy={policy} />}
-          </>
-        )}
+        {tab === "mine" && !recordOnly && <MyRequestsTab policy={policy} onOpen={setDetailId} />}
+        {tab === "approvals" && isManager && !recordOnly && <ManagerQueueTab policy={policy} onOpen={setDetailId} />}
+        {tab === "final" && isFinal && !recordOnly && <FinalQueueTab policy={policy} onOpen={setDetailId} />}
+        {tab === "active" && isAccounts && <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />}
+        {tab === "pending-adjustments" && isFinal && <PendingAdjustmentsTab />}
+        {tab === "my-submissions" && canRecord && <MySubmissionsTab />}
+        {tab === "policy" && !recordOnly && <PolicyView policy={policy} />}
 
         {detailId && (
           <AdvanceDetailDialog
@@ -455,7 +472,8 @@ function ActiveAdvancesTab({ onOpen, canRecord }: { onOpen: (id: string) => void
 function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { toast } = useToast();
   const invalidate = useInvalidateAll();
-  const [kind, setKind] = useState<"advance" | "overpayment">("advance");
+  const qc = useQueryClient();
+  const [kind, setKind] = useState<"advance" | "overpayment" | "salary_credit">("advance");
   const [employeeId, setEmployeeId] = useState("");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
@@ -464,6 +482,8 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
   const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const [startYear, setStartYear] = useState(String(defaultStart.getFullYear()));
   const [startMonth, setStartMonth] = useState(String(defaultStart.getMonth() + 1));
+  const [targetMonth, setTargetMonth] = useState(String(now.getMonth() + 1));
+  const [targetYear, setTargetYear] = useState(String(now.getFullYear()));
 
   const { data: usersResp } = useQuery<{ users: AdvanceUser[] }>({ queryKey: ["/api/admin/users", "active"], queryFn: async () => {
     const res = await fetch("/api/admin/users?status=active", { credentials: "include" });
@@ -474,7 +494,7 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
 
   const amt = parseFloat(amount || "0");
   const months = parseInt(repaymentMonths || "0", 10);
-  const monthlyPreview = kind === "advance" && amt > 0 && months > 0 ? Math.ceil((amt / months) * 100) / 100 : amt;
+  const monthlyPreview = kind === "advance" && amt > 0 && months > 0 ? Math.ceil((amt / months) * 100) / 100 : 0;
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -484,19 +504,28 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
         body.repaymentMonths = months;
         body.startYear = parseInt(startYear, 10);
         body.startMonth = parseInt(startMonth, 10);
+      } else if (kind === "overpayment") {
+        body.repaymentMonths = months;
+      } else if (kind === "salary_credit") {
+        body.targetMonth = parseInt(targetMonth, 10);
+        body.targetYear = parseInt(targetYear, 10);
       }
       const res = await apiRequest("POST", "/api/salary-advances/backfill", body);
-      return res.json();
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
     },
     onSuccess: () => {
-      toast({ title: kind === "overpayment" ? "Overpayment recorded" : "Advance recorded" });
+      const labels: Record<string, string> = { advance: "Advance", overpayment: "Overpayment", salary_credit: "Salary Credit" };
+      toast({ title: `${labels[kind] || kind} submitted`, description: kind === "advance" ? "Created and active." : "Sent for super admin review." });
       invalidate();
+      qc.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
       onClose();
     },
     onError: (e: any) => toast({ title: "Failed to record", description: e?.message, variant: "destructive" }),
   });
 
-  const canSubmit = !!employeeId && amt > 0 && (kind === "overpayment" || months > 0);
+  const canSubmit = !!employeeId && amt > 0 && (kind === "salary_credit" || kind === "overpayment" || months > 0);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -508,15 +537,18 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
           <div className="space-y-2">
             <Label className="text-xs">Type</Label>
             <Tabs value={kind} onValueChange={(v) => setKind(v as any)}>
-              <TabsList className="grid grid-cols-2 w-full">
-                <TabsTrigger value="advance" data-testid="tab-record-advance">Salary Advance</TabsTrigger>
+              <TabsList className="grid grid-cols-3 w-full">
+                <TabsTrigger value="advance" data-testid="tab-record-advance">Advance</TabsTrigger>
                 <TabsTrigger value="overpayment" data-testid="tab-record-overpayment">Overpayment</TabsTrigger>
+                <TabsTrigger value="salary_credit" data-testid="tab-record-salary-credit">Salary Credit</TabsTrigger>
               </TabsList>
             </Tabs>
             <p className="text-xs text-muted-foreground">
               {kind === "advance"
-                ? "Backfill an already-given advance. Recovery runs over the chosen months starting from the selected month."
-                : "Record an overpayment to recover in full next cycle. If net pay is short, the remainder carries forward automatically."}
+                ? "Backfill an already-given advance. Recovery runs over the chosen months. Created active immediately."
+                : kind === "overpayment"
+                  ? "Record an overpayment to recover in installments. Requires super admin approval before payroll deducts it."
+                  : "Add a one-time salary credit for a specific payroll month. Requires super admin approval before payroll applies it."}
             </p>
           </div>
 
@@ -559,16 +591,43 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
             </div>
           )}
 
+          {kind === "overpayment" && (
+            <div className="space-y-1">
+              <Label className="text-xs">Recovery months (installments)</Label>
+              <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-overpayment-months" />
+              <p className="text-xs text-muted-foreground">How many monthly installments to recover this amount. Schedule is set after approval.</p>
+            </div>
+          )}
+
+          {kind === "salary_credit" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Target month</Label>
+                <select value={targetMonth} onChange={(e) => setTargetMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-target-month">
+                  {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Target year</Label>
+                <Input type="number" min={2000} max={2100} value={targetYear} onChange={(e) => setTargetYear(e.target.value)} data-testid="input-target-year" />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label className="text-xs">Reason / note (optional)</Label>
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={kind === "overpayment" ? "Why was this overpaid?" : "Context for this advance"} data-testid="input-record-reason" />
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)}
+              placeholder={kind === "overpayment" ? "Why was this overpaid?" : kind === "salary_credit" ? "What is this credit for?" : "Context for this advance"}
+              data-testid="input-record-reason" />
           </div>
 
           {amt > 0 && (
             <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
               {kind === "advance"
-                ? <>Recovery: {months} month(s) × <span className="font-mono">₹{fmt(monthlyPreview)}</span>, starting {MONTHS[parseInt(startMonth, 10)]} {startYear}.</>
-                : <>Will recover <span className="font-mono">₹{fmt(amt)}</span> from the next salary cycle (remainder carries forward if net pay is short).</>}
+                ? <>Recovery: {months} month(s) × <span className="font-mono">₹{fmt(monthlyPreview)}</span>, starting {MONTHS[parseInt(startMonth, 10)]} {startYear}. Created immediately.</>
+                : kind === "overpayment"
+                  ? <>Will recover <span className="font-mono">₹{fmt(amt)}</span> over {months || 1} month(s). Awaits super admin approval before payroll deducts it.</>
+                  : <>Will add <span className="font-mono">₹{fmt(amt)}</span> to {MONTHS[parseInt(targetMonth, 10)]} {targetYear} payroll. Awaits super admin approval.</>}
             </div>
           )}
         </div>
@@ -576,11 +635,312 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-record">Cancel</Button>
           <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-record">
             {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
-            Record {kind === "overpayment" ? "Overpayment" : "Advance"}
+            {kind === "advance" ? "Record Advance" : kind === "salary_credit" ? "Submit Credit" : "Submit Overpayment"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Shared types for the new tabs ─────────────────────────────────────────────
+interface AdjustmentRow extends Advance {
+  recordedBy?: { id: string; firstName: string; lastName: string; email: string } | null;
+  requester?: { id: string; firstName: string; lastName: string; email: string } | null;
+  targetMonth?: number | null;
+  targetYear?: number | null;
+  reviewerComment?: string | null;
+}
+
+// ── Pending Adjustments Tab (super_admin only) ────────────────────────────────
+function PendingAdjustmentsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [commentMap, setCommentMap] = useState<Record<string, string>>({});
+  const [showCommentFor, setShowCommentFor] = useState<string | null>(null);
+  const [commentAction, setCommentAction] = useState<"return" | "reject">("return");
+
+  const { data: rows = [], isLoading } = useQuery<AdjustmentRow[]>({
+    queryKey: ["/api/salary-advances/pending-adjustments"],
+    queryFn: async () => {
+      const res = await fetch("/api/salary-advances/pending-adjustments", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/pending-adjustments"] });
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/active"] });
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/stats"] });
+  };
+
+  const approve = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/approve-adjustment`, {});
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: () => { toast({ title: "Adjustment approved" }); invalidate(); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const returnOrReject = useMutation({
+    mutationFn: async ({ id, action, comment }: { id: string; action: "return" | "reject"; comment: string }) => {
+      const endpoint = action === "return" ? "return-adjustment" : "reject-adjustment";
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/${endpoint}`, { comment });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: (_d, vars) => {
+      toast({ title: vars.action === "return" ? "Returned for edit" : "Rejected" });
+      setShowCommentFor(null);
+      setCommentMap(m => { const n = { ...m }; delete n[vars.id]; return n; });
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>;
+
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground text-sm">
+          No adjustments pending your review.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{rows.length} adjustment(s) awaiting your approval.</p>
+      {rows.map(row => (
+        <Card key={row.id} data-testid={`card-adjustment-${row.id}`}>
+          <CardContent className="pt-4 pb-3 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs text-muted-foreground">{row.requestNumber}</span>
+                  <KindBadge kind={row.kind} />
+                  <StatusBadge status={row.status} />
+                </div>
+                <div className="mt-1 text-sm font-medium">
+                  {row.requester ? `${row.requester.firstName} ${row.requester.lastName}` : "—"}
+                  <span className="text-muted-foreground font-normal text-xs ml-2">{row.requester?.email}</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Amount: <span className="font-mono font-medium text-foreground">₹{fmt(row.requestedAmount)}</span>
+                  {row.kind === "overpayment" && row.repaymentMonths ? ` · ${row.repaymentMonths} month(s)` : ""}
+                  {row.kind === "salary_credit" && row.targetMonth && row.targetYear
+                    ? ` · Target: ${MONTHS[row.targetMonth]} ${row.targetYear}` : ""}
+                  {" · "}Submitted by: {row.recordedBy ? `${row.recordedBy.firstName} ${row.recordedBy.lastName}` : "—"}
+                </div>
+                {row.reason && <div className="text-xs text-muted-foreground mt-0.5">Note: {row.reason}</div>}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                  data-testid={`button-return-${row.id}`}
+                  onClick={() => { setShowCommentFor(row.id); setCommentAction("return"); }}>
+                  Return
+                </Button>
+                <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
+                  data-testid={`button-reject-${row.id}`}
+                  onClick={() => { setShowCommentFor(row.id); setCommentAction("reject"); }}>
+                  Reject
+                </Button>
+                <Button size="sm" data-testid={`button-approve-${row.id}`}
+                  onClick={() => approve.mutate(row.id)} disabled={approve.isPending}>
+                  {approve.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Approve
+                </Button>
+              </div>
+            </div>
+            {showCommentFor === row.id && (
+              <div className="border-t pt-3 space-y-2">
+                <Label className="text-xs">{commentAction === "return" ? "Return note (required)" : "Rejection reason (required)"}</Label>
+                <Textarea
+                  value={commentMap[row.id] || ""}
+                  onChange={(e) => setCommentMap(m => ({ ...m, [row.id]: e.target.value }))}
+                  placeholder={commentAction === "return" ? "What needs to be corrected?" : "Why is this being rejected?"}
+                  className="text-sm" rows={2}
+                  data-testid={`input-comment-${row.id}`} />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setShowCommentFor(null)}>Cancel</Button>
+                  <Button size="sm"
+                    disabled={!commentMap[row.id]?.trim() || returnOrReject.isPending}
+                    onClick={() => returnOrReject.mutate({ id: row.id, action: commentAction, comment: commentMap[row.id]?.trim() || "" })}
+                    data-testid={`button-confirm-comment-${row.id}`}>
+                    {returnOrReject.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Confirm
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ── My Submissions Tab (HR/Admin) ─────────────────────────────────────────────
+function MySubmissionsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editMonths, setEditMonths] = useState("");
+  const [editTargetMonth, setEditTargetMonth] = useState("");
+  const [editTargetYear, setEditTargetYear] = useState("");
+
+  const { data: rows = [], isLoading } = useQuery<AdjustmentRow[]>({
+    queryKey: ["/api/salary-advances/my-submissions"],
+    queryFn: async () => {
+      const res = await fetch("/api/salary-advances/my-submissions", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/active"] });
+  };
+
+  const resubmit = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: any }) => {
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/resubmit-adjustment`, body);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Resubmitted for approval" });
+      setEditId(null);
+      invalidate();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>;
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground text-sm">
+          You have not submitted any adjustments yet. Use "Record for Employee" on the Active Advances tab.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {rows.map(row => (
+        <Card key={row.id} data-testid={`card-submission-${row.id}`}>
+          <CardContent className="pt-4 pb-3 space-y-2">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs text-muted-foreground">{row.requestNumber}</span>
+                  <KindBadge kind={row.kind} />
+                  <StatusBadge status={row.status} />
+                </div>
+                <div className="text-sm font-medium mt-1">
+                  {row.requester ? `${row.requester.firstName} ${row.requester.lastName}` : `Employee ID: ${row.requesterId}`}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Amount: <span className="font-mono font-medium text-foreground">₹{fmt(row.requestedAmount)}</span>
+                  {row.kind === "salary_credit" && row.targetMonth && row.targetYear
+                    ? ` · Target: ${MONTHS[row.targetMonth]} ${row.targetYear}` : ""}
+                  {row.kind === "overpayment" && row.repaymentMonths ? ` · ${row.repaymentMonths} month(s)` : ""}
+                </div>
+                {row.reason && <div className="text-xs text-muted-foreground">Note: {row.reason}</div>}
+                {row.reviewerComment && row.status === "returned" && (
+                  <div className="mt-1 text-xs bg-rose-50 text-rose-700 rounded px-2 py-1">
+                    Returned: {row.reviewerComment}
+                  </div>
+                )}
+                {row.reviewerComment && row.status === "rejected" && (
+                  <div className="mt-1 text-xs bg-red-50 text-red-700 rounded px-2 py-1">
+                    Rejected: {row.reviewerComment}
+                  </div>
+                )}
+              </div>
+              {row.status === "returned" && editId !== row.id && (
+                <Button size="sm" variant="outline" data-testid={`button-edit-resubmit-${row.id}`}
+                  onClick={() => {
+                    setEditId(row.id);
+                    setEditAmount(String(parseFloat(row.requestedAmount)));
+                    setEditReason(row.reason || "");
+                    setEditMonths(String(row.repaymentMonths || ""));
+                    setEditTargetMonth(String((row as any).targetMonth || ""));
+                    setEditTargetYear(String((row as any).targetYear || ""));
+                  }}>
+                  Edit & Resubmit
+                </Button>
+              )}
+            </div>
+            {editId === row.id && (
+              <div className="border-t pt-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Amount (₹)</Label>
+                    <Input type="number" min={1} value={editAmount} onChange={e => setEditAmount(e.target.value)} data-testid="input-edit-amount" />
+                  </div>
+                  {row.kind === "overpayment" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Repayment months</Label>
+                      <Input type="number" min={1} max={36} value={editMonths} onChange={e => setEditMonths(e.target.value)} data-testid="input-edit-months" />
+                    </div>
+                  )}
+                  {row.kind === "salary_credit" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Target month</Label>
+                        <select value={editTargetMonth} onChange={e => setEditTargetMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-edit-target-month">
+                          {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Target year</Label>
+                        <Input type="number" min={2000} max={2100} value={editTargetYear} onChange={e => setEditTargetYear(e.target.value)} data-testid="input-edit-target-year" />
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Reason</Label>
+                  <Textarea value={editReason} onChange={e => setEditReason(e.target.value)} rows={2} data-testid="input-edit-reason" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditId(null)}>Cancel</Button>
+                  <Button size="sm" disabled={resubmit.isPending}
+                    onClick={() => {
+                      const body: any = {};
+                      const amt = parseFloat(editAmount);
+                      if (!isNaN(amt) && amt > 0) body.amount = amt;
+                      if (editReason.trim()) body.reason = editReason.trim();
+                      if (row.kind === "overpayment" && editMonths) body.repaymentMonths = parseInt(editMonths, 10);
+                      if (row.kind === "salary_credit" && editTargetMonth) body.targetMonth = parseInt(editTargetMonth, 10);
+                      if (row.kind === "salary_credit" && editTargetYear) body.targetYear = parseInt(editTargetYear, 10);
+                      resubmit.mutate({ id: row.id, body });
+                    }}
+                    data-testid={`button-confirm-resubmit-${row.id}`}>
+                    {resubmit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Resubmit
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 

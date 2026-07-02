@@ -81,7 +81,7 @@ import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
-import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun } from "./salaryAdvanceRoutes";
+import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCreditsForRun } from "./salaryAdvanceRoutes";
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
@@ -6687,11 +6687,15 @@ export async function registerRoutes(
         return res.status(409).json({ error: "A report for this month has already been approved and sent." });
       }
 
+      // Store snapshotted credit IDs so applyCreditsForRun can constrain to
+      // only credits that were actually included in this run's gross-pay figure.
+      const creditSnapshot = { __creditSnapshot__: report.salaryCreditIds };
+
       if (existing.length > 0) {
         await db.update(salaryReportRuns)
           .set({
             reportData: report.rows as any,
-            adjustments: {} as any,
+            adjustments: creditSnapshot as any,
             status: "pending_approval",
             generatedAt: new Date(),
             approvedAt: null,
@@ -6708,7 +6712,7 @@ export async function registerRoutes(
         month,
         status: "pending_approval",
         reportData: report.rows as any,
-        adjustments: {} as any,
+        adjustments: creditSnapshot as any,
       }).returning();
 
       await storage.createAuditLog({
@@ -7128,7 +7132,14 @@ export async function registerRoutes(
 
       const actorId = req.session.userId!;
       const rows = (run.reportData as any[]) || [];
-      const adjustments = (run.adjustments as Record<string, SalaryReportAdjustment>) || {};
+      const rawAdjustments = (run.adjustments as Record<string, any>) || {};
+      // Extract snapshotted credit IDs (stored at run-generation time) before
+      // spreading into employee-keyed adjustments map.
+      const snapshotCreditIds: string[] | undefined = rawAdjustments.__creditSnapshot__;
+      // Build employee-keyed adjustments (exclude the reserved snapshot key).
+      const adjustments: Record<string, SalaryReportAdjustment> = Object.fromEntries(
+        Object.entries(rawAdjustments).filter(([k]) => k !== "__creditSnapshot__")
+      ) as Record<string, SalaryReportAdjustment>;
 
       // Build summary from rows
       const totalPayable = rows.reduce((s: number, r: any) => s + Number(r.netPayable), 0);
@@ -7225,10 +7236,26 @@ export async function registerRoutes(
         console.error("Salary advance recovery failed during run approve:", recErr);
       }
 
+      let creditsApplied = 0;
+      try {
+        creditsApplied = await applyCreditsForRun({
+          year: run.year,
+          month: run.month,
+          salaryRunId: run.id,
+          actorId,
+          // Snapshot-safe: only mark credits that were actually included in this
+          // run's gross-pay computation. snapshotCreditIds is undefined for
+          // legacy runs (falls back to month/year query in applyCreditsForRun).
+          creditIds: snapshotCreditIds,
+        });
+      } catch (credErr) {
+        console.error("Salary credit apply failed during run approve:", credErr);
+      }
+
       await storage.createAuditLog({
         action: "salary_report_approved",
         actorId,
-        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered },
+        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered, creditsApplied },
       });
 
       res.json({ success: true, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered });

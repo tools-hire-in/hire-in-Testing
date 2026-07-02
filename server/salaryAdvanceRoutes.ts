@@ -1,10 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
+import { eq, and } from "drizzle-orm";
+import { db } from "./db";
 import { resolveRoles } from "@shared/accessControl";
 import {
   DEFAULT_SALARY_ADVANCE_POLICY,
   SALARY_ADVANCE_POLICY_KEY,
+  salaryAdvanceRequests,
   type SalaryAdvancePolicy,
   type SalaryAdvanceRequest,
 } from "@shared/schema";
@@ -204,13 +207,26 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   // OFF we still let trusted roles reach the backfill route and the read
   // endpoints the recording UI depends on; everything else stays fully disabled.
   const FLAG_OFF_PRIVILEGED_ROLES = ["super_admin", "admin", "hr"];
+  // Managers and finance can read employee advances (read-only card in My Team)
+  // even when the self-service flag is off.
+  const FLAG_OFF_MANAGER_READ_ROLES = ["manager", "finance"];
   const isAdminToolRequest = (method: string, subPath: string): boolean => {
     if (method === "POST" && subPath === "/backfill") return true;
-    if (method !== "GET") return false;
-    if (subPath === "/active" || subPath === "/stats" || subPath === "/policy") return true;
-    // Detail dialog: GET /api/salary-advances/:id (uuid-shaped, no extra segment).
-    if (/^\/[0-9a-fA-F-]{16,}$/.test(subPath)) return true;
+    if (method === "GET") {
+      if (subPath === "/active" || subPath === "/stats" || subPath === "/policy") return true;
+      if (subPath === "/pending-adjustments" || subPath === "/my-submissions") return true;
+      // GET /employee/:userId
+      if (/^\/employee\/[^/]+$/.test(subPath)) return true;
+      // Detail dialog: GET /api/salary-advances/:id (uuid-shaped, no extra segment).
+      if (/^\/[0-9a-fA-F-]{16,}$/.test(subPath)) return true;
+    }
+    // HR-recorded adjustment review & resubmit actions
+    if (method === "PATCH" && /\/(approve-adjustment|return-adjustment|reject-adjustment|resubmit-adjustment)$/.test(subPath)) return true;
     return false;
+  };
+  const isManagerReadRequest = (method: string, subPath: string): boolean => {
+    // Managers only get read access to per-employee advances (My Team card)
+    return method === "GET" && /^\/employee\/[^/]+$/.test(subPath);
   };
   app.use("/api/salary-advances", async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -220,6 +236,9 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       const role = req.session?.role || "";
       // req.path is relative to the "/api/salary-advances" mount point here.
       if (FLAG_OFF_PRIVILEGED_ROLES.includes(role) && isAdminToolRequest(req.method, req.path)) {
+        return next();
+      }
+      if (FLAG_OFF_MANAGER_READ_ROLES.includes(role) && isManagerReadRequest(req.method, req.path)) {
         return next();
       }
     } catch {
@@ -323,26 +342,28 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── HR/admin: manually record an entry for an employee.
-  // Two kinds:
-  //   • advance     — backfill an already-active advance, skipping the
-  //                   request/approval chain (HR picks amount, repayment months,
-  //                   and the start month of recovery).
-  //   • overpayment — record an overpayment to be recovered in full next cycle
-  //                   (single installment); any shortfall carries forward via the
-  //                   existing monthly recovery engine.
-  // The record is created in `disbursed` status with a repayment schedule, so the
-  // standard payroll recovery picks it up automatically. Works regardless of the
-  // self-service feature flag (see the feature gate above).
+  // Three kinds:
+  //   • advance      — backfill an already-active advance, skipping the
+  //                    request/approval chain (HR picks amount, repayment months,
+  //                    and the start month of recovery). Created as disbursed.
+  //   • overpayment  — HR-recorded deduction for any reason with configurable
+  //                    repayment months. Lands in pending_review for super_admin
+  //                    approval before affecting payroll.
+  //   • salary_credit — HR-recorded one-time positive correction for a specific
+  //                     month. Lands in pending_review for super_admin approval.
+  // Works regardless of the self-service feature flag (see the feature gate above).
   app.post("/api/salary-advances/backfill", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const schema = z.object({
         employeeId: z.string().min(1, "Employee is required"),
-        kind: z.enum(["advance", "overpayment"]),
+        kind: z.enum(["advance", "overpayment", "salary_credit"]),
         amount: z.number().positive("Amount must be greater than zero"),
         reason: z.string().optional(),
         repaymentMonths: z.number().int().min(1).max(36).optional(),
         startYear: z.number().int().min(2000).max(2100).optional(),
         startMonth: z.number().int().min(1).max(12).optional(),
+        targetMonth: z.number().int().min(1).max(12).optional(),
+        targetYear: z.number().int().min(2000).max(2100).optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
@@ -354,28 +375,65 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       const target = await storage.getAdminUser(employeeId);
       if (!target) return res.status(404).json({ error: "Employee not found" });
 
-      // Resolve schedule parameters. Overpayment = single installment next cycle.
-      let months: number;
-      let start: { year: number; month: number };
-      if (kind === "overpayment") {
-        months = 1;
-        start = nextMonth();
-      } else {
-        months = parsed.data.repaymentMonths || 1;
-        start = (parsed.data.startYear && parsed.data.startMonth)
-          ? { year: parsed.data.startYear, month: parsed.data.startMonth }
-          : nextMonth();
-      }
-      const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
-
       const defaultReason = kind === "overpayment"
         ? "Overpayment recovery recorded by HR"
-        : "Salary advance recorded by HR";
+        : kind === "salary_credit"
+          ? "Salary credit recorded by HR"
+          : "Salary advance recorded by HR";
       const reason = parsed.data.reason && parsed.data.reason.trim().length > 0
         ? parsed.data.reason.trim()
         : defaultReason;
 
       const now = new Date();
+
+      if (kind === "advance") {
+        // Advance: bypass approval chain, create disbursed immediately.
+        const months = parsed.data.repaymentMonths || 1;
+        const start = (parsed.data.startYear && parsed.data.startMonth)
+          ? { year: parsed.data.startYear, month: parsed.data.startMonth }
+          : nextMonth();
+        const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
+
+        const created = await storage.createSalaryAdvanceWithNumber({
+          requesterId: employeeId,
+          managerId: null,
+          requestedAmount: amount.toFixed(2),
+          reason,
+          kind,
+          backfilled: true,
+          status: "disbursed",
+          approvedAmount: amount.toFixed(2),
+          repaymentMonths: months,
+          monthlyDeduction: monthlyDeduction.toFixed(2),
+          repaymentStartYear: start.year,
+          repaymentStartMonth: start.month,
+          totalRepaid: "0",
+          outstandingBalance: amount.toFixed(2),
+          managerApprovedBy: actorId,
+          managerApprovedAt: now,
+          finalApprovedBy: actorId,
+          finalApprovedAt: now,
+          disbursedBy: actorId,
+          disbursedAt: now,
+          recordedById: actorId,
+        } as any);
+
+        const schedule = buildSchedule({ advanceId: created.id, userId: employeeId, amount, months, startYear: start.year, startMonth: start.month });
+        await storage.createSalaryAdvanceRepayments(schedule as any);
+        await storage.addSalaryAdvanceAuditEntry({
+          advanceId: created.id, actorId, action: "backfilled",
+          oldStatus: null, newStatus: "disbursed",
+          metadata: { kind, amount, months, monthlyDeduction, scheduleStart: start, recordedManually: true },
+        } as any);
+        await notify({
+          userId: employeeId, type: "salary_advance_recorded", title: "Salary advance recorded",
+          message: `A salary advance of ${amount.toFixed(2)} has been recorded and will be recovered over ${months} month(s).`,
+          link: EMPLOYEE_LINK,
+        });
+        return res.status(201).json({ ...created, repayments: schedule });
+      }
+
+      // Overpayment or Salary Credit: enter pending_review for super_admin approval.
       const created = await storage.createSalaryAdvanceWithNumber({
         requesterId: employeeId,
         managerId: null,
@@ -383,52 +441,359 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         reason,
         kind,
         backfilled: true,
+        status: "pending_review",
+        approvedAmount: null,
+        repaymentMonths: kind === "overpayment" ? (parsed.data.repaymentMonths || 1) : null,
+        totalRepaid: "0",
+        outstandingBalance: amount.toFixed(2),
+        targetMonth: kind === "salary_credit" ? (parsed.data.targetMonth || null) : null,
+        targetYear: kind === "salary_credit" ? (parsed.data.targetYear || null) : null,
+        recordedById: actorId,
+      } as any);
+
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: created.id, actorId, action: "submitted_for_review",
+        oldStatus: null, newStatus: "pending_review",
+        metadata: { kind, amount, recordedManually: true },
+      } as any);
+
+      // Notify super admins that an adjustment needs review.
+      const allUsers = await storage.getAdminUsers();
+      for (const u of allUsers.filter(x => x.role === "super_admin" && x.isActive)) {
+        await notify({
+          userId: u.id, type: "salary_adjustment_pending_review",
+          title: kind === "salary_credit" ? "Salary credit needs approval" : "Overpayment record needs approval",
+          message: `${target.firstName} ${target.lastName} — ${kind === "salary_credit" ? "salary credit" : "overpayment"} of ${amount.toFixed(2)} recorded by HR and awaits your approval.`,
+          link: "/admin/salary-advance?tab=pending-adjustments",
+        });
+      }
+
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("Salary advance backfill error:", err);
+      res.status(500).json({ error: "Failed to record entry" });
+    }
+  });
+
+  // ── Scoped employee read — returns all salary advance/adjustment records for
+  // one employee. Access: manager for their reports, HR/admin/super_admin for all.
+  app.get("/api/salary-advances/employee/:userId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { userId: targetUserId } = req.params;
+      const actorId = req.session.userId!;
+      const role = req.session.role || "employee";
+
+      // Access check
+      const privileged = ["super_admin", "admin", "hr", "finance"].includes(role);
+      if (!privileged) {
+        // Managers may see their direct/indirect reports
+        const target = await storage.getAdminUser(targetUserId);
+        if (!target) return res.status(404).json({ error: "Employee not found" });
+        // Walk manager chain from target upwards
+        let current = target;
+        let found = false;
+        const seen = new Set<string>();
+        while (current.managerId && !seen.has(current.managerId)) {
+          seen.add(current.managerId);
+          if (current.managerId === actorId) { found = true; break; }
+          const next = await storage.getAdminUser(current.managerId);
+          if (!next) break;
+          current = next;
+        }
+        if (!found && role !== "manager") return res.status(403).json({ error: "Forbidden" });
+        if (!found) return res.status(403).json({ error: "Employee is not in your team" });
+      }
+
+      const rows = await storage.listSalaryAdvancesByRequester(targetUserId);
+
+      // Enrich with repayment summary and submitter info
+      const enriched = await Promise.all(rows.map(async (a) => {
+        const repayments = await storage.getSalaryAdvanceRepayments(a.id);
+        const scheduled = repayments.filter(r => r.status === "scheduled");
+        const nextRep = scheduled.sort((x, y) => x.year !== y.year ? x.year - y.year : x.month - y.month)[0];
+        let recordedBy = null;
+        if ((a as any).recordedById) {
+          const u = await storage.getAdminUser((a as any).recordedById);
+          if (u) recordedBy = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+        }
+        return {
+          ...a,
+          recordedBy,
+          nextRepaymentMonth: nextRep ? nextRep.month : null,
+          nextRepaymentYear: nextRep ? nextRep.year : null,
+          nextRepaymentAmount: nextRep ? nextRep.scheduledAmount : null,
+          monthsRemaining: scheduled.length,
+        };
+      }));
+
+      res.json(enriched);
+    } catch (err) {
+      console.error("Employee advances read error:", err);
+      res.status(500).json({ error: "Failed to load advances" });
+    }
+  });
+
+  // ── My Submissions — HR/Admin: their own submitted (recorded) adjustments.
+  app.get("/api/salary-advances/my-submissions", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const actorId = req.session.userId!;
+      // Find all records where this actor is the recordedById
+      const allRows = await storage.listSalaryAdvancesByRecordedBy(actorId);
+      const enriched = await enrichUsers(allRows);
+      res.json(enriched);
+    } catch {
+      res.status(500).json({ error: "Failed to load submissions" });
+    }
+  });
+
+  // ── Pending Adjustments — super_admin: global queue of pending_review overpayments/credits.
+  app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
+    try {
+      const rows = await storage.listSalaryAdvancesByStatus(["pending_review"]);
+      const enriched = await Promise.all(rows.map(async (a) => {
+        let recordedBy = null;
+        if ((a as any).recordedById) {
+          const u = await storage.getAdminUser((a as any).recordedById);
+          if (u) recordedBy = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+        }
+        const target = await storage.getAdminUser(a.requesterId);
+        return {
+          ...a,
+          recordedBy,
+          requester: target ? { id: target.id, firstName: target.firstName, lastName: target.lastName, email: target.email } : null,
+        };
+      }));
+      res.json(enriched);
+    } catch {
+      res.status(500).json({ error: "Failed to load pending adjustments" });
+    }
+  });
+
+  // ── Super admin: approve an HR-recorded adjustment (overpayment or salary_credit).
+  app.patch("/api/salary-advances/:id/approve-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (!["overpayment", "salary_credit"].includes(advance.kind || "")) {
+        return res.status(400).json({ error: "Only overpayment or salary_credit records can be approved via this route." });
+      }
+      if (advance.status !== "pending_review") {
+        return res.status(400).json({ error: "Record is not pending review." });
+      }
+
+      const actorId = req.session.userId!;
+      const amount = Number(advance.requestedAmount);
+      const now = new Date();
+
+      if (advance.kind === "salary_credit") {
+        // Credit: mark approved; payroll engine will apply and mark applied.
+        const updated = await storage.updateSalaryAdvance(advance.id, {
+          status: "approved",
+          approvedAmount: amount.toFixed(2),
+          finalApprovedBy: actorId,
+          finalApprovedAt: now,
+          reviewerComment: null,
+        });
+        await storage.addSalaryAdvanceAuditEntry({
+          advanceId: advance.id, actorId, action: "adjustment_approved",
+          oldStatus: "pending_review", newStatus: "approved",
+          metadata: { kind: advance.kind, amount },
+        } as any);
+        await notify({
+          userId: advance.requesterId, type: "salary_credit_approved",
+          title: "Salary credit approved",
+          message: `A salary credit of ${amount.toFixed(2)} has been approved and will be applied to the target payroll month.`,
+          link: EMPLOYEE_LINK,
+        });
+        if ((advance as any).recordedById) {
+          await notify({
+            userId: (advance as any).recordedById, type: "salary_adjustment_approved",
+            title: "Adjustment approved",
+            message: `Your salary credit submission for ${amount.toFixed(2)} has been approved.`,
+            link: "/admin/salary-advance?tab=my-submissions",
+          });
+        }
+        return res.json(updated);
+      }
+
+      // Overpayment: approve and generate repayment schedule.
+      const months = Number(advance.repaymentMonths) || 1;
+      const start = nextMonth();
+      const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
+
+      const updated = await storage.updateSalaryAdvance(advance.id, {
         status: "disbursed",
         approvedAmount: amount.toFixed(2),
         repaymentMonths: months,
         monthlyDeduction: monthlyDeduction.toFixed(2),
         repaymentStartYear: start.year,
         repaymentStartMonth: start.month,
-        totalRepaid: "0",
         outstandingBalance: amount.toFixed(2),
-        managerApprovedBy: actorId,
-        managerApprovedAt: now,
         finalApprovedBy: actorId,
         finalApprovedAt: now,
-        disbursedBy: actorId,
-        disbursedAt: now,
-      } as any);
-
-      const schedule = buildSchedule({
-        advanceId: created.id,
-        userId: employeeId,
-        amount,
-        months,
-        startYear: start.year,
-        startMonth: start.month,
+        reviewerComment: null,
       });
+
+      const schedule = buildSchedule({ advanceId: advance.id, userId: advance.requesterId, amount, months, startYear: start.year, startMonth: start.month });
       await storage.createSalaryAdvanceRepayments(schedule as any);
 
       await storage.addSalaryAdvanceAuditEntry({
-        advanceId: created.id, actorId, action: "backfilled",
-        oldStatus: null, newStatus: "disbursed",
-        metadata: { kind, amount, months, monthlyDeduction, scheduleStart: start, recordedManually: true },
+        advanceId: advance.id, actorId, action: "adjustment_approved",
+        oldStatus: "pending_review", newStatus: "disbursed",
+        metadata: { kind: advance.kind, amount, months, scheduleStart: start },
       } as any);
 
       await notify({
-        userId: employeeId,
-        type: kind === "overpayment" ? "salary_overpayment_recorded" : "salary_advance_recorded",
-        title: kind === "overpayment" ? "Overpayment recovery scheduled" : "Salary advance recorded",
-        message: kind === "overpayment"
-          ? `An overpayment of ${amount.toFixed(2)} will be recovered from your upcoming salary.`
-          : `A salary advance of ${amount.toFixed(2)} has been recorded and will be recovered over ${months} month(s).`,
+        userId: advance.requesterId, type: "salary_overpayment_approved",
+        title: "Overpayment recovery scheduled",
+        message: `An overpayment recovery of ${amount.toFixed(2)} has been approved and will be deducted over ${months} month(s).`,
         link: EMPLOYEE_LINK,
       });
-
-      res.status(201).json({ ...created, repayments: schedule });
+      if ((advance as any).recordedById) {
+        await notify({
+          userId: (advance as any).recordedById, type: "salary_adjustment_approved",
+          title: "Adjustment approved",
+          message: `Your overpayment submission for ${amount.toFixed(2)} has been approved.`,
+          link: "/admin/salary-advance?tab=my-submissions",
+        });
+      }
+      return res.json({ ...updated, repayments: schedule });
     } catch (err) {
-      console.error("Salary advance backfill error:", err);
-      res.status(500).json({ error: "Failed to record entry" });
+      console.error("Approve adjustment error:", err);
+      res.status(500).json({ error: "Failed to approve adjustment" });
+    }
+  });
+
+  // ── Super admin: return an HR-recorded adjustment for edit.
+  app.patch("/api/salary-advances/:id/return-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (advance.status !== "pending_review") return res.status(400).json({ error: "Record is not pending review." });
+
+      const schema = z.object({ comment: z.string().min(1, "A comment is required") });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "A comment is required" });
+
+      const updated = await storage.updateSalaryAdvance(advance.id, {
+        status: "returned",
+        reviewerComment: parsed.data.comment,
+      });
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId: req.session.userId!, action: "adjustment_returned",
+        oldStatus: "pending_review", newStatus: "returned",
+        metadata: { comment: parsed.data.comment },
+      } as any);
+      if ((advance as any).recordedById) {
+        await notify({
+          userId: (advance as any).recordedById, type: "salary_adjustment_returned",
+          title: "Adjustment returned for edit",
+          message: `Your ${advance.kind === "salary_credit" ? "salary credit" : "overpayment"} submission was returned: ${parsed.data.comment}`,
+          link: "/admin/salary-advance?tab=my-submissions",
+        });
+      }
+      res.json(updated);
+    } catch {
+      res.status(500).json({ error: "Failed to return adjustment" });
+    }
+  });
+
+  // ── Super admin: permanently reject an HR-recorded adjustment.
+  app.patch("/api/salary-advances/:id/reject-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (advance.status !== "pending_review") return res.status(400).json({ error: "Record is not pending review." });
+
+      const schema = z.object({ comment: z.string().min(1, "A rejection reason is required") });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "A rejection reason is required" });
+
+      const updated = await storage.updateSalaryAdvance(advance.id, {
+        status: "rejected",
+        reviewerComment: parsed.data.comment,
+        rejectedBy: req.session.userId!,
+        rejectedAt: new Date(),
+        rejectionReason: parsed.data.comment,
+      });
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId: req.session.userId!, action: "adjustment_rejected",
+        oldStatus: "pending_review", newStatus: "rejected",
+        metadata: { comment: parsed.data.comment },
+      } as any);
+      if ((advance as any).recordedById) {
+        await notify({
+          userId: (advance as any).recordedById, type: "salary_adjustment_rejected",
+          title: "Adjustment rejected",
+          message: `Your ${advance.kind === "salary_credit" ? "salary credit" : "overpayment"} submission was rejected: ${parsed.data.comment}`,
+          link: "/admin/salary-advance?tab=my-submissions",
+        });
+      }
+      res.json(updated);
+    } catch {
+      res.status(500).json({ error: "Failed to reject adjustment" });
+    }
+  });
+
+  // ── HR/Admin: resubmit a returned adjustment with edits.
+  app.patch("/api/salary-advances/:id/resubmit-adjustment", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (advance.status !== "returned") return res.status(400).json({ error: "Only a returned adjustment can be resubmitted." });
+
+      // Only the original submitter (or super_admin/admin) may resubmit
+      const actorId = req.session.userId!;
+      const role = req.session.role || "";
+      const isOriginal = (advance as any).recordedById === actorId;
+      if (!isOriginal && !["super_admin", "admin"].includes(role)) {
+        return res.status(403).json({ error: "Only the original submitter can resubmit this adjustment." });
+      }
+
+      const schema = z.object({
+        amount: z.number().positive().optional(),
+        reason: z.string().min(1).optional(),
+        repaymentMonths: z.number().int().min(1).max(36).optional(),
+        targetMonth: z.number().int().min(1).max(12).optional(),
+        targetYear: z.number().int().min(2000).max(2100).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      const updates: any = {
+        status: "pending_review",
+        reviewerComment: null,
+        returnNote: null,
+      };
+      if (parsed.data.amount !== undefined) {
+        updates.requestedAmount = parsed.data.amount.toFixed(2);
+        updates.outstandingBalance = parsed.data.amount.toFixed(2);
+      }
+      if (parsed.data.reason !== undefined) updates.reason = parsed.data.reason;
+      if (parsed.data.repaymentMonths !== undefined) updates.repaymentMonths = parsed.data.repaymentMonths;
+      if (parsed.data.targetMonth !== undefined) updates.targetMonth = parsed.data.targetMonth;
+      if (parsed.data.targetYear !== undefined) updates.targetYear = parsed.data.targetYear;
+
+      const updated = await storage.updateSalaryAdvance(advance.id, updates);
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "adjustment_resubmitted",
+        oldStatus: "returned", newStatus: "pending_review",
+        metadata: { changes: parsed.data },
+      } as any);
+
+      // Notify super admins
+      const allUsers = await storage.getAdminUsers();
+      for (const u of allUsers.filter(x => x.role === "super_admin" && x.isActive)) {
+        await notify({
+          userId: u.id, type: "salary_adjustment_pending_review",
+          title: "Adjustment resubmitted for approval",
+          message: `A ${advance.kind === "salary_credit" ? "salary credit" : "overpayment"} adjustment has been resubmitted and awaits your approval.`,
+          link: "/admin/salary-advance?tab=pending-adjustments",
+        });
+      }
+      res.json(updated);
+    } catch {
+      res.status(500).json({ error: "Failed to resubmit adjustment" });
     }
   });
 
@@ -1032,6 +1397,66 @@ export async function applyAdvanceRecoveriesForRun(opts: {
     }
   }
   return applied;
+}
+
+// Mark salary credits as `applied` after the payroll run they target is approved.
+// Called from the salary-run approve handler alongside applyAdvanceRecoveriesForRun.
+//
+// Pass `creditIds` to restrict application to only the credits that were
+// included when the run was generated (snapshot-safe). If `creditIds` is
+// empty or omitted (e.g. legacy runs created before snapshotting was added),
+// falls back to querying by month/year — this is safe for old runs because
+// those credits were necessarily approved before the run existed.
+export async function applyCreditsForRun(opts: {
+  year: number;
+  month: number;
+  salaryRunId: string;
+  actorId: string;
+  creditIds?: string[];
+}): Promise<number> {
+  const { year, month, actorId, creditIds } = opts;
+  const { inArray } = await import("drizzle-orm");
+
+  let credits: any[];
+  if (creditIds && creditIds.length > 0) {
+    // Snapshot path: only apply the specific credits that were included in the
+    // run's gross-pay computation. Credits approved after generation are excluded.
+    credits = await db.select().from(salaryAdvanceRequests)
+      .where(and(
+        inArray(salaryAdvanceRequests.id, creditIds),
+        eq(salaryAdvanceRequests.kind, "salary_credit" as any),
+        eq(salaryAdvanceRequests.status, "approved" as any),
+      ));
+  } else if (creditIds && creditIds.length === 0) {
+    // Explicit empty snapshot: no credits were included in this run.
+    credits = [];
+  } else {
+    // Legacy/fallback path: no snapshot stored, query by month/year.
+    credits = await db.select().from(salaryAdvanceRequests)
+      .where(and(
+        eq(salaryAdvanceRequests.kind, "salary_credit" as any),
+        eq(salaryAdvanceRequests.status, "approved" as any),
+        eq((salaryAdvanceRequests as any).targetMonth, month),
+        eq((salaryAdvanceRequests as any).targetYear, year),
+      ));
+  }
+
+  let count = 0;
+  for (const credit of credits) {
+    await storage.updateSalaryAdvance(credit.id, {
+      status: "applied" as any,
+      totalRepaid: credit.requestedAmount,
+      outstandingBalance: "0",
+      closedAt: new Date(),
+    });
+    await storage.addSalaryAdvanceAuditEntry({
+      advanceId: credit.id, actorId, action: "salary_credit_applied",
+      oldStatus: "approved", newStatus: "applied",
+      metadata: { year, month, amount: credit.requestedAmount },
+    } as any);
+    count++;
+  }
+  return count;
 }
 
 // Reschedule an unrecovered installment (or the remainder of a partial one) into
