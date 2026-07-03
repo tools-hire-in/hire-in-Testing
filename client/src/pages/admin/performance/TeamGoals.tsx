@@ -52,6 +52,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { formatLocalDate } from "@/lib/dateUtils";
 
 interface PerformanceGoal {
   id: string;
@@ -137,12 +138,7 @@ const STATUS_OPTIONS = [
 ];
 
 function formatDate(dateStr: string | null) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatLocalDate(dateStr, "en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 interface CreateGoalFormData {

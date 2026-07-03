@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { OfferLetterGenerator, OfferLettersDashboard } from "@/pages/admin/hr/HRTools";
 import type { AdminUsersResponse } from "@shared/schema";
+import { formatLocalDate } from "@/lib/dateUtils";
 
 interface NewHire {
   id: string;
@@ -86,9 +87,8 @@ function TrainingBar({ pct }: { pct: number }) {
 
 function formatJoiningDate(date: string | null): string {
   if (!date) return "Not set";
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "Not set";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const formatted = formatLocalDate(date, "en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return formatted === "—" ? "Not set" : formatted;
 }
 
 function OnboardingTab() {
@@ -332,7 +332,7 @@ function UsersTab() {
                   </td>
                   <td className="px-4 py-3 tabular-nums text-muted-foreground">
                     {u.joiningDate ? (
-                      new Date(u.joiningDate + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                      formatLocalDate(u.joiningDate, "en-GB", { day: "2-digit", month: "short", year: "numeric" })
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                         <AlertCircle className="h-3 w-3" />

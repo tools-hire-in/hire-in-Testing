@@ -3,8 +3,14 @@ import { storage } from "./storage";
 export type SalaryChangeSource = "offer_letter" | "addendum" | "manual" | "advance";
 
 function toDateOnly(d?: Date | string | null): string {
-  const date = d ? new Date(d) : new Date();
-  return date.toISOString().slice(0, 10);
+  if (!d) return new Date().toISOString().slice(0, 10);
+  // String inputs: take the date part directly — no Date construction, no UTC shift.
+  if (typeof d === "string") return d.split("T")[0];
+  // Date object: shift to noon UTC before extracting so a server or browser
+  // timezone offset cannot roll the date backward or forward.
+  const shifted = new Date(d);
+  shifted.setUTCHours(12, 0, 0, 0);
+  return shifted.toISOString().slice(0, 10);
 }
 
 // Apply a salary change to the employee record AND record it in the centralized

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatLocalDate } from "@/lib/dateUtils";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 interface PendingSalaryChange {
@@ -105,7 +106,7 @@ export function SalaryApprovalsContent() {
                     </td>
                     <td className="text-right py-2">{formatCurrency(r.oldSalary)}</td>
                     <td className="text-right py-2 font-medium">{formatCurrency(r.newSalary)}</td>
-                    <td className="py-2">{r.effectiveDate ? new Date(r.effectiveDate).toLocaleDateString() : "—"}</td>
+                    <td className="py-2">{formatLocalDate(r.effectiveDate)}</td>
                     <td className="py-2">{r.initiator ? `${r.initiator.firstName} ${r.initiator.lastName}` : "—"}</td>
                     <td className="py-2 max-w-[220px] truncate" title={r.reason || ""}>{r.reason || "—"}</td>
                     <td className="text-right py-2">

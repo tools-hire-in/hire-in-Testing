@@ -75,6 +75,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
+import { formatLocalDate } from "@/lib/dateUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 import RegularizationsPanel from "./RegularizationsPanel";
 
@@ -333,9 +334,7 @@ function formatCurrency(val: string | null) {
 }
 
 function formatDate(dateStr: string | null) {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  return formatLocalDate(dateStr, "en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function formatTime(ts: string | null) {
@@ -1104,7 +1103,7 @@ function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; 
                 <tbody>
                   {history.map(h => (
                     <tr key={h.id} className="border-b last:border-0" data-testid={`row-salary-change-${h.id}`}>
-                      <td className="py-2">{h.effectiveDate ? new Date(h.effectiveDate).toLocaleDateString() : "—"}</td>
+                      <td className="py-2">{formatLocalDate(h.effectiveDate)}</td>
                       <td className="py-2">{salarySourceLabels[h.sourceType] || h.sourceType}</td>
                       <td className="text-right py-2">{h.sourceType === "advance" ? "—" : formatCurrency(h.oldSalary)}</td>
                       <td className="text-right py-2 font-medium">{h.sourceType === "advance" ? `+${formatCurrency(h.amount)}` : formatCurrency(h.newSalary)}</td>

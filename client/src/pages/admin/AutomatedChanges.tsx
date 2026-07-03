@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ShieldCheck, Loader2, CheckCircle2, XCircle, CalendarDays, Info } from "lucide-react";
+import { formatLocalDate } from "@/lib/dateUtils";
 
 interface PendingChangeItem {
   id: string;
@@ -42,16 +43,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 function formatDate(dateStr: string) {
-  try {
-    return new Date(dateStr + "T12:00:00Z").toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return dateStr;
-  }
+  const result = formatLocalDate(dateStr, "en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  return result === "—" ? dateStr : result;
 }
 
 export default function AutomatedChanges({ embedded = false }: { embedded?: boolean } = {}) {

@@ -936,8 +936,8 @@ export function registerOnboardingRoutes(app: Express) {
         rows.push([
           `${user.firstName} ${user.lastName}`, user.email, user.employeeId || "",
           track.title, status,
-          assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : "",
-          assignment.completedAt ? new Date(assignment.completedAt).toLocaleDateString() : "",
+          assignment.dueDate ? (typeof assignment.dueDate === "string" ? assignment.dueDate.split("T")[0] : new Date(assignment.dueDate).toISOString().slice(0, 10)) : "",
+          assignment.completedAt ? new Date(assignment.completedAt).toISOString().slice(0, 10) : "",
         ].join(","));
       }
 

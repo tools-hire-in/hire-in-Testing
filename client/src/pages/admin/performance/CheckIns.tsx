@@ -39,6 +39,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { formatLocalDate } from "@/lib/dateUtils";
 import {
   probationAreaKey,
   computeWeightedOverall,
@@ -126,21 +127,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function formatDate(dateStr: string | null) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatLocalDate(dateStr, "en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
 }
 
 function formatShortDate(dateStr: string | null) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return formatLocalDate(dateStr, "en-US", { month: "short", day: "numeric" });
 }
 
 function StarRating({
