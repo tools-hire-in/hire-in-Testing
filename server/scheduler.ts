@@ -399,7 +399,19 @@ export function startScheduler() {
         }
       }
 
+      // Fetch roles for all users in the map so admin/super_admin can be excluded
+      const allUserIds = Array.from(userMap.keys());
+      const userRoleRows = allUserIds.length > 0
+        ? await db.select({ id: adminUsers.id, role: adminUsers.role })
+            .from(adminUsers)
+            .where(sql`${adminUsers.id} = ANY(ARRAY[${sql.join(allUserIds.map(id => sql`${id}`), sql`, `)}])`)
+        : [];
+      const userRoleMap = new Map(userRoleRows.map(r => [r.id, r.role]));
+
       for (const [userId, info] of Array.from(userMap.entries())) {
+        const role = userRoleMap.get(userId);
+        if (role === "admin" || role === "super_admin") continue;
+
         const typesSummary = info.types.map((t: { leaveTypeName: string; days: number; newBalance: number; accrualType: string }) => {
           const bonus = t.accrualType === "monthly+bonus" ? " (incl. bonus)" : "";
           return `${t.leaveTypeName}: +${t.days}${bonus} → balance: ${t.newBalance.toFixed(1)}`;

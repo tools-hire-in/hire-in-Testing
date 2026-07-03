@@ -320,7 +320,6 @@ function CommandCenterSection({
 const MY_TEAM_SUB_ITEMS = [
   { label: "Team", tab: null, icon: Users },
   { label: "Attendance", tab: "attendance", icon: Clock },
-  { label: "Exceptions", tab: "exceptions", icon: AlertTriangle },
   { label: "Leave Approvals", tab: "leave-approvals", icon: CalendarCheck },
   { label: "Training", tab: "training-progress", icon: GraduationCap },
   { label: "Month Approval", tab: "attendance-approval", icon: ClipboardCheck },
@@ -343,7 +342,6 @@ function TeamSection({
   isComplianceLocked,
   location,
   myTeamBadge,
-  exceptionCount,
   leaveApprovalsCount,
   trainingReqBadge,
   pendingRegCount,
@@ -356,7 +354,6 @@ function TeamSection({
   isComplianceLocked: boolean;
   location: string;
   myTeamBadge: number;
-  exceptionCount: number;
   leaveApprovalsCount: number;
   trainingReqBadge: number;
   pendingRegCount: number;
@@ -409,7 +406,6 @@ function TeamSection({
   };
 
   const subBadge = (tab: string | null): { count: number; color: string } | null => {
-    if (tab === "exceptions" && exceptionCount > 0) return { count: exceptionCount, color: "bg-amber-500" };
     if (tab === "leave-approvals" && leaveApprovalsCount > 0) return { count: leaveApprovalsCount, color: "bg-blue-500" };
     if (tab === "training-progress" && trainingReqBadge > 0) return { count: trainingReqBadge, color: "bg-amber-500" };
     if (tab === null && pendingRegCount > 0) return { count: pendingRegCount, color: "bg-orange-500" };
@@ -1282,26 +1278,10 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const pendingOfferCount = offerLettersForBadge?.filter((l: any) => l.status === "pending_approval").length ?? 0;
 
-  // Pending attendance exceptions for manager/hr/admin
-  const isExceptionRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(userRole);
-  const { data: exceptionCountData } = useQuery<{ count: number }>({
-    queryKey: ["/api/attendance/exceptions/count"],
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/attendance/exceptions/count", { credentials: "include" });
-        if (!res.ok) return { count: 0 };
-        return res.json();
-      } catch { return { count: 0 }; }
-    },
-    refetchInterval: 60000,
-    enabled: !!user && isExceptionRole,
-  });
-  const exceptionCount = exceptionCountData?.count ?? 0;
-
-  // Combined My Team badge: leave approvals + training requests + pending exceptions.
+  // Combined My Team badge: leave approvals + training requests.
   // Pending regularizations get their own distinct indicator on the Team sub-item
   // so they appear/disappear independently of leave/training signals.
-  const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge + exceptionCount;
+  const myTeamBadge = (leaveApprovalsCount ?? 0) + trainingReqBadge;
 
   // Training-request management moved to Growth & Learning → Training Mgmt, so its
   // actionable badge now surfaces on the Growth nav item (see growthBadge usage).
@@ -1641,7 +1621,6 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 isComplianceLocked={isComplianceLocked}
                 location={location}
                 myTeamBadge={myTeamBadge}
-                exceptionCount={exceptionCount}
                 leaveApprovalsCount={leaveApprovalsCount ?? 0}
                 trainingReqBadge={trainingReqBadge}
                 pendingRegCount={pendingRegCount}
