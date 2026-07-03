@@ -106,9 +106,14 @@ export function registerHelpDeskRoutes(app: Express) {
     additionalContext: z.string().optional(),
   });
 
+  const HARDWARE_ITEM_SCHEMA = z.object({
+    description: z.string().min(1, "Item description is required"),
+    qty: z.number().int().min(1, "Quantity must be at least 1"),
+  });
+
   const OPS_TEMPLATE = z.object({
     requestSubtype: z.string().min(1, "Ops sub-type is required"),
-    asset: z.string().optional(),        // Equipment/Device name or model
+    asset: z.string().optional(),        // Equipment/Device name or model (non-hardware subtypes)
     quantity: z.string().optional(),
     urgency: z.enum(["immediate", "this_week", "this_month", "no_rush"]).optional(),
     isBlocking: z.enum(["yes", "no"]).optional(),
@@ -142,12 +147,20 @@ export function registerHelpDeskRoutes(app: Express) {
         // Optional tag linking this request to a governing SOP (e.g. OPS-001)
         // for evidence traceability (Task #665).
         linkedSopId: z.string().nullable().optional(),
+        // Hardware items for equipment/hardware ops requests.
+        hardwareItems: z.array(HARDWARE_ITEM_SCHEMA).nullable().optional(),
       });
 
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
 
-      const { type, title, description, priority, neededByDate, templateData, requestedForId, attachmentUrl, linkedSopId } = parsed.data;
+      const { type, title, description, priority, neededByDate, templateData, requestedForId, attachmentUrl, linkedSopId, hardwareItems } = parsed.data;
+
+      // Equipment/hardware requests require at least one hardware item.
+      const isEquipmentHardware = type === "ops" && (templateData as any)?.requestSubtype === "Equipment / hardware";
+      if (isEquipmentHardware && (!hardwareItems || hardwareItems.length === 0)) {
+        return res.status(400).json({ message: "At least one hardware item is required for equipment requests" });
+      }
 
       // Type-specific template validation
       const tplValidation = validateTemplateData(type, templateData);
@@ -171,6 +184,7 @@ export function registerHelpDeskRoutes(app: Express) {
         attachmentUrl: attachmentUrl || null,
         // Only "access" requests are tagged to a governing SOP (OPS-001).
         linkedSopId: type === "access" ? (linkedSopId || null) : null,
+        hardwareItems: (isEquipmentHardware && hardwareItems) ? hardwareItems : null,
       } as any);
 
       await storage.addInternalRequestAuditEntry({
@@ -803,6 +817,40 @@ export function registerHelpDeskRoutes(app: Express) {
       return res.json(updated);
     } catch (err: any) {
       console.error("HIRD respond error:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── PATCH /api/help-desk/requests/:id/metadata — attach arbitrary metadata (e.g. linked_addendum_id)
+  // Resolver roles only; merges patch into existing metadata object.
+  app.patch("/api/help-desk/requests/:id/metadata", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+
+      if (!RESOLVER_ROLES.includes(role)) return res.status(403).json({ message: "Forbidden" });
+
+      const request = await storage.getInternalRequest(req.params.id);
+      if (!request) return res.status(404).json({ message: "Not found" });
+
+      const schema = z.object({ patch: z.record(z.any()) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input" });
+
+      const existingMeta = ((request as any).metadata as Record<string, any>) || {};
+      const merged = { ...existingMeta, ...parsed.data.patch };
+
+      const updated = await storage.updateInternalRequest(request.id, { metadata: merged } as any);
+      await storage.addInternalRequestAuditEntry({
+        requestId: request.id,
+        actorId: userId,
+        action: "metadata_updated",
+        metadata: { keys: Object.keys(parsed.data.patch) },
+      } as any);
+
+      return res.json(updated);
+    } catch (err: any) {
+      console.error("HIRD metadata patch error:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -2931,6 +2931,10 @@ export const internalRequests = pgTable("internal_requests", {
   // Optional tag linking a request (e.g. an "access" request) to a governing SOP
   // such as OPS-001, so it is traceable in that SOP's evidence trail (Task #665).
   linkedSopId: varchar("linked_sop_id").references((): any => sopDocuments.id, { onDelete: "set null" }),
+  // Hardware items for equipment/hardware requests. Shape: { description: string; qty: number }[]
+  hardwareItems: jsonb("hardware_items"),
+  // Arbitrary metadata — used to store e.g. linked_addendum_id after an addendum is generated.
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

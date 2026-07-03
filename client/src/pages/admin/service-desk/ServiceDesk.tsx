@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import {
   Key, FileText, Settings, ClipboardList,
   CheckCircle2, ExternalLink, Send, AlertCircle,
-  Clock, LifeBuoy,
+  Clock, LifeBuoy, Plus, Trash2, FileEdit,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -198,13 +198,24 @@ function AccessTemplateForm({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="access-justification">
-          Business justification <span className="text-destructive">*</span>
-          <span className="text-xs font-normal text-muted-foreground ml-1">(min. 50 chars)</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="access-justification">
+            Business Justification <span className="text-destructive">*</span>
+            <span className="text-xs font-normal text-muted-foreground ml-1">(min. 50 chars)</span>
+          </Label>
+          <button
+            type="button"
+            onClick={() => set({ justification: JUSTIFICATION_TEMPLATE })}
+            className="flex items-center gap-1 text-xs text-muted-foreground border border-dashed rounded px-2 py-0.5 hover:text-foreground hover:border-foreground/40 transition-colors"
+            data-testid="button-use-template-access"
+          >
+            <FileEdit className="h-3 w-3" />
+            Use Template
+          </button>
+        </div>
         <Textarea
           id="access-justification"
-          placeholder="Explain why this access is required and how it will be used for business purposes."
+          placeholder={JUSTIFICATION_PLACEHOLDER}
           rows={4}
           value={value.justification}
           onChange={(e) => set({ justification: e.target.value })}
@@ -216,6 +227,17 @@ function AccessTemplateForm({
       </div>
     </div>
   );
+}
+
+const JUSTIFICATION_TEMPLATE = `Purpose: [What will this be used for?]
+Project / Client: [Which engagement or team does this support?]
+Urgency / Why now: [Timeline, deadline, or blocker this resolves]`;
+
+const JUSTIFICATION_PLACEHOLDER = "What is the purpose of this request? Which project or client does it support? Why is it needed now?";
+
+interface HardwareItem {
+  description: string;
+  qty: number;
 }
 
 // ── New Request Modal ─────────────────────────────────────────────────────────
@@ -235,6 +257,9 @@ function NewRequestModal({
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"p1" | "p2" | "p3" | "p4">("p3");
 
+  // Hardware items (Equipment / hardware subtype)
+  const [hardwareItems, setHardwareItems] = useState<HardwareItem[]>([{ description: "", qty: 1 }]);
+
   // Access-specific
   const [accessDraft, setAccessDraft] = useState<AccessDraft>({
     system: "",
@@ -246,6 +271,7 @@ function NewRequestModal({
   });
 
   const isAccessTile = tile.id === "access";
+  const isEquipmentHardware = tile.id === "ops" && subtype === "Equipment / hardware";
 
   // OPS-001 (Tool Access, Credential Control & Deprovisioning) awareness: when the
   // employee has this SOP assigned, remind them of their individual responsibility
@@ -268,12 +294,26 @@ function NewRequestModal({
     accessDraft.justification.trim().length >= 50 &&
     (!accessDraft.creditsInvolved || accessDraft.creditCount.trim().length > 0);
 
+  const hardwareValid =
+    !isEquipmentHardware ||
+    (hardwareItems.length > 0 && hardwareItems.every((item) => item.description.trim().length > 0 && item.qty >= 1));
+
   const isStandardValid =
     subject.trim().length >= 5 &&
     description.trim().length >= 20 &&
-    (!subtypeRequired || subtype.length > 0);
+    (!subtypeRequired || subtype.length > 0) &&
+    hardwareValid;
 
   const isValid = isAccessTile ? (subject.trim().length >= 5 && isAccessValid) : isStandardValid;
+
+  const addHardwareRow = () =>
+    setHardwareItems((prev) => [...prev, { description: "", qty: 1 }]);
+
+  const removeHardwareRow = (idx: number) =>
+    setHardwareItems((prev) => prev.filter((_, i) => i !== idx));
+
+  const updateHardwareRow = (idx: number, patch: Partial<HardwareItem>) =>
+    setHardwareItems((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
 
   const buildTemplateData = (): Record<string, any> | undefined => {
     if (isAccessTile) {
@@ -305,6 +345,9 @@ function NewRequestModal({
         priority,
         templateData: buildTemplateData(),
         linkedSopId: isAccessTile && ops001 ? ops001.sopId : undefined,
+        hardwareItems: isEquipmentHardware
+          ? hardwareItems.filter((i) => i.description.trim()).map((i) => ({ description: i.description.trim(), qty: i.qty }))
+          : undefined,
       }),
     onSuccess: async (res: any) => {
       const data = await res.json().catch(() => ({}));
@@ -325,8 +368,6 @@ function NewRequestModal({
     if (!isValid) return;
     submitMutation.mutate();
   };
-
-  const tilePlaceholder = tile.placeholder || "Describe your request in detail — include any relevant dates, systems, or context.";
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -391,7 +432,7 @@ function NewRequestModal({
                     Request type
                     {subtypeRequired && <span className="text-destructive"> *</span>}
                   </Label>
-                  <Select value={subtype} onValueChange={setSubtype}>
+                  <Select value={subtype} onValueChange={(v) => { setSubtype(v); setHardwareItems([{ description: "", qty: 1 }]); }}>
                     <SelectTrigger id="sub-type" data-testid="select-sub-type">
                       <SelectValue placeholder="Select a request type" />
                     </SelectTrigger>
@@ -418,23 +459,102 @@ function NewRequestModal({
               {isAccessTile ? (
                 <AccessTemplateForm value={accessDraft} onChange={setAccessDraft} />
               ) : (
-                <div className="space-y-1.5">
-                  <Label htmlFor="description">
-                    Description <span className="text-destructive">*</span>
-                    <span className="text-xs font-normal text-muted-foreground ml-1">(min. 20 chars)</span>
-                  </Label>
-                  <Textarea
-                    id="description"
-                    placeholder={tilePlaceholder}
-                    rows={4}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    data-testid="textarea-request-description"
-                  />
-                  <p className="text-xs text-muted-foreground text-right">
-                    {description.trim().length} / 20 min
-                  </p>
-                </div>
+                <>
+                  {/* Equipment / hardware — inline item table */}
+                  {isEquipmentHardware && (
+                    <div className="space-y-2" data-testid="hardware-items-section">
+                      <p className="text-sm font-medium">Hardware Items <span className="text-destructive">*</span></p>
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-muted/60 border-b">
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-full">Item / Description</th>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-16">Qty</th>
+                              <th className="px-2 py-2 w-8" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hardwareItems.map((item, idx) => (
+                              <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    placeholder="e.g. Dell Latitude 15 Laptop"
+                                    value={item.description}
+                                    onChange={(e) => updateHardwareRow(idx, { description: e.target.value })}
+                                    className="h-7 text-sm border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-ring px-1"
+                                    data-testid={`input-hw-desc-${idx}`}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={item.qty}
+                                    onChange={(e) => updateHardwareRow(idx, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
+                                    className="h-7 text-sm border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-ring px-1 w-14"
+                                    data-testid={`input-hw-qty-${idx}`}
+                                  />
+                                </td>
+                                <td className="px-1 py-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeHardwareRow(idx)}
+                                    disabled={hardwareItems.length === 1}
+                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-30"
+                                    data-testid={`button-hw-remove-${idx}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="border-t px-3 py-1.5">
+                          <button
+                            type="button"
+                            onClick={addHardwareRow}
+                            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                            data-testid="button-hw-add-row"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Add item
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Business Justification field (all non-access types) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="description">
+                        Business Justification <span className="text-destructive">*</span>
+                        <span className="text-xs font-normal text-muted-foreground ml-1">(min. 20 chars)</span>
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setDescription(JUSTIFICATION_TEMPLATE)}
+                        className="flex items-center gap-1 text-xs text-muted-foreground border border-dashed rounded px-2 py-0.5 hover:text-foreground hover:border-foreground/40 transition-colors"
+                        data-testid="button-use-template"
+                      >
+                        <FileEdit className="h-3 w-3" />
+                        Use Template
+                      </button>
+                    </div>
+                    <Textarea
+                      id="description"
+                      placeholder={JUSTIFICATION_PLACEHOLDER}
+                      rows={4}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      data-testid="textarea-request-description"
+                    />
+                    <p className="text-xs text-muted-foreground text-right">
+                      {description.trim().length} / 20 min
+                    </p>
+                  </div>
+                </>
               )}
 
               <div className="space-y-1.5">

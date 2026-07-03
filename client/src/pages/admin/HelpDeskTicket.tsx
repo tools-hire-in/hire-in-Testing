@@ -8,16 +8,20 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Send, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, Tag, Paperclip, ThumbsUp, ThumbsDown, HelpCircle, Undo2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, Send, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, Tag, Paperclip, ThumbsUp, ThumbsDown, HelpCircle, Undo2, Package, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 
 interface HirdUser { id: string; firstName: string; lastName: string; role: string; }
 interface HirdComment { id: string; body: string; createdAt: string; author: HirdUser | null; }
 interface HirdAuditEntry { id: string; action: string; oldStatus?: string; newStatus?: string; createdAt: string; actor: HirdUser | null; metadata?: any; }
 interface HirdApproval { id: string; decision: string; reason?: string; decidedAt: string; approver: HirdUser | null; }
+interface HardwareItem { description: string; qty: number; }
 interface HirdTicket {
   id: string;
   requestNumber: string;
@@ -30,6 +34,8 @@ interface HirdTicket {
   neededByDate?: string;
   attachmentUrl?: string;
   templateData?: Record<string, string>;
+  hardwareItems?: HardwareItem[];
+  metadata?: Record<string, any>;
   requester: HirdUser | null;
   requestedFor?: HirdUser | null;
   manager: HirdUser | null;
@@ -65,12 +71,16 @@ function SummaryRow({ label, value }: { label: string; value?: string | null }) 
 function TemplateSummaryCard({
   type,
   data,
+  hardwareItems,
   requestedFor,
 }: {
   type: string;
   data: Record<string, string>;
+  hardwareItems?: HardwareItem[];
   requestedFor?: HirdUser | null;
 }) {
+  const isEquipmentHardware = type === "ops" && data.requestSubtype === "Equipment / hardware";
+
   return (
     <div className="mt-4 border rounded-lg overflow-hidden">
       <div className="bg-muted/60 px-4 py-2 border-b">
@@ -119,10 +129,42 @@ function TemplateSummaryCard({
         {type === "ops" && (
           <>
             <SummaryRow label="Sub-type" value={data.requestSubtype} />
-            <SummaryRow label="Item / Asset" value={data.asset} />
-            <SummaryRow label="Quantity" value={data.quantity} />
+            {!isEquipmentHardware && (
+              <>
+                <SummaryRow label="Item / Asset" value={data.asset} />
+                <SummaryRow label="Quantity" value={data.quantity} />
+              </>
+            )}
             <SummaryRow label="Urgency" value={data.urgency ? URGENCY_LABELS[data.urgency] || data.urgency : undefined} />
             <SummaryRow label="Blocking Work?" value={data.isBlocking === "yes" ? "Yes — cannot work without this" : data.isBlocking === "no" ? "No — helpful but I can continue" : undefined} />
+
+            {/* Hardware items table */}
+            {isEquipmentHardware && hardwareItems && hardwareItems.length > 0 && (
+              <div className="pt-1" data-testid="hardware-items-display">
+                <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5" />
+                  Hardware Items
+                </p>
+                <div className="border rounded overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 border-b">
+                        <th className="text-left px-3 py-1.5 text-xs font-medium text-muted-foreground">Item / Description</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-medium text-muted-foreground w-16">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hardwareItems.map((item, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-3 py-1.5 font-medium">{item.description}</td>
+                          <td className="px-3 py-1.5 text-right text-muted-foreground">{item.qty}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -186,6 +228,14 @@ export default function HelpDeskTicket() {
   const [showReturnInput, setShowReturnInput] = useState(false);
   const [replyBody, setReplyBody] = useState("");
   const [replyAttachment, setReplyAttachment] = useState("");
+
+  // Addendum generation dialog state
+  const [showAddendumDialog, setShowAddendumDialog] = useState(false);
+  const [addendumDeviceItems, setAddendumDeviceItems] = useState<
+    Array<{ description: string; serialNumber: string; assetTag: string; condition: string }>
+  >([]);
+  const [addendumEmployeeName, setAddendumEmployeeName] = useState("");
+  const [addendumEffectiveDate, setAddendumEffectiveDate] = useState("");
 
   const { data: ticket, isLoading } = useQuery<HirdTicket>({
     queryKey: ["/api/help-desk/requests", params.id],
@@ -264,6 +314,50 @@ export default function HelpDeskTicket() {
     onError: (err: any) => toast({ title: "Failed to submit response", description: err?.message, variant: "destructive" }),
   });
 
+  const generateAddendumMutation = useMutation({
+    mutationFn: async (payload: {
+      employeeName: string;
+      effectiveDate: string;
+      deviceItems: Array<{ description: string; serialNumber: string; assetTag: string; condition: string }>;
+    }) => {
+      const body = {
+        addendumType: "device_allocation",
+        employeeName: payload.employeeName,
+        employeeEmail: "",
+        employeeDesignation: ticket?.requester?.role || "",
+        employeeDepartment: "",
+        employeeJoiningDate: "",
+        employeeReportingManager: "",
+        effectiveDate: payload.effectiveDate,
+        reason: `Generated from HIRD request ${ticket?.requestNumber}`,
+        hrManagerName: "Alina Carter",
+        deviceItems: payload.deviceItems,
+        ccEmails: "",
+      };
+      const res = await apiRequest("POST", "/api/hr/tools/addendums/standalone", body);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to generate addendum");
+      }
+      return res.json();
+    },
+    onSuccess: async (addendum: any) => {
+      // Link the addendum ID to this HIRD request
+      await apiRequest("PATCH", `/api/help-desk/requests/${params.id}/metadata`, {
+        patch: { linked_addendum_id: addendum.id },
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests", params.id] });
+      setShowAddendumDialog(false);
+      toast({
+        title: "Device Allocation Addendum created",
+        description: "The addendum has been linked to this request. Download it from HR Tools > Amendment Letters.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to generate addendum", description: err?.message, variant: "destructive" });
+    },
+  });
+
   if (authLoading || isLoading) {
     return (
       <AdminLayout>
@@ -331,7 +425,12 @@ export default function HelpDeskTicket() {
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
 
                 {ticket.templateData && Object.keys(ticket.templateData).length > 0 && (
-                  <TemplateSummaryCard type={ticket.type} data={ticket.templateData} requestedFor={ticket.requestedFor} />
+                  <TemplateSummaryCard
+                    type={ticket.type}
+                    data={ticket.templateData}
+                    hardwareItems={ticket.hardwareItems}
+                    requestedFor={ticket.requestedFor}
+                  />
                 )}
 
                 {ticket.attachmentUrl && (
@@ -581,6 +680,73 @@ export default function HelpDeskTicket() {
               </Card>
             )}
 
+            {/* Device Allocation Addendum card — ops/equipment requests, resolver roles */}
+            {isResolver &&
+              ticket.type === "ops" &&
+              ticket.templateData?.requestSubtype === "Equipment / hardware" &&
+              ["in_progress", "resolved"].includes(ticket.status) && (
+              <Card data-testid="card-addendum">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Package className="h-4 w-4 text-primary" />
+                    Device Allocation Addendum
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {ticket.metadata?.linked_addendum_id ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                        Addendum generated and linked.
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={() => setLocation("/admin/hr/tools")}
+                        data-testid="button-view-addendum"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        View in HR Tools
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Generate a Device Allocation addendum pre-filled with the hardware items from this request.
+                      </p>
+                      <Button
+                        className="w-full h-8 text-sm"
+                        onClick={() => {
+                          setAddendumEmployeeName(
+                            ticket.requestedFor
+                              ? `${ticket.requestedFor.firstName} ${ticket.requestedFor.lastName}`
+                              : ticket.requester
+                              ? `${ticket.requester.firstName} ${ticket.requester.lastName}`
+                              : ""
+                          );
+                          setAddendumEffectiveDate(new Date().toISOString().split("T")[0]);
+                          setAddendumDeviceItems(
+                            (ticket.hardwareItems || []).map((item) => ({
+                              description: item.description,
+                              serialNumber: "",
+                              assetTag: "",
+                              condition: "New",
+                            }))
+                          );
+                          setShowAddendumDialog(true);
+                        }}
+                        data-testid="button-generate-addendum"
+                      >
+                        <Package className="h-4 w-4 mr-2" />
+                        Generate Addendum
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {isApprover && ticket.status === "pending_approval" && (
               <Card>
                 <CardHeader className="pb-3">
@@ -774,6 +940,142 @@ export default function HelpDeskTicket() {
           </div>
         </div>
       </div>
+
+      {/* Addendum generation dialog */}
+      {showAddendumDialog && (
+        <Dialog open onOpenChange={() => setShowAddendumDialog(false)}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-addendum">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Generate Device Allocation Addendum
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="addendum-employee-name">Employee Name <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="addendum-employee-name"
+                    value={addendumEmployeeName}
+                    onChange={(e) => setAddendumEmployeeName(e.target.value)}
+                    placeholder="Full name"
+                    data-testid="input-addendum-employee-name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="addendum-effective-date">Effective Date <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="addendum-effective-date"
+                    type="date"
+                    value={addendumEffectiveDate}
+                    onChange={(e) => setAddendumEffectiveDate(e.target.value)}
+                    data-testid="input-addendum-effective-date"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Device Items <span className="text-destructive">*</span></p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/60 border-b text-xs text-muted-foreground">
+                        <th className="text-left px-3 py-2 font-medium">Description</th>
+                        <th className="text-left px-3 py-2 font-medium w-32">Serial No.</th>
+                        <th className="text-left px-3 py-2 font-medium w-28">Asset Tag</th>
+                        <th className="text-left px-3 py-2 font-medium w-24">Condition</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {addendumDeviceItems.map((item, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-2 py-1.5">
+                            <Input
+                              value={item.description}
+                              onChange={(e) => setAddendumDeviceItems(prev => prev.map((it, i) => i === idx ? { ...it, description: e.target.value } : it))}
+                              className="h-7 text-sm border-0 bg-transparent focus-visible:ring-1 px-1"
+                              data-testid={`input-addendum-desc-${idx}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <Input
+                              value={item.serialNumber}
+                              onChange={(e) => setAddendumDeviceItems(prev => prev.map((it, i) => i === idx ? { ...it, serialNumber: e.target.value } : it))}
+                              placeholder="SN-…"
+                              className="h-7 text-sm border-0 bg-transparent focus-visible:ring-1 px-1"
+                              data-testid={`input-addendum-serial-${idx}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <Input
+                              value={item.assetTag}
+                              onChange={(e) => setAddendumDeviceItems(prev => prev.map((it, i) => i === idx ? { ...it, assetTag: e.target.value } : it))}
+                              placeholder="ASSET-…"
+                              className="h-7 text-sm border-0 bg-transparent focus-visible:ring-1 px-1"
+                              data-testid={`input-addendum-asset-${idx}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select
+                              value={item.condition}
+                              onChange={(e) => setAddendumDeviceItems(prev => prev.map((it, i) => i === idx ? { ...it, condition: e.target.value } : it))}
+                              className="h-7 text-xs w-full rounded border border-input bg-background px-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              data-testid={`select-addendum-condition-${idx}`}
+                            >
+                              <option>New</option>
+                              <option>Refurbished</option>
+                              <option>Good</option>
+                              <option>Fair</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="border-t px-3 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAddendumDeviceItems(prev => [...prev, { description: "", serialNumber: "", assetTag: "", condition: "New" }])}
+                      className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                      data-testid="button-addendum-add-row"
+                    >
+                      + Add item
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowAddendumDialog(false)} data-testid="button-addendum-cancel">
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  generateAddendumMutation.isPending ||
+                  !addendumEmployeeName.trim() ||
+                  !addendumEffectiveDate ||
+                  addendumDeviceItems.length === 0
+                }
+                onClick={() =>
+                  generateAddendumMutation.mutate({
+                    employeeName: addendumEmployeeName.trim(),
+                    effectiveDate: addendumEffectiveDate,
+                    deviceItems: addendumDeviceItems,
+                  })
+                }
+                data-testid="button-addendum-generate"
+              >
+                {generateAddendumMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</>
+                ) : (
+                  <>Generate DOCX</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </AdminLayout>
   );
 }
