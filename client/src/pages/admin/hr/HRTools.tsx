@@ -2542,8 +2542,9 @@ export function OfferLettersDashboard() {
     return "active";
   };
   // Top-level status tabs grouping (layered above the Type/Status dropdowns).
+  // NOTE: "accepted" routes to "active" so HR can reach the counter-sign button.
   const topBucket = (s: string): "active" | "completed" | "closed" => {
-    if (["accepted", "countersigned", "onboarded", "issued", "delivered", "signed", "reissued"].includes(s)) return "completed";
+    if (["countersigned", "onboarded", "issued", "delivered", "signed", "reissued"].includes(s)) return "completed";
     if (["rejected", "cancelled", "expired", "revoked"].includes(s)) return "closed";
     return "active";
   };
@@ -2683,7 +2684,7 @@ export function OfferLettersDashboard() {
         )}
       </div>
 
-      <Tabs value={topTab} onValueChange={(v) => setTopTab(v as "active" | "completed" | "closed")}>
+      <Tabs value={topTab} onValueChange={(v) => { setTopTab(v as "active" | "completed" | "closed"); setStatusFilter("all"); }}>
         <TabsList data-testid="tabs-letters-status">
           <TabsTrigger value="active" data-testid="tab-letters-active">
             Active
@@ -2757,8 +2758,9 @@ export function OfferLettersDashboard() {
                 <tbody>
                   {unifiedRows.map((row) => {
                     const isPending = row.status === "pending_approval";
+                    const isAwaitingCountersign = row.kind === "offer" && row.status === "accepted";
                     return (
-                      <tr key={row.key} className={`border-b transition-colors hover:bg-muted/20 ${isPending ? "bg-orange-50/60" : ""}`} data-testid={`row-letter-${row.key}`}>
+                      <tr key={row.key} className={`border-b transition-colors hover:bg-muted/20 ${isPending ? "bg-orange-50/60" : isAwaitingCountersign ? "bg-amber-50/50" : ""}`} data-testid={`row-letter-${row.key}`}>
                         <td className="px-4 py-3">
                           <div className="font-medium text-[#1F3A6E]" data-testid={`text-name-${row.key}`}>{row.name}</div>
                           <div className="text-xs text-muted-foreground">{row.meta}</div>
@@ -2775,9 +2777,16 @@ export function OfferLettersDashboard() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${row.statusClass}`} data-testid={`badge-status-${row.key}`}>
-                            {row.statusLabel}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${row.statusClass}`} data-testid={`badge-status-${row.key}`}>
+                              {row.statusLabel}
+                            </span>
+                            {row.kind === "offer" && row.status === "accepted" && (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 w-fit" data-testid={`badge-awaiting-countersign-${row.key}`}>
+                                Awaiting Counter-sign
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.reference}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{row.dateLabel}</td>
