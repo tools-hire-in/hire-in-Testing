@@ -688,6 +688,7 @@ export interface IStorage {
   getScheduledRepaymentsForMonth(year: number, month: number): Promise<SalaryAdvanceRepayment[]>;
   markRepaymentDeducted(id: string, deductedAmount: string, salaryRunId: string | null): Promise<void>;
   rescheduleRepayment(id: string, year: number, month: number): Promise<void>;
+  deleteScheduledRepaymentsForAdvance(advanceId: string): Promise<void>;
   listSalaryAdvancesByRecordedBy(recordedById: string): Promise<SalaryAdvanceRequest[]>;
   getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }>;
   // Centralized salary-change ledger
@@ -5346,6 +5347,14 @@ export class DatabaseStorage implements IStorage {
     await db.update(salaryAdvanceRepayments)
       .set({ year, month })
       .where(eq(salaryAdvanceRepayments.id, id));
+  }
+
+  async deleteScheduledRepaymentsForAdvance(advanceId: string): Promise<void> {
+    await db.delete(salaryAdvanceRepayments)
+      .where(and(
+        eq(salaryAdvanceRepayments.advanceId, advanceId),
+        eq(salaryAdvanceRepayments.status, "scheduled" as any),
+      ));
   }
 
   async listSalaryAdvancesByRecordedBy(recordedById: string): Promise<SalaryAdvanceRequest[]> {

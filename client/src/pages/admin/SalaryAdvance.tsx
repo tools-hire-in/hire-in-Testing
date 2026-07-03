@@ -484,6 +484,7 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
   const [startMonth, setStartMonth] = useState(String(defaultStart.getMonth() + 1));
   const [targetMonth, setTargetMonth] = useState(String(now.getMonth() + 1));
   const [targetYear, setTargetYear] = useState(String(now.getFullYear()));
+  const [disbursedAt, setDisbursedAt] = useState(now.toISOString().slice(0, 10));
 
   const { data: usersResp } = useQuery<{ users: AdvanceUser[] }>({ queryKey: ["/api/admin/users", "active"], queryFn: async () => {
     const res = await fetch("/api/admin/users?status=active", { credentials: "include" });
@@ -504,6 +505,7 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
         body.repaymentMonths = months;
         body.startYear = parseInt(startYear, 10);
         body.startMonth = parseInt(startMonth, 10);
+        body.disbursedAt = disbursedAt;
       } else if (kind === "overpayment") {
         body.repaymentMonths = months;
       } else if (kind === "salary_credit") {
@@ -573,22 +575,29 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
           </div>
 
           {kind === "advance" && (
-            <div className="grid grid-cols-3 gap-3">
+            <>
               <div className="space-y-1">
-                <Label className="text-xs">Repayment months</Label>
-                <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-months" />
+                <Label className="text-xs">Date of Disbursement</Label>
+                <Input type="date" value={disbursedAt} onChange={(e) => setDisbursedAt(e.target.value)} data-testid="input-record-disbursed-at" />
+                <p className="text-xs text-muted-foreground">When was the cash/transfer actually given to the employee?</p>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Start month</Label>
-                <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-start-month">
-                  {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                </select>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Repayment months</Label>
+                  <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-months" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Start month</Label>
+                  <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-start-month">
+                    {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Start year</Label>
+                  <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} data-testid="input-start-year" />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Start year</Label>
-                <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} data-testid="input-start-year" />
-              </div>
-            </div>
+            </>
           )}
 
           {kind === "overpayment" && (

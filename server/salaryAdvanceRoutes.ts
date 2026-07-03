@@ -8,6 +8,7 @@ import {
   DEFAULT_SALARY_ADVANCE_POLICY,
   SALARY_ADVANCE_POLICY_KEY,
   salaryAdvanceRequests,
+  salaryReportRuns,
   type SalaryAdvancePolicy,
   type SalaryAdvanceRequest,
 } from "@shared/schema";
@@ -78,6 +79,15 @@ async function resolveApprover(requesterId: string): Promise<string | null> {
 }
 
 // Build the month-by-month repayment schedule for an approved advance.
+//
+// ROOT-CAUSE NOTE — deduction misses:
+// A deduction miss occurs when the salary run's (year, month) does not match any
+// row in salary_advance_repayments for that advance.  The most common cause is
+// that repaymentStartYear/Month on the advance was recorded incorrectly (e.g.,
+// August when the intent was July), so no scheduled row exists for the current
+// run month.  Always call resolveStartMonth() before buildSchedule to detect and
+// auto-bump locked salary runs; and use the /reschedule endpoint (or the
+// "Adjust start month" UI action) to correct historically recorded advances.
 function buildSchedule(opts: {
   advanceId: string;
   userId: string;
@@ -109,6 +119,42 @@ function buildSchedule(opts: {
   return rows;
 }
 
+// Advance to the next calendar month.
+function advanceOneMonth(y: number, m: number): { year: number; month: number } {
+  const idx = m; // m is 1-based, adding 1 gives next month index (0-based Jan=0 → 1-based)
+  return { year: y + Math.floor(idx / 12), month: (idx % 12) + 1 };
+}
+
+// Check whether the salary run for (year, month) is locked (approved or sent).
+// Returns true if locked, false if open or not yet created.
+async function isRunLocked(year: number, month: number): Promise<boolean> {
+  const rows = await db.select({ status: salaryReportRuns.status })
+    .from(salaryReportRuns)
+    .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+    .limit(1);
+  if (rows.length === 0) return false;
+  return rows[0].status !== "pending_approval";
+}
+
+// Resolve the effective repayment start month: if the requested month's salary run is
+// already locked, bump forward until we find an open (not-yet-locked) month.
+// Returns { year, month, adjusted } — adjusted=true means the month was bumped.
+async function resolveStartMonth(
+  requested: { year: number; month: number }
+): Promise<{ year: number; month: number; adjusted: boolean }> {
+  let { year, month } = requested;
+  let adjusted = false;
+  // Safety: cap at 24 months of bumping to prevent infinite loop if data is corrupt.
+  for (let i = 0; i < 24; i++) {
+    if (!(await isRunLocked(year, month))) break;
+    const next = advanceOneMonth(year, month);
+    year = next.year;
+    month = next.month;
+    adjusted = true;
+  }
+  return { year, month, adjusted };
+}
+
 function nextMonth(): { year: number; month: number } {
   const now = new Date();
   const monthIndex = now.getMonth() + 1; // 0-based -> next month is +1 (current+1)
@@ -121,6 +167,9 @@ function currentMonth(): { year: number; month: number } {
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
+
+// Format a month number as a short name for error messages.
+const MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // Compute the employee's net monthly salary for cap checks.
 async function getNetSalary(userId: string): Promise<number> {
@@ -219,9 +268,13 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       if (/^\/employee\/[^/]+$/.test(subPath)) return true;
       // Detail dialog: GET /api/salary-advances/:id (uuid-shaped, no extra segment).
       if (/^\/[0-9a-fA-F-]{16,}$/.test(subPath)) return true;
+      // Schedule: GET /api/salary-advances/:id/schedule
+      if (/^\/[0-9a-fA-F-]{16,}\/schedule$/.test(subPath)) return true;
     }
     // HR-recorded adjustment review & resubmit actions
     if (method === "PATCH" && /\/(approve-adjustment|return-adjustment|reject-adjustment|resubmit-adjustment)$/.test(subPath)) return true;
+    // Reschedule repayments
+    if (method === "PATCH" && /^\/[0-9a-fA-F-]{16,}\/reschedule$/.test(subPath)) return true;
     return false;
   };
   const isManagerReadRequest = (method: string, subPath: string): boolean => {
@@ -364,6 +417,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         startMonth: z.number().int().min(1).max(12).optional(),
         targetMonth: z.number().int().min(1).max(12).optional(),
         targetYear: z.number().int().min(2000).max(2100).optional(),
+        disbursedAt: z.string().optional(), // ISO date string for when cash was actually given
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
@@ -389,10 +443,19 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       if (kind === "advance") {
         // Advance: bypass approval chain, create disbursed immediately.
         const months = parsed.data.repaymentMonths || 1;
-        const start = (parsed.data.startYear && parsed.data.startMonth)
+        const requestedStart = (parsed.data.startYear && parsed.data.startMonth)
           ? { year: parsed.data.startYear, month: parsed.data.startMonth }
           : nextMonth();
+
+        // SMART START-MONTH: resolveStartMonth() bumps past any locked salary runs
+        // so the advance doesn't silently miss deductions. The "Adjust start month"
+        // UI action on the card lets HR fix historically recorded advances.
+        const resolved = await resolveStartMonth(requestedStart);
+        const start = { year: resolved.year, month: resolved.month };
+        const startMonthAdjusted = resolved.adjusted;
+
         const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
+        const disbursedAtDate = parsed.data.disbursedAt ? new Date(parsed.data.disbursedAt) : now;
 
         const created = await storage.createSalaryAdvanceWithNumber({
           requesterId: employeeId,
@@ -414,7 +477,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
           finalApprovedBy: actorId,
           finalApprovedAt: now,
           disbursedBy: actorId,
-          disbursedAt: now,
+          disbursedAt: disbursedAtDate,
           recordedById: actorId,
         } as any);
 
@@ -423,14 +486,14 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         await storage.addSalaryAdvanceAuditEntry({
           advanceId: created.id, actorId, action: "backfilled",
           oldStatus: null, newStatus: "disbursed",
-          metadata: { kind, amount, months, monthlyDeduction, scheduleStart: start, recordedManually: true },
+          metadata: { kind, amount, months, monthlyDeduction, scheduleStart: start, startMonthAdjusted, recordedManually: true },
         } as any);
         await notify({
           userId: employeeId, type: "salary_advance_recorded", title: "Salary advance recorded",
           message: `A salary advance of ${amount.toFixed(2)} has been recorded and will be recovered over ${months} month(s).`,
           link: EMPLOYEE_LINK,
         });
-        return res.status(201).json({ ...created, repayments: schedule });
+        return res.status(201).json({ ...created, repayments: schedule, startMonthAdjusted, effectiveStart: start });
       }
 
       // Overpayment or Salary Credit: enter pending_review for super_admin approval.
@@ -506,7 +569,9 @@ export function registerSalaryAdvanceRoutes(app: Express) {
 
       const rows = await storage.listSalaryAdvancesByRequester(targetUserId);
 
-      // Enrich with repayment summary and submitter info
+      // Enrich with full repayment schedule and submitter info.
+      // Full repayments are included so the EmployeeAdvancesCard can render
+      // the accordion schedule without an extra round-trip per advance.
       const enriched = await Promise.all(rows.map(async (a) => {
         const repayments = await storage.getSalaryAdvanceRepayments(a.id);
         const scheduled = repayments.filter(r => r.status === "scheduled");
@@ -519,6 +584,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         return {
           ...a,
           recordedBy,
+          repayments,
           nextRepaymentMonth: nextRep ? nextRep.month : null,
           nextRepaymentYear: nextRep ? nextRep.year : null,
           nextRepaymentAmount: nextRep ? nextRep.scheduledAmount : null,
@@ -543,6 +609,111 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       res.json(enriched);
     } catch {
       res.status(500).json({ error: "Failed to load submissions" });
+    }
+  });
+
+  // ── Repayment schedule for a single advance (used by EmployeeAdvancesCard accordion)
+  app.get("/api/salary-advances/:id/schedule", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+
+      const role = req.session.role || "employee";
+      const actorId = req.session.userId!;
+      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(role);
+      const isOwner = advance.requesterId === actorId;
+      const isManager = advance.managerId === actorId;
+      if (!isOwner && !isManager && !isPrivileged) return res.status(403).json({ error: "Forbidden" });
+
+      const repayments = await storage.getSalaryAdvanceRepayments(advance.id);
+      res.json(repayments);
+    } catch {
+      res.status(500).json({ error: "Failed to load schedule" });
+    }
+  });
+
+  // ── Reschedule repayments — HR/admin can shift all pending (scheduled) installments
+  // to a new start month. Used when the original start month was set incorrectly.
+  app.patch("/api/salary-advances/:id/reschedule", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+
+      if (!["disbursed", "repaying"].includes(advance.status)) {
+        return res.status(400).json({ error: "Only disbursed or repaying advances can be rescheduled." });
+      }
+
+      const schema = z.object({
+        startYear: z.number().int().min(2020).max(2100),
+        startMonth: z.number().int().min(1).max(12),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      const { startYear, startMonth } = parsed.data;
+
+      // Check the new start month is not locked
+      const lockedRunCheck = await db.select({ id: salaryReportRuns.id, status: salaryReportRuns.status })
+        .from(salaryReportRuns)
+        .where(and(eq(salaryReportRuns.year, startYear), eq(salaryReportRuns.month, startMonth)))
+        .limit(1);
+      if (lockedRunCheck.length > 0 && lockedRunCheck[0].status !== "pending_approval") {
+        return res.status(400).json({
+          error: `The ${startMonth}/${startYear} salary run is already locked (${lockedRunCheck[0].status}). Choose a later month.`,
+        });
+      }
+
+      // Count remaining scheduled installments BEFORE deleting, so we rebuild exactly
+      // the right number of rows — for a partially-repaid advance the remaining count
+      // is less than the original repaymentMonths.
+      const existingRepayments = await storage.getSalaryAdvanceRepayments(advance.id);
+      const remainingScheduled = existingRepayments.filter(r => r.status === "scheduled");
+      const deductedInstallments = existingRepayments.filter(r => r.status === "deducted");
+      const months = remainingScheduled.length > 0 ? remainingScheduled.length : (Number(advance.repaymentMonths) || 1);
+
+      // Guard against overlapping with already-deducted months.
+      // Build the set of months the new schedule would occupy and check for conflicts.
+      if (deductedInstallments.length > 0) {
+        const newMonthKeys = new Set<string>();
+        let y = startYear, m = startMonth;
+        for (let i = 0; i < months; i++) {
+          newMonthKeys.add(`${y}-${m}`);
+          const next = advanceOneMonth(y, m);
+          y = next.year;
+          m = next.month;
+        }
+        const conflict = deductedInstallments.find(d => newMonthKeys.has(`${d.year}-${d.month}`));
+        if (conflict) {
+          return res.status(400).json({
+            error: `Cannot place an installment in ${MONTH_NAMES[conflict.month]} ${conflict.year} — a deduction has already been processed for that month. Choose a start month after ${MONTH_NAMES[conflict.month]} ${conflict.year}.`,
+          });
+        }
+      }
+
+      // Delete existing scheduled (not yet deducted) rows and rebuild.
+      await storage.deleteScheduledRepaymentsForAdvance(advance.id);
+
+      const amount = Number(advance.outstandingBalance || advance.approvedAmount || advance.requestedAmount);
+      const schedule = buildSchedule({ advanceId: advance.id, userId: advance.requesterId, amount, months, startYear, startMonth });
+      await storage.createSalaryAdvanceRepayments(schedule as any);
+
+      // Update the advance's stored start month
+      await storage.updateSalaryAdvance(advance.id, {
+        repaymentStartYear: startYear,
+        repaymentStartMonth: startMonth,
+      });
+
+      const actorId = req.session.userId!;
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "rescheduled",
+        oldStatus: advance.status, newStatus: advance.status,
+        metadata: { newStartYear: startYear, newStartMonth: startMonth },
+      } as any);
+
+      res.json({ success: true, schedule });
+    } catch (err) {
+      console.error("Reschedule error:", err);
+      res.status(500).json({ error: "Failed to reschedule" });
     }
   });
 
@@ -618,7 +789,9 @@ export function registerSalaryAdvanceRoutes(app: Express) {
 
       // Overpayment: approve and generate repayment schedule.
       const months = Number(advance.repaymentMonths) || 1;
-      const start = nextMonth();
+      // Bump past any locked run to avoid a silent deduction miss.
+      const ovpResolved = await resolveStartMonth(nextMonth());
+      const start = { year: ovpResolved.year, month: ovpResolved.month };
       const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
 
       const updated = await storage.updateSalaryAdvance(advance.id, {
@@ -1167,7 +1340,10 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       const monthlyDeduction = Math.ceil((approvedAmount / repaymentMonths) * 100) / 100;
       // Urgent (department-head-approved) advances begin recovery in the current
       // payroll month; standard advances begin the following month.
-      const start = advance.urgentProcessing ? currentMonth() : nextMonth();
+      // In both cases, bump past any locked run to avoid a silent deduction miss.
+      const baseStart = advance.urgentProcessing ? currentMonth() : nextMonth();
+      const finalApproveResolved = await resolveStartMonth(baseStart);
+      const start = { year: finalApproveResolved.year, month: finalApproveResolved.month };
       const now = new Date();
 
       // Centralized lifecycle: final approval auto-disburses the advance so the
