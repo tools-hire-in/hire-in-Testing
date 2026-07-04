@@ -38,6 +38,8 @@ interface Advance {
   status: string;
   repaymentMonths: number | null;
   monthlyDeduction: string | null;
+  repaymentStartYear?: number | null;
+  repaymentStartMonth?: number | null;
   totalRepaid: string;
   outstandingBalance: string;
   isException: boolean;
@@ -278,6 +280,18 @@ function useInvalidateAll() {
 }
 
 function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: string) => void; showRequester?: boolean }) {
+  // Show "Check recovery start" badge when the advance is disbursed (no deductions yet)
+  // but the scheduled start month is already in the past.
+  const now = new Date();
+  const currentYM = now.getFullYear() * 12 + now.getMonth(); // 0-indexed months
+  const startYM = a.repaymentStartYear && a.repaymentStartMonth
+    ? a.repaymentStartYear * 12 + (a.repaymentStartMonth - 1)
+    : null;
+  // Show badge only when: disbursed AND start month is in the past AND nothing has been repaid yet
+  // (totalRepaid > 0 means recovery has started, so the badge is unnecessary)
+  const nothingRepaid = !a.totalRepaid || parseFloat(a.totalRepaid) === 0;
+  const showCheckStart = a.status === "disbursed" && startYM !== null && startYM < currentYM && nothingRepaid;
+
   return (
     <button
       onClick={() => onOpen(a.id)}
@@ -296,6 +310,11 @@ function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: str
           )}
           {a.isException && <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-200">Exception</Badge>}
           {a.exitRecoveryFlag && <Badge variant="outline" className="text-xs bg-red-100 text-red-700 border-red-200">Exit Recovery</Badge>}
+          {showCheckStart && (
+            <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-300" data-testid={`badge-check-start-${a.id}`}>
+              ⚠ Check recovery start
+            </Badge>
+          )}
         </div>
         <div className="mt-1 text-sm">
           {showRequester && <span className="font-medium">{userName(a.requester)} · </span>}
@@ -510,12 +529,15 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
   const [reason, setReason] = useState("");
   const [repaymentMonths, setRepaymentMonths] = useState("6");
   const now = new Date();
-  const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const [startYear, setStartYear] = useState(String(defaultStart.getFullYear()));
-  const [startMonth, setStartMonth] = useState(String(defaultStart.getMonth() + 1));
+  // Start with empty selection — user must explicitly pick the First Recovery Month.
+  const [startYear, setStartYear] = useState("");
+  const [startMonth, setStartMonth] = useState("");
+  const [ovpStartYear, setOvpStartYear] = useState("");
+  const [ovpStartMonth, setOvpStartMonth] = useState("");
   const [targetMonth, setTargetMonth] = useState(String(now.getMonth() + 1));
   const [targetYear, setTargetYear] = useState(String(now.getFullYear()));
   const [disbursedAt, setDisbursedAt] = useState(now.toISOString().slice(0, 10));
+  const [startMonthWarning, setStartMonthWarning] = useState(false);
 
   const { data: usersResp } = useQuery<{ users: AdvanceUser[] }>({ queryKey: ["/api/admin/users", "active"], queryFn: async () => {
     const res = await fetch("/api/admin/users?status=active", { credentials: "include" });
@@ -530,6 +552,7 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
 
   const submit = useMutation({
     mutationFn: async () => {
+      setStartMonthWarning(false);
       const body: any = { employeeId, kind, amount: amt };
       if (reason.trim()) body.reason = reason.trim();
       if (kind === "advance") {
@@ -550,6 +573,9 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
     },
     onSuccess: async (json: any) => {
       const labels: Record<string, string> = { advance: "Advance", overpayment: "Overpayment", salary_credit: "Salary Credit" };
+      if (json?.startMonthWarning) {
+        setStartMonthWarning(true);
+      }
       // Attempt to attach any selected file to the newly created advance row
       if (recordFile && json?.id) {
         try {
@@ -573,12 +599,17 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
       toast({ title: `${labels[kind] || kind} submitted`, description: kind === "advance" ? "Created and active." : "Sent for super admin review." });
       invalidate();
       qc.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
-      onClose();
+      if (!json?.startMonthWarning) onClose();
     },
     onError: (e: any) => toast({ title: "Failed to record", description: e?.message, variant: "destructive" }),
   });
 
-  const canSubmit = !!employeeId && amt > 0 && (kind === "salary_credit" || kind === "overpayment" || months > 0);
+  // Require explicit First Recovery Month selection — no silent defaults.
+  const canSubmit = !!employeeId && amt > 0 && (
+    kind === "salary_credit" ||
+    (kind === "overpayment" && months > 0 && !!ovpStartMonth && !!ovpStartYear) ||
+    (kind === "advance" && months > 0 && !!startMonth && !!startYear)
+  );
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -638,24 +669,40 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
                   <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-months" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Start month</Label>
-                  <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-start-month">
+                  <Label className="text-xs font-semibold text-foreground">First Recovery Month <span className="text-destructive">*</span></Label>
+                  <select value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className={`w-full rounded-md border bg-background px-2 py-2 text-sm ${!startMonth ? "text-muted-foreground" : ""}`} data-testid="select-start-month">
+                    <option value="">Select month…</option>
                     {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Start year</Label>
-                  <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} data-testid="input-start-year" />
+                  <Label className="text-xs font-semibold text-foreground">Year <span className="text-destructive">*</span></Label>
+                  <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} placeholder="e.g. 2026" data-testid="input-start-year" />
                 </div>
               </div>
             </>
           )}
 
           {kind === "overpayment" && (
-            <div className="space-y-1">
-              <Label className="text-xs">Recovery months (installments)</Label>
-              <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-overpayment-months" />
-              <p className="text-xs text-muted-foreground">How many monthly installments to recover this amount. Schedule is set after approval.</p>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Recovery months (installments)</Label>
+                <Input type="number" min={1} max={36} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-record-overpayment-months" />
+                <p className="text-xs text-muted-foreground">How many monthly installments to recover this amount.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-foreground">First Recovery Month <span className="text-destructive">*</span></Label>
+                  <select value={ovpStartMonth} onChange={(e) => setOvpStartMonth(e.target.value)} className={`w-full rounded-md border bg-background px-2 py-2 text-sm ${!ovpStartMonth ? "text-muted-foreground" : ""}`} data-testid="select-ovp-start-month">
+                    <option value="">Select month…</option>
+                    {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-foreground">Year <span className="text-destructive">*</span></Label>
+                  <Input type="number" min={2000} max={2100} value={ovpStartYear} onChange={(e) => setOvpStartYear(e.target.value)} placeholder="e.g. 2026" data-testid="input-ovp-start-year" />
+                </div>
+              </div>
             </div>
           )}
 
@@ -695,22 +742,38 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
             </div>
           </div>
 
+          {startMonthWarning && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm" data-testid="banner-start-month-warning">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-amber-800 dark:text-amber-200">
+                <p className="font-medium">Advance recorded — but recovery month is already locked</p>
+                <p className="text-xs mt-0.5">The salary run for {startMonth ? `${MONTHS[parseInt(startMonth, 10)]} ${startYear}` : "the chosen month"} is already locked. The advance was created with your chosen start month. <strong>Regenerate the salary report</strong> to include this recovery deduction.</p>
+              </div>
+            </div>
+          )}
+
           {amt > 0 && (
             <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
               {kind === "advance"
-                ? <>Recovery: {months} month(s) × <span className="font-mono">₹{fmt(monthlyPreview)}</span>, starting {MONTHS[parseInt(startMonth, 10)]} {startYear}. Created immediately.</>
+                ? <>Recovery: {months} month(s) × <span className="font-mono">₹{fmt(monthlyPreview)}</span>{startMonth && startYear ? <>, starting <strong>{MONTHS[parseInt(startMonth, 10)]} {startYear}</strong></> : " — choose First Recovery Month above"}. Created immediately.</>
                 : kind === "overpayment"
-                  ? <>Will recover <span className="font-mono">₹{fmt(amt)}</span> over {months || 1} month(s). Awaits super admin approval before payroll deducts it.</>
+                  ? <>Will recover <span className="font-mono">₹{fmt(amt)}</span> over {months || 1} month(s){ovpStartMonth && ovpStartYear ? <>, starting <strong>{MONTHS[parseInt(ovpStartMonth, 10)]} {ovpStartYear}</strong></> : " — choose First Recovery Month above"}. Awaits super admin approval.</>
                   : <>Will add <span className="font-mono">₹{fmt(amt)}</span> to {MONTHS[parseInt(targetMonth, 10)]} {targetYear} payroll. Awaits super admin approval.</>}
             </div>
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} data-testid="button-cancel-record">Cancel</Button>
-          <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-record">
-            {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
-            {kind === "advance" ? "Record Advance" : kind === "salary_credit" ? "Submit Credit" : "Submit Overpayment"}
-          </Button>
+          {startMonthWarning ? (
+            <Button onClick={onClose} data-testid="button-close-warning">Close</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose} data-testid="button-cancel-record">Cancel</Button>
+              <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-record">
+                {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                {kind === "advance" ? "Record Advance" : kind === "salary_credit" ? "Submit Credit" : "Submit Overpayment"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -733,6 +796,11 @@ function PendingAdjustmentsTab() {
   const [commentMap, setCommentMap] = useState<Record<string, string>>({});
   const [showCommentFor, setShowCommentFor] = useState<string | null>(null);
   const [commentAction, setCommentAction] = useState<"return" | "reject">("return");
+  const now = new Date();
+  const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [startMonthMap, setStartMonthMap] = useState<Record<string, string>>({});
+  const [startYearMap, setStartYearMap] = useState<Record<string, string>>({});
+  const [approveWarnings, setApproveWarnings] = useState<Record<string, boolean>>({});
 
   const { data: rows = [], isLoading } = useQuery<AdjustmentRow[]>({
     queryKey: ["/api/salary-advances/pending-adjustments"],
@@ -751,12 +819,30 @@ function PendingAdjustmentsTab() {
 
   const approve = useMutation({
     mutationFn: async (id: string) => {
-      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/approve-adjustment`, {});
+      const row = rows.find(r => r.id === id);
+      const body: any = {};
+      if (row?.kind === "overpayment") {
+        // Require explicit selection — no silent fallback to defaultStart.
+        const sm = parseInt(startMonthMap[id] || "", 10);
+        const sy = parseInt(startYearMap[id] || "", 10);
+        if (!sm || !sy) throw new Error("Please select the First Recovery Month and Year before approving.");
+        body.startMonth = sm;
+        body.startYear = sy;
+      }
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/approve-adjustment`, body);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
       return json;
     },
-    onSuccess: () => { toast({ title: "Adjustment approved" }); invalidate(); },
+    onSuccess: (json: any, id: string) => {
+      if (json?.startMonthWarning) {
+        setApproveWarnings(m => ({ ...m, [id]: true }));
+        toast({ title: "Approved", description: "Note: the chosen recovery month is already locked. Regenerate the salary report to include this.", variant: "default" });
+      } else {
+        toast({ title: "Adjustment approved" });
+      }
+      invalidate();
+    },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
@@ -833,6 +919,39 @@ function PendingAdjustmentsTab() {
                 </Button>
               </div>
             </div>
+            {row.kind === "overpayment" && (
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">First Recovery Month (required to approve)</p>
+                <div className="grid grid-cols-2 gap-2 max-w-xs">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Month</Label>
+                    <select
+                      value={startMonthMap[row.id] || String(defaultStart.getMonth() + 1)}
+                      onChange={(e) => setStartMonthMap(m => ({ ...m, [row.id]: e.target.value }))}
+                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+                      data-testid={`select-adj-start-month-${row.id}`}
+                    >
+                      {MONTHS.slice(1).map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Year</Label>
+                    <Input
+                      type="number" min={2000} max={2100}
+                      value={startYearMap[row.id] || String(defaultStart.getFullYear())}
+                      onChange={(e) => setStartYearMap(m => ({ ...m, [row.id]: e.target.value }))}
+                      className="h-8 text-sm"
+                      data-testid={`input-adj-start-year-${row.id}`}
+                    />
+                  </div>
+                </div>
+                {approveWarnings[row.id] && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-2 flex items-center gap-1" data-testid={`text-adj-start-warning-${row.id}`}>
+                    <AlertTriangle className="h-3 w-3" /> Recovery month is locked — regenerate the salary report to include this.
+                  </p>
+                )}
+              </div>
+            )}
             {showCommentFor === row.id && (
               <div className="border-t pt-3 space-y-2">
                 <Label className="text-xs">{commentAction === "return" ? "Return note (required)" : "Rejection reason (required)"}</Label>
@@ -1073,12 +1192,22 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
     qc.invalidateQueries({ queryKey: ["/api/salary-advances", advanceId] });
   };
 
+  const [finalStartMonthWarning, setFinalStartMonthWarning] = useState(false);
+
   const action = useMutation({
     mutationFn: async ({ path, body }: { path: string; body?: any }) => {
       const res = await apiRequest("POST", `/api/salary-advances/${advanceId}/${path}`, body);
       return res.json();
     },
-    onSuccess: () => { toast({ title: "Done" }); refresh(); },
+    onSuccess: (data: any) => {
+      if (data?.startMonthWarning) {
+        setFinalStartMonthWarning(true);
+        toast({ title: "Approved", description: "Note: the first recovery month is already locked. Regenerate the salary report to include this deduction." });
+      } else {
+        toast({ title: "Done" });
+      }
+      refresh();
+    },
     onError: (e: any) => toast({ title: "Action failed", description: e?.message, variant: "destructive" }),
   });
 
@@ -1097,11 +1226,9 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
   const [returnNote, setReturnNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
 
-  // Final-approval start-month pickers
-  const nowD = new Date();
-  const defStart = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
-  const [finalStartMonth, setFinalStartMonth] = useState(String(defStart.getMonth() + 1));
-  const [finalStartYear, setFinalStartYear] = useState(String(defStart.getFullYear()));
+  // Final-approval start-month pickers — start empty; user must explicitly choose.
+  const [finalStartMonth, setFinalStartMonth] = useState("");
+  const [finalStartYear, setFinalStartYear] = useState("");
   const [showPreviewSchedule, setShowPreviewSchedule] = useState(false);
 
   const { data: previewScheduleData } = useQuery<{ schedule: Array<{ installmentNo: number; year: number; month: number; scheduledAmount: string }>; startYear: number; startMonth: number }>({
@@ -1307,14 +1434,15 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Recovery Starts (Month)</Label>
-                    <select value={finalStartMonth} onChange={(e) => { setFinalStartMonth(e.target.value); setShowPreviewSchedule(false); }} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-final-start-month">
+                    <Label className="text-xs font-semibold text-foreground">First Recovery Month <span className="text-destructive">*</span></Label>
+                    <select value={finalStartMonth} onChange={(e) => { setFinalStartMonth(e.target.value); setShowPreviewSchedule(false); }} className={`w-full rounded-md border bg-background px-2 py-2 text-sm ${!finalStartMonth ? "text-muted-foreground" : ""}`} data-testid="select-final-start-month">
+                      <option value="">Select month…</option>
                       {MONTHS.slice(1).map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Recovery Starts (Year)</Label>
-                    <Input type="number" min={2000} max={2100} value={finalStartYear} onChange={(e) => { setFinalStartYear(e.target.value); setShowPreviewSchedule(false); }} data-testid="input-final-start-year" />
+                    <Label className="text-xs font-semibold text-foreground">Year <span className="text-destructive">*</span></Label>
+                    <Input type="number" min={2000} max={2100} value={finalStartYear} onChange={(e) => { setFinalStartYear(e.target.value); setShowPreviewSchedule(false); }} placeholder="e.g. 2026" data-testid="input-final-start-year" />
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">Monthly deduction: <span className="font-mono">₹{fmt(monthlyPreview)}</span></p>
@@ -1330,13 +1458,28 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                   </div>
                 )}
                 <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" data-testid="input-final-note" />
+                {finalStartMonthWarning && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm" data-testid="banner-final-start-month-warning">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-amber-800 dark:text-amber-200">
+                      <p className="font-medium">Approved — but recovery month is already locked</p>
+                      <p className="text-xs mt-0.5">The salary run for {finalStartMonth ? `${MONTHS[parseInt(finalStartMonth, 10)]} ${finalStartYear}` : "the chosen month"} is already locked. The schedule has been created with your chosen start month. <strong>Regenerate the salary report</strong> to include this deduction.</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {!showPreviewSchedule && (
                     <Button size="sm" variant="outline" onClick={() => setShowPreviewSchedule(true)} disabled={!parseFloat(approvedAmount || "0") || !parseInt(repaymentMonths || "0", 10)} data-testid="button-preview-schedule">
                       Preview Schedule
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => action.mutate({ path: "final-approve", body: { approvedAmount: parseFloat(approvedAmount), repaymentMonths: parseInt(repaymentMonths, 10), note, startMonth: parseInt(finalStartMonth, 10), startYear: parseInt(finalStartYear, 10) } })} disabled={action.isPending} data-testid="button-final-approve">
+                  <Button
+                    size="sm"
+                    onClick={() => action.mutate({ path: "final-approve", body: { approvedAmount: parseFloat(approvedAmount), repaymentMonths: parseInt(repaymentMonths, 10), note, startMonth: parseInt(finalStartMonth, 10), startYear: parseInt(finalStartYear, 10) } })}
+                    disabled={action.isPending || !finalStartMonth || !finalStartYear}
+                    title={!finalStartMonth || !finalStartYear ? "Choose a First Recovery Month and Year above" : undefined}
+                    data-testid="button-final-approve"
+                  >
                     Approve & Generate Schedule
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => { const r = prompt("Rejection reason:"); if (r) action.mutate({ path: "final-reject", body: { reason: r } }); }} disabled={action.isPending} data-testid="button-final-reject">

@@ -556,6 +556,16 @@ function ApprovalTable({
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
 
+  const { data: snapshotGap } = useQuery<{ count: number }>({
+    queryKey: ["/api/salary-advances/snapshot-gap", run.year, run.month],
+    queryFn: async () => {
+      const res = await fetch(`/api/salary-advances/snapshot-gap?year=${run.year}&month=${run.month}`, { credentials: "include" });
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
   const { data: fullRun, isLoading, refetch } = useQuery<SalaryRun>({
     queryKey: ["/api/hr/reports/salary/runs", run.id],
     queryFn: async () => {
@@ -807,6 +817,21 @@ function ApprovalTable({
           </table>
         </div>
       </div>
+
+      {/* Snapshot-gap warning: advance recovery entries added after report was generated */}
+      {snapshotGap && snapshotGap.count > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800" data-testid="banner-snapshot-gap">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-200">
+              {snapshotGap.count} advance recovery {snapshotGap.count === 1 ? "entry was" : "entries were"} added after this report was generated.
+            </p>
+            <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+              Regenerate the salary report to include these deductions before approving.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Approve CTA */}
       <div className="flex justify-end">
