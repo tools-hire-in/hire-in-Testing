@@ -23,6 +23,7 @@ import {
   salaryAdvanceRequests,
   salaryAdvanceRepayments,
   salaryAdvanceAuditLog,
+  salaryAdvanceAttachments,
   salaryChanges,
   leaveAdjustments,
   employeeDocuments,
@@ -88,6 +89,8 @@ import {
   type InsertSalaryAdvanceRepayment,
   type SalaryAdvanceAuditLog,
   type InsertSalaryAdvanceAuditLog,
+  type SalaryAdvanceAttachment,
+  type InsertSalaryAdvanceAttachment,
   type SalaryChange,
   type InsertSalaryChange,
   type LeaveAdjustment,
@@ -690,7 +693,11 @@ export interface IStorage {
   rescheduleRepayment(id: string, year: number, month: number): Promise<void>;
   deleteScheduledRepaymentsForAdvance(advanceId: string): Promise<void>;
   listSalaryAdvancesByRecordedBy(recordedById: string): Promise<SalaryAdvanceRequest[]>;
-  getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }>;
+  getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; pendingCeo: number; active: number }>;
+  createSalaryAdvanceAttachment(data: InsertSalaryAdvanceAttachment): Promise<SalaryAdvanceAttachment>;
+  listSalaryAdvanceAttachments(advanceId: string): Promise<SalaryAdvanceAttachment[]>;
+  getSalaryAdvanceAttachment(id: string): Promise<SalaryAdvanceAttachment | null>;
+  deleteSalaryAdvanceAttachment(id: string): Promise<void>;
   // Centralized salary-change ledger
   createSalaryChange(data: InsertSalaryChange): Promise<SalaryChange>;
   getSalaryChange(id: string): Promise<SalaryChange | undefined>;
@@ -5363,20 +5370,44 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(salaryAdvanceRequests.createdAt));
   }
 
-  async getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; active: number }> {
-    const isFinal = ["super_admin", "admin"].includes(role);
+  async getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; pendingCeo: number; active: number }> {
+    const isFinal = ["super_admin", "admin", "hr"].includes(role);
     const managerRows = await db.select().from(salaryAdvanceRequests)
       .where(and(eq(salaryAdvanceRequests.managerId, userId), eq(salaryAdvanceRequests.status, "pending_manager" as any)));
     const finalRows = isFinal
       ? await db.select().from(salaryAdvanceRequests).where(eq(salaryAdvanceRequests.status, "pending_final" as any))
+      : [];
+    const ceoRows = role === "super_admin"
+      ? await db.select().from(salaryAdvanceRequests).where(eq(salaryAdvanceRequests.status, "pending_ceo" as any))
       : [];
     const activeRows = await db.select({ count: sql<number>`count(*)::int` }).from(salaryAdvanceRequests)
       .where(inArray(salaryAdvanceRequests.status, ["approved", "disbursed", "repaying"] as any));
     return {
       pendingManager: managerRows.length,
       pendingFinal: finalRows.length,
+      pendingCeo: ceoRows.length,
       active: activeRows[0]?.count ?? 0,
     };
+  }
+
+  async createSalaryAdvanceAttachment(data: InsertSalaryAdvanceAttachment): Promise<SalaryAdvanceAttachment> {
+    const [row] = await db.insert(salaryAdvanceAttachments).values(data as any).returning();
+    return row;
+  }
+
+  async listSalaryAdvanceAttachments(advanceId: string): Promise<SalaryAdvanceAttachment[]> {
+    return db.select().from(salaryAdvanceAttachments)
+      .where(eq(salaryAdvanceAttachments.advanceId, advanceId))
+      .orderBy(asc(salaryAdvanceAttachments.createdAt));
+  }
+
+  async getSalaryAdvanceAttachment(id: string): Promise<SalaryAdvanceAttachment | null> {
+    const [row] = await db.select().from(salaryAdvanceAttachments).where(eq(salaryAdvanceAttachments.id, id));
+    return row ?? null;
+  }
+
+  async deleteSalaryAdvanceAttachment(id: string): Promise<void> {
+    await db.delete(salaryAdvanceAttachments).where(eq(salaryAdvanceAttachments.id, id));
   }
 
   // ── Centralized salary-change ledger ──────────────────────────────────────

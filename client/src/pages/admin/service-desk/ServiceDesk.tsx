@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import {
   Key, FileText, Settings, ClipboardList,
   CheckCircle2, ExternalLink, Send, AlertCircle,
-  Clock, LifeBuoy, Plus, Trash2, FileEdit,
+  Clock, LifeBuoy, Plus, Trash2, FileEdit, Wallet,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -67,6 +67,17 @@ const REQUEST_TILES = [
     subtypes: ["General enquiry", "Feedback / suggestion", "Compliance question", "Other"],
     placeholder: "Describe your request or enquiry in detail.",
   },
+  {
+    id: "salary_advance",
+    label: "Salary Advance",
+    description: "Request an advance on your upcoming salary",
+    icon: Wallet,
+    color: "text-teal-600",
+    bg: "bg-teal-50 dark:bg-teal-950/30",
+    border: "border-teal-200 dark:border-teal-800",
+    subtypes: [] as string[],
+    placeholder: "",
+  },
 ] as const;
 
 type TileId = typeof REQUEST_TILES[number]["id"];
@@ -97,6 +108,7 @@ const TYPE_LABELS: Record<string, string> = {
   hr: "HR",
   ops: "Operations",
   general: "General",
+  salary_advance: "Salary Advance",
 };
 
 // ── Access template form ──────────────────────────────────────────────────────
@@ -260,6 +272,35 @@ function NewRequestModal({
   // Hardware items (Equipment / hardware subtype)
   const [hardwareItems, setHardwareItems] = useState<HardwareItem[]>([{ description: "", qty: 1 }]);
 
+  // Tile-type booleans — declared first so hooks below can reference them safely
+  const isAccessTile = tile.id === "access";
+  const isSalaryAdvanceTile = tile.id === "salary_advance";
+  const isEquipmentHardware = tile.id === "ops" && subtype === "Equipment / hardware";
+
+  // Salary advance–specific
+  const [saAmount, setSaAmount] = useState("");
+  const [saReason, setSaReason] = useState("");
+  const [saMonths, setSaMonths] = useState("3");
+  const [saFile, setSaFile] = useState<File | null>(null);
+  const [saAmountDebounced, setSaAmountDebounced] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setSaAmountDebounced(saAmount), 600);
+    return () => clearTimeout(t);
+  }, [saAmount]);
+
+  const { data: saEligibility } = useQuery<{ warnings: string[]; exceedsCap50: boolean; netSalary: number; cap: number }>({
+    queryKey: ["/api/salary-advances/eligibility-check", saAmountDebounced],
+    queryFn: async () => {
+      const amt = parseFloat(saAmountDebounced);
+      if (!amt || amt <= 0) return { warnings: [], exceedsCap50: false, netSalary: 0, cap: 0 };
+      const res = await fetch(`/api/salary-advances/eligibility-check?amount=${amt}`, { credentials: "include" });
+      if (!res.ok) return { warnings: [], exceedsCap50: false, netSalary: 0, cap: 0 };
+      return res.json();
+    },
+    enabled: isSalaryAdvanceTile && !!parseFloat(saAmountDebounced) && parseFloat(saAmountDebounced) > 0,
+  });
+
   // Access-specific
   const [accessDraft, setAccessDraft] = useState<AccessDraft>({
     system: "",
@@ -269,9 +310,6 @@ function NewRequestModal({
     creditCount: "",
     justification: "",
   });
-
-  const isAccessTile = tile.id === "access";
-  const isEquipmentHardware = tile.id === "ops" && subtype === "Equipment / hardware";
 
   // OPS-001 (Tool Access, Credential Control & Deprovisioning) awareness: when the
   // employee has this SOP assigned, remind them of their individual responsibility
@@ -304,7 +342,16 @@ function NewRequestModal({
     (!subtypeRequired || subtype.length > 0) &&
     hardwareValid;
 
-  const isValid = isAccessTile ? (subject.trim().length >= 5 && isAccessValid) : isStandardValid;
+  const isSaValid =
+    subject.trim().length >= 3 &&
+    saReason.trim().length >= 5 &&
+    parseFloat(saAmount) > 0;
+
+  const isValid = isAccessTile
+    ? (subject.trim().length >= 5 && isAccessValid)
+    : isSalaryAdvanceTile
+      ? isSaValid
+      : isStandardValid;
 
   const addHardwareRow = () =>
     setHardwareItems((prev) => [...prev, { description: "", qty: 1 }]);
@@ -326,6 +373,13 @@ function NewRequestModal({
         justification: accessDraft.justification.trim(),
       };
     }
+    if (isSalaryAdvanceTile) {
+      return {
+        requestedAmount: parseFloat(saAmount) || 0,
+        reason: saReason.trim(),
+        repaymentMonths: parseInt(saMonths, 10) || 3,
+      };
+    }
     if (tile.id === "hr") {
       return { requestSubtype: subtype };
     }
@@ -337,22 +391,50 @@ function NewRequestModal({
   };
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/help-desk/requests", {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/help-desk/requests", {
         type: tile.id,
         title: subject.trim(),
-        description: isAccessTile ? accessDraft.justification.trim() : description.trim(),
+        description: isAccessTile
+          ? accessDraft.justification.trim()
+          : isSalaryAdvanceTile
+            ? saReason.trim()
+            : description.trim(),
         priority,
         templateData: buildTemplateData(),
         linkedSopId: isAccessTile && ops001 ? ops001.sopId : undefined,
         hardwareItems: isEquipmentHardware
           ? hardwareItems.filter((i) => i.description.trim()).map((i) => ({ description: i.description.trim(), qty: i.qty }))
           : undefined,
-      }),
-    onSuccess: async (res: any) => {
-      const data = await res.json().catch(() => ({}));
+      });
+      return res.json();
+    },
+    onSuccess: async (data: any) => {
       setHirdRef(data?.requestNumber || null);
       queryClient.invalidateQueries({ queryKey: ["/api/help-desk/requests"] });
+      // If a file was attached and the server created a linked advance, upload it now
+      if (isSalaryAdvanceTile && saFile && data?.linkedAdvanceId) {
+        try {
+          const advId = data.linkedAdvanceId;
+          // 1. Get server-scoped upload URL + HMAC token
+          const urlRes = await fetch("/api/salary-advances/request-upload", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ advanceId: advId }),
+          });
+          if (urlRes.ok) {
+            const { uploadURL, uploadToken } = await urlRes.json();
+            // 2. Upload to object storage
+            await fetch(uploadURL, { method: "PUT", body: saFile, headers: { "Content-Type": saFile.type || "application/octet-stream" } });
+            // 3. Record with HMAC token (objectPath comes from token, not client)
+            await fetch(`/api/salary-advances/${advId}/attachments`, {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadToken, fileName: saFile.name, contentType: saFile.type, sizeBytes: saFile.size }),
+            });
+          }
+        } catch { /* non-fatal — request already submitted */ }
+      }
     },
     onError: (err: any) => {
       toast({
@@ -456,7 +538,82 @@ function NewRequestModal({
                 </div>
               )}
 
-              {isAccessTile ? (
+              {isSalaryAdvanceTile ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-teal-200 bg-teal-50 dark:bg-teal-950/30 p-3 text-xs text-teal-800 dark:text-teal-200">
+                    Your request will be routed to your manager for approval, then HR for final sign-off. Repayment will be deducted from your future payslips.
+                  </div>
+                  {saEligibility?.exceedsCap50 && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-200" data-testid="banner-sa-cap-warning">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <p>This amount exceeds <strong>50% of your net salary</strong>. Your request will go through an additional CEO approval step before disbursement.</p>
+                    </div>
+                  )}
+                  {saEligibility?.warnings && saEligibility.warnings.length > 0 && (
+                    <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-xs text-amber-700 space-y-0.5" data-testid="banner-sa-eligibility-warnings">
+                      {saEligibility.warnings.map((w, i) => <p key={i}>• {w}</p>)}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sa-amount">Amount (₹) <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="sa-amount"
+                        type="number"
+                        min={1}
+                        placeholder="e.g. 25000"
+                        value={saAmount}
+                        onChange={(e) => setSaAmount(e.target.value)}
+                        data-testid="input-sa-amount"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sa-months">Repayment Months</Label>
+                      <Input
+                        id="sa-months"
+                        type="number"
+                        min={1}
+                        max={12}
+                        placeholder="3"
+                        value={saMonths}
+                        onChange={(e) => setSaMonths(e.target.value)}
+                        data-testid="input-sa-months"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sa-reason">Reason <span className="text-destructive">*</span></Label>
+                    <Textarea
+                      id="sa-reason"
+                      placeholder="Why do you need this advance? E.g. medical expense, relocation cost..."
+                      rows={3}
+                      value={saReason}
+                      onChange={(e) => setSaReason(e.target.value)}
+                      data-testid="textarea-sa-reason"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sa-doc" className="text-xs">Supporting Document <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="sa-doc" className="cursor-pointer flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors">
+                        <FileText className="h-3.5 w-3.5" />
+                        {saFile ? saFile.name : "Choose file…"}
+                        <input
+                          id="sa-doc"
+                          type="file"
+                          className="sr-only"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          onChange={(e) => setSaFile(e.target.files?.[0] || null)}
+                          data-testid="input-sa-file"
+                        />
+                      </label>
+                      {saFile && (
+                        <button type="button" onClick={() => setSaFile(null)} className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : isAccessTile ? (
                 <AccessTemplateForm value={accessDraft} onChange={setAccessDraft} />
               ) : (
                 <>
@@ -612,7 +769,33 @@ interface HirdRequest {
   status: string;
   priority: string;
   createdAt: string;
+  linkedAdvanceId?: string | null;
+  linkedAdvanceStatus?: string | null;
 }
+
+const ADVANCE_STATUS_LABELS: Record<string, string> = {
+  pending_manager: "Awaiting Manager",
+  pending_final: "Awaiting HR Approval",
+  pending_ceo: "Awaiting CEO",
+  approved: "Approved",
+  disbursed: "Disbursed",
+  repaying: "In Repayment",
+  settled: "Settled",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
+};
+
+const ADVANCE_STATUS_COLORS: Record<string, string> = {
+  pending_manager: "bg-yellow-100 text-yellow-800",
+  pending_final: "bg-blue-100 text-blue-800",
+  pending_ceo: "bg-purple-100 text-purple-800",
+  approved: "bg-green-100 text-green-800",
+  disbursed: "bg-green-100 text-green-800",
+  repaying: "bg-teal-100 text-teal-800",
+  settled: "bg-gray-100 text-gray-600",
+  rejected: "bg-red-100 text-red-700",
+  cancelled: "bg-gray-100 text-gray-600",
+};
 
 export default function ServiceDesk() {
   const [, setLocation] = useLocation();
@@ -738,12 +921,22 @@ export default function ServiceDesk() {
                           {new Date(req.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                         </p>
                       </div>
-                      <span
-                        className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[req.status] || "bg-muted text-muted-foreground"}`}
-                        data-testid={`badge-status-${req.id}`}
-                      >
-                        {STATUS_LABELS[req.status] || req.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[req.status] || "bg-muted text-muted-foreground"}`}
+                          data-testid={`badge-status-${req.id}`}
+                        >
+                          {STATUS_LABELS[req.status] || req.status}
+                        </span>
+                        {req.type === "salary_advance" && req.linkedAdvanceStatus && (
+                          <span
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${ADVANCE_STATUS_COLORS[req.linkedAdvanceStatus] || "bg-muted text-muted-foreground"}`}
+                            data-testid={`badge-advance-status-${req.id}`}
+                          >
+                            {ADVANCE_STATUS_LABELS[req.linkedAdvanceStatus] || req.linkedAdvanceStatus}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

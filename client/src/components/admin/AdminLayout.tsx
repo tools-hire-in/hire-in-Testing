@@ -1328,19 +1328,19 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const commsHeldCount = commsHeld?.count ?? 0;
 
   // Salary advance pending approval badge (managers + final approver)
-  const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number }>({
+  const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number; pendingCeo?: number }>({
     queryKey: ["/api/salary-advances/stats"],
     queryFn: async () => {
       try {
         const res = await fetch("/api/salary-advances/stats", { credentials: "include" });
-        if (!res.ok) return { pendingManager: 0, pendingFinal: 0, active: 0 };
+        if (!res.ok) return { pendingManager: 0, pendingFinal: 0, active: 0, pendingCeo: 0 };
         return res.json();
-      } catch { return { pendingManager: 0, pendingFinal: 0, active: 0 }; }
+      } catch { return { pendingManager: 0, pendingFinal: 0, active: 0, pendingCeo: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && isEnabled("salary_advance_enabled") && ["manager", "admin", "super_admin"].includes(user?.role || ""),
+    enabled: !!user && ["manager", "admin", "super_admin", "hr"].includes(user?.role || ""),
   });
-  const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0);
+  const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0) + (salaryAdvanceStats?.pendingCeo ?? 0);
 
   // SOP review inbox pending count — badge on "My SOP Reviews" sidebar link
   const { data: sopReviewCountData } = useQuery<{ pending: number }>({

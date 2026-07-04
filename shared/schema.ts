@@ -2903,6 +2903,7 @@ export const internalRequestTypeEnum = pgEnum("internal_request_type", [
   "hr",
   "ops",
   "general",
+  "salary_advance",
 ]);
 
 export const internalRequestPriorityEnum = pgEnum("internal_request_priority", [
@@ -2935,6 +2936,8 @@ export const internalRequests = pgTable("internal_requests", {
   hardwareItems: jsonb("hardware_items"),
   // Arbitrary metadata — used to store e.g. linked_addendum_id after an addendum is generated.
   metadata: jsonb("metadata"),
+  // When type=salary_advance, the linked salary_advance_requests row for the full approval chain.
+  linkedAdvanceId: varchar("linked_advance_id").references((): any => salaryAdvanceRequests.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3036,6 +3039,7 @@ export type InsertInternalRequestAuditLog = z.infer<typeof insertInternalRequest
 export const salaryAdvanceStatusEnum = pgEnum("salary_advance_status", [
   "pending_manager",
   "pending_final",
+  "pending_ceo",
   "pending_review",
   "approved",
   "disbursed",
@@ -3118,6 +3122,9 @@ export const salaryAdvanceRequests = pgTable("salary_advance_requests", {
   recordedById: varchar("recorded_by_id").references(() => adminUsers.id),
   // Super admin review comment when returning or rejecting an HR-recorded adjustment.
   reviewerComment: text("reviewer_comment"),
+  // Set true when the requested amount exceeds 50% of the employee's monthly salary —
+  // triggers CEO escalation after HR approval instead of going straight to disbursed.
+  exceedsSalaryCap: boolean("exceeds_salary_cap").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3150,11 +3157,28 @@ export const salaryAdvanceAuditLog = pgTable("salary_advance_audit_log", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const salaryAdvanceAttachments = pgTable("salary_advance_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  advanceId: varchar("advance_id").notNull().references(() => salaryAdvanceRequests.id),
+  uploadedById: varchar("uploaded_by_id").notNull().references(() => adminUsers.id),
+  fileName: varchar("file_name").notNull(),
+  objectPath: text("object_path").notNull(),
+  contentType: varchar("content_type"),
+  sizeBytes: integer("size_bytes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const salaryAdvanceAttachmentsRelations = relations(salaryAdvanceAttachments, ({ one }) => ({
+  advance: one(salaryAdvanceRequests, { fields: [salaryAdvanceAttachments.advanceId], references: [salaryAdvanceRequests.id] }),
+  uploadedBy: one(adminUsers, { fields: [salaryAdvanceAttachments.uploadedById], references: [adminUsers.id], relationName: "advanceAttachmentUploader" }),
+}));
+
 export const salaryAdvanceRequestsRelations = relations(salaryAdvanceRequests, ({ one, many }) => ({
   requester: one(adminUsers, { fields: [salaryAdvanceRequests.requesterId], references: [adminUsers.id], relationName: "advanceRequester" }),
   manager: one(adminUsers, { fields: [salaryAdvanceRequests.managerId], references: [adminUsers.id], relationName: "advanceManager" }),
   repayments: many(salaryAdvanceRepayments),
   auditLog: many(salaryAdvanceAuditLog),
+  attachments: many(salaryAdvanceAttachments),
 }));
 
 export const salaryAdvanceRepaymentsRelations = relations(salaryAdvanceRepayments, ({ one }) => ({
@@ -3185,12 +3209,19 @@ export const insertSalaryAdvanceAuditLogSchema = createInsertSchema(salaryAdvanc
   createdAt: true,
 });
 
+export const insertSalaryAdvanceAttachmentSchema = createInsertSchema(salaryAdvanceAttachments).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type SalaryAdvanceRequest = typeof salaryAdvanceRequests.$inferSelect;
 export type InsertSalaryAdvanceRequest = z.infer<typeof insertSalaryAdvanceRequestSchema>;
 export type SalaryAdvanceRepayment = typeof salaryAdvanceRepayments.$inferSelect;
 export type InsertSalaryAdvanceRepayment = z.infer<typeof insertSalaryAdvanceRepaymentSchema>;
 export type SalaryAdvanceAuditLog = typeof salaryAdvanceAuditLog.$inferSelect;
 export type InsertSalaryAdvanceAuditLog = z.infer<typeof insertSalaryAdvanceAuditLogSchema>;
+export type SalaryAdvanceAttachment = typeof salaryAdvanceAttachments.$inferSelect;
+export type InsertSalaryAdvanceAttachment = z.infer<typeof insertSalaryAdvanceAttachmentSchema>;
 
 // ── Centralized salary-change ledger ─────────────────────────────────────────
 // Single source of truth for the history of every employee compensation change.

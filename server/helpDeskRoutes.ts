@@ -123,10 +123,17 @@ export function registerHelpDeskRoutes(app: Express) {
     category: z.string().optional(),
   });
 
+  const SALARY_ADVANCE_TEMPLATE = z.object({
+    requestedAmount: z.number().positive("Amount must be greater than zero"),
+    reason: z.string().min(5, "Please provide a reason"),
+    repaymentMonths: z.number().int().min(1).max(36).optional(),
+  });
+
   function validateTemplateData(type: string, templateData: any) {
     if (type === "access") return ACCESS_TEMPLATE.safeParse(templateData || {});
     if (type === "hr") return HR_TEMPLATE.safeParse(templateData || {});
     if (type === "ops") return OPS_TEMPLATE.safeParse(templateData || {});
+    if (type === "salary_advance") return SALARY_ADVANCE_TEMPLATE.safeParse(templateData || {});
     return GENERAL_TEMPLATE.safeParse(templateData || {});
   }
 
@@ -136,7 +143,7 @@ export function registerHelpDeskRoutes(app: Express) {
       const userId = req.session.userId!;
 
       const schema = z.object({
-        type: z.enum(["access", "hr", "ops", "general"]),
+        type: z.enum(["access", "hr", "ops", "general", "salary_advance"]),
         title: z.string().min(3).max(200),
         description: z.string().min(5),
         priority: z.enum(["p1", "p2", "p3", "p4"]).optional().default("p3"),
@@ -187,6 +194,49 @@ export function registerHelpDeskRoutes(app: Express) {
         hardwareItems: (isEquipmentHardware && hardwareItems) ? hardwareItems : null,
       } as any);
 
+      // For salary_advance requests, create a linked salary_advance_requests row
+      // so the advance flows through the full approval and repayment pipeline.
+      let linkedAdvanceId: string | null = null;
+      if (type === "salary_advance" && templateData) {
+        try {
+          const saData = templateData as { requestedAmount?: number; reason?: string; repaymentMonths?: number };
+          const reqAmount = Number(saData.requestedAmount || 0);
+          if (reqAmount > 0) {
+            const { storage: st } = { storage };
+            // Compute exceedsSalaryCap at creation time (>50% of net salary)
+            let exceedsSalaryCap = false;
+            try {
+              const empRow = await st.getAdminUser(userId);
+              const netSalary = empRow?.salary ? Number(empRow.salary) : 0;
+              exceedsSalaryCap = netSalary > 0 && reqAmount > netSalary * 0.5;
+            } catch { /* non-fatal — leave as false */ }
+            const advRow = await st.createSalaryAdvanceWithNumber({
+              requesterId: userId,
+              managerId: managerId || undefined,
+              requestedAmount: reqAmount.toFixed(2),
+              reason: (saData.reason || description).slice(0, 500),
+              // Carry through the employee's preferred repayment tenure so the
+              // manager/HR stages use it as the starting plan rather than the default.
+              ...(saData.repaymentMonths ? { repaymentMonths: Number(saData.repaymentMonths) } : {}),
+              outstandingBalance: "0",
+              totalRepaid: "0",
+              exceedsSalaryCap,
+              policySnapshot: null,
+            } as any);
+            linkedAdvanceId = advRow.id;
+            // Link the HIRD ticket to this salary advance row
+            await st.updateInternalRequest(request.id, { linkedAdvanceId: advRow.id } as any);
+            await st.addSalaryAdvanceAuditEntry({
+              advanceId: advRow.id, actorId: userId, action: "created",
+              newStatus: "pending_manager",
+              metadata: { requestNumber: advRow.requestNumber, source: "service_desk", hirdId: request.id },
+            } as any);
+          }
+        } catch (saErr) {
+          console.error("Linked advance creation failed (non-fatal):", saErr);
+        }
+      }
+
       await storage.addInternalRequestAuditEntry({
         requestId: request.id,
         actorId: userId,
@@ -236,7 +286,7 @@ export function registerHelpDeskRoutes(app: Express) {
         });
       }
 
-      return res.status(201).json(request);
+      return res.status(201).json({ ...request, linkedAdvanceId });
     } catch (err: any) {
       console.error("HIRD create error:", err);
       return res.status(500).json({ message: "Internal server error" });
@@ -294,12 +344,26 @@ export function registerHelpDeskRoutes(app: Express) {
         if (u) userMap[uid] = { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email, role: u.role };
       }
 
-      return res.json(requests.map(r => ({
-        ...r,
-        requester: r.requesterId ? userMap[r.requesterId] : null,
-        manager: r.managerId ? userMap[r.managerId] : null,
-        assignedTo: (r as any).assignedToId ? userMap[(r as any).assignedToId] : null,
-      })));
+      // For salary_advance requests, fetch live advance status and inject it so
+      // the employee history can show the real pipeline stage (pending_final, etc.)
+      const enrichedRequests = await Promise.all(requests.map(async r => {
+        let linkedAdvanceStatus: string | null = null;
+        if ((r as any).type === "salary_advance" && (r as any).linkedAdvanceId) {
+          try {
+            const adv = await storage.getSalaryAdvance((r as any).linkedAdvanceId);
+            linkedAdvanceStatus = adv?.status ?? null;
+          } catch { /* non-fatal */ }
+        }
+        return {
+          ...r,
+          requester: r.requesterId ? userMap[r.requesterId] : null,
+          manager: r.managerId ? userMap[r.managerId] : null,
+          assignedTo: (r as any).assignedToId ? userMap[(r as any).assignedToId] : null,
+          linkedAdvanceStatus,
+        };
+      }));
+
+      return res.json(enrichedRequests);
     } catch (err: any) {
       console.error("HIRD list error:", err);
       return res.status(500).json({ message: "Internal server error" });
@@ -378,6 +442,47 @@ export function registerHelpDeskRoutes(app: Express) {
       const updated = await storage.updateInternalRequest(request.id, { status: "assigned" });
       await storage.addInternalRequestAuditEntry({ requestId: request.id, actorId: userId, action: "approved", oldStatus, newStatus: "assigned", metadata: { reason } } as any);
 
+      // If this ticket has a linked salary advance, advance it to pending_final
+      if ((request as any).linkedAdvanceId) {
+        try {
+          const linkedAdv = await storage.getSalaryAdvance((request as any).linkedAdvanceId);
+          if (linkedAdv && linkedAdv.status === "pending_manager") {
+            const policy = await (storage as any).getSalaryAdvancePolicy?.() || { managerMaxMonths: 6, defaultMaxMonths: 6 };
+            const months = Number(linkedAdv.repaymentMonths || policy.defaultMaxMonths || 6);
+            const approvedAmt = Number(linkedAdv.requestedAmount);
+            const monthly = Math.ceil((approvedAmt / months) * 100) / 100;
+            await storage.updateSalaryAdvance(linkedAdv.id, {
+              status: "pending_final",
+              approvedAmount: approvedAmt.toFixed(2),
+              repaymentMonths: months,
+              monthlyDeduction: monthly.toFixed(2),
+              managerApprovedBy: userId,
+              managerApprovedAt: new Date(),
+            } as any);
+            await storage.addSalaryAdvanceAuditEntry({
+              advanceId: linkedAdv.id, actorId: userId, action: "manager_approved",
+              oldStatus: "pending_manager", newStatus: "pending_final",
+              metadata: { source: "service_desk_approval", hirdId: request.id },
+            } as any);
+            // Notify all active HR users that the advance is ready for final approval
+            try {
+              const allAdmins = await storage.getAdminUsers();
+              for (const hrUser of allAdmins.filter((u: any) => u.role === "hr" && u.isActive !== false)) {
+                notifyUser({
+                  userId: hrUser.id,
+                  type: "salary_advance_hr_needed",
+                  title: "Salary advance awaiting HR final approval",
+                  message: `${linkedAdv.requestNumber} has been approved by the manager and is pending HR final sign-off.`,
+                  link: `/admin/salary-advance?tab=final`,
+                });
+              }
+            } catch { /* non-fatal */ }
+          }
+        } catch (saErr) {
+          console.error("Linked advance approval failed (non-fatal):", saErr);
+        }
+      }
+
       const requester = await storage.getAdminUser(request.requesterId);
       notifyUser({
         userId: request.requesterId,
@@ -428,6 +533,25 @@ export function registerHelpDeskRoutes(app: Express) {
       await storage.addInternalRequestApproval({ requestId: request.id, approverId: userId, decision: "rejected", reason: reason || null } as any);
       const updated = await storage.updateInternalRequest(request.id, { status: "rejected" });
       await storage.addInternalRequestAuditEntry({ requestId: request.id, actorId: userId, action: "rejected", oldStatus, newStatus: "rejected", metadata: { reason } } as any);
+
+      // If this ticket has a linked salary advance, reject it too
+      if ((request as any).linkedAdvanceId) {
+        try {
+          const linkedAdv = await storage.getSalaryAdvance((request as any).linkedAdvanceId);
+          if (linkedAdv && linkedAdv.status === "pending_manager") {
+            await storage.updateSalaryAdvance(linkedAdv.id, {
+              status: "rejected", rejectedBy: userId, rejectedAt: new Date(), rejectionReason: reason,
+            } as any);
+            await storage.addSalaryAdvanceAuditEntry({
+              advanceId: linkedAdv.id, actorId: userId, action: "manager_rejected",
+              oldStatus: "pending_manager", newStatus: "rejected",
+              metadata: { source: "service_desk_rejection", hirdId: request.id, reason },
+            } as any);
+          }
+        } catch (saErr) {
+          console.error("Linked advance rejection failed (non-fatal):", saErr);
+        }
+      }
 
       const requester = await storage.getAdminUser(request.requesterId);
       notifyUser({

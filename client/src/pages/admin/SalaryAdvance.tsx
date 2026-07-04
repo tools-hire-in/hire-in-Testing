@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   Wallet, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight,
   IndianRupee, ShieldCheck, Banknote, RotateCcw, Send, AlertTriangle,
+  Crown, Paperclip, Upload, X, FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -40,6 +41,7 @@ interface Advance {
   totalRepaid: string;
   outstandingBalance: string;
   isException: boolean;
+  exceedsSalaryCap?: boolean;
   exceptionReason: string | null;
   returnNote: string | null;
   rejectionReason: string | null;
@@ -79,6 +81,7 @@ const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   pending_manager: { label: "Pending Manager", color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock },
   pending_final: { label: "Pending Final Approval", color: "bg-blue-100 text-blue-700 border-blue-200", icon: ShieldCheck },
+  pending_ceo: { label: "CEO Approval Required", color: "bg-purple-100 text-purple-700 border-purple-200", icon: Crown },
   pending_review: { label: "Pending Review", color: "bg-violet-100 text-violet-700 border-violet-200", icon: ShieldCheck },
   approved: { label: "Approved", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
   disbursed: { label: "Disbursed", color: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: Banknote },
@@ -144,7 +147,8 @@ export default function SalaryAdvance() {
   // HR can be a fallback approver when the manager chain is unavailable, so HR
   // must also reach the manager-approval queue/UI.
   const isManager = ["manager", "admin", "super_admin", "hr"].includes(role);
-  const isFinal = role === "super_admin";
+  const isFinal = ["super_admin", "hr"].includes(role);
+  const isCeo = role === "super_admin";
   const isAccounts = ["super_admin", "admin", "hr", "finance"].includes(role);
   // HR/admin/super_admin can manually record advances & overpayments. This tool
   // works regardless of the self-service flag, so these roles keep access to the
@@ -185,7 +189,7 @@ export default function SalaryAdvance() {
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data: policy } = useQuery<Policy>({ queryKey: ["/api/salary-advances/policy"] });
-  const { data: stats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number }>({
+  const { data: stats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number; pendingCeo?: number }>({
     queryKey: ["/api/salary-advances/stats"],
     refetchInterval: 60000,
   });
@@ -217,6 +221,11 @@ export default function SalaryAdvance() {
                 Final Approval {stats?.pendingFinal ? <Badge className="ml-1.5 bg-blue-500">{stats.pendingFinal}</Badge> : null}
               </TabsTrigger>
             )}
+            {isCeo && (
+              <TabsTrigger value="ceo" data-testid="tab-ceo">
+                CEO Exceptions {stats?.pendingCeo ? <Badge className="ml-1.5 bg-purple-500">{stats.pendingCeo}</Badge> : null}
+              </TabsTrigger>
+            )}
             {isAccounts && (
               <TabsTrigger value="active" data-testid="tab-active">Active Advances</TabsTrigger>
             )}
@@ -235,6 +244,7 @@ export default function SalaryAdvance() {
         {tab === "mine" && !recordOnly && <MyRequestsTab policy={policy} onOpen={setDetailId} />}
         {tab === "approvals" && isManager && !recordOnly && <ManagerQueueTab policy={policy} onOpen={setDetailId} />}
         {tab === "final" && isFinal && !recordOnly && <FinalQueueTab policy={policy} onOpen={setDetailId} />}
+        {tab === "ceo" && isCeo && <CeoQueueTab onOpen={setDetailId} />}
         {tab === "active" && isAccounts && <ActiveAdvancesTab onOpen={setDetailId} canRecord={canRecord} />}
         {tab === "pending-adjustments" && isFinal && <PendingAdjustmentsTab />}
         {tab === "my-submissions" && canRecord && <MySubmissionsTab />}
@@ -261,6 +271,7 @@ function useInvalidateAll() {
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/mine"] });
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/pending/manager"] });
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/pending/final"] });
+    qc.invalidateQueries({ queryKey: ["/api/salary-advances/pending/ceo"] });
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/active"] });
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/stats"] });
   };
@@ -438,6 +449,25 @@ function FinalQueueTab({ policy, onOpen }: { policy?: Policy; onOpen: (id: strin
   );
 }
 
+function CeoQueueTab({ onOpen }: { onOpen: (id: string) => void }) {
+  const { data: advances, isLoading } = useQuery<Advance[]>({ queryKey: ["/api/salary-advances/pending/ceo"] });
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 p-3 text-sm text-purple-800">
+        <Crown className="h-4 w-4 mt-0.5 shrink-0" />
+        <p>These advances exceed <strong>50% of the employee's net salary</strong> and require CEO sign-off before disbursement.</p>
+      </div>
+      {isLoading ? (
+        <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
+      ) : advances && advances.length > 0 ? (
+        <div className="space-y-2">{advances.map(a => <AdvanceRow key={a.id} a={a} onOpen={onOpen} showRequester />)}</div>
+      ) : (
+        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No advances pending CEO approval.</CardContent></Card>
+      )}
+    </div>
+  );
+}
+
 function ActiveAdvancesTab({ onOpen, canRecord }: { onOpen: (id: string) => void; canRecord?: boolean }) {
   const { data: advances, isLoading } = useQuery<Advance[]>({ queryKey: ["/api/salary-advances/active"] });
   const [showRecord, setShowRecord] = useState(false);
@@ -476,6 +506,7 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
   const [kind, setKind] = useState<"advance" | "overpayment" | "salary_credit">("advance");
   const [employeeId, setEmployeeId] = useState("");
   const [amount, setAmount] = useState("");
+  const [recordFile, setRecordFile] = useState<File | null>(null);
   const [reason, setReason] = useState("");
   const [repaymentMonths, setRepaymentMonths] = useState("6");
   const now = new Date();
@@ -517,8 +548,28 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
       if (!res.ok) throw new Error(json.error || "Failed");
       return json;
     },
-    onSuccess: () => {
+    onSuccess: async (json: any) => {
       const labels: Record<string, string> = { advance: "Advance", overpayment: "Overpayment", salary_credit: "Salary Credit" };
+      // Attempt to attach any selected file to the newly created advance row
+      if (recordFile && json?.id) {
+        try {
+          const advId = json.id;
+          const urlRes = await fetch("/api/salary-advances/request-upload", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ advanceId: advId }),
+          });
+          if (urlRes.ok) {
+            const { uploadURL, uploadToken } = await urlRes.json();
+            await fetch(uploadURL, { method: "PUT", body: recordFile, headers: { "Content-Type": recordFile.type || "application/octet-stream" } });
+            await fetch(`/api/salary-advances/${advId}/attachments`, {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadToken, fileName: recordFile.name, contentType: recordFile.type, sizeBytes: recordFile.size }),
+            });
+          }
+        } catch { /* non-fatal — advance was already recorded */ }
+      }
       toast({ title: `${labels[kind] || kind} submitted`, description: kind === "advance" ? "Created and active." : "Sent for super admin review." });
       invalidate();
       qc.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
@@ -628,6 +679,20 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)}
               placeholder={kind === "overpayment" ? "Why was this overpaid?" : kind === "salary_credit" ? "What is this credit for?" : "Context for this advance"}
               data-testid="input-record-reason" />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Supporting Document <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors">
+                <Paperclip className="h-3.5 w-3.5" />
+                {recordFile ? recordFile.name : "Choose file…"}
+                <input type="file" className="sr-only" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => setRecordFile(e.target.files?.[0] || null)}
+                  data-testid="input-record-file" />
+              </label>
+              {recordFile && <button type="button" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => setRecordFile(null)}>Remove</button>}
+            </div>
           </div>
 
           {amt > 0 && (
@@ -1019,7 +1084,8 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
 
   const isOwner = advance?.requesterId === userId;
   const isManagerApprover = ["manager", "admin", "super_admin", "hr"].includes(role);
-  const isFinal = role === "super_admin";
+  const isFinal = ["super_admin", "hr"].includes(role);
+  const isCeo = role === "super_admin";
   const isAccounts = ["super_admin", "admin", "hr", "finance"].includes(role);
 
   // Manager approval form
@@ -1030,6 +1096,26 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
   const [note, setNote] = useState("");
   const [returnNote, setReturnNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
+
+  // Final-approval start-month pickers
+  const nowD = new Date();
+  const defStart = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
+  const [finalStartMonth, setFinalStartMonth] = useState(String(defStart.getMonth() + 1));
+  const [finalStartYear, setFinalStartYear] = useState(String(defStart.getFullYear()));
+  const [showPreviewSchedule, setShowPreviewSchedule] = useState(false);
+
+  const { data: previewScheduleData } = useQuery<{ schedule: Array<{ installmentNo: number; year: number; month: number; scheduledAmount: string }>; startYear: number; startMonth: number }>({
+    queryKey: ["/api/salary-advances/preview-schedule", approvedAmount, repaymentMonths, finalStartMonth, finalStartYear],
+    queryFn: async () => {
+      const amt = parseFloat(approvedAmount || "0");
+      const m = parseInt(repaymentMonths || "0", 10);
+      if (!amt || !m) return { schedule: [], startYear: 0, startMonth: 0 };
+      const res = await fetch(`/api/salary-advances/preview-schedule?amount=${amt}&months=${m}&startMonth=${finalStartMonth}&startYear=${finalStartYear}`, { credentials: "include" });
+      if (!res.ok) return { schedule: [], startYear: 0, startMonth: 0 };
+      return res.json();
+    },
+    enabled: showPreviewSchedule && !!parseFloat(approvedAmount || "0") && !!parseInt(repaymentMonths || "0", 10),
+  });
 
   useEffect(() => {
     if (advance) {
@@ -1197,6 +1283,14 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
               </div>
             )}
 
+            {/* CEO escalation banner */}
+            {advance.exceedsSalaryCap && (
+              <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 p-3 text-sm text-purple-800" data-testid="banner-ceo-escalation">
+                <Crown className="h-4 w-4 mt-0.5 shrink-0" />
+                <p>This advance exceeds 50% of the employee's net salary and requires <strong>CEO approval</strong> before disbursement.</p>
+              </div>
+            )}
+
             {/* FINAL actions */}
             {isFinal && advance.status === "pending_final" && (
               <div className="space-y-3 rounded-lg border p-3">
@@ -1204,17 +1298,45 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Approved Amount (₹)</Label>
-                    <Input type="number" value={approvedAmount} onChange={(e) => setApprovedAmount(e.target.value)} data-testid="input-final-amount" />
+                    <Input type="number" value={approvedAmount} onChange={(e) => { setApprovedAmount(e.target.value); setShowPreviewSchedule(false); }} data-testid="input-final-amount" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Repayment Months (max {maxMonths})</Label>
-                    <Input type="number" min={1} max={maxMonths} value={repaymentMonths} onChange={(e) => setRepaymentMonths(e.target.value)} data-testid="input-final-months" />
+                    <Input type="number" min={1} max={maxMonths} value={repaymentMonths} onChange={(e) => { setRepaymentMonths(e.target.value); setShowPreviewSchedule(false); }} data-testid="input-final-months" />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Monthly deduction preview: <span className="font-mono">₹{fmt(monthlyPreview)}</span></p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Recovery Starts (Month)</Label>
+                    <select value={finalStartMonth} onChange={(e) => { setFinalStartMonth(e.target.value); setShowPreviewSchedule(false); }} className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-final-start-month">
+                      {MONTHS.slice(1).map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Recovery Starts (Year)</Label>
+                    <Input type="number" min={2000} max={2100} value={finalStartYear} onChange={(e) => { setFinalStartYear(e.target.value); setShowPreviewSchedule(false); }} data-testid="input-final-start-year" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Monthly deduction: <span className="font-mono">₹{fmt(monthlyPreview)}</span></p>
+                {showPreviewSchedule && previewScheduleData?.schedule && previewScheduleData.schedule.length > 0 && (
+                  <div className="rounded-lg border divide-y text-xs" data-testid="preview-schedule-table">
+                    <div className="px-3 py-1.5 font-medium text-muted-foreground bg-muted/40">Repayment Schedule Preview</div>
+                    {previewScheduleData.schedule.map(r => (
+                      <div key={r.installmentNo} className="flex justify-between px-3 py-1.5">
+                        <span>#{r.installmentNo} · {MONTHS[r.month]} {r.year}</span>
+                        <span className="font-mono">₹{fmt(r.scheduledAmount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" data-testid="input-final-note" />
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => action.mutate({ path: "final-approve", body: { approvedAmount: parseFloat(approvedAmount), repaymentMonths: parseInt(repaymentMonths, 10), note } })} disabled={action.isPending} data-testid="button-final-approve">
+                  {!showPreviewSchedule && (
+                    <Button size="sm" variant="outline" onClick={() => setShowPreviewSchedule(true)} disabled={!parseFloat(approvedAmount || "0") || !parseInt(repaymentMonths || "0", 10)} data-testid="button-preview-schedule">
+                      Preview Schedule
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => action.mutate({ path: "final-approve", body: { approvedAmount: parseFloat(approvedAmount), repaymentMonths: parseInt(repaymentMonths, 10), note, startMonth: parseInt(finalStartMonth, 10), startYear: parseInt(finalStartYear, 10) } })} disabled={action.isPending} data-testid="button-final-approve">
                     Approve & Generate Schedule
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => { const r = prompt("Rejection reason:"); if (r) action.mutate({ path: "final-reject", body: { reason: r } }); }} disabled={action.isPending} data-testid="button-final-reject">
@@ -1223,6 +1345,29 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                 </div>
               </div>
             )}
+
+            {/* CEO actions */}
+            {isCeo && advance.status === "pending_ceo" && (
+              <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/50 p-3">
+                <p className="text-sm font-medium flex items-center gap-2"><Crown className="h-4 w-4 text-purple-600" /> CEO Approval</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <Info label="Approved Amount" value={`₹${fmt(advance.approvedAmount)}`} />
+                  <Info label="Repayment" value={`${advance.repaymentMonths} months × ₹${fmt(advance.monthlyDeduction)}`} />
+                </div>
+                <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note for the record" data-testid="input-ceo-note" />
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => action.mutate({ path: "ceo-approve", body: { note } })} disabled={action.isPending} data-testid="button-ceo-approve">
+                    <Crown className="h-3.5 w-3.5 mr-1.5" /> Approve & Disburse
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => { const r = prompt("Rejection reason:"); if (r) action.mutate({ path: "ceo-reject", body: { reason: r } }); }} disabled={action.isPending} data-testid="button-ceo-reject">
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Attachments section */}
+            <AttachmentsSection advanceId={advanceId} canUpload={isOwner || isManagerApprover || isFinal} />
 
             {/* ACCOUNTS: disburse */}
             {isAccounts && advance.status === "approved" && (
@@ -1263,6 +1408,148 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-medium">{value}</p>
+    </div>
+  );
+}
+
+interface Attachment {
+  id: string;
+  fileName: string;
+  objectPath: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  uploadedById: string;
+  createdAt: string;
+  downloadUrl: string | null;
+}
+
+function AttachmentsSection({ advanceId, canUpload }: { advanceId: string; canUpload: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = (typeof window !== "undefined" ? { current: null } : { current: null }) as React.MutableRefObject<HTMLInputElement | null>;
+
+  const { data: attachments, isLoading } = useQuery<Attachment[]>({
+    queryKey: ["/api/salary-advances", advanceId, "attachments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/salary-advances/${advanceId}/attachments`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!advanceId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (attId: string) => {
+      const res = await fetch(`/api/salary-advances/${advanceId}/attachments/${attId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/salary-advances", advanceId, "attachments"] });
+      toast({ title: "Attachment removed" });
+    },
+    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+  });
+
+  const handleFileSelect = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      // 1. Get presigned upload URL + server-scoped HMAC token (advanceId bound)
+      const urlRes = await fetch("/api/salary-advances/request-upload", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ advanceId }),
+      });
+      if (!urlRes.ok) throw new Error("Could not get upload URL");
+      const { uploadURL, uploadToken } = await urlRes.json();
+
+      // 2. Upload directly to object storage
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT", body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+
+      // 3. Record the attachment — objectPath comes from the signed token, not client
+      const recRes = await fetch(`/api/salary-advances/${advanceId}/attachments`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadToken, fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+      });
+      if (!recRes.ok) throw new Error("Failed to record attachment");
+
+      qc.invalidateQueries({ queryKey: ["/api/salary-advances", advanceId, "attachments"] });
+      toast({ title: "Attachment uploaded" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const fmtSize = (bytes: number | null) => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-muted-foreground flex items-center gap-1"><Paperclip className="h-3 w-3" /> Attachments</p>
+        {canUpload && (
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ""; }}
+              data-testid="input-attachment-file"
+            />
+            <span
+              className="inline-flex items-center gap-1 text-xs text-primary border border-dashed border-primary/50 rounded px-2 py-0.5 hover:bg-primary/5 transition-colors cursor-pointer"
+              data-testid="button-attach-file"
+            >
+              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              {uploading ? "Uploading…" : "Attach file"}
+            </span>
+          </label>
+        )}
+      </div>
+      {isLoading ? (
+        <div className="h-8 rounded bg-muted animate-pulse" />
+      ) : !attachments || attachments.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No attachments yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {attachments.map(att => (
+            <div key={att.id} className="flex items-center gap-2 text-xs rounded border px-2 py-1.5" data-testid={`row-attachment-${att.id}`}>
+              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="flex-1 truncate">{att.fileName}</span>
+              {att.sizeBytes && <span className="text-muted-foreground shrink-0">{fmtSize(att.sizeBytes)}</span>}
+              {att.downloadUrl ? (
+                <a href={att.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline shrink-0" data-testid={`link-download-${att.id}`}>
+                  Download
+                </a>
+              ) : null}
+              {canUpload && (
+                <button
+                  type="button"
+                  onClick={() => deleteMutation.mutate(att.id)}
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  disabled={deleteMutation.isPending}
+                  data-testid={`button-delete-attachment-${att.id}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

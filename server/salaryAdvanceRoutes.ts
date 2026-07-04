@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
+import crypto from "crypto";
 import { db } from "./db";
 import { resolveRoles } from "@shared/accessControl";
 import {
@@ -12,6 +13,36 @@ import {
   type SalaryAdvancePolicy,
   type SalaryAdvanceRequest,
 } from "@shared/schema";
+
+// ── Secure upload token helpers ──────────────────────────────────────────────
+// Server signs (advanceId + objectPath + timestamp) with HMAC-SHA256 so the
+// client can NEVER substitute an arbitrary objectPath.  The token is opaque to
+// the client and expires after 15 minutes.
+function _uploadTokenSecret(): string {
+  return process.env.SESSION_SECRET || "advance-upload-token-secret-fallback";
+}
+
+function signUploadToken(advanceId: string, objectPath: string): string {
+  const payload = JSON.stringify({ advanceId, objectPath, ts: Date.now() });
+  const sig = crypto.createHmac("sha256", _uploadTokenSecret()).update(payload).digest("hex").slice(0, 20);
+  return Buffer.from(payload).toString("base64url") + "." + sig;
+}
+
+function verifyUploadToken(token: string, advanceId: string): string | null {
+  try {
+    const lastDot = token.lastIndexOf(".");
+    if (lastDot < 0) return null;
+    const payloadB64 = token.slice(0, lastDot);
+    const sig = token.slice(lastDot + 1);
+    const payloadStr = Buffer.from(payloadB64, "base64url").toString();
+    const expectedSig = crypto.createHmac("sha256", _uploadTokenSecret()).update(payloadStr).digest("hex").slice(0, 20);
+    if (sig !== expectedSig) return null;
+    const payload = JSON.parse(payloadStr) as { advanceId: string; objectPath: string; ts: number };
+    if (payload.advanceId !== advanceId) return null;
+    if (Date.now() - payload.ts > 15 * 60 * 1000) return null;
+    return payload.objectPath;
+  } catch { return null; }
+}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -261,20 +292,31 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   const FLAG_OFF_MANAGER_READ_ROLES = ["manager", "finance"];
   const isAdminToolRequest = (method: string, subPath: string): boolean => {
     if (method === "POST" && subPath === "/backfill") return true;
+    if (method === "POST" && subPath === "/request-upload") return true;
     if (method === "GET") {
       if (subPath === "/active" || subPath === "/stats" || subPath === "/policy") return true;
       if (subPath === "/pending-adjustments" || subPath === "/my-submissions") return true;
+      if (subPath === "/pending/ceo") return true;
+      if (subPath === "/preview-schedule") return true;
+      if (subPath === "/eligibility-check") return true;
       // GET /employee/:userId
       if (/^\/employee\/[^/]+$/.test(subPath)) return true;
       // Detail dialog: GET /api/salary-advances/:id (uuid-shaped, no extra segment).
       if (/^\/[0-9a-fA-F-]{16,}$/.test(subPath)) return true;
       // Schedule: GET /api/salary-advances/:id/schedule
       if (/^\/[0-9a-fA-F-]{16,}\/schedule$/.test(subPath)) return true;
+      // Attachments: GET /api/salary-advances/:id/attachments
+      if (/^\/[0-9a-fA-F-]{16,}\/attachments$/.test(subPath)) return true;
     }
     // HR-recorded adjustment review & resubmit actions
     if (method === "PATCH" && /\/(approve-adjustment|return-adjustment|reject-adjustment|resubmit-adjustment)$/.test(subPath)) return true;
     // Reschedule repayments
     if (method === "PATCH" && /^\/[0-9a-fA-F-]{16,}\/reschedule$/.test(subPath)) return true;
+    // Attachment record + delete
+    if (method === "POST" && /^\/[0-9a-fA-F-]{16,}\/attachments$/.test(subPath)) return true;
+    if (method === "DELETE" && /^\/[0-9a-fA-F-]{16,}\/attachments\/[^/]+$/.test(subPath)) return true;
+    // CEO approval
+    if (method === "POST" && /\/(ceo-approve|ceo-reject)$/.test(subPath)) return true;
     return false;
   };
   const isManagerReadRequest = (method: string, subPath: string): boolean => {
@@ -375,12 +417,56 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Final approval queue (super admin)
-  app.get("/api/salary-advances/pending/final", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
+  app.get("/api/salary-advances/pending/final", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (_req: Request, res: Response) => {
     try {
       const rows = await storage.listSalaryAdvancesByStatus(["pending_final"]);
       res.json(await enrichUsers(rows));
     } catch {
       res.status(500).json({ error: "Failed to load queue" });
+    }
+  });
+
+  // ── CEO Exceptions queue — advances that exceed 50% of salary require CEO sign-off
+  // Restricted to super_admin (CEO) only — HR must not see this queue.
+  app.get("/api/salary-advances/pending/ceo", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
+    try {
+      const rows = await storage.listSalaryAdvancesByStatus(["pending_ceo"]);
+      res.json(await enrichUsers(rows));
+    } catch {
+      res.status(500).json({ error: "Failed to load CEO queue" });
+    }
+  });
+
+  // ── Preview repayment schedule (non-committing)
+  app.get("/api/salary-advances/preview-schedule", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const amount = Number(req.query.amount || 0);
+      const months = Number(req.query.months || 1);
+      if (!amount || amount <= 0 || !months || months < 1) {
+        return res.status(400).json({ error: "Valid amount and months are required" });
+      }
+      const smParam = Number(req.query.startMonth || 0);
+      const syParam = Number(req.query.startYear || 0);
+      const { year, month } = (smParam >= 1 && smParam <= 12 && syParam >= 2000) ? { year: syParam, month: smParam } : nextMonth();
+      const schedule = buildSchedule({ advanceId: "preview", userId: "preview", amount, months, startYear: year, startMonth: month });
+      res.json({ schedule, startYear: year, startMonth: month });
+    } catch {
+      res.status(500).json({ error: "Failed to generate preview" });
+    }
+  });
+
+  // ── Eligibility check for the current session user (used by the Service Desk form)
+  app.get("/api/salary-advances/eligibility-check", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const amount = Number(req.query.amount || 0);
+      if (!amount || amount <= 0) return res.json({ warnings: [], exceedsCap50: false, netSalary: 0, cap: 0 });
+      const policy = await getPolicy();
+      const eligibility = await evaluateEligibility(req.session.userId!, amount, policy);
+      const netSalary = await getNetSalary(req.session.userId!);
+      const exceedsCap50 = netSalary > 0 && amount > netSalary * 0.5;
+      res.json({ warnings: eligibility.warnings, exceedsCap50, netSalary, cap: eligibility.cap });
+    } catch {
+      res.status(500).json({ error: "Failed to evaluate eligibility" });
     }
   });
 
@@ -718,7 +804,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Pending Adjustments — super_admin: global queue of pending_review overpayments/credits.
-  app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
+  app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (_req: Request, res: Response) => {
     try {
       const rows = await storage.listSalaryAdvancesByStatus(["pending_review"]);
       const enriched = await Promise.all(rows.map(async (a) => {
@@ -741,7 +827,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: approve an HR-recorded adjustment (overpayment or salary_credit).
-  app.patch("/api/salary-advances/:id/approve-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/approve-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -838,7 +924,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: return an HR-recorded adjustment for edit.
-  app.patch("/api/salary-advances/:id/return-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/return-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -872,7 +958,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: permanently reject an HR-recorded adjustment.
-  app.patch("/api/salary-advances/:id/reject-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/reject-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -989,6 +1075,10 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       const eligibility = await evaluateEligibility(userId, requestedAmount, policy);
       const managerId = await resolveApprover(userId);
 
+      // Pre-compute the CEO-escalation flag so it's visible immediately on the advance record.
+      const netSalaryForCap = await getNetSalary(userId);
+      const exceedsSalaryCap = netSalaryForCap > 0 && requestedAmount > netSalaryForCap * 0.5;
+
       const created = await storage.createSalaryAdvanceWithNumber({
         requesterId: userId,
         managerId: managerId || undefined,
@@ -997,6 +1087,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         outstandingBalance: "0",
         totalRepaid: "0",
         policySnapshot: policy,
+        exceedsSalaryCap,
       } as any);
 
       await storage.addSalaryAdvanceAuditEntry({
@@ -1282,7 +1373,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: final reject
-  app.post("/api/salary-advances/:id/final-reject", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+  app.post("/api/salary-advances/:id/final-reject", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1312,7 +1403,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: final approve (generate repayment schedule)
-  app.post("/api/salary-advances/:id/final-approve", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+  app.post("/api/salary-advances/:id/final-approve", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1323,6 +1414,8 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         approvedAmount: z.number().positive().optional(),
         repaymentMonths: z.number().int().min(1).optional(),
         note: z.string().optional(),
+        startMonth: z.number().int().min(1).max(12).optional(),
+        startYear: z.number().int().min(2000).max(2100).optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
@@ -1338,13 +1431,79 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       }
 
       const monthlyDeduction = Math.ceil((approvedAmount / repaymentMonths) * 100) / 100;
-      // Urgent (department-head-approved) advances begin recovery in the current
-      // payroll month; standard advances begin the following month.
-      // In both cases, bump past any locked run to avoid a silent deduction miss.
-      const baseStart = advance.urgentProcessing ? currentMonth() : nextMonth();
-      const finalApproveResolved = await resolveStartMonth(baseStart);
+      // If the HR approver explicitly picked a start month/year, use that (after bumping past locked runs).
+      // Otherwise: urgent advances start current month, standard advances start next month.
+      const bodyStart = parsed.data.startMonth && parsed.data.startYear
+        ? { year: parsed.data.startYear, month: parsed.data.startMonth }
+        : advance.urgentProcessing ? currentMonth() : nextMonth();
+      const finalApproveResolved = await resolveStartMonth(bodyStart);
       const start = { year: finalApproveResolved.year, month: finalApproveResolved.month };
       const now = new Date();
+
+      // CEO escalation: if the advance exceeds 50% of the employee's monthly salary,
+      // route to pending_ceo instead of disbursing immediately.
+      const netSalary = await getNetSalary(advance.requesterId);
+      const halfSalary = netSalary > 0 ? netSalary * 0.5 : Infinity;
+      const needsCeoApproval = approvedAmount > halfSalary;
+
+      if (needsCeoApproval) {
+        // Store the schedule parameters on the advance but don't create repayments yet.
+        const updated = await storage.updateSalaryAdvance(advance.id, {
+          status: "pending_ceo",
+          approvedAmount: approvedAmount.toFixed(2),
+          repaymentMonths,
+          monthlyDeduction: monthlyDeduction.toFixed(2),
+          repaymentStartYear: start.year,
+          repaymentStartMonth: start.month,
+          outstandingBalance: approvedAmount.toFixed(2),
+          finalApprovedBy: req.session.userId!,
+          finalApprovedAt: now,
+          finalNote: parsed.data.note || null,
+          exceedsSalaryCap: true,
+        } as any);
+
+        await storage.addSalaryAdvanceAuditEntry({
+          advanceId: advance.id, actorId: req.session.userId!, action: "escalated_to_ceo",
+          oldStatus: advance.status, newStatus: "pending_ceo",
+          metadata: { approvedAmount, repaymentMonths, netSalary, halfSalary },
+        } as any);
+
+        // Notify all parties: CEO (super_admin), HR users, manager, and requester
+        const allUsers = await storage.getAdminUsers();
+        const activeUsers = allUsers.filter((x: any) => x.isActive !== false);
+        for (const u of activeUsers.filter((x: any) => x.role === "super_admin")) {
+          await notify({
+            userId: u.id, type: "salary_advance_ceo_needed",
+            title: "CEO approval required for salary advance",
+            message: `${advance.requestNumber} exceeds 50% of net salary — requires CEO sign-off.`,
+            link: "/admin/salary-advance?tab=ceo",
+          });
+        }
+        for (const u of activeUsers.filter((x: any) => x.role === "hr")) {
+          await notify({
+            userId: u.id, type: "salary_advance_ceo_needed",
+            title: "Advance escalated to CEO",
+            message: `${advance.requestNumber} exceeds the 50% cap and has been forwarded to CEO.`,
+            link: "/admin/salary-advance?tab=final",
+          });
+        }
+        if (advance.managerId) {
+          await notify({
+            userId: advance.managerId, type: "salary_advance_ceo_needed",
+            title: "Advance escalated to CEO",
+            message: `${advance.requestNumber} (team member) exceeds the 50% cap and is awaiting CEO approval.`,
+            link: "/admin/salary-advance?tab=approvals",
+          });
+        }
+        await notify({
+          userId: advance.requesterId, type: "salary_advance_ceo_pending",
+          title: "Advance escalated for CEO approval",
+          message: `${advance.requestNumber} exceeds the standard cap and is pending CEO approval.`,
+          link: EMPLOYEE_LINK,
+        });
+
+        return res.json(updated);
+      }
 
       // Centralized lifecycle: final approval auto-disburses the advance so the
       // payroll recovery engine (which acts on disbursed/repaying advances) picks
@@ -1406,6 +1565,295 @@ export function registerSalaryAdvanceRoutes(app: Express) {
     } catch (err) {
       console.error("Final approve error:", err);
       res.status(500).json({ error: "Failed to approve" });
+    }
+  });
+
+  // ── CEO: approve a pending_ceo advance (disburse with the already-computed schedule)
+  app.post("/api/salary-advances/:id/ceo-approve", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (advance.status !== "pending_ceo") return res.status(400).json({ error: "Request is not pending CEO approval." });
+
+      const schema = z.object({ note: z.string().optional() });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+      const actorId = req.session.userId!;
+      const approvedAmount = Number(advance.approvedAmount || advance.requestedAmount);
+      const repaymentMonths = Number(advance.repaymentMonths || 1);
+      const startYear = Number(advance.repaymentStartYear);
+      const startMonth = Number(advance.repaymentStartMonth);
+      const now = new Date();
+
+      // Recompute start month in case salary run was locked since escalation
+      const resolved = await resolveStartMonth({ year: startYear || nextMonth().year, month: startMonth || nextMonth().month });
+
+      const schedule = buildSchedule({
+        advanceId: advance.id,
+        userId: advance.requesterId,
+        amount: approvedAmount,
+        months: repaymentMonths,
+        startYear: resolved.year,
+        startMonth: resolved.month,
+      });
+
+      const updated = await storage.updateSalaryAdvance(advance.id, {
+        status: "disbursed",
+        repaymentStartYear: resolved.year,
+        repaymentStartMonth: resolved.month,
+        disbursedBy: actorId,
+        disbursedAt: now,
+        finalNote: parsed.data.note || (advance.finalNote as string | null) || null,
+      });
+      await storage.createSalaryAdvanceRepayments(schedule as any);
+
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "ceo_approved",
+        oldStatus: "pending_ceo", newStatus: "disbursed",
+        metadata: { approvedAmount, repaymentMonths, scheduleStart: resolved },
+      } as any);
+
+      try {
+        const { recordAdvanceLedgerEntry } = await import("./salaryLedger");
+        await recordAdvanceLedgerEntry({
+          employeeId: advance.requesterId,
+          advanceId: advance.id,
+          amount: approvedAmount,
+          reason: `Salary advance ${advance.requestNumber} disbursed (CEO-approved)`,
+          effectiveDate: now,
+          initiatedBy: actorId,
+        });
+      } catch (ledgerErr) {
+        console.error("CEO advance ledger entry failed (non-fatal):", ledgerErr);
+      }
+
+      // Notify all chain members of the CEO approval outcome
+      await notify({
+        userId: advance.requesterId, type: "salary_advance_approved",
+        title: "Advance approved by CEO & disbursed",
+        message: `${advance.requestNumber} has been approved and disbursed. Repayment over ${repaymentMonths} month(s) begins via payroll.`,
+        link: EMPLOYEE_LINK,
+      });
+      try {
+        const allU = await storage.getAdminUsers();
+        const activeU = allU.filter((x: any) => x.isActive !== false);
+        for (const u of activeU.filter((x: any) => x.role === "hr")) {
+          await notify({ userId: u.id, type: "salary_advance_approved",
+            title: "Advance approved by CEO",
+            message: `${advance.requestNumber} CEO-approved and disbursed.`,
+            link: "/admin/salary-advance?tab=final" });
+        }
+        if (advance.managerId) {
+          await notify({ userId: advance.managerId, type: "salary_advance_approved",
+            title: "Team advance CEO-approved",
+            message: `${advance.requestNumber} has been approved by the CEO and disbursed.`,
+            link: "/admin/salary-advance?tab=approvals" });
+        }
+      } catch { /* notification fanout errors are non-fatal */ }
+      res.json({ ...updated, repayments: schedule });
+    } catch (err) {
+      console.error("CEO approve error:", err);
+      res.status(500).json({ error: "Failed to approve" });
+    }
+  });
+
+  // ── CEO: reject a pending_ceo advance
+  app.post("/api/salary-advances/:id/ceo-reject", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (advance.status !== "pending_ceo") return res.status(400).json({ error: "Request is not pending CEO approval." });
+
+      const schema = z.object({ reason: z.string().min(1, "A rejection reason is required") });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "A rejection reason is required" });
+
+      const updated = await storage.updateSalaryAdvance(advance.id, {
+        status: "rejected",
+        rejectedBy: req.session.userId!,
+        rejectedAt: new Date(),
+        rejectionReason: parsed.data.reason,
+      });
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId: req.session.userId!, action: "ceo_rejected",
+        oldStatus: "pending_ceo", newStatus: "rejected",
+        metadata: { reason: parsed.data.reason },
+      } as any);
+      // Notify all chain members of the CEO rejection outcome
+      await notify({
+        userId: advance.requesterId, type: "salary_advance_rejected",
+        title: "Advance request rejected by CEO",
+        message: `${advance.requestNumber} was rejected: ${parsed.data.reason}`,
+        link: EMPLOYEE_LINK,
+      });
+      try {
+        const allU = await storage.getAdminUsers();
+        const activeU = allU.filter((x: any) => x.isActive !== false);
+        for (const u of activeU.filter((x: any) => x.role === "hr")) {
+          await notify({ userId: u.id, type: "salary_advance_rejected",
+            title: "Advance rejected by CEO",
+            message: `${advance.requestNumber} was rejected by the CEO: ${parsed.data.reason}`,
+            link: "/admin/salary-advance?tab=final" });
+        }
+        if (advance.managerId) {
+          await notify({ userId: advance.managerId, type: "salary_advance_rejected",
+            title: "Team advance rejected by CEO",
+            message: `${advance.requestNumber} was rejected: ${parsed.data.reason}`,
+            link: "/admin/salary-advance?tab=approvals" });
+        }
+      } catch { /* notification fanout errors are non-fatal */ }
+      res.json(updated);
+    } catch {
+      res.status(500).json({ error: "Failed to reject" });
+    }
+  });
+
+  // ── Attachments: request presigned upload URL (server-scoped + HMAC-signed token)
+  // The client must supply advanceId so the server can scope the token to that
+  // specific advance and verify ownership.  The returned `uploadToken` encodes
+  // the server-generated objectPath + HMAC; it is the only value accepted by
+  // the record endpoint — the client never controls objectPath directly.
+  app.post("/api/salary-advances/request-upload", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const parsed = z.object({ advanceId: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "advanceId is required" });
+      const { advanceId } = parsed.data;
+      const advance = await storage.getSalaryAdvance(advanceId);
+      if (!advance) return res.status(404).json({ error: "Advance not found" });
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+      const isPrivileged = ["super_admin", "admin", "hr"].includes(role);
+      const isOwner = advance.requesterId === userId;
+      const isManager = advance.managerId === userId;
+      if (!isOwner && !isManager && !isPrivileged) return res.status(403).json({ error: "Forbidden" });
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const svc = new ObjectStorageService();
+      const uploadURL = await svc.getObjectEntityUploadURL();
+      const objectPath = svc.normalizeObjectEntityPath(uploadURL);
+      const uploadToken = signUploadToken(advanceId, objectPath);
+      res.json({ uploadURL, uploadToken });
+    } catch (err: any) {
+      console.error("Advance upload URL error:", err);
+      res.status(500).json({ error: err?.message || "Failed to get upload URL" });
+    }
+  });
+
+  // ── Attachments: record an uploaded file against an advance
+  app.post("/api/salary-advances/:id/attachments", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+      const isPrivileged = ["super_admin", "admin", "hr"].includes(role);
+      const isOwner = advance.requesterId === userId;
+      const isManager = advance.managerId === userId;
+      if (!isOwner && !isManager && !isPrivileged) return res.status(403).json({ error: "Forbidden" });
+
+      const schema = z.object({
+        uploadToken: z.string().min(1),
+        fileName: z.string().min(1),
+        contentType: z.string().optional(),
+        sizeBytes: z.number().int().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      // Verify the HMAC-signed token; extracts the server-generated objectPath.
+      // The client never controls objectPath — it comes from the signed token only.
+      const objectPath = verifyUploadToken(parsed.data.uploadToken, advance.id);
+      if (!objectPath) return res.status(400).json({ error: "Invalid or expired upload token" });
+
+      const attachment = await storage.createSalaryAdvanceAttachment({
+        advanceId: advance.id,
+        uploadedById: userId,
+        fileName: parsed.data.fileName,
+        objectPath,
+        contentType: parsed.data.contentType || null,
+        sizeBytes: parsed.data.sizeBytes || null,
+      } as any);
+
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId: userId, action: "attachment_added",
+        oldStatus: advance.status, newStatus: advance.status,
+        metadata: { fileName: parsed.data.fileName },
+      } as any);
+
+      res.status(201).json(attachment);
+    } catch (err) {
+      console.error("Attachment record error:", err);
+      res.status(500).json({ error: "Failed to record attachment" });
+    }
+  });
+
+  // ── Attachments: list attachments with signed download URLs
+  app.get("/api/salary-advances/:id/attachments", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(role);
+      const isOwner = advance.requesterId === userId;
+      const isManager = advance.managerId === userId;
+      if (!isOwner && !isManager && !isPrivileged) return res.status(403).json({ error: "Forbidden" });
+
+      const attachments = await storage.listSalaryAdvanceAttachments(advance.id);
+
+      // Generate signed URLs for each attachment
+      let signed: any[] = [];
+      try {
+        const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+        const svc = new ObjectStorageService();
+        signed = await Promise.all(attachments.map(async (att) => {
+          try {
+            const file = await svc.getObjectEntityFile(att.objectPath);
+            const { signObjectURL, parseObjectPath } = await import("./replit_integrations/object_storage/objectStorage") as any;
+            const { bucketName, objectName } = (parseObjectPath || ((p: string) => {
+              const parts = p.replace(/^\/objects\//, "").split("/");
+              return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+            }))(att.objectPath);
+            const downloadUrl = await (file as any).getSignedUrl({ action: "read", expires: Date.now() + 3600000 }).then((r: any) => r[0]);
+            return { ...att, downloadUrl };
+          } catch {
+            return { ...att, downloadUrl: null };
+          }
+        }));
+      } catch {
+        signed = attachments.map(a => ({ ...a, downloadUrl: null }));
+      }
+
+      res.json(signed);
+    } catch (err) {
+      console.error("Attachment list error:", err);
+      res.status(500).json({ error: "Failed to list attachments" });
+    }
+  });
+
+  // ── Attachments: delete an attachment
+  app.delete("/api/salary-advances/:id/attachments/:attId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+
+      const userId = req.session.userId!;
+      const role = req.session.role || "employee";
+      const isPrivileged = ["super_admin", "admin", "hr"].includes(role);
+      const isOwner = advance.requesterId === userId;
+      if (!isOwner && !isPrivileged) return res.status(403).json({ error: "Forbidden" });
+
+      // IDOR guard: ensure attachment belongs to this advance, not another one
+      const attachment = await storage.getSalaryAdvanceAttachment(req.params.attId);
+      if (!attachment) return res.status(404).json({ error: "Attachment not found" });
+      if (attachment.advanceId !== advance.id) return res.status(403).json({ error: "Attachment does not belong to this advance" });
+
+      await storage.deleteSalaryAdvanceAttachment(req.params.attId);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: "Failed to delete attachment" });
     }
   });
 
