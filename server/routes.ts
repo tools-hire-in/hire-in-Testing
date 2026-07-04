@@ -7890,6 +7890,33 @@ export async function registerRoutes(
 
       const scopedUserIds = Array.isArray(userIds) && userIds.length > 0 ? new Set<string>(userIds) : null;
 
+      // Is there an approved (locked) run for this period? If so, inline
+      // corrections are not allowed — the frontend uses this to disable editing.
+      const [lockedRunForPeriod] = await db.select({ id: salaryReportRuns.id })
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "approved"),
+        ))
+        .limit(1);
+      const periodLocked = !!lockedRunForPeriod;
+
+      type BreakdownVals = {
+        baseSalary: number;
+        salaryCredit: number;
+        grossSalary: number;
+        workingDays: number;
+        presentDays: number;
+        absentDays: number;
+        paidLeaves: number;
+        lopLeaves: number;
+        deductions: number;
+        dailyRate: number;
+        advanceRecovery: number;
+        netPayable: number;
+      };
+
       const diff: Array<{
         userId: string;
         name: string;
@@ -7901,6 +7928,9 @@ export async function registerRoutes(
         isNew: boolean;
         changed: boolean;
         changeReason: string;
+        // Full pay-math breakdown so the preview can explain every number.
+        newVals: BreakdownVals;
+        oldVals: BreakdownVals | null;
       }> = [];
 
       const slipsToUpsert: Array<Parameters<typeof storage.upsertSalarySlip>[0]> = [];
@@ -7975,6 +8005,36 @@ export async function registerRoutes(
           changeReason = parts.length > 0 ? parts.join(" · ") : "Recalculated";
         }
 
+        const newDailyRate = row.workingDays > 0 ? row.salary / row.workingDays : 0;
+        const newVals: BreakdownVals = {
+          baseSalary: row.salary,
+          salaryCredit: row.salaryCredit || 0,
+          grossSalary: row.grossSalary,
+          workingDays: row.workingDays,
+          presentDays: row.presentDays,
+          absentDays: row.absentDays,
+          paidLeaves: row.paidLeaves,
+          lopLeaves: row.lopLeaves,
+          deductions: row.deductions,
+          dailyRate: newDailyRate,
+          advanceRecovery: row.advanceRecovery || 0,
+          netPayable: row.netPayable,
+        };
+        const oldVals: BreakdownVals | null = existing ? {
+          baseSalary: parseFloat(String(existing.basicSalary ?? 0)),
+          salaryCredit: Math.max(0, (oldGross ?? 0) - parseFloat(String(existing.basicSalary ?? 0))),
+          grossSalary: oldGross ?? 0,
+          workingDays: existing.totalWorkingDays ?? 0,
+          presentDays: existing.daysPresent ?? 0,
+          absentDays: existing.daysAbsent ?? 0,
+          paidLeaves: parseFloat(String(existing.approvedLeaves ?? 0)),
+          lopLeaves: oldLop ?? 0,
+          deductions: oldDeductions ?? 0,
+          dailyRate: (existing.totalWorkingDays ?? 0) > 0 ? parseFloat(String(existing.basicSalary ?? 0)) / (existing.totalWorkingDays as number) : 0,
+          advanceRecovery: oldAdvance ?? 0,
+          netPayable: oldNet ?? 0,
+        } : null;
+
         diff.push({
           userId,
           name: userNameMap.get(userId) ?? row.employeeName,
@@ -7986,6 +8046,8 @@ export async function registerRoutes(
           isNew,
           changed,
           changeReason,
+          newVals,
+          oldVals,
         });
 
         slipsToUpsert.push({
@@ -8009,7 +8071,15 @@ export async function registerRoutes(
       }
 
       if (dryRun) {
-        return res.json({ dryRun: true, diff, totalEmployees: diff.length, changedCount: diff.filter(d => d.changed).length });
+        return res.json({ dryRun: true, diff, totalEmployees: diff.length, changedCount: diff.filter(d => d.changed).length, periodLocked });
+      }
+
+      // Locked-period guard: never overwrite pay for an already-approved run.
+      // Regenerating would create new slip versions that diverge from the
+      // approved payroll. Corrections for a locked month must go through an
+      // off-cycle adjustment instead.
+      if (periodLocked) {
+        return res.status(409).json({ error: "The salary run for this month is already approved and locked. Regeneration is disabled — use an off-cycle adjustment." });
       }
 
       // Find the latest approved salary run for this period (to link ledger rows)
@@ -8049,6 +8119,131 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Salary slip regeneration error:", error);
       res.status(500).json({ error: "Failed to regenerate salary slips" });
+    }
+  });
+
+  // Correct an employee's BASE monthly salary from inside the payroll preview.
+  // Writes to the centralized salary_changes ledger (single source of truth),
+  // effective the first day of the report month, so the month's slip — and every
+  // future month — resolves the corrected value. Preserves compensation
+  // governance: super-admin applies immediately (maker == checker, matching the
+  // existing /api/hr/salary-changes behavior); admin/HR create a maker-checker
+  // pending change for super-admin approval. A reason is mandatory and the acting
+  // user is recorded in the audit trail.
+  app.post("/api/hr/salary-slips/correct-salary", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        userId: z.string().min(1),
+        month: z.number().int().min(1).max(12),
+        year: z.number().int().min(2000).max(2100),
+        newSalary: z.number().positive("Salary must be greater than zero"),
+        reason: z.string().trim().min(5, "Please provide a reason (at least 5 characters)"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+
+      const { userId, month, year, newSalary, reason } = parsed.data;
+      const actorId = req.session.userId!;
+      const role = req.session.role || "";
+
+      // Locked-period guard: never rewrite pay for an already-approved run.
+      const [lockedRun] = await db.select({ id: salaryReportRuns.id })
+        .from(salaryReportRuns)
+        .where(and(eq(salaryReportRuns.month, month), eq(salaryReportRuns.year, year), eq(salaryReportRuns.status, "approved")))
+        .limit(1);
+      if (lockedRun) {
+        return res.status(409).json({ error: "The salary run for this month is already approved and locked. Corrections must go through an off-cycle adjustment." });
+      }
+
+      const employee = await storage.getAdminUser(userId);
+      if (!employee) return res.status(404).json({ error: "Employee not found" });
+
+      // Managers restricted to direct reports; admin/hr/super_admin unrestricted here.
+      if (role === "manager" && !(await canAccessEmployeeSalary(actorId, role, userId))) {
+        return res.status(403).json({ error: "You can only manage salary for your direct reports" });
+      }
+
+      const oldSalary = employee.salary != null ? Number(employee.salary) : null;
+      const newSalaryRounded = Math.round(newSalary * 100) / 100;
+      const effectiveDate = `${year}-${String(month).padStart(2, "0")}-01`;
+
+      // Is this correction the latest-effective applied salary change? If a
+      // later-effective raise already exists, a backdated correction must NOT
+      // overwrite the current live salary (admin_users.salary) — otherwise it
+      // would silently downgrade the employee's present compensation. In that
+      // case we record it in the ledger only (apply:false); the target month's
+      // slip still resolves it via the ledger, while the live record is left
+      // untouched.
+      const existingChanges = await storage.getSalaryChangesByEmployee(userId);
+      const hasLaterApplied = existingChanges.some(c =>
+        c.status === "applied" && c.newSalary != null && c.effectiveDate != null &&
+        String(c.effectiveDate) > effectiveDate
+      );
+      const applyLive = !hasLaterApplied;
+
+      if (role === "super_admin") {
+        const { recordSalaryChange } = await import("./salaryLedger");
+        await recordSalaryChange({
+          employeeId: userId,
+          newSalary: newSalaryRounded,
+          sourceType: "manual",
+          reason: `Payroll correction (${new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long" })} ${year}): ${reason}`,
+          effectiveDate,
+          initiatedBy: actorId,
+          approvedBy: actorId,
+          apply: applyLive,
+        });
+        await storage.createAuditLog({
+          action: "salary_change_applied",
+          actorId,
+          targetId: userId,
+          changes: { employeeId: userId, oldSalary, newSalary: newSalaryRounded, source: "payroll_preview_correction", month, year, reason, appliedLive: applyLive },
+        });
+        return res.status(200).json({ status: "applied", appliedLive: applyLive });
+      }
+
+      // Maker-checker: admin/HR create a pending change for super-admin approval.
+      const created = await storage.createSalaryChange({
+        employeeId: userId,
+        sourceType: "manual",
+        sourceDocumentType: null,
+        sourceDocumentId: null,
+        oldSalary: oldSalary != null ? oldSalary.toFixed(2) : null,
+        newSalary: newSalaryRounded.toFixed(2),
+        amount: null,
+        effectiveDate,
+        reason: `Payroll correction (${new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long" })} ${year}): ${reason}`,
+        status: "pending_approval",
+        initiatedBy: actorId,
+      } as any);
+      await storage.createAuditLog({
+        action: "salary_change_requested",
+        actorId,
+        targetId: userId,
+        changes: { employeeId: userId, oldSalary, newSalary: newSalaryRounded, changeId: created.id, source: "payroll_preview_correction", month, year, reason },
+      });
+
+      try {
+        const flagsSetting = await storage.getSystemSetting("feature_flags");
+        const flags = (flagsSetting?.value as Record<string, any>) || {};
+        if (flags.notifications_enabled !== false) {
+          const users = await storage.getAdminUsers();
+          for (const u of users.filter(x => x.role === "super_admin" && x.isActive)) {
+            await storage.createNotification({
+              userId: u.id,
+              type: "salary_change_pending",
+              title: "Salary change needs approval",
+              message: `A payroll salary correction for ${employee.firstName} ${employee.lastName} awaits your approval.`,
+              metadata: { link: "/admin/hr/people?tab=salary-approvals" },
+            } as any);
+          }
+        }
+      } catch { /* best-effort */ }
+
+      return res.status(200).json({ status: "pending_approval", id: created.id });
+    } catch (error) {
+      console.error("Salary correction error:", error);
+      res.status(500).json({ error: "Failed to record salary correction" });
     }
   });
 

@@ -112,6 +112,21 @@ const MONTHS = [
 
 const monthName = (m: number) => MONTHS.find(x => x.value === String(m))?.label || String(m);
 
+interface BreakdownVals {
+  baseSalary: number;
+  salaryCredit: number;
+  grossSalary: number;
+  workingDays: number;
+  presentDays: number;
+  absentDays: number;
+  paidLeaves: number;
+  lopLeaves: number;
+  deductions: number;
+  dailyRate: number;
+  advanceRecovery: number;
+  netPayable: number;
+}
+
 interface RegenerateDiffRow {
   userId: string;
   name: string;
@@ -123,21 +138,294 @@ interface RegenerateDiffRow {
   isNew: boolean;
   changed: boolean;
   changeReason?: string;
+  newVals: BreakdownVals;
+  oldVals: BreakdownVals | null;
+}
+
+const SALARY_EDIT_ROLES = ["super_admin", "admin", "hr"];
+const inr = (val: number | null) => val === null
+  ? "—"
+  : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
+const fmtDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, ""));
+
+// ── One line of the pay-math breakdown. Shows the new value and, when an old
+// slip exists and the value moved, a struck old → new delta.
+function BreakdownLine({
+  label, oldV, newV, format, sign, emphasize,
+}: {
+  label: string;
+  oldV: number | null;
+  newV: number;
+  format: (n: number) => string;
+  sign?: "+" | "−";
+  emphasize?: boolean;
+}) {
+  const changed = oldV !== null && Math.abs(newV - oldV) > 0.009;
+  return (
+    <div className={`flex items-center justify-between gap-3 py-1 ${emphasize ? "font-semibold" : ""}`} data-testid={`breakdown-line-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`}>
+      <span className={`text-xs ${emphasize ? "text-foreground" : "text-muted-foreground"}`}>
+        {sign && <span className="mr-1 text-muted-foreground">{sign}</span>}{label}
+      </span>
+      <span className="font-mono text-xs tabular-nums">
+        {changed && <span className="text-muted-foreground line-through mr-1.5">{format(oldV as number)}</span>}
+        <span className={changed ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>{format(newV)}</span>
+      </span>
+    </div>
+  );
+}
+
+// ── Inline base-salary correction. Writes to the salary ledger via the
+// governed endpoint (super-admin applies immediately; admin/HR create a
+// maker-checker pending change). Reason is mandatory.
+function BaseSalaryEditor({ row, month, year, onDone }: { row: RegenerateDiffRow; month: string; year: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(String(Math.round(row.newVals.baseSalary)));
+  const [reason, setReason] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hr/salary-slips/correct-salary", {
+      userId: row.userId, month: parseInt(month), year: parseInt(year), newSalary: parseFloat(value), reason: reason.trim(),
+    }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setOpen(false); setReason("");
+      if (data.status === "pending_approval") {
+        toast({ title: "Sent for approval", description: `Salary change for ${row.name} awaits Super-Admin approval before it applies.` });
+      } else {
+        toast({ title: "Salary corrected", description: `${row.name}'s base salary updated and applied.` });
+      }
+      onDone();
+    },
+    onError: (err: any) => toast({ title: "Could not correct salary", description: err.message || "Failed", variant: "destructive" }),
+  });
+
+  const num = parseFloat(value);
+  const valid = Number.isFinite(num) && num > 0 && reason.trim().length >= 5;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" data-testid={`button-edit-salary-${row.userId}`}>
+          <Pencil className="h-3 w-3" /> Correct base salary
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80" align="start">
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium">Correct base monthly salary</p>
+            <p className="text-xs text-muted-foreground">Writes to the salary ledger, effective {MONTHS.find(m => m.value === month)?.label} {year}.</p>
+          </div>
+          <div>
+            <Label className="text-xs">New monthly salary (₹)</Label>
+            <Input type="number" min="0" value={value} onChange={e => setValue(e.target.value)} className="h-8 mt-1" data-testid={`input-new-salary-${row.userId}`} />
+          </div>
+          <div>
+            <Label className="text-xs">Reason (required)</Label>
+            <Textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why is this correction needed?" className="mt-1 text-sm" data-testid={`input-salary-reason-${row.userId}`} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={!valid || save.isPending} onClick={() => save.mutate()} data-testid={`button-save-salary-${row.userId}`}>
+              {save.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface MemberAttendanceRec { id: string; date: string; status: string; punchIn: string | null; punchOut: string | null; correctionNote?: string | null; }
+
+// ── Per-day attendance correction (best-practice day picker). Reuses the
+// existing audited admin-correction engine, which marks a working day as
+// "present". Correcting attendance re-derives LOP/deductions on the next
+// preview refresh.
+function AttendanceCorrector({ row, month, year, onDone }: { row: RegenerateDiffRow; month: string; year: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [editDate, setEditDate] = useState<string | null>(null);
+  const [punchIn, setPunchIn] = useState("09:00");
+  const [punchOut, setPunchOut] = useState("18:00");
+  const [note, setNote] = useState("");
+
+  const m = parseInt(month), y = parseInt(year);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startDate = `${y}-${String(m).padStart(2, "0")}-01`;
+  const endDate = `${y}-${String(m).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const { data, isLoading, refetch } = useQuery<{ attendance: MemberAttendanceRec[] }>({
+    queryKey: [`/api/hr/attendance/member/${row.userId}/range`, { startDate, endDate }],
+    enabled: open,
+  });
+
+  const byDate = new Map((data?.attendance || []).map(r => [r.date, r]));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const workingDays: { date: string; weekday: string; status: string }[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(y, m - 1, d);
+    const dow = dt.getDay();
+    if (dow === 0 || dow === 6) continue;
+    const ds = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (ds > todayStr) continue;
+    workingDays.push({ date: ds, weekday: dt.toLocaleDateString("en-US", { weekday: "short" }), status: byDate.get(ds)?.status || "absent" });
+  }
+
+  const save = useMutation({
+    mutationFn: (date: string) => apiRequest("POST", "/api/hr/attendance/admin-correction", {
+      userId: row.userId, date, punchIn, punchOut, correctionNote: note.trim(),
+    }),
+    onSuccess: async () => {
+      toast({ title: "Attendance corrected", description: `Marked present — net pay will refresh.` });
+      setEditDate(null); setNote("");
+      await refetch();
+      onDone();
+    },
+    onError: (err: any) => toast({ title: "Could not correct day", description: err.message || "Failed", variant: "destructive" }),
+  });
+
+  const statusBadge = (s: string) => {
+    const map: Record<string, string> = {
+      present: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      absent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+      on_leave: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+      holiday: "bg-muted text-muted-foreground",
+    };
+    return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${map[s] || "bg-muted text-muted-foreground"}`}>{s.replace("_", " ")}</span>;
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditDate(null); }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" data-testid={`button-edit-attendance-${row.userId}`}>
+          <CalendarDays className="h-3 w-3" /> Correct attendance
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-96" align="start">
+        <div className="space-y-2">
+          <div>
+            <p className="text-sm font-medium">Correct attendance days</p>
+            <p className="text-xs text-muted-foreground">Mark a working day as present. LOP &amp; deductions recompute on refresh.</p>
+          </div>
+          {isLoading ? (
+            <div className="py-6 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+              {workingDays.map(day => (
+                <div key={day.date} className="p-2" data-testid={`attendance-day-${row.userId}-${day.date}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono">{day.weekday} {day.date.slice(8)}/{day.date.slice(5, 7)}</span>
+                    <div className="flex items-center gap-2">
+                      {statusBadge(day.status)}
+                      {day.status !== "present" && day.status !== "on_leave" && day.status !== "holiday" && (
+                        <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={() => { setEditDate(editDate === day.date ? null : day.date); setNote(""); }} data-testid={`button-mark-present-${row.userId}-${day.date}`}>
+                          Mark present
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {editDate === day.date && (
+                    <div className="mt-2 space-y-2 bg-muted/40 rounded p-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1"><Label className="text-[10px]">In</Label><Input type="time" value={punchIn} onChange={e => setPunchIn(e.target.value)} className="h-7 text-xs" /></div>
+                        <div className="flex-1"><Label className="text-[10px]">Out</Label><Input type="time" value={punchOut} onChange={e => setPunchOut(e.target.value)} className="h-7 text-xs" /></div>
+                      </div>
+                      <Textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Correction note (required)" className="text-xs" data-testid={`input-attendance-note-${row.userId}-${day.date}`} />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" className="h-7" onClick={() => setEditDate(null)}>Cancel</Button>
+                        <Button size="sm" className="h-7" disabled={note.trim().length < 1 || save.isPending} onClick={() => save.mutate(day.date)} data-testid={`button-save-attendance-${row.userId}-${day.date}`}>
+                          {save.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {workingDays.length === 0 && <p className="text-xs text-muted-foreground p-3 text-center">No correctable working days.</p>}
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ── One employee: collapsed summary row that expands to the full pay math and
+// inline correction controls.
+function EmployeeBreakdownRow({ row, canEdit, month, year, onCorrected, expanded, onToggle }: {
+  row: RegenerateDiffRow; canEdit: boolean; month: string; year: string; onCorrected: () => void; expanded: boolean; onToggle: () => void;
+}) {
+  const { newVals: nv, oldVals: ov } = row;
+  return (
+    <div className={`border rounded-lg ${row.isNew ? "border-blue-200 dark:border-blue-900" : row.changed ? "border-amber-200 dark:border-amber-900" : ""}`} data-testid={`employee-row-${row.userId}`}>
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 p-3 text-left hover-elevate rounded-lg" data-testid={`button-expand-${row.userId}`}>
+        <div className="min-w-0">
+          <p className="font-medium text-sm truncate">{row.name}</p>
+          <p className="text-xs text-muted-foreground truncate">{row.email}</p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {row.isNew ? (
+            <Badge variant="secondary" className="text-[10px]">New</Badge>
+          ) : row.changed ? (
+            <span className="hidden sm:inline text-[11px] text-amber-700 dark:text-amber-400 max-w-[180px] truncate">{row.changeReason || "Changed"}</span>
+          ) : null}
+          <div className="text-right font-mono text-xs">
+            {ov && Math.abs(nv.netPayable - (ov.netPayable)) > 0.5 && <span className="text-muted-foreground line-through mr-1.5">{inr(row.oldNetPayable)}</span>}
+            <span className="font-semibold">{inr(nv.netPayable)}</span>
+          </div>
+          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t p-3 space-y-3">
+          <div className="grid sm:grid-cols-2 gap-x-6">
+            <div>
+              <BreakdownLine label="Base Salary" oldV={ov?.baseSalary ?? null} newV={nv.baseSalary} format={inr} />
+              <BreakdownLine label="Salary Credits" oldV={ov?.salaryCredit ?? null} newV={nv.salaryCredit} format={inr} sign="+" />
+              <BreakdownLine label="Gross Salary" oldV={ov?.grossSalary ?? null} newV={nv.grossSalary} format={inr} emphasize />
+              <div className="border-t my-1" />
+              <BreakdownLine label="Daily Rate" oldV={ov?.dailyRate ?? null} newV={nv.dailyRate} format={inr} />
+              <BreakdownLine label="Deductions (LOP)" oldV={ov?.deductions ?? null} newV={nv.deductions} format={inr} sign="−" />
+              <BreakdownLine label="Advance Recovery" oldV={ov?.advanceRecovery ?? null} newV={nv.advanceRecovery} format={inr} sign="−" />
+              <div className="border-t my-1" />
+              <BreakdownLine label="Net Payable" oldV={ov?.netPayable ?? null} newV={nv.netPayable} format={inr} emphasize />
+            </div>
+            <div>
+              <BreakdownLine label="Working Days" oldV={ov?.workingDays ?? null} newV={nv.workingDays} format={fmtDays} />
+              <BreakdownLine label="Present Days" oldV={ov?.presentDays ?? null} newV={nv.presentDays} format={fmtDays} />
+              <BreakdownLine label="Paid Leaves" oldV={ov?.paidLeaves ?? null} newV={nv.paidLeaves} format={fmtDays} />
+              <BreakdownLine label="LOP Days" oldV={ov?.lopLeaves ?? null} newV={nv.lopLeaves} format={fmtDays} />
+              <BreakdownLine label="Absent Days" oldV={ov?.absentDays ?? null} newV={nv.absentDays} format={fmtDays} />
+            </div>
+          </div>
+          {canEdit && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <BaseSalaryEditor row={row} month={month} year={year} onDone={onCorrected} />
+              <AttendanceCorrector row={row} month={month} year={year} onDone={onCorrected} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RegenerateMonthModal({ month, year, onClose }: { month: string; year: string; onClose: () => void }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const role = (user as any)?.role || "";
   const [step, setStep] = useState<"warn" | "diff" | "done">("warn");
   const [diff, setDiff] = useState<RegenerateDiffRow[]>([]);
   const [changedCount, setChangedCount] = useState(0);
   const [newCount, setNewCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
+  const [periodLocked, setPeriodLocked] = useState(false);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
+  const canEdit = SALARY_EDIT_ROLES.includes(role) && !periodLocked;
   const monthLabel = MONTHS.find(m => m.value === month)?.label || month;
-  const fmt = (val: number | null) => {
-    if (val === null) return "—";
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
-  };
+  const fmt = inr;
 
   const previewMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/salary-slips/regenerate", { month: parseInt(month), year: parseInt(year), dryRun: true }),
@@ -147,6 +435,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
       setDiff(rows);
       setChangedCount(data.changedCount || 0);
       setNewCount(rows.filter(r => r.isNew).length);
+      setPeriodLocked(!!data.periodLocked);
       setStep("diff");
     },
     onError: (err: any) => { toast({ title: "Error", description: err.message || "Failed to preview", variant: "destructive" }); },
@@ -167,7 +456,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-regenerate-month">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-regenerate-month">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
@@ -216,74 +505,40 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
                 )}
                 {changedCount === 0 && newCount === 0 && <span className="text-green-600 dark:text-green-400">· No changes detected</span>}
               </div>
+
+              {periodLocked && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-muted border text-xs">
+                  <ShieldCheck className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <span className="text-muted-foreground">This month's salary run is <strong>approved &amp; locked</strong>. You can review the pay math but inline corrections are disabled — use an off-cycle adjustment instead.</span>
+                </div>
+              )}
+              {!periodLocked && canEdit && (
+                <p className="text-xs text-muted-foreground">Expand an employee to see the full pay math. Corrections write back to the source (salary ledger &amp; attendance) and are audited — the preview refreshes automatically.</p>
+              )}
+
               {diff.length === 0 ? (
                 <p className="text-center text-muted-foreground py-6">No employees found for this period</p>
               ) : (
-                <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-muted/60 z-10">
-                      <tr>
-                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Employee</th>
-                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">LOP Days</th>
-                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">Old Net Pay</th>
-                        <th className="py-2 px-3 text-center text-xs font-medium text-muted-foreground"></th>
-                        <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">New Net Pay</th>
-                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Why Changed</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {diff.map((row, idx) => {
-                        const lopChanged = !row.isNew && row.oldLopLeaves !== null && Math.abs(row.newLopLeaves - row.oldLopLeaves) > 0.01;
-                        const rowBg = row.isNew
-                          ? "bg-blue-50/50 dark:bg-blue-900/10"
-                          : row.changed
-                            ? "bg-amber-50/50 dark:bg-amber-900/10"
-                            : "";
-                        return (
-                          <tr key={row.userId} className={`border-t ${rowBg}`} data-testid={`regenerate-diff-row-${idx}`}>
-                            <td className="py-2 px-3"><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.email}</p></td>
-                            <td className="py-2 px-3 text-right font-mono text-xs">
-                              {row.isNew || row.oldLopLeaves === null ? (
-                                <span className="text-muted-foreground">—</span>
-                              ) : lopChanged ? (
-                                <span>
-                                  <span className="text-muted-foreground">{row.oldLopLeaves}</span>
-                                  <span className="mx-1 text-muted-foreground">→</span>
-                                  <span className="text-amber-600 font-medium">{row.newLopLeaves}</span>
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">{row.oldLopLeaves}</span>
-                              )}
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">{fmt(row.oldNetPayable)}</td>
-                            <td className="py-2 px-3 text-center text-muted-foreground"><ArrowRight className="h-3 w-3 inline" /></td>
-                            <td className="py-2 px-3 text-right font-mono text-xs font-medium">{fmt(row.newNetPayable)}</td>
-                            <td className="py-2 px-3">
-                              {row.isNew ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-                                  New record
-                                </span>
-                              ) : row.changed ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                                  <AlertTriangle className="h-3 w-3 shrink-0" />
-                                  {row.changeReason || "Changed"}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                  {diff.map((row) => (
+                    <EmployeeBreakdownRow
+                      key={row.userId}
+                      row={row}
+                      canEdit={canEdit}
+                      month={month}
+                      year={year}
+                      expanded={expandedUser === row.userId}
+                      onToggle={() => setExpandedUser(expandedUser === row.userId ? null : row.userId)}
+                      onCorrected={() => previewMutation.mutate()}
+                    />
+                  ))}
                 </div>
               )}
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button variant="secondary" onClick={() => setStep("warn")}>Back</Button>
-              <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending} data-testid="button-confirm-regenerate">
+              <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending || periodLocked} title={periodLocked ? "This month's run is approved and locked" : undefined} data-testid="button-confirm-regenerate">
                 {confirmMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : <><RefreshCw className="h-4 w-4 mr-2" />Confirm & Save</>}
               </Button>
             </DialogFooter>
