@@ -803,6 +803,13 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters reference_number column migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS verify_auth_code VARCHAR`);
+    log("Ensured verify_auth_code column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters verify_auth_code column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {
