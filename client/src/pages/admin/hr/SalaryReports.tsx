@@ -120,7 +120,9 @@ interface RegenerateDiffRow {
   newNetPayable: number;
   oldLopLeaves: number | null;
   newLopLeaves: number;
+  isNew: boolean;
   changed: boolean;
+  changeReason?: string;
 }
 
 function RegenerateMonthModal({ month, year, onClose }: { month: string; year: string; onClose: () => void }) {
@@ -128,6 +130,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
   const [step, setStep] = useState<"warn" | "diff" | "done">("warn");
   const [diff, setDiff] = useState<RegenerateDiffRow[]>([]);
   const [changedCount, setChangedCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
 
   const monthLabel = MONTHS.find(m => m.value === month)?.label || month;
@@ -140,8 +143,10 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
     mutationFn: () => apiRequest("POST", "/api/hr/salary-slips/regenerate", { month: parseInt(month), year: parseInt(year), dryRun: true }),
     onSuccess: async (res) => {
       const data = await res.json();
-      setDiff(data.diff || []);
+      const rows: RegenerateDiffRow[] = data.diff || [];
+      setDiff(rows);
       setChangedCount(data.changedCount || 0);
+      setNewCount(rows.filter(r => r.isNew).length);
       setStep("diff");
     },
     onError: (err: any) => { toast({ title: "Error", description: err.message || "Failed to preview", variant: "destructive" }); },
@@ -195,11 +200,21 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
         {step === "diff" && (
           <>
             <div className="space-y-4 py-2">
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-3 text-sm flex-wrap">
                 <span className="font-medium">{diff.length} employees</span>
-                <span className="text-muted-foreground">·</span>
-                <span className={changedCount > 0 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}>{changedCount} will change</span>
-                {changedCount === 0 && <span className="text-green-600 dark:text-green-400">· No changes detected</span>}
+                {changedCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">{changedCount} will change</span>
+                  </>
+                )}
+                {newCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">{newCount} new</span>
+                  </>
+                )}
+                {changedCount === 0 && newCount === 0 && <span className="text-green-600 dark:text-green-400">· No changes detected</span>}
               </div>
               {diff.length === 0 ? (
                 <p className="text-center text-muted-foreground py-6">No employees found for this period</p>
@@ -213,25 +228,53 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
                         <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">Old Net Pay</th>
                         <th className="py-2 px-3 text-center text-xs font-medium text-muted-foreground"></th>
                         <th className="py-2 px-3 text-right text-xs font-medium text-muted-foreground">New Net Pay</th>
-                        <th className="py-2 px-3 text-center text-xs font-medium text-muted-foreground">Change</th>
+                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground">Why Changed</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {diff.map((row, idx) => (
-                        <tr key={row.userId} className={`border-t ${row.changed ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`} data-testid={`regenerate-diff-row-${idx}`}>
-                          <td className="py-2 px-3"><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.email}</p></td>
-                          <td className="py-2 px-3 text-right font-mono text-xs">
-                            <span className="text-muted-foreground">{row.oldLopLeaves ?? "—"}</span>
-                            {row.newLopLeaves !== (row.oldLopLeaves ?? row.newLopLeaves) && <span className="ml-1 text-amber-600">→ {row.newLopLeaves}</span>}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">{fmt(row.oldNetPayable)}</td>
-                          <td className="py-2 px-3 text-center text-muted-foreground"><ArrowRight className="h-3 w-3 inline" /></td>
-                          <td className="py-2 px-3 text-right font-mono text-xs font-medium">{fmt(row.newNetPayable)}</td>
-                          <td className="py-2 px-3 text-center">
-                            {row.changed ? <span className="inline-flex items-center text-xs font-medium text-amber-600 dark:text-amber-400"><AlertTriangle className="h-3 w-3 mr-1" />Changed</span> : <span className="text-xs text-muted-foreground">—</span>}
-                          </td>
-                        </tr>
-                      ))}
+                      {diff.map((row, idx) => {
+                        const lopChanged = !row.isNew && row.oldLopLeaves !== null && Math.abs(row.newLopLeaves - row.oldLopLeaves) > 0.01;
+                        const rowBg = row.isNew
+                          ? "bg-blue-50/50 dark:bg-blue-900/10"
+                          : row.changed
+                            ? "bg-amber-50/50 dark:bg-amber-900/10"
+                            : "";
+                        return (
+                          <tr key={row.userId} className={`border-t ${rowBg}`} data-testid={`regenerate-diff-row-${idx}`}>
+                            <td className="py-2 px-3"><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.email}</p></td>
+                            <td className="py-2 px-3 text-right font-mono text-xs">
+                              {row.isNew || row.oldLopLeaves === null ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : lopChanged ? (
+                                <span>
+                                  <span className="text-muted-foreground">{row.oldLopLeaves}</span>
+                                  <span className="mx-1 text-muted-foreground">→</span>
+                                  <span className="text-amber-600 font-medium">{row.newLopLeaves}</span>
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">{row.oldLopLeaves}</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">{fmt(row.oldNetPayable)}</td>
+                            <td className="py-2 px-3 text-center text-muted-foreground"><ArrowRight className="h-3 w-3 inline" /></td>
+                            <td className="py-2 px-3 text-right font-mono text-xs font-medium">{fmt(row.newNetPayable)}</td>
+                            <td className="py-2 px-3">
+                              {row.isNew ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                                  New record
+                                </span>
+                              ) : row.changed ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                                  {row.changeReason || "Changed"}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

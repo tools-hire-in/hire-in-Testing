@@ -2874,6 +2874,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(salarySlips.year, year), eq(salarySlips.month, month)));
   }
 
+  async getLatestSalarySlipsByMonth(year: number, month: number): Promise<SalarySlip[]> {
+    const rows = await db.execute(
+      sql`SELECT DISTINCT ON (user_id) * FROM salary_slips WHERE year = ${year} AND month = ${month} ORDER BY user_id, version DESC`
+    );
+    return rows.rows as unknown as SalarySlip[];
+  }
+
   async upsertSalarySlip(slip: InsertSalarySlip & { userId: string; year: number; month: number }): Promise<SalarySlip> {
     await db.delete(salarySlips)
       .where(and(

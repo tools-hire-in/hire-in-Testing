@@ -7885,7 +7885,7 @@ export async function registerRoutes(
       const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
       const userNameMap = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
 
-      const existingSlips = await storage.getSalarySlipsByMonth(y, m);
+      const existingSlips = await storage.getLatestSalarySlipsByMonth(y, m);
       const existingByUser = new Map(existingSlips.map(s => [s.userId, s]));
 
       const scopedUserIds = Array.isArray(userIds) && userIds.length > 0 ? new Set<string>(userIds) : null;
@@ -7898,7 +7898,9 @@ export async function registerRoutes(
         newNetPayable: number;
         oldLopLeaves: number | null;
         newLopLeaves: number;
+        isNew: boolean;
         changed: boolean;
+        changeReason: string;
       }> = [];
 
       const slipsToUpsert: Array<Parameters<typeof storage.upsertSalarySlip>[0]> = [];
@@ -7910,9 +7912,68 @@ export async function registerRoutes(
         if (scopedUserIds && !scopedUserIds.has(userId)) continue;
 
         const existing = existingByUser.get(userId);
+        const isNew = !existing;
+
         const oldNet = existing ? parseFloat(String(existing.netPayable)) : null;
         const oldLop = existing ? parseFloat(String(existing.lopLeaves ?? 0)) : null;
-        const changed = oldNet === null || Math.abs(oldNet - row.netPayable) > 0.01 || Math.abs((oldLop ?? 0) - row.lopLeaves) > 0.01;
+        const oldGross = existing ? parseFloat(String(existing.grossSalary)) : null;
+        const oldDeductions = existing ? parseFloat(String(existing.deductions ?? 0)) : null;
+        const oldAdvance = existing ? parseFloat(String(existing.salaryAdvanceRecovery ?? 0)) : null;
+        const oldDaysPresent = existing ? existing.daysPresent : null;
+
+        const netDiff = !isNew ? row.netPayable - oldNet! : 0;
+        const lopDiff = !isNew ? row.lopLeaves - oldLop! : 0;
+        const grossDiff = !isNew ? row.grossSalary - oldGross! : 0;
+        const deductionsDiff = !isNew ? row.deductions - oldDeductions! : 0;
+        const advanceDiff = !isNew ? (row.advanceRecovery || 0) - oldAdvance! : 0;
+        const presentDiff = !isNew ? row.presentDays - oldDaysPresent! : 0;
+
+        const changed = !isNew && (
+          Math.abs(netDiff) > 0.01 ||
+          Math.abs(lopDiff) > 0.01 ||
+          Math.abs(grossDiff) > 0.01 ||
+          Math.abs(deductionsDiff) > 0.01 ||
+          Math.abs(advanceDiff) > 0.01 ||
+          Math.abs(presentDiff) > 0
+        );
+
+        let changeReason = "No change";
+        if (isNew) {
+          changeReason = "New record";
+        } else if (changed) {
+          const parts: string[] = [];
+          if (Math.abs(lopDiff) > 0.01) {
+            const sign = lopDiff > 0 ? "+" : "";
+            parts.push(`LOP ${sign}${lopDiff.toFixed(1)} days`);
+          }
+          if (Math.abs(grossDiff) > 0.01) {
+            const sign = grossDiff > 0 ? "+" : "";
+            parts.push(`Salary revised · Gross ${sign}₹${Math.round(Math.abs(grossDiff)).toLocaleString("en-IN")}`);
+          }
+          if (Math.abs(deductionsDiff) > 0.01) {
+            const sign = deductionsDiff > 0 ? "+" : "";
+            parts.push(`Deductions ${sign}₹${Math.round(Math.abs(deductionsDiff)).toLocaleString("en-IN")}`);
+          }
+          if (Math.abs(advanceDiff) > 0.01) {
+            if (oldAdvance === 0) {
+              parts.push("Advance recovery added");
+            } else if ((row.advanceRecovery || 0) === 0) {
+              parts.push("Advance recovery removed");
+            } else {
+              const sign = advanceDiff > 0 ? "+" : "";
+              parts.push(`Advance recovery ${sign}₹${Math.round(Math.abs(advanceDiff)).toLocaleString("en-IN")}`);
+            }
+          }
+          if (Math.abs(presentDiff) > 0 && parts.length === 0) {
+            const sign = presentDiff > 0 ? "+" : "";
+            parts.push(`Attendance corrected · ${sign}${presentDiff} days present`);
+          }
+          if (Math.abs(netDiff) > 0.01) {
+            const sign = netDiff > 0 ? "+" : "";
+            parts.push(`Net ${sign}₹${Math.round(Math.abs(netDiff)).toLocaleString("en-IN")}`);
+          }
+          changeReason = parts.length > 0 ? parts.join(" · ") : "Recalculated";
+        }
 
         diff.push({
           userId,
@@ -7922,7 +7983,9 @@ export async function registerRoutes(
           newNetPayable: row.netPayable,
           oldLopLeaves: oldLop,
           newLopLeaves: row.lopLeaves,
+          isNew,
           changed,
+          changeReason,
         });
 
         slipsToUpsert.push({
