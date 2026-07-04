@@ -796,6 +796,13 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters attached_plan_* column migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS reference_number VARCHAR UNIQUE`);
+    log("Ensured reference_number column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters reference_number column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {
@@ -2762,6 +2769,12 @@ async function runStartupTasks() {
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
   await ensureOfferLetterReferenceNumbers();
+  try {
+    await db.execute(sql`ALTER TABLE salary_advance_requests ADD COLUMN IF NOT EXISTS manager_id VARCHAR REFERENCES admin_users(id)`);
+    log("Ensured manager_id column exists on salary_advance_requests");
+  } catch (err) {
+    console.error("salary_advance_requests manager_id column migration error:", err);
+  }
   await ensureContentStudioTables();
   await ensureCardTemplatesAndBrand();
   try {

@@ -379,7 +379,8 @@ export function registerSalaryAdvanceRoutes(app: Express) {
     try {
       const stats = await storage.getSalaryAdvanceStats(req.session.userId!, req.session.role || "employee");
       res.json(stats);
-    } catch {
+    } catch (error) {
+      console.error("Salary advance stats error:", error);
       res.status(500).json({ error: "Failed to load stats" });
     }
   });
