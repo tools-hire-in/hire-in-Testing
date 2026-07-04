@@ -6955,10 +6955,14 @@ export async function registerRoutes(
         if (existing[0].status === "approved") {
           return res.status(409).json({ error: "A report for this month has already been approved and sent. Cannot regenerate." });
         }
+        const regenerateAdjustments: Record<string, any> = {
+          __creditSnapshot__: report.salaryCreditIds,
+          ...(Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } : {}),
+        };
         await db.update(salaryReportRuns)
           .set({
             reportData: report.rows as any,
-            adjustments: Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } as any : {} as any,
+            adjustments: regenerateAdjustments as any,
             status: "pending_approval",
             generatedAt: new Date(),
             approvedAt: null,
@@ -6970,12 +6974,16 @@ export async function registerRoutes(
         return res.json(updated);
       }
 
+      const freshAdjustments: Record<string, any> = {
+        __creditSnapshot__: report.salaryCreditIds,
+        ...(Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } : {}),
+      };
       const [created] = await db.insert(salaryReportRuns).values({
         year,
         month,
         status: "pending_approval",
         reportData: report.rows as any,
-        adjustments: Object.keys(overrideMeta).length > 0 ? { _overrides: overrideMeta } as any : {} as any,
+        adjustments: freshAdjustments as any,
       }).returning();
 
       res.status(201).json(created);
