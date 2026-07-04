@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -801,6 +801,8 @@ function PendingAdjustmentsTab() {
   const [startMonthMap, setStartMonthMap] = useState<Record<string, string>>({});
   const [startYearMap, setStartYearMap] = useState<Record<string, string>>({});
   const [approveWarnings, setApproveWarnings] = useState<Record<string, boolean>>({});
+  const [lockedMap, setLockedMap] = useState<Record<string, boolean | null>>({});
+  const [confirmLocked, setConfirmLocked] = useState<string | null>(null);
 
   const { data: rows = [], isLoading } = useQuery<AdjustmentRow[]>({
     queryKey: ["/api/salary-advances/pending-adjustments"],
@@ -816,6 +818,47 @@ function PendingAdjustmentsTab() {
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/active"] });
     qc.invalidateQueries({ queryKey: ["/api/salary-advances/stats"] });
   };
+
+  const checkLocked = useCallback(async (id: string, month: string, year: string) => {
+    const m = parseInt(month, 10);
+    const y = parseInt(year, 10);
+    if (!m || !y) return;
+    setLockedMap(l => ({ ...l, [id]: null }));
+    try {
+      const res = await fetch(`/api/salary-advances/month-locked?year=${y}&month=${m}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setLockedMap(l => ({ ...l, [id]: data.locked }));
+      }
+    } catch {
+      setLockedMap(l => ({ ...l, [id]: null }));
+    }
+  }, []);
+
+  useEffect(() => {
+    rows.forEach(row => {
+      if (row.kind !== "overpayment") return;
+      setStartMonthMap(m => {
+        if (m[row.id] !== undefined) return m;
+        return { ...m, [row.id]: String(defaultStart.getMonth() + 1) };
+      });
+      setStartYearMap(y => {
+        if (y[row.id] !== undefined) return y;
+        return { ...y, [row.id]: String(defaultStart.getFullYear()) };
+      });
+    });
+  }, [rows]);
+
+  useEffect(() => {
+    rows.forEach(row => {
+      if (row.kind !== "overpayment") return;
+      const m = startMonthMap[row.id];
+      const y = startYearMap[row.id];
+      if (m && y && lockedMap[row.id] === undefined) {
+        checkLocked(row.id, m, y);
+      }
+    });
+  }, [startMonthMap, startYearMap, rows]);
 
   const approve = useMutation({
     mutationFn: async (id: string) => {
@@ -912,11 +955,22 @@ function PendingAdjustmentsTab() {
                   onClick={() => { setShowCommentFor(row.id); setCommentAction("reject"); }}>
                   Reject
                 </Button>
-                <Button size="sm" data-testid={`button-approve-${row.id}`}
-                  onClick={() => approve.mutate(row.id)} disabled={approve.isPending}>
-                  {approve.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                  Approve
-                </Button>
+                {row.kind === "overpayment" && lockedMap[row.id] === true && confirmLocked !== row.id ? (
+                  <Button size="sm" variant="outline"
+                    className="text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-950"
+                    data-testid={`button-approve-locked-${row.id}`}
+                    onClick={() => setConfirmLocked(row.id)}
+                    disabled={approve.isPending}>
+                    <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                    Approve
+                  </Button>
+                ) : (
+                  <Button size="sm" data-testid={`button-approve-${row.id}`}
+                    onClick={() => approve.mutate(row.id)} disabled={approve.isPending}>
+                    {approve.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Approve
+                  </Button>
+                )}
               </div>
             </div>
             {row.kind === "overpayment" && (
@@ -927,7 +981,13 @@ function PendingAdjustmentsTab() {
                     <Label className="text-xs">Month</Label>
                     <select
                       value={startMonthMap[row.id] || String(defaultStart.getMonth() + 1)}
-                      onChange={(e) => setStartMonthMap(m => ({ ...m, [row.id]: e.target.value }))}
+                      onChange={(e) => {
+                        const newMonth = e.target.value;
+                        setStartMonthMap(m => ({ ...m, [row.id]: newMonth }));
+                        setLockedMap(l => ({ ...l, [row.id]: undefined as any }));
+                        setConfirmLocked(c => c === row.id ? null : c);
+                        checkLocked(row.id, newMonth, startYearMap[row.id] || String(defaultStart.getFullYear()));
+                      }}
                       className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
                       data-testid={`select-adj-start-month-${row.id}`}
                     >
@@ -939,12 +999,42 @@ function PendingAdjustmentsTab() {
                     <Input
                       type="number" min={2000} max={2100}
                       value={startYearMap[row.id] || String(defaultStart.getFullYear())}
-                      onChange={(e) => setStartYearMap(m => ({ ...m, [row.id]: e.target.value }))}
+                      onChange={(e) => {
+                        const newYear = e.target.value;
+                        setStartYearMap(y => ({ ...y, [row.id]: newYear }));
+                        setLockedMap(l => ({ ...l, [row.id]: undefined as any }));
+                        setConfirmLocked(c => c === row.id ? null : c);
+                        checkLocked(row.id, startMonthMap[row.id] || String(defaultStart.getMonth() + 1), newYear);
+                      }}
                       className="h-8 text-sm"
                       data-testid={`input-adj-start-year-${row.id}`}
                     />
                   </div>
                 </div>
+                {lockedMap[row.id] === true && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-2 flex items-center gap-1.5" data-testid={`text-adj-locked-warning-${row.id}`}>
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    This payroll month is already locked. Approving will add the recovery to a closed period — you will need to regenerate the salary report.
+                  </p>
+                )}
+                {lockedMap[row.id] === true && confirmLocked === row.id && (
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-3 py-2" data-testid={`confirm-locked-${row.id}`}>
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <p className="text-xs text-amber-800 dark:text-amber-300 flex-1">Month is locked — approve anyway?</p>
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-2"
+                      onClick={() => setConfirmLocked(null)}
+                      data-testid={`button-cancel-confirm-${row.id}`}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" className="h-7 text-xs px-2 bg-amber-600 hover:bg-amber-700 text-white border-0"
+                      onClick={() => { setConfirmLocked(null); approve.mutate(row.id); }}
+                      disabled={approve.isPending}
+                      data-testid={`button-confirm-approve-locked-${row.id}`}>
+                      {approve.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Approve anyway
+                    </Button>
+                  </div>
+                )}
                 {approveWarnings[row.id] && (
                   <p className="text-xs text-amber-700 dark:text-amber-300 mt-2 flex items-center gap-1" data-testid={`text-adj-start-warning-${row.id}`}>
                     <AlertTriangle className="h-3 w-3" /> Recovery month is locked — regenerate the salary report to include this.

@@ -466,6 +466,19 @@ export function registerSalaryAdvanceRoutes(app: Express) {
     }
   });
 
+  // ── Pre-flight: check whether a payroll month is already locked (salary run exists
+  // and is not in pending_approval state).  Used by the PendingAdjustmentsTab to
+  // warn the approver before they commit an overpayment to a locked month.
+  app.get("/api/salary-advances/month-locked", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+    const year = parseInt(String(req.query.year || ""), 10);
+    const month = parseInt(String(req.query.month || ""), 10);
+    if (!year || !month || month < 1 || month > 12) {
+      return res.status(400).json({ error: "year and month (1-12) are required" });
+    }
+    const locked = await isRunLocked(year, month);
+    return res.json({ locked });
+  });
+
   // ── Pre-flight: count scheduled repayments for a given month whose advance was
   // recorded after the salary run's generatedAt (i.e. missing from the snapshot).
   app.get("/api/salary-advances/snapshot-gap", requireAuth, requirePermission("salaryAdvance.accounts", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
