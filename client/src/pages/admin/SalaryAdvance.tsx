@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Wallet, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight,
   IndianRupee, ShieldCheck, Banknote, RotateCcw, Send, AlertTriangle,
@@ -52,6 +53,7 @@ interface Advance {
   createdAt: string;
   requester?: AdvanceUser | null;
   manager?: AdvanceUser | null;
+  repayments?: Repayment[];
 }
 interface Repayment {
   id: string; installmentNo: number; year: number; month: number;
@@ -279,6 +281,71 @@ function useInvalidateAll() {
   };
 }
 
+const REPAYMENT_STATUS_LABEL: Record<string, string> = {
+  scheduled: "pending",
+  deducted: "recovered",
+  missed: "missed",
+  waived: "waived",
+};
+
+function CheckStartBadge({ advance }: { advance: Advance }) {
+  const repayments = advance.repayments ?? [];
+  const sorted = [...repayments].sort((a, b) =>
+    a.year !== b.year ? a.year - b.year : a.month - b.month
+  );
+  const preview = sorted.slice(0, 2);
+
+  const tooltipLines = preview.map((r) => {
+    const mon = MONTHS[r.month] ?? r.month;
+    const label = REPAYMENT_STATUS_LABEL[r.status] ?? r.status;
+    const statusColor =
+      r.status === "deducted"
+        ? "text-emerald-600"
+        : r.status === "missed"
+        ? "text-red-500"
+        : "text-amber-500";
+    return (
+      <div key={r.id} className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">
+          Installment {r.installmentNo} · {mon} {r.year}
+        </span>
+        <span className={`font-medium ${statusColor}`}>{label}</span>
+      </div>
+    );
+  });
+
+  const badge = (
+    <Badge
+      variant="outline"
+      className="text-xs bg-amber-100 text-amber-700 border-amber-300 cursor-default"
+      data-testid={`badge-check-start-${advance.id}`}
+    >
+      ⚠ Check recovery start
+    </Badge>
+  );
+
+  if (preview.length === 0) return badge;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+          {badge}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs max-w-[260px] space-y-1">
+        <p className="font-medium text-foreground mb-1">Repayment schedule</p>
+        {tooltipLines}
+        {sorted.length > 2 && (
+          <p className="text-muted-foreground pt-0.5">
+            +{sorted.length - 2} more — open to view all
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: string) => void; showRequester?: boolean }) {
   // Show "Check recovery start" badge when the advance is disbursed (no deductions yet)
   // but the scheduled start month is already in the past.
@@ -311,9 +378,7 @@ function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: str
           {a.isException && <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-200">Exception</Badge>}
           {a.exitRecoveryFlag && <Badge variant="outline" className="text-xs bg-red-100 text-red-700 border-red-200">Exit Recovery</Badge>}
           {showCheckStart && (
-            <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-300" data-testid={`badge-check-start-${a.id}`}>
-              ⚠ Check recovery start
-            </Badge>
+            <CheckStartBadge advance={a} />
           )}
         </div>
         <div className="mt-1 text-sm">

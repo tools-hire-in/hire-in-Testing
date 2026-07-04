@@ -535,7 +535,15 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   app.get("/api/salary-advances/active", requireAuth, requirePermission("salaryAdvance.accounts", "super_admin", "admin", "hr", "finance"), async (_req: Request, res: Response) => {
     try {
       const rows = await storage.listActiveSalaryAdvances();
-      res.json(await enrichUsers(rows));
+      const enriched = await enrichUsers(rows);
+      // Attach first 2 installments per advance so the client can render a
+      // repayment-schedule tooltip on the "Check recovery start" badge without
+      // opening the detail dialog.
+      const withRepayments = await Promise.all(enriched.map(async (a) => {
+        const repayments = await storage.getSalaryAdvanceRepayments((a as any).id);
+        return { ...a, repayments: repayments.slice(0, 2) };
+      }));
+      res.json(withRepayments);
     } catch {
       res.status(500).json({ error: "Failed to load active advances" });
     }
