@@ -393,7 +393,7 @@ export function serveStatic(app: Express) {
         }
       }
 
-      res.status(known ? 200 : 404).set({ "Content-Type": "text/html" }).end(html);
+      res.status(known ? 200 : 404).set({ "Content-Type": "text/html", "Cache-Control": "no-store" }).end(html);
     })().catch(next);
   });
 }
