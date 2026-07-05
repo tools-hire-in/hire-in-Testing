@@ -1307,6 +1307,8 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
         body.disbursedAt = recDisbursedAt;
       } else if (recKind === "overpayment") {
         body.repaymentMonths = parseInt(recMonths, 10) || 1;
+        body.startMonth = parseInt(recStartMonth, 10);
+        body.startYear = parseInt(recStartYear, 10);
       } else if (recKind === "salary_credit") {
         body.targetMonth = parseInt(recTargetMonth, 10);
         body.targetYear = parseInt(recTargetYear, 10);
@@ -1336,13 +1338,17 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
 
   // ── Inline approve/return/reject state (super_admin) ────────────────────
   const [actionRowId, setActionRowId] = useState<string | null>(null);
-  const [actionType, setActionType] = useState<"return" | "reject" | null>(null);
+  const [actionType, setActionType] = useState<"return" | "reject" | "approve" | null>(null);
   const [actionComment, setActionComment] = useState("");
+  const [approveMonth, setApproveMonth] = useState("");
+  const [approveYear, setApproveYear] = useState("");
 
   const submitReview = useMutation({
-    mutationFn: async ({ id, type, comment }: { id: string; type: "approve" | "return" | "reject"; comment?: string }) => {
+    mutationFn: async ({ id, type, comment, startYear, startMonth }: { id: string; type: "approve" | "return" | "reject"; comment?: string; startYear?: number | null; startMonth?: number | null }) => {
       const endpoint = type === "approve" ? "approve-adjustment" : type === "return" ? "return-adjustment" : "reject-adjustment";
-      const body = type === "approve" ? {} : { comment };
+      const body: any = type === "approve"
+        ? (startYear && startMonth ? { startYear, startMonth } : {})
+        : { comment };
       const res = await apiRequest("PATCH", `/api/salary-advances/${id}/${endpoint}`, body);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed");
@@ -1455,7 +1461,15 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                             onClick={() => { setActionRowId(row.id); setActionType("reject"); setActionComment(""); }}
                             data-testid={`button-reject-adj-${row.id}`}>Reject</Button>
                           <Button size="sm" className="text-xs h-7 px-2"
-                            onClick={() => submitReview.mutate({ id: row.id, type: "approve" })}
+                            onClick={() => {
+                              if (row.kind === "overpayment") {
+                                setActionRowId(row.id); setActionType("approve");
+                                setApproveMonth(String(row.repaymentStartMonth || nextMo.getMonth() + 1));
+                                setApproveYear(String(row.repaymentStartYear || nextMo.getFullYear()));
+                              } else {
+                                submitReview.mutate({ id: row.id, type: "approve" });
+                              }
+                            }}
                             disabled={submitReview.isPending}
                             data-testid={`button-approve-adj-${row.id}`}>Approve</Button>
                         </div>
@@ -1503,7 +1517,29 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                     </div>
                   )}
 
-                  {canApprove && actionRowId === row.id && actionType && (
+                  {canApprove && actionRowId === row.id && actionType === "approve" && (
+                    <div className="border-t px-3 py-2 bg-muted/30 space-y-2">
+                      <Label className="text-xs">First recovery month</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={approveMonth} onChange={e => setApproveMonth(e.target.value)}
+                          className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid={`select-approve-month-${row.id}`}>
+                          {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                        </select>
+                        <Input type="number" min={2000} max={2100} value={approveYear} onChange={e => setApproveYear(e.target.value)} data-testid={`input-approve-year-${row.id}`} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Recovery deductions will begin from this month.</p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="h-7" onClick={() => { setActionRowId(null); setActionType(null); }}>Cancel</Button>
+                        <Button size="sm" className="h-7"
+                          disabled={!approveMonth || !approveYear || submitReview.isPending}
+                          onClick={() => submitReview.mutate({ id: row.id, type: "approve", startMonth: parseInt(approveMonth, 10), startYear: parseInt(approveYear, 10) })}
+                          data-testid={`button-confirm-approve-${row.id}`}>
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {canApprove && actionRowId === row.id && (actionType === "return" || actionType === "reject") && (
                     <div className="border-t px-3 py-2 bg-muted/30 space-y-2">
                       <Label className="text-xs">{actionType === "return" ? "Return note (required)" : "Rejection reason (required)"}</Label>
                       <Textarea
@@ -1623,9 +1659,22 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                 </>
               )}
               {recKind === "overpayment" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Recovery months</Label>
-                  <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Recovery months</Label>
+                    <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">First recovery month</Label>
+                    <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
+                      className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-ovp-start-month">
+                      {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Start year</Label>
+                    <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-ovp-start-year" />
+                  </div>
                 </div>
               )}
               {recKind === "salary_credit" && (
@@ -1654,6 +1703,7 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                 disabled={
                   !recAmount || parseFloat(recAmount) <= 0 ||
                   (recKind === "advance" && (parseInt(recMonths, 10) <= 0 || !recStartMonth)) ||
+                  (recKind === "overpayment" && (parseInt(recMonths, 10) <= 0 || !recStartMonth || !recStartYear)) ||
                   submitRecord.isPending
                 }
                 onClick={() => submitRecord.mutate()}

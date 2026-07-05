@@ -627,6 +627,8 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
         body.disbursedAt = disbursedAt;
       } else if (kind === "overpayment") {
         body.repaymentMonths = months;
+        body.startMonth = parseInt(ovpStartMonth, 10);
+        body.startYear = parseInt(ovpStartYear, 10);
       } else if (kind === "salary_credit") {
         body.targetMonth = parseInt(targetMonth, 10);
         body.targetYear = parseInt(targetYear, 10);
@@ -905,11 +907,13 @@ function PendingAdjustmentsTab() {
       if (row.kind !== "overpayment") return;
       setStartMonthMap(m => {
         if (m[row.id] !== undefined) return m;
-        return { ...m, [row.id]: String(defaultStart.getMonth() + 1) };
+        const stored = (row as any).repaymentStartMonth;
+        return { ...m, [row.id]: stored ? String(stored) : String(defaultStart.getMonth() + 1) };
       });
       setStartYearMap(y => {
         if (y[row.id] !== undefined) return y;
-        return { ...y, [row.id]: String(defaultStart.getFullYear()) };
+        const stored = (row as any).repaymentStartYear;
+        return { ...y, [row.id]: stored ? String(stored) : String(defaultStart.getFullYear()) };
       });
     });
   }, [rows]);

@@ -574,7 +574,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         targetYear: z.number().int().min(2000).max(2100).optional(),
         disbursedAt: z.string().optional(),
       }).superRefine((data, ctx) => {
-        if (data.kind === "advance") {
+        if (data.kind === "advance" || data.kind === "overpayment") {
           if (!data.startYear) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "First Recovery Month year is required", path: ["startYear"] });
           if (!data.startMonth) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "First Recovery Month is required", path: ["startMonth"] });
         }
@@ -665,6 +665,8 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         status: "pending_review",
         approvedAmount: null,
         repaymentMonths: kind === "overpayment" ? (parsed.data.repaymentMonths || 1) : null,
+        repaymentStartMonth: kind === "overpayment" ? (parsed.data.startMonth ?? null) : null,
+        repaymentStartYear: kind === "overpayment" ? (parsed.data.startYear ?? null) : null,
         totalRepaid: "0",
         outstandingBalance: amount.toFixed(2),
         targetMonth: kind === "salary_credit" ? (parsed.data.targetMonth || null) : null,
@@ -945,18 +947,25 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         return res.json(updated);
       }
 
-      // Overpayment: require an explicit First Recovery Month from the caller.
+      // Overpayment: resolve the First Recovery Month from the caller, falling back
+      // to the value captured when the record was created (backfill / record dialog).
       const ovpSchema = z.object({
-        startYear: z.number().int().min(2000).max(2100),
-        startMonth: z.number().int().min(1).max(12),
+        startYear: z.number().int().min(2000).max(2100).optional(),
+        startMonth: z.number().int().min(1).max(12).optional(),
       });
       const ovpParsed = ovpSchema.safeParse(req.body);
-      if (!ovpParsed.success) {
+      const resolvedStartYear = ovpParsed.success && ovpParsed.data.startYear != null
+        ? ovpParsed.data.startYear
+        : (advance.repaymentStartYear ?? null);
+      const resolvedStartMonth = ovpParsed.success && ovpParsed.data.startMonth != null
+        ? ovpParsed.data.startMonth
+        : (advance.repaymentStartMonth ?? null);
+      if (resolvedStartYear == null || resolvedStartMonth == null) {
         return res.status(400).json({ error: "First Recovery Month (startYear + startMonth) is required to approve an overpayment." });
       }
       const months = Number(advance.repaymentMonths) || 1;
       // Check if the chosen month is already locked — warn but honour the choice.
-      const ovpStartCheck = await checkStartMonthLocked({ year: ovpParsed.data.startYear, month: ovpParsed.data.startMonth });
+      const ovpStartCheck = await checkStartMonthLocked({ year: resolvedStartYear, month: resolvedStartMonth });
       const start = { year: ovpStartCheck.year, month: ovpStartCheck.month };
       const startMonthWarning = ovpStartCheck.locked;
       const monthlyDeduction = Math.ceil((amount / months) * 100) / 100;
