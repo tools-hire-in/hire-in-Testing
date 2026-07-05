@@ -2789,6 +2789,12 @@ async function runStartupTasks() {
   } catch (err) {
     console.error("salary_advance_requests manager_id column migration error:", err);
   }
+  try {
+    await db.execute(sql`ALTER TABLE salary_advance_requests ADD COLUMN IF NOT EXISTS exceeds_salary_cap BOOLEAN NOT NULL DEFAULT false`);
+    log("Ensured exceeds_salary_cap column exists on salary_advance_requests");
+  } catch (err) {
+    console.error("salary_advance_requests exceeds_salary_cap column migration error:", err);
+  }
   await ensureContentStudioTables();
   await ensureCardTemplatesAndBrand();
   try {
