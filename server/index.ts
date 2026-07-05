@@ -856,6 +856,11 @@ async function ensureOfferLetterAddendumsTable() {
       await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_department VARCHAR`);
       await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_role VARCHAR`);
       await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS attached_plan_level VARCHAR`);
+      // Verify-page reference number + HMAC auth code (declared in shared/schema.ts).
+      // Mirrors offer_letters; without these, SELECT * on this table crashes with
+      // "column does not exist" and breaks addendum listing (e.g. salary proof options).
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS reference_number VARCHAR UNIQUE`);
+      await db.execute(sql`ALTER TABLE offer_letter_addendums ADD COLUMN IF NOT EXISTS verify_auth_code VARCHAR`);
       // Add "expired" value to the offer_letter_addendum_status enum if not present
       await db.execute(sql`
         DO $$ BEGIN
@@ -907,6 +912,8 @@ async function ensureOfferLetterAddendumsTable() {
         counter_signed_at TIMESTAMP,
         counter_auth_code VARCHAR,
         counter_document_hash VARCHAR,
+        reference_number VARCHAR UNIQUE,
+        verify_auth_code VARCHAR,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);

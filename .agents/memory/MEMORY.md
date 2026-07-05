@@ -2,6 +2,7 @@
 - [Plan goal templates seed](plan-goal-templates-seed.md) — ON CONFLICT DO NOTHING; to fix existing rows use UPDATE blocks before the seed loop in server/index.ts
 - [db:push interactive prompt](db-push-interactive-prompt.md) — `_key` vs `_unique` constraint names stall db:push (aborts later stmts); long FK names oscillate (benign). Publish diffs dev-DB↔prod-DB; repair dev DB, don't add startup DDL.
 - [Schema/DB drift guard](schema-db-drift-guard.md) — ensure-block columns missing from schema.ts make db:push DELETE them; drizzle says "delete column" not "drop".
+- [Addendum ensure-column parity](addendum-ensure-column-parity.md) — every schema.ts column must be in the table's ensure ALTER+CREATE branches, else SELECT * 500s (empty proof dropdown); prod only heals on re-publish.
 - [E-sign foundation](esign-foundation.md) — central ledger + signing service + SignatureBlock; back-compat hr_letter/contract; ensure block needs server restart.
 - [Offer-letter verify scope](offer-letter-verify-scope.md) — /verify only covers hr_letter & contract; offer-letter acceptance hash can evolve without breaking verify.
 - [mockup-sandbox not in git](mockup-sandbox-not-in-git.md) — scaffold untracked; can vanish between sessions; rm -rf then createArtifact to recover.
