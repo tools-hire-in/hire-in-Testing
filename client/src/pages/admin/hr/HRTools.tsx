@@ -1676,12 +1676,12 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
                 <p className="text-xs text-muted-foreground mb-2">Includes per-annexure two-column execution/signature blocks in the DOCX.</p>
                 <div className="space-y-2">
                   {([
-                    { key: "eng_nda", label: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement" },
-                    { key: "eng_ip", label: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment" },
-                    { key: "eng_byod", label: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy" },
-                    { key: "eng_data_protection", label: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling" },
-                    { key: "eng_access_policy", label: "Eng-E — Access, Password, AI Tool & Communication Policy" },
-                    { key: "eng_exit_certification", label: "Eng-F — Exit, Return, Deletion & Certification" },
+                    { key: "eng_nda", label: "Annexure H — Confidentiality, Non-Disclosure & Proprietary Information Agreement" },
+                    { key: "eng_ip", label: "Annexure I — Intellectual Property, Code Ownership & Work Product Assignment" },
+                    { key: "eng_byod", label: "Annexure J — BYOD, Cloud-Only Development, Security & Data Access Policy" },
+                    { key: "eng_data_protection", label: "Annexure K — Data Protection, Privacy & Client/Candidate Information Handling" },
+                    { key: "eng_access_policy", label: "Annexure L — Access, Password, AI Tool & Communication Policy" },
+                    { key: "eng_exit_certification", label: "Annexure M — Exit, Return, Deletion & Certification" },
                   ] as const).map(({ key, label }) => (
                     <label key={key} className="flex items-center gap-2 cursor-pointer" data-testid={`check-policy-${key}`}>
                       <input

@@ -19,12 +19,12 @@ const POLICY_ANNEXURE_LABELS: Record<string, string> = {
   marketing_nda: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
   marketing_content_policy: "Annexure F — Marketing, Social Media & Content Policy",
   marketing_code_of_conduct: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
-  eng_nda: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
-  eng_ip: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
-  eng_byod: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
-  eng_data_protection: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
-  eng_access_policy: "Eng-E — Access, Password, AI Tool & Communication Policy",
-  eng_exit_certification: "Eng-F — Exit, Return, Deletion & Certification",
+  eng_nda: "Annexure H — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+  eng_ip: "Annexure I — Intellectual Property, Code Ownership & Work Product Assignment",
+  eng_byod: "Annexure J — BYOD, Cloud-Only Development, Security & Data Access Policy",
+  eng_data_protection: "Annexure K — Data Protection, Privacy & Client/Candidate Information Handling",
+  eng_access_policy: "Annexure L — Access, Password, AI Tool & Communication Policy",
+  eng_exit_certification: "Annexure M — Exit, Return, Deletion & Certification",
 };
 
 export interface AnnexureInitialingProps {

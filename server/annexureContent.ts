@@ -565,8 +565,8 @@ Acknowledged and agreed.`,
 
   eng_nda: {
     key: "eng_nda",
-    label: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
-    title: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+    label: "Annexure H — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+    title: "Annexure H — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-A: Confidentiality, Non-Disclosure & Proprietary Information Agreement
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -613,8 +613,8 @@ Acknowledged and agreed.`,
 
   eng_ip: {
     key: "eng_ip",
-    label: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
-    title: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
+    label: "Annexure I — Intellectual Property, Code Ownership & Work Product Assignment",
+    title: "Annexure I — Intellectual Property, Code Ownership & Work Product Assignment",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-B: Intellectual Property, Code Ownership & Work Product Assignment
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -659,8 +659,8 @@ Acknowledged and agreed.`,
 
   eng_byod: {
     key: "eng_byod",
-    label: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
-    title: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
+    label: "Annexure J — BYOD, Cloud-Only Development, Security & Data Access Policy",
+    title: "Annexure J — BYOD, Cloud-Only Development, Security & Data Access Policy",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-C: BYOD, Cloud-Only Development, Security & Data Access Policy
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -712,8 +712,8 @@ Acknowledged and agreed.`,
 
   eng_data_protection: {
     key: "eng_data_protection",
-    label: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
-    title: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
+    label: "Annexure K — Data Protection, Privacy & Client/Candidate Information Handling",
+    title: "Annexure K — Data Protection, Privacy & Client/Candidate Information Handling",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-D: Data Protection, Privacy & Client/Candidate Information Handling
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -760,8 +760,8 @@ Acknowledged and agreed.`,
 
   eng_access_policy: {
     key: "eng_access_policy",
-    label: "Eng-E — Access, Password, AI Tool & Communication Policy",
-    title: "Eng-E — Access, Password, AI Tool & Communication Policy",
+    label: "Annexure L — Access, Password, AI Tool & Communication Policy",
+    title: "Annexure L — Access, Password, AI Tool & Communication Policy",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-E: Access, Password, AI Tool & Communication Policy
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -811,8 +811,8 @@ Acknowledged and agreed.`,
 
   eng_exit_certification: {
     key: "eng_exit_certification",
-    label: "Eng-F — Exit, Return, Deletion & Certification",
-    title: "Eng-F — Exit, Return, Deletion & Certification",
+    label: "Annexure M — Exit, Return, Deletion & Certification",
+    title: "Annexure M — Exit, Return, Deletion & Certification",
     body: `Hire'in Solutions — Engineering Pack
 Annexure Eng-F: Exit, Return, Deletion & Certification
 Applicable to: All engineering, software development, DevOps, QA, data, and technical personnel.
@@ -884,10 +884,10 @@ export const POLICY_ANNEXURE_LABELS: Record<PolicyAnnexureKey, string> = {
   marketing_nda: "Annexure E — Marketing & Social Media Confidentiality, NDA & IP Agreement",
   marketing_content_policy: "Annexure F — Marketing, Social Media & Content Policy",
   marketing_code_of_conduct: "Annexure G — Marketing Code of Conduct, Data Security & Professional Standards",
-  eng_nda: "Eng-A — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
-  eng_ip: "Eng-B — Intellectual Property, Code Ownership & Work Product Assignment",
-  eng_byod: "Eng-C — BYOD, Cloud-Only Development, Security & Data Access Policy",
-  eng_data_protection: "Eng-D — Data Protection, Privacy & Client/Candidate Information Handling",
-  eng_access_policy: "Eng-E — Access, Password, AI Tool & Communication Policy",
-  eng_exit_certification: "Eng-F — Exit, Return, Deletion & Certification",
+  eng_nda: "Annexure H — Confidentiality, Non-Disclosure & Proprietary Information Agreement",
+  eng_ip: "Annexure I — Intellectual Property, Code Ownership & Work Product Assignment",
+  eng_byod: "Annexure J — BYOD, Cloud-Only Development, Security & Data Access Policy",
+  eng_data_protection: "Annexure K — Data Protection, Privacy & Client/Candidate Information Handling",
+  eng_access_policy: "Annexure L — Access, Password, AI Tool & Communication Policy",
+  eng_exit_certification: "Annexure M — Exit, Return, Deletion & Certification",
 };
