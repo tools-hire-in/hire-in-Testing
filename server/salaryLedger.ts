@@ -28,6 +28,10 @@ export async function recordSalaryChange(opts: {
   initiatedBy?: string | null;
   approvedBy?: string | null;
   apply?: boolean; // default true — write back to admin_users.salary
+  settle?: boolean; // force appliedAt to be stamped even when not writing live —
+                    // for backdated corrections superseded by a later in-effect
+                    // change: record in the ledger but NEVER let the promotion
+                    // scheduler pick it up (which would re-downgrade the employee).
 }): Promise<{ applied: boolean; skipped: boolean }> {
   const apply = opts.apply !== false;
 
@@ -54,6 +58,12 @@ export async function recordSalaryChange(opts: {
     await storage.updateAdminUser(opts.employeeId, { salary: newSalary.toFixed(2) } as any);
   }
 
+  // appliedAt marks a row as settled/reflected so the promotion scheduler
+  // (applyDueSalaryChanges) never reconsiders it. Stamp it when we wrote live, OR
+  // when the caller asks to `settle` a backdated ledger-only correction. Leave it
+  // NULL only for genuine future-dated changes awaiting scheduled promotion.
+  const settleNow = writeNow || opts.settle === true;
+
   await storage.createSalaryChange({
     employeeId: opts.employeeId,
     sourceType: opts.sourceType,
@@ -67,7 +77,7 @@ export async function recordSalaryChange(opts: {
     status: "applied",
     initiatedBy: opts.initiatedBy ?? null,
     approvedBy: opts.approvedBy ?? null,
-    appliedAt: writeNow ? new Date() : null,
+    appliedAt: settleNow ? new Date() : null,
   } as any);
 
   return { applied: writeNow, skipped: false };

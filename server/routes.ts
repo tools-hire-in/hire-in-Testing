@@ -7720,15 +7720,37 @@ export async function registerRoutes(
       // (appliedAt stays NULL until then). The salary report reads the ledger by
       // effective date, so reporting stays correct in the meantime.
       const today = new Date().toISOString().slice(0, 10);
-      const writeNow = !change.effectiveDate || change.effectiveDate <= today;
+      const dueByDate = !change.effectiveDate || change.effectiveDate <= today;
+
+      // Latest-effective wins: never let approving a BACKDATED change downgrade the
+      // employee's current live salary. If a later-effective applied change already
+      // exists, this change is recorded as applied in the ledger (so the target
+      // month's slip resolves it by effective date) but admin_users.salary is left
+      // untouched. Mirrors the guard in POST /api/hr/salary-slips/correct-salary.
+      // Only a later change that is ALREADY IN EFFECT (effectiveDate <= today)
+      // blocks the live write; a future-dated raise must not suppress a
+      // legitimately-current backdated correction.
+      let hasLaterApplied = false;
+      if (dueByDate && change.effectiveDate) {
+        const existingChanges = await storage.getSalaryChangesByEmployee(change.employeeId);
+        hasLaterApplied = existingChanges.some(c =>
+          c.id !== change.id && c.status === "applied" && c.newSalary != null && c.effectiveDate != null &&
+          String(c.effectiveDate) > String(change.effectiveDate) && String(c.effectiveDate) <= today
+        );
+      }
+      const writeNow = dueByDate && !hasLaterApplied;
       if (writeNow) {
         await storage.updateAdminUser(change.employeeId, { salary: newSalary.toFixed(2) } as any);
       }
+      // Stamp appliedAt (settled) for any change that is due now — whether we wrote
+      // live or suppressed it because a later change already governs the live salary.
+      // Leave it NULL only for future-dated changes, which the promotion scheduler
+      // (applyDueSalaryChanges) picks up when their effective date arrives.
       const updated = await storage.updateSalaryChange(change.id, {
         status: "applied",
         oldSalary: oldSalary != null ? oldSalary.toFixed(2) : change.oldSalary,
         approvedBy: actorId,
-        appliedAt: writeNow ? new Date() : null,
+        appliedAt: dueByDate ? new Date() : null,
       } as any);
       await storage.createAuditLog({ action: "salary_change_approved", actorId, changes: { changeId: change.id, employeeId: change.employeeId, oldSalary, newSalary } });
 
@@ -8174,10 +8196,14 @@ export async function registerRoutes(
       // case we record it in the ledger only (apply:false); the target month's
       // slip still resolves it via the ledger, while the live record is left
       // untouched.
+      // Only a later change that is ALREADY IN EFFECT (effectiveDate <= today)
+      // should block the live write — a future-dated raise must not stop a
+      // legitimately-current backdated correction from updating the live record.
+      const todayStr = new Date().toISOString().slice(0, 10);
       const existingChanges = await storage.getSalaryChangesByEmployee(userId);
       const hasLaterApplied = existingChanges.some(c =>
         c.status === "applied" && c.newSalary != null && c.effectiveDate != null &&
-        String(c.effectiveDate) > effectiveDate
+        String(c.effectiveDate) > effectiveDate && String(c.effectiveDate) <= todayStr
       );
       const applyLive = !hasLaterApplied;
 
@@ -8192,6 +8218,9 @@ export async function registerRoutes(
           initiatedBy: actorId,
           approvedBy: actorId,
           apply: applyLive,
+          // When superseded by a later in-effect change we only record the ledger
+          // row; settle it so the promotion scheduler never re-downgrades the live salary.
+          settle: !applyLive,
         });
         await storage.createAuditLog({
           action: "salary_change_applied",
