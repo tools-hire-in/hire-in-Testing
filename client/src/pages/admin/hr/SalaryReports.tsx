@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import AttendanceOversight from "@/components/admin/hr/AttendanceOversight";
 
 interface EmployeeReportRow {
   employeeName: string;
@@ -2565,6 +2566,9 @@ export function SalaryReportsContent() {
                 <p className="text-sm text-muted-foreground">No managers to approve for this period.</p>
               )}
             </div>
+
+            {/* Full per-team rollup with drill-down into each manager's numbers */}
+            <AttendanceOversight month={parseInt(selectedMonth)} year={parseInt(selectedYear)} variant="hr" />
 
             {/* Pending edits review */}
             {pendingEdits.filter((e: any) => String(e.month) === selectedMonth && String(e.year) === selectedYear).length > 0 && (

@@ -337,6 +337,28 @@ export async function resolveReportManagerIds(_year: number, _month: number): Pr
   return rows.map(r => r.id).filter(Boolean) as string[];
 }
 
+/**
+ * Resolves the full downstream org of a manager: every active, non-deleted user
+ * who rolls up to `managerId` transitively through the reporting structure
+ * (direct reports, their reports, and so on). Excludes the manager themselves.
+ * Used by the read-only oversight view so a senior manager can see all teams
+ * beneath them without gaining approval authority.
+ */
+export async function resolveDownstreamUserIds(managerId: string): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    WITH RECURSIVE downstream AS (
+      SELECT id FROM admin_users
+      WHERE manager_id = ${managerId} AND is_active = true AND deleted_at IS NULL
+      UNION
+      SELECT e.id FROM admin_users e
+      JOIN downstream d ON e.manager_id = d.id
+      WHERE e.is_active = true AND e.deleted_at IS NULL
+    )
+    SELECT id FROM downstream
+  `)).rows as any[];
+  return rows.map(r => r.id).filter(Boolean) as string[];
+}
+
 interface RunManager {
   id: string;
   email: string;

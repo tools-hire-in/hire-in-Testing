@@ -3,7 +3,7 @@ import { db } from "./db";
 import { sql, eq, and, inArray, notInArray } from "drizzle-orm";
 import { adminUsers, attendanceReportManagerApprovals } from "@shared/schema";
 import { storage } from "./storage";
-import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, reconcileRunEntries, regenerateAttendanceReportRun, notifyManagersForRun, getIstYearMonthDay } from "./attendanceReport";
+import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, reconcileRunEntries, regenerateAttendanceReportRun, notifyManagersForRun, getIstYearMonthDay, resolveDownstreamUserIds } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
 import { getPortalBaseUrl, attendanceApprovalUrl } from "./portalUrl";
 import { isRoleAllowed } from "@shared/accessControl";
@@ -694,6 +694,145 @@ export function registerAttendanceReportRoutes(app: Express) {
       res.json({ run: approvals[0] });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch pending run" });
+    }
+  });
+
+  // Read-only oversight rollup. A senior manager (someone whose reports include
+  // sub-managers) sees their ENTIRE downstream team for the active run, grouped by
+  // the owning direct manager, each with attendance numbers, the assigned owner, and
+  // that owner's approval status. HR/admin get the full rollup across all managers.
+  // This grants visibility only — approval authority stays with each direct manager,
+  // so this endpoint never mutates anything.
+  app.get("/api/hr/attendance-report/oversight", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role || "";
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      if (!month || !year) return res.status(400).json({ error: "month and year required" });
+
+      const canSeeAll = isRoleAllowed(role, "hr.attendanceReport.access", ["super_admin", "admin", "hr"]);
+      const isManagerRole = canSeeAll || role === "manager" || role === "operations";
+      if (!isManagerRole) return res.status(403).json({ error: "Not authorized for oversight view" });
+
+      // Resolve the active run for the period.
+      const [run] = (await db.execute(sql`
+        SELECT id, status, month, year, deadline_at, notified_at
+        FROM attendance_report_runs
+        WHERE month = ${month} AND year = ${year} AND is_active = true
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1
+      `)).rows as any[];
+
+      if (!run) return res.json({ exists: false });
+
+      // Restrict to the requester's downstream unless they can see everything.
+      let downstreamIds: string[] | null = null;
+      if (!canSeeAll) {
+        downstreamIds = await resolveDownstreamUserIds(userId);
+        if (downstreamIds.length === 0) {
+          return res.json({
+            exists: true,
+            runId: run.id,
+            month: run.month,
+            year: run.year,
+            status: run.status,
+            scope: "downstream",
+            groups: [],
+            summary: { employees: 0, managers: 0, approved: 0, pending: 0, editsSubmitted: 0, overridden: 0 },
+          });
+        }
+      }
+
+      const rows = (await db.execute(sql`
+        SELECT
+          en.id AS entry_id, en.user_id,
+          en.cur_present_days, en.cur_absent_days, en.cur_lop_days,
+          en.cur_leave_days, en.cur_holiday_days, en.cur_total_hours,
+          u.first_name, u.last_name, u.employee_id, u.designation,
+          en.manager_id AS owner_id,
+          mo.first_name AS owner_first_name, mo.last_name AS owner_last_name,
+          mo.email AS owner_email, mo.designation AS owner_designation,
+          ma.status AS owner_approval_status
+        FROM attendance_report_entries en
+        JOIN admin_users u ON u.id = en.user_id
+        LEFT JOIN admin_users mo ON mo.id = en.manager_id
+        LEFT JOIN attendance_report_manager_approvals ma
+          ON ma.run_id = en.run_id AND ma.manager_id = en.manager_id
+        WHERE en.run_id = ${run.id}
+          ${downstreamIds ? sql`AND en.user_id IN (${sql.join(downstreamIds.map(id => sql`${id}`), sql`, `)})` : sql``}
+        ORDER BY mo.first_name, mo.last_name, u.first_name, u.last_name
+      `)).rows as any[];
+
+      // Group entries by owning manager.
+      const groupMap = new Map<string, any>();
+      for (const r of rows) {
+        const ownerKey = r.owner_id || "__unassigned__";
+        if (!groupMap.has(ownerKey)) {
+          groupMap.set(ownerKey, {
+            managerId: r.owner_id || null,
+            managerName: r.owner_id
+              ? `${r.owner_first_name || ""} ${r.owner_last_name || ""}`.trim() || r.owner_email || "Unknown"
+              : "Unassigned",
+            managerEmail: r.owner_email || null,
+            designation: r.owner_designation || null,
+            approvalStatus: r.owner_approval_status || (r.owner_id ? "pending" : null),
+            isSelf: r.owner_id === userId,
+            members: [],
+            totals: { count: 0, present: 0, lop: 0 },
+          });
+        }
+        const g = groupMap.get(ownerKey);
+        const present = Number(r.cur_present_days) || 0;
+        const lop = Number(r.cur_lop_days) || 0;
+        g.members.push({
+          entryId: r.entry_id,
+          userId: r.user_id,
+          firstName: r.first_name,
+          lastName: r.last_name,
+          employeeId: r.employee_id,
+          designation: r.designation,
+          presentDays: present,
+          absentDays: Number(r.cur_absent_days) || 0,
+          lopDays: lop,
+          leaveDays: Number(r.cur_leave_days) || 0,
+          holidayDays: Number(r.cur_holiday_days) || 0,
+          totalHours: Number(r.cur_total_hours) || 0,
+        });
+        g.totals.count += 1;
+        g.totals.present += present;
+        g.totals.lop += lop;
+      }
+
+      const groups = Array.from(groupMap.values()).sort((a, b) => {
+        // Requester's own direct-report group first, then alphabetical.
+        if (a.isSelf && !b.isSelf) return -1;
+        if (b.isSelf && !a.isSelf) return 1;
+        return a.managerName.localeCompare(b.managerName);
+      });
+
+      const summary = {
+        employees: rows.length,
+        managers: groups.filter(g => g.managerId).length,
+        approved: groups.filter(g => g.approvalStatus === "approved").length,
+        pending: groups.filter(g => g.approvalStatus === "pending").length,
+        editsSubmitted: groups.filter(g => g.approvalStatus === "edits_submitted").length,
+        overridden: groups.filter(g => g.approvalStatus === "overridden").length,
+      };
+
+      res.json({
+        exists: true,
+        runId: run.id,
+        month: run.month,
+        year: run.year,
+        status: run.status,
+        scope: canSeeAll ? "full" : "downstream",
+        groups,
+        summary,
+      });
+    } catch (error) {
+      console.error("Attendance oversight error:", error);
+      res.status(500).json({ error: "Failed to fetch oversight rollup" });
     }
   });
 

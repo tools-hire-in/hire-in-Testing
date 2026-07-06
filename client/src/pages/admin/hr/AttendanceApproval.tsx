@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle, Clock, AlertTriangle, Edit2, Users, Timer, ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import AttendanceOversight from "@/components/admin/hr/AttendanceOversight";
 
 const FIELD_LABELS: Record<string, string> = {
   presentDays: "Present Days",
@@ -325,6 +326,10 @@ export default function AttendanceApproval() {
           )}
         </CardContent>
       </Card>
+
+      {run.month && run.year && (
+        <AttendanceOversight month={run.month} year={run.year} variant="manager" />
+      )}
 
       <Dialog open={confirmApproveOpen} onOpenChange={setConfirmApproveOpen}>
         <DialogContent>
