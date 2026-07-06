@@ -2551,6 +2551,13 @@ async function runStartupTasks() {
   }
 
   try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS studio_add_on TEXT`);
+    log("Ensured studio_add_on column on admin_users");
+  } catch (err) {
+    console.error("studio_add_on column migration error:", err);
+  }
+
+  try {
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS is_corrected BOOLEAN NOT NULL DEFAULT FALSE`);
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS correction_source VARCHAR`);
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS corrected_by_id VARCHAR REFERENCES admin_users(id)`);
