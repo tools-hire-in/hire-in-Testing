@@ -92,7 +92,6 @@ const ADD_ON_META: Record<string, { label: string; color: string; emoji: string;
       "Reviewer inbox",
       "Marketing approval / sign-off",
       "Content analytics (all)",
-      "Manage Studio Access panel",
     ],
   },
   content_creator: {

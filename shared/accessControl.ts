@@ -290,7 +290,6 @@ export const STUDIO_ADD_ON_PERMISSIONS: Record<string, string[]> = {
     "studio.review_article",
     "studio.marketing_approve",
     "studio.view_analytics",
-    "studio.manage_authors",
   ],
   content_creator: [
     "studio.view",
