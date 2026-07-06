@@ -1,0 +1,71 @@
+/api/salary-advances/stats:1  Failed to load resource: the server responded with a status of 500 ()
+/api/help-desk/requests:1  Failed to load resource: the server responded with a status of 500 ()
+vendor-radix-CgiZIScy.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-CgiZIScy.js:45
+/api/help-desk/requests:1  Failed to load resource: the server responded with a status of 500 ()
+AdminLayout-CUv_yosE.js:1  GET https://www.employee.hire-in.com/api/salary-advances/stats 500 (Internal Server Error)
+queryFn @ AdminLayout-CUv_yosE.js:1
+r @ vendor-query-CeLdBRqG.js:1
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+ServiceDesk-De44bpPW.js:3  GET https://www.employee.hire-in.com/api/help-desk/requests 500 (Internal Server Error)
+queryFn @ ServiceDesk-De44bpPW.js:3
+r @ vendor-query-CeLdBRqG.js:1
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+ServiceDesk-De44bpPW.js:3  GET https://www.employee.hire-in.com/api/help-desk/requests 500 (Internal Server Error)
+queryFn @ ServiceDesk-De44bpPW.js:3
+r @ vendor-query-CeLdBRqG.js:1
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+setInterval
+#g @ vendor-query-CeLdBRqG.js:1
+#b @ vendor-query-CeLdBRqG.js:1
+onQueryUpdate @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+batch @ vendor-query-CeLdBRqG.js:1
+#r @ vendor-query-CeLdBRqG.js:1
+setData @ vendor-query-CeLdBRqG.js:1
+onSuccess @ vendor-query-CeLdBRqG.js:1
+O @ vendor-query-CeLdBRqG.js:1
+Promise.then
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+AdminLayout-CUv_yosE.js:1  GET https://www.employee.hire-in.com/api/salary-advances/stats 500 (Internal Server Error)
+queryFn @ AdminLayout-CUv_yosE.js:1
+r @ vendor-query-CeLdBRqG.js:1
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+setInterval
+#g @ vendor-query-CeLdBRqG.js:1
+#b @ vendor-query-CeLdBRqG.js:1
+onQueryUpdate @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
+batch @ vendor-query-CeLdBRqG.js:1
+#r @ vendor-query-CeLdBRqG.js:1
+setData @ vendor-query-CeLdBRqG.js:1
+onSuccess @ vendor-query-CeLdBRqG.js:1
+O @ vendor-query-CeLdBRqG.js:1
+Promise.then
+p @ vendor-query-CeLdBRqG.js:1
+start @ vendor-query-CeLdBRqG.js:1
+fetch @ vendor-query-CeLdBRqG.js:1
+#l @ vendor-query-CeLdBRqG.js:1
+(anonymous) @ vendor-query-CeLdBRqG.js:1
