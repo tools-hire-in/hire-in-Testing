@@ -78,6 +78,28 @@ export async function closeBrowser(): Promise<void> {
   browserPromise = null;
 }
 
+// ---- PDF renderer -------------------------------------------------------
+export async function renderHtmlToPdf(html: string): Promise<Buffer> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setContent(html, { waitUntil: "networkidle0" as any, timeout: 30000 });
+    try {
+      await page.evaluate(() => (document as any).fonts?.ready);
+    } catch {
+      // ignore
+    }
+    const buffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "0mm", right: "0mm", bottom: "0mm", left: "0mm" },
+    });
+    return Buffer.from(buffer);
+  } finally {
+    await page.close();
+  }
+}
+
 // ---- Core rasteriser (shared by preview + generation) -------------------
 export async function renderHtmlToPng(
   html: string,

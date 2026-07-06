@@ -62,6 +62,7 @@ import crypto from "crypto";
 import path from "path";
 import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance, recordSignature } from "./documentSigningService";
 import * as sopGov from "./sopGovernance";
+import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData } from "@shared/salarySlipHtml";
 import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress } from "./sopAssignmentEngine";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
@@ -7501,30 +7502,32 @@ export async function registerRoutes(
       const adjustments = (approvedRun.adjustments as Record<string, any>) || {};
       const adj = adjustments[targetUser.email ?? ""];
 
-      const slipData = {
+      const slipData: SalarySlipData = {
         userId,
         employeeName: row.employeeName,
-        email: targetUser.email,
-        designation: row.designation,
-        department: row.department,
+        email: targetUser.email ?? "",
+        designation: row.designation || "",
+        department: row.department || "",
         year: y,
         month: m,
-        salary: Number(row.salary),
-        grossSalary: Number(row.grossSalary),
-        deductions: Number(row.deductions),
+        salary: Number(row.salary || 0),
+        grossSalary: Number(row.grossSalary || 0),
+        deductions: Number(row.deductions || 0),
         advanceRecovery: Number(row.advanceRecovery || 0),
-        netPayable: Number(row.netPayable),
+        advanceRecoveryBreakdown: (row.advanceRecoveryBreakdown as { advance: number; overpayment: number } | null) ?? null,
+        salaryCredit: Number(row.salaryCredit || 0),
+        netPayable: Number(row.netPayable || 0),
         workingDays: row.workingDays,
         presentDays: row.presentDays,
         absentDays: row.absentDays,
         paidLeaves: row.paidLeaves,
         lopLeaves: row.lopLeaves,
-        totalHours: row.totalHours,
-        attendancePercentage: row.attendancePercentage,
+        totalHours: Number(row.totalHours || 0),
+        attendancePercentage: Number(row.attendancePercentage || 0),
         adjusted: !!adj,
         adjustmentComment: adj?.comment ?? null,
         salaryRunId: approvedRun.id,
-        approvedAt: approvedRun.approvedAt,
+        approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
       };
 
       // Write / update ledger row on first access (idempotent per run+user)
@@ -7570,6 +7573,219 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to render salary slip:", error);
       res.status(500).json({ error: "Failed to render salary slip" });
+    }
+  });
+
+  // On-demand salary slip PDF — renders the exact slip HTML to PDF via headless Chromium,
+  // returns as an application/pdf download. Same access rules as the render endpoint.
+  app.get("/api/hr/salary-slips/pdf/:userId/:month/:year", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { userId, month, year } = req.params;
+      const m = parseInt(month);
+      const y = parseInt(year);
+      if (!m || !y || m < 1 || m > 12) return res.status(400).json({ error: "Invalid month or year" });
+
+      const actor = req.session.userId!;
+      const actorRole = (req.session as any).role as string | undefined;
+      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "");
+      const isManager = actorRole === "manager";
+      if (!isPrivileged && actor !== userId) {
+        if (isManager) {
+          const directReports = await storage.getTeamMembers(actor);
+          if (!directReports.some(dr => dr.id === userId)) {
+            return res.status(403).json({ error: "Access denied: employee is not in your team" });
+          }
+        } else {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      }
+
+      const [approvedRun] = await db.select()
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "approved"),
+        ))
+        .orderBy(desc(salaryReportRuns.approvedAt))
+        .limit(1);
+
+      if (!approvedRun) {
+        return res.status(404).json({ error: "No approved salary run found for this period" });
+      }
+
+      const reportRows = (approvedRun.reportData as any[]) || [];
+      const allUsers = await storage.getAdminUsers();
+      const targetUser = allUsers.find(u => u.id === userId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
+
+      const row = reportRows.find((r: any) => r.email === targetUser.email);
+      if (!row) return res.status(404).json({ error: "Employee not found in this salary run" });
+
+      const monthName = SLIP_MONTH_NAMES[m - 1];
+      const adj = ((approvedRun.adjustments as Record<string, any>) || {})[targetUser.email ?? ""];
+      const slipData: SalarySlipData = {
+        userId,
+        employeeName: row.employeeName,
+        email: targetUser.email ?? "",
+        designation: row.designation || "",
+        department: row.department || "",
+        year: y,
+        month: m,
+        salary: Number(row.salary || 0),
+        grossSalary: Number(row.grossSalary || 0),
+        deductions: Number(row.deductions || 0),
+        advanceRecovery: Number(row.advanceRecovery || 0),
+        advanceRecoveryBreakdown: (row.advanceRecoveryBreakdown as { advance: number; overpayment: number } | null) ?? null,
+        salaryCredit: Number(row.salaryCredit || 0),
+        netPayable: Number(row.netPayable || 0),
+        workingDays: row.workingDays,
+        presentDays: row.presentDays,
+        absentDays: row.absentDays,
+        paidLeaves: row.paidLeaves,
+        lopLeaves: row.lopLeaves,
+        totalHours: Number(row.totalHours || 0),
+        attendancePercentage: Number(row.attendancePercentage || 0),
+        adjusted: !!adj,
+        adjustmentComment: adj?.comment ?? null,
+        salaryRunId: approvedRun.id,
+        approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
+      };
+      const html = generateSalarySlipHtml(slipData);
+
+      const { renderHtmlToPdf } = await import("./cardGenerationService");
+      const pdfBuffer = await renderHtmlToPdf(html);
+
+      const filename = `Salary_Slip_${monthName}_${y}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Failed to generate salary slip PDF:", error);
+      res.status(500).json({ error: "Failed to generate PDF" });
+    }
+  });
+
+  // Email salary slip — generates the slip PDF in memory and sends it as an attachment
+  // to the requesting employee's own registered email. Self-only access.
+  app.post("/api/hr/salary-slips/email-me/:month/:year", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { month, year } = req.params;
+      const m = parseInt(month);
+      const y = parseInt(year);
+      if (!m || !y || m < 1 || m > 12) return res.status(400).json({ error: "Invalid month or year" });
+
+      const actor = req.session.userId!;
+      const allUsers = await storage.getAdminUsers();
+      const actorUser = allUsers.find(u => u.id === actor);
+      if (!actorUser) return res.status(404).json({ error: "User not found" });
+      if (!actorUser.email) return res.status(400).json({ error: "No email address on file" });
+
+      const [approvedRun] = await db.select()
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "approved"),
+        ))
+        .orderBy(desc(salaryReportRuns.approvedAt))
+        .limit(1);
+
+      if (!approvedRun) {
+        return res.status(404).json({ error: "No approved salary run found for this period" });
+      }
+
+      const reportRows = (approvedRun.reportData as any[]) || [];
+      const row = reportRows.find((r: any) => r.email === actorUser.email);
+      if (!row) return res.status(404).json({ error: "Your salary data was not found in this payroll run" });
+
+      const monthName = SLIP_MONTH_NAMES[m - 1];
+      const adj = ((approvedRun.adjustments as Record<string, any>) || {})[actorUser.email ?? ""];
+      const slipData: SalarySlipData = {
+        userId: actor,
+        employeeName: row.employeeName,
+        email: actorUser.email,
+        designation: row.designation || "",
+        department: row.department || "",
+        year: y,
+        month: m,
+        salary: Number(row.salary || 0),
+        grossSalary: Number(row.grossSalary || 0),
+        deductions: Number(row.deductions || 0),
+        advanceRecovery: Number(row.advanceRecovery || 0),
+        advanceRecoveryBreakdown: (row.advanceRecoveryBreakdown as { advance: number; overpayment: number } | null) ?? null,
+        salaryCredit: Number(row.salaryCredit || 0),
+        netPayable: Number(row.netPayable || 0),
+        workingDays: row.workingDays,
+        presentDays: row.presentDays,
+        absentDays: row.absentDays,
+        paidLeaves: row.paidLeaves,
+        lopLeaves: row.lopLeaves,
+        totalHours: Number(row.totalHours || 0),
+        attendancePercentage: Number(row.attendancePercentage || 0),
+        adjusted: !!adj,
+        adjustmentComment: adj?.comment ?? null,
+        salaryRunId: approvedRun.id,
+        approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
+      };
+      const html = generateSalarySlipHtml(slipData);
+      const fmtINR = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const { renderHtmlToPdf } = await import("./cardGenerationService");
+      const pdfBuffer = await renderHtmlToPdf(html);
+
+      const sgMail = await import("@sendgrid/mail");
+      const apiKey = process.env.SENDGRID_API_KEY_NEW;
+      if (!apiKey) return res.status(500).json({ error: "Email service not configured" });
+      sgMail.default.setApiKey(apiKey);
+
+      const firstName = actorUser.firstName || "there";
+      const pdfBase64 = pdfBuffer.toString("base64");
+
+      await sgMail.default.send({
+        to: actorUser.email,
+        from: { email: "alina.carter@hire-in.com", name: "Alina Carter" },
+        subject: `Your Salary Slip — ${monthName} ${y}`,
+        html: `
+          <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+            <div style="background:#1a365d;padding:24px 32px;text-align:center;">
+              <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">Hire&rsquo;in Solutions</h1>
+              <p style="color:#bfdbfe;margin:6px 0 0;font-size:13px;">Salary Slip — ${monthName} ${y}</p>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#1e293b;font-size:15px;margin:0 0 16px;">Hi ${firstName},</p>
+              <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 16px;">
+                Please find attached your salary slip for <strong>${monthName} ${y}</strong>. This is based on the approved payroll run for this period.
+              </p>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+                <p style="color:#475569;margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Net Pay</p>
+                <p style="color:#1e293b;margin:0;font-weight:700;font-size:20px;">INR ${fmtINR(Number(row.netPayable))}</p>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;margin:0;">
+                This is a system-generated email. Please do not reply. If you have any questions, contact HR.
+              </p>
+            </div>
+            <div style="padding:16px 32px;background:#f8fafc;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="color:#94a3b8;font-size:11px;margin:0;">Hire&rsquo;in Solutions &middot; Confidential</p>
+            </div>
+          </div>
+        `,
+        text: `Hi ${firstName},\n\nPlease find attached your salary slip for ${monthName} ${y}.\n\nNet Pay: INR ${fmtINR(Number(row.netPayable))}\n\nThis is a system-generated email. If you have questions, contact HR.`,
+        attachments: [
+          {
+            content: pdfBase64,
+            filename: `Salary_Slip_${monthName}_${y}.pdf`,
+            type: "application/pdf",
+            disposition: "attachment",
+          },
+        ],
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to email salary slip:", error);
+      res.status(500).json({ error: "Failed to send salary slip email" });
     }
   });
 

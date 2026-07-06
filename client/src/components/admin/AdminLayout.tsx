@@ -47,6 +47,7 @@ import {
   CalendarCheck,
   FilePlus,
   UserCog,
+  Receipt,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ const MY_DESK_SUB_ITEMS = [
   { label: "Attendance", tab: "time-card", icon: Clock },
   { label: "Leaves", tab: "leave-balance", icon: Wallet },
   { label: "Holiday Calendar", tab: "leave-calendar", icon: CalendarDays },
+  { label: "Payslips", tab: "payslips", icon: Receipt },
   { label: "My SOPs", tab: "my-sops", icon: ShieldCheck, sopOnly: true },
 ] as const;
 

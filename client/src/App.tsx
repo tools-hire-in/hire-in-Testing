@@ -257,7 +257,7 @@ function PublicRouter() {
       <Route path="/admin/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
-      <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/hr/salary-slips">{() => <Redirect to="/admin/my-desk?tab=payslips" />}</Route>
       <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>
@@ -389,7 +389,7 @@ function EmployeeRouter() {
       <Route path="/admin/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/settings">{() => <LegacySettingsRedirect />}</Route>
       <Route path="/admin/hr/org-chart">{() => <Suspense fallback={<AdminFallback />}><OrgChart /></Suspense>}</Route>
-      <Route path="/admin/hr/salary-slips">{() => <Suspense fallback={<AdminFallback />}><SalarySlips /></Suspense>}</Route>
+      <Route path="/admin/hr/salary-slips">{() => <Redirect to="/admin/my-desk?tab=payslips" />}</Route>
       <Route path="/admin/salary-advance">{() => <Suspense fallback={<AdminFallback />}><SalaryAdvance /></Suspense>}</Route>
       <Route path="/admin/hr/my-documents">{() => <Suspense fallback={<AdminFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/admin/hr/tools">{() => <Suspense fallback={<AdminFallback />}><HRTools /></Suspense>}</Route>

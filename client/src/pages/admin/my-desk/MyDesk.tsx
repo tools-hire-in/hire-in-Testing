@@ -15,11 +15,13 @@ import MySops, { SopCoachingBanner } from "./MySops";
 const Attendance = lazy(() => import("@/pages/admin/hr/Attendance"));
 const LeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
 const HolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
+const SalarySlips = lazy(() => import("@/pages/admin/hr/SalarySlips"));
 
 const TABS = [
   "time-card",
   "leave-balance",
   "leave-calendar",
+  "payslips",
   "my-sops",
 ] as const;
 type Tab = typeof TABS[number];
@@ -28,6 +30,7 @@ const TAB_LABELS: Record<Tab, string> = {
   "time-card": "Attendance",
   "leave-balance": "Leaves",
   "leave-calendar": "Holiday Calendar",
+  "payslips": "Payslips",
   "my-sops": "My SOPs",
 };
 
@@ -343,6 +346,13 @@ export default function MyDesk() {
           {activeTab === "leave-calendar" && !isComplianceLocked && (
             <Suspense fallback={<TabFallback />}>
               <HolidayCalendar />
+            </Suspense>
+          )}
+
+          {/* ── PAYSLIPS ── */}
+          {activeTab === "payslips" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <SalarySlips />
             </Suspense>
           )}
 
