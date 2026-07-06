@@ -7146,6 +7146,82 @@ export async function registerRoutes(
     }
   });
 
+  // Refresh a pending run's snapshot from source — re-runs generateMonthlySalaryReport
+  // and overwrites reportData so inline source edits (salary, attendance, advance
+  // recovery) are reflected without a manual "Regenerate" click. Existing manual
+  // row adjustments are preserved and re-applied on top of the fresh source rows.
+  app.post("/api/hr/reports/salary/runs/:id/refresh", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const role = req.session.role;
+      if (!["super_admin", "admin", "hr"].includes(role || "")) {
+        return res.status(403).json({ error: "Admin or HR access required" });
+      }
+
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status !== "pending_approval") {
+        return res.status(409).json({ error: "Only pending runs can be refreshed" });
+      }
+
+      const report = await generateMonthlySalaryReport(run.year, run.month);
+      const freshRows = report.rows as any[];
+      const existingAdj = (run.adjustments as Record<string, any>) || {};
+
+      // Re-apply each manual per-employee adjustment on top of the fresh source rows,
+      // recomputing derived values (deductions / net) so fresh advance recovery flows
+      // through while preserving the reviewer's salary/attendance overrides.
+      const reapplied: Record<string, any> = {};
+      const allowed = ["presentDays", "absentDays", "paidLeaves", "lopLeaves", "deductions", "netPayable", "grossSalary", "totalHours"];
+      for (const [email, entry] of Object.entries(existingAdj)) {
+        if (email === "__creditSnapshot__" || email === "_overrides") continue;
+        const rowIdx = freshRows.findIndex((r: any) => r.email === email);
+        if (rowIdx === -1) continue; // employee no longer in report — drop the stale adjustment
+        const freshRow = { ...freshRows[rowIdx] };
+        const originalRow = { ...freshRow }; // new restoration baseline = fresh source values
+        const fieldDiffs = (entry as any).fields || {};
+        for (const [field, diff] of Object.entries(fieldDiffs as Record<string, any>)) {
+          if (!allowed.includes(field)) continue;
+          freshRow[field] = Number((diff as any).newValue);
+        }
+        // Recompute derived attendance/net figures against the fresh advance recovery.
+        const wDays = Number(freshRow.workingDays) || 1;
+        const gross = Number(freshRow.grossSalary);
+        const regionalHolidayDays = Number(freshRow.regionalHolidayDays) || 0;
+        const dailyRate = gross / wDays;
+        const effectivePresentDays = Number(freshRow.presentDays) + Number(freshRow.paidLeaves) + regionalHolidayDays;
+        const newAbsentDays = Math.max(0, wDays - effectivePresentDays);
+        const newDeductions = ("deductions" in fieldDiffs) ? Number(freshRow.deductions) : Math.round(newAbsentDays * dailyRate * 100) / 100;
+        const advanceRecovery = Number(freshRow.advanceRecovery) || 0;
+        freshRow.absentDays = ("absentDays" in fieldDiffs) ? Number(freshRow.absentDays) : newAbsentDays;
+        freshRow.deductions = newDeductions;
+        freshRow.attendancePercentage = wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0;
+        freshRow.netPayable = Math.max(0, Math.round((gross - newDeductions - advanceRecovery) * 100) / 100);
+
+        freshRows[rowIdx] = freshRow;
+        reapplied[email] = {
+          ...(entry as any),
+          originalRow,
+        };
+      }
+
+      const nextAdjustments: Record<string, any> = {
+        ...reapplied,
+        __creditSnapshot__: report.salaryCreditIds,
+        ...(existingAdj._overrides ? { _overrides: existingAdj._overrides } : {}),
+      };
+
+      await db.update(salaryReportRuns)
+        .set({ reportData: freshRows as any, adjustments: nextAdjustments as any, generatedAt: new Date() })
+        .where(eq(salaryReportRuns.id, run.id));
+
+      const [updated] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, run.id));
+      res.json(updated);
+    } catch (error) {
+      console.error("Salary run refresh error:", error);
+      res.status(500).json({ error: "Failed to refresh salary run" });
+    }
+  });
+
   // Approve and send a pending run
   app.post("/api/hr/reports/salary/runs/:id/approve", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
     try {

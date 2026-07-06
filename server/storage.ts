@@ -691,6 +691,8 @@ export interface IStorage {
   getScheduledRepaymentsForMonth(year: number, month: number): Promise<SalaryAdvanceRepayment[]>;
   markRepaymentDeducted(id: string, deductedAmount: string, salaryRunId: string | null): Promise<void>;
   rescheduleRepayment(id: string, year: number, month: number): Promise<void>;
+  updateSalaryAdvanceRepayment(id: string, patch: Partial<InsertSalaryAdvanceRepayment>): Promise<void>;
+  deleteSalaryAdvanceRepayment(id: string): Promise<void>;
   deleteScheduledRepaymentsForAdvance(advanceId: string): Promise<void>;
   listSalaryAdvancesByRecordedBy(recordedById: string): Promise<SalaryAdvanceRequest[]>;
   getSalaryAdvanceStats(userId: string, role: string): Promise<{ pendingManager: number; pendingFinal: number; pendingCeo: number; active: number }>;
@@ -5360,6 +5362,17 @@ export class DatabaseStorage implements IStorage {
   async rescheduleRepayment(id: string, year: number, month: number): Promise<void> {
     await db.update(salaryAdvanceRepayments)
       .set({ year, month })
+      .where(eq(salaryAdvanceRepayments.id, id));
+  }
+
+  async updateSalaryAdvanceRepayment(id: string, patch: Partial<InsertSalaryAdvanceRepayment>): Promise<void> {
+    await db.update(salaryAdvanceRepayments)
+      .set(patch as any)
+      .where(eq(salaryAdvanceRepayments.id, id));
+  }
+
+  async deleteSalaryAdvanceRepayment(id: string): Promise<void> {
+    await db.delete(salaryAdvanceRepayments)
       .where(eq(salaryAdvanceRepayments.id, id));
   }
 

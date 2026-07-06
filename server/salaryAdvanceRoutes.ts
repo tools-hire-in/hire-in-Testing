@@ -877,6 +877,167 @@ export function registerSalaryAdvanceRoutes(app: Express) {
     }
   });
 
+  // ── Edit a single scheduled installment's amount for a specific month.
+  // Unlike /reschedule (which shifts the whole schedule), this adjusts how much is
+  // recovered in ONE month while preserving the outstanding balance: the difference
+  // is redistributed across the remaining scheduled installments (pushed to / pulled
+  // from later months). Used inline from the salary-run approval screen.
+  app.patch("/api/salary-advances/:id/installment", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (!["disbursed", "repaying"].includes(advance.status)) {
+        return res.status(400).json({ error: "Only disbursed or repaying advances can be edited." });
+      }
+
+      const schema = z.object({
+        year: z.number().int().min(2020).max(2100),
+        month: z.number().int().min(1).max(12),
+        newAmount: z.number().min(0),
+        reason: z.string().trim().min(1, "A reason is required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+      const { year, month, reason } = parsed.data;
+
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+
+      // The target month's run must not already be locked.
+      if (await isRunLocked(year, month)) {
+        return res.status(400).json({ error: `The ${MONTH_NAMES[month]} ${year} salary run is already locked. Use the reverse flow instead.` });
+      }
+
+      const repayments = await storage.getSalaryAdvanceRepayments(advance.id);
+      const sortKey = (r: { year: number; month: number }) => r.year * 12 + r.month;
+      const scheduled = repayments.filter(r => r.status === "scheduled").sort((a, b) => sortKey(a) - sortKey(b));
+      const target = scheduled.find(r => r.year === year && r.month === month);
+      if (!target) return res.status(400).json({ error: "No scheduled installment exists for that month on this advance." });
+
+      const oldAmount = r2(Number(target.scheduledAmount));
+      const later = scheduled.filter(r => sortKey(r) > sortKey(target));
+      const sumLater = r2(later.reduce((s, r) => s + Number(r.scheduledAmount), 0));
+      // Cannot recover more this month than this month + everything scheduled after it.
+      const maxN = r2(oldAmount + sumLater);
+      const newAmount = r2(Math.min(Math.max(parsed.data.newAmount, 0), maxN));
+      const delta = r2(oldAmount - newAmount); // >0: reduce now, push later; <0: pull from later
+
+      if (delta === 0) {
+        return res.json({ success: true, oldAmount, newAmount, unchanged: true });
+      }
+
+      await storage.updateSalaryAdvanceRepayment(target.id, { scheduledAmount: newAmount.toFixed(2) } as any);
+
+      if (delta > 0) {
+        // Reducing this month — push the freed amount to later installments.
+        if (later.length > 0) {
+          const last = later[later.length - 1];
+          await storage.updateSalaryAdvanceRepayment(last.id, { scheduledAmount: r2(Number(last.scheduledAmount) + delta).toFixed(2) } as any);
+        } else {
+          // No later installment — create a trailing one in the next free month.
+          const nextInstNo = Math.max(0, ...repayments.map(r => Number(r.installmentNo) || 0)) + 1;
+          const occupied = new Set(repayments.map(r => `${r.year}-${r.month}`));
+          let { year: ny, month: nm } = advanceOneMonth(year, month);
+          while (occupied.has(`${ny}-${nm}`)) ({ year: ny, month: nm } = advanceOneMonth(ny, nm));
+          await storage.createSalaryAdvanceRepayments([{
+            advanceId: advance.id, userId: advance.requesterId, installmentNo: nextInstNo,
+            year: ny, month: nm, scheduledAmount: delta.toFixed(2),
+          }] as any);
+        }
+      } else {
+        // Increasing this month — pull the extra from later installments, from the end backwards.
+        let pull = r2(-delta);
+        for (const r of [...later].reverse()) {
+          if (pull <= 0) break;
+          const amt = r2(Number(r.scheduledAmount));
+          if (amt <= pull + 0.005) {
+            await storage.deleteSalaryAdvanceRepayment(r.id);
+            pull = r2(pull - amt);
+          } else {
+            await storage.updateSalaryAdvanceRepayment(r.id, { scheduledAmount: r2(amt - pull).toFixed(2) } as any);
+            pull = 0;
+          }
+        }
+      }
+
+      const actorId = req.session.userId!;
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "installment_adjusted",
+        oldStatus: advance.status, newStatus: advance.status,
+        metadata: { year, month, oldAmount, newAmount, reason, recordedManually: true },
+      } as any);
+
+      res.json({ success: true, oldAmount, newAmount });
+    } catch (err) {
+      console.error("Installment edit error:", err);
+      res.status(500).json({ error: "Failed to edit installment" });
+    }
+  });
+
+  // ── Remove (defer) a not-yet-recovered scheduled installment for a month so it
+  // won't apply to this run. The outstanding balance is preserved: the amount is
+  // pushed to a new trailing installment. Deducted installments cannot be removed
+  // here — those require the existing super-admin reverse flow.
+  app.post("/api/salary-advances/:id/installment/remove", requireAuth, requirePermission("salaryAdvance.backfill", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (!["disbursed", "repaying"].includes(advance.status)) {
+        return res.status(400).json({ error: "Only disbursed or repaying advances can be edited." });
+      }
+
+      const schema = z.object({
+        year: z.number().int().min(2020).max(2100),
+        month: z.number().int().min(1).max(12),
+        reason: z.string().trim().min(1, "A reason is required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+      const { year, month, reason } = parsed.data;
+
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+
+      if (await isRunLocked(year, month)) {
+        return res.status(400).json({ error: `The ${MONTH_NAMES[month]} ${year} salary run is already locked. Use the reverse flow instead.` });
+      }
+
+      const repayments = await storage.getSalaryAdvanceRepayments(advance.id);
+      const target = repayments.find(r => r.status === "scheduled" && r.year === year && r.month === month);
+      if (!target) return res.status(400).json({ error: "No scheduled installment exists for that month on this advance." });
+
+      const amount = r2(Number(target.scheduledAmount));
+
+      // Delete this month's installment and defer the amount to a new trailing month
+      // so the outstanding balance is preserved.
+      await storage.deleteSalaryAdvanceRepayment(target.id);
+
+      const remaining = repayments.filter(r => r.id !== target.id);
+      const sortKey = (r: { year: number; month: number }) => r.year * 12 + r.month;
+      const latest = remaining.length > 0
+        ? remaining.reduce((a, b) => (sortKey(a) >= sortKey(b) ? a : b))
+        : { year, month };
+      const occupied = new Set(remaining.map(r => `${r.year}-${r.month}`));
+      let { year: ny, month: nm } = advanceOneMonth(latest.year, latest.month);
+      while (occupied.has(`${ny}-${nm}`)) ({ year: ny, month: nm } = advanceOneMonth(ny, nm));
+      const nextInstNo = Math.max(0, ...repayments.map(r => Number(r.installmentNo) || 0)) + 1;
+      await storage.createSalaryAdvanceRepayments([{
+        advanceId: advance.id, userId: advance.requesterId, installmentNo: nextInstNo,
+        year: ny, month: nm, scheduledAmount: amount.toFixed(2),
+      }] as any);
+
+      const actorId = req.session.userId!;
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "installment_removed",
+        oldStatus: advance.status, newStatus: advance.status,
+        metadata: { year, month, amount, deferredTo: { year: ny, month: nm }, reason, recordedManually: true },
+      } as any);
+
+      res.json({ success: true, amount, deferredTo: { year: ny, month: nm } });
+    } catch (err) {
+      console.error("Installment remove error:", err);
+      res.status(500).json({ error: "Failed to remove installment" });
+    }
+  });
+
   // ── Pending Adjustments — super_admin: global queue of pending_review overpayments/credits.
   app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (_req: Request, res: Response) => {
     try {

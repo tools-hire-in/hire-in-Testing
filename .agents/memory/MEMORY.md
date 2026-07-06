@@ -41,3 +41,4 @@
 - [SOP Wave Rollout & Enforcement](sop-wave-rollout.md) — WAVE_DEFS single source; ≤2 operational SOPs/week cadence (W0 exempt); soft=coaching banner, hard=compliance lock; all gated by resolveSopAccessForUser so non-pilot never locks.
 - [SOP ↔ goal KPI linkage](sop-goal-kpi-linkage.md) — goals' linked_sop_id points at a version row; roll-ups must resolve across sopMasterId; /api/performance/analytics doesn't exist (self-contained cards).
 - [SOP tool-access requests (OPS-001)](sop-access-requests-ops001.md) — reuse HIRD "access" type + nullable internal_requests.linked_sop_id; tagging resolves across all version ids of sopMasterId.
+- [Inline advance mgmt in approval](inline-advance-mgmt-approval.md) — pending-run only; installment edit/remove write to advance tables (outstanding preserved), then run refresh-from-source re-applies manual adjustments.

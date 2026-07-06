@@ -842,6 +842,332 @@ function RecipientsPreviewInline() {
   );
 }
 
+// ── Inline advance / adjustment manager for one employee on a pending run ──────
+// Lists this month's scheduled advance/overpayment recoveries (source of truth)
+// and lets super_admin/admin/hr edit an installment amount, remove (defer) one, or
+// add a new advance/overpayment/salary credit — all via the existing advance
+// endpoints. After any change the parent refreshes the run preview from source.
+interface AdvanceRepayment {
+  id: string;
+  advanceId: string;
+  year: number;
+  month: number;
+  scheduledAmount: string;
+  status: string;
+  installmentNo: number;
+}
+interface EmployeeAdvance {
+  id: string;
+  kind: "advance" | "overpayment" | "salary_credit";
+  status: string;
+  outstandingBalance: string | null;
+  approvedAmount: string | null;
+  requestedAmount: string;
+  repayments?: AdvanceRepayment[];
+}
+
+function AdvanceManagerPanel({
+  userId,
+  employeeName,
+  year,
+  month,
+  onChanged,
+  onClose,
+}: {
+  userId: string;
+  employeeName: string;
+  year: number;
+  month: number;
+  onChanged: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const { data: advances, isLoading, refetch } = useQuery<EmployeeAdvance[]>({
+    queryKey: ["/api/salary-advances/employee", userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/salary-advances/employee/${userId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load advances");
+      return res.json();
+    },
+  });
+
+  const [editing, setEditing] = useState<{ advanceId: string; amount: string; reason: string } | null>(null);
+  const [removing, setRemoving] = useState<{ advanceId: string; reason: string } | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const inr = (v: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+
+  const afterMutate = async () => {
+    await refetch();
+    await onChanged();
+  };
+
+  const editMut = useMutation({
+    mutationFn: ({ advanceId, newAmount, reason }: { advanceId: string; newAmount: number; reason: string }) =>
+      apiRequest("PATCH", `/api/salary-advances/${advanceId}/installment`, { year, month, newAmount, reason }),
+    onSuccess: async () => {
+      toast({ title: "Recovery amount updated", description: "Outstanding balance preserved. Run refreshed." });
+      setEditing(null);
+      await afterMutate();
+    },
+    onError: (err: any) => toast({ title: "Failed to update", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMut = useMutation({
+    mutationFn: ({ advanceId, reason }: { advanceId: string; reason: string }) =>
+      apiRequest("POST", `/api/salary-advances/${advanceId}/installment/remove`, { year, month, reason }),
+    onSuccess: async () => {
+      toast({ title: "Recovery removed for this month", description: "Deferred to a later month. Run refreshed." });
+      setRemoving(null);
+      await afterMutate();
+    },
+    onError: (err: any) => toast({ title: "Failed to remove", description: err.message, variant: "destructive" }),
+  });
+
+  const addMut = useMutation({
+    mutationFn: (body: any) => apiRequest("POST", `/api/salary-advances/backfill`, body),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      toast({
+        title: "Record created",
+        description: data?.startMonthWarning
+          ? "Created — chosen recovery month is locked; refreshed anyway."
+          : "Advance/adjustment recorded. Run refreshed.",
+      });
+      setShowAdd(false);
+      await afterMutate();
+    },
+    onError: (err: any) => toast({ title: "Failed to record", description: err.message, variant: "destructive" }),
+  });
+
+  const monthRecoveries = (advances || []).flatMap((a) =>
+    (a.repayments || [])
+      .filter((r) => r.year === year && r.month === month && r.status === "scheduled")
+      .filter(() => ["advance", "overpayment"].includes(a.kind) && ["disbursed", "repaying"].includes(a.status))
+      .map((r) => ({ advance: a, rep: r })),
+  );
+
+  const busy = editMut.isPending || removeMut.isPending || addMut.isPending;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl" data-testid="dialog-advance-manager">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-purple-600" />
+            Advances &amp; Adjustments — {employeeName}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Recoveries scheduled for <strong>{monthName(month)} {year}</strong>. Edits write to the advance
+            schedule (outstanding balance preserved) and refresh the run automatically.
+          </p>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : monthRecoveries.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground" data-testid="text-no-recoveries">
+              No scheduled recoveries for this month.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {monthRecoveries.map(({ advance, rep }) => {
+                const isEditing = editing?.advanceId === advance.id;
+                const isRemoving = removing?.advanceId === advance.id;
+                return (
+                  <div key={rep.id} className="rounded-lg border p-3" data-testid={`recovery-${advance.id}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px] capitalize">{advance.kind}</Badge>
+                        </div>
+                        <p className="text-sm mt-1">
+                          This month: <span className="font-semibold">{inr(Number(rep.scheduledAmount))}</span>
+                          <span className="text-xs text-muted-foreground"> · outstanding {inr(Number(advance.outstandingBalance || 0))}</span>
+                        </p>
+                      </div>
+                      {!isEditing && !isRemoving && (
+                        <div className="flex items-center gap-1">
+                          <Button variant="outline" size="sm" onClick={() => setEditing({ advanceId: advance.id, amount: String(Number(rep.scheduledAmount)), reason: "" })} data-testid={`btn-edit-recovery-${advance.id}`}>
+                            <Pencil className="h-3 w-3 mr-1" />Edit
+                          </Button>
+                          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setRemoving({ advanceId: advance.id, reason: "" })} data-testid={`btn-remove-recovery-${advance.id}`}>
+                            <XCircle className="h-3 w-3 mr-1" />Remove
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {isEditing && (
+                      <div className="mt-3 space-y-2 border-t pt-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">New amount for {monthName(month)}</Label>
+                            <Input type="number" min={0} value={editing.amount} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} data-testid={`input-recovery-amount-${advance.id}`} />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+                          <Textarea value={editing.reason} onChange={(e) => setEditing({ ...editing, reason: e.target.value })} className="min-h-[52px] text-sm" placeholder="Why is this month's recovery changing?" data-testid={`input-recovery-reason-${advance.id}`} />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                          <Button size="sm" disabled={busy || !editing.reason.trim() || editing.amount === ""} onClick={() => editMut.mutate({ advanceId: advance.id, newAmount: Number(editing.amount), reason: editing.reason.trim() })} data-testid={`btn-save-recovery-${advance.id}`}>
+                            {editMut.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}Save
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isRemoving && (
+                      <div className="mt-3 space-y-2 border-t pt-3">
+                        <p className="text-xs text-muted-foreground">This defers <strong>{inr(Number(rep.scheduledAmount))}</strong> to a later month so it won't be recovered this run. Outstanding balance is unchanged.</p>
+                        <div>
+                          <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+                          <Textarea value={removing.reason} onChange={(e) => setRemoving({ ...removing, reason: e.target.value })} className="min-h-[52px] text-sm" placeholder="Why skip this month's recovery?" data-testid={`input-remove-reason-${advance.id}`} />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => setRemoving(null)}>Cancel</Button>
+                          <Button size="sm" variant="destructive" disabled={busy || !removing.reason.trim()} onClick={() => removeMut.mutate({ advanceId: advance.id, reason: removing.reason.trim() })} data-testid={`btn-confirm-remove-${advance.id}`}>
+                            {removeMut.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <XCircle className="h-3 w-3 mr-1" />}Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!showAdd ? (
+            <Button variant="outline" size="sm" onClick={() => setShowAdd(true)} data-testid="btn-add-advance">
+              <Plus className="h-3.5 w-3.5 mr-1" />Add advance / overpayment / credit
+            </Button>
+          ) : (
+            <AddAdvanceForm
+              userId={userId}
+              year={year}
+              month={month}
+              pending={addMut.isPending}
+              onCancel={() => setShowAdd(false)}
+              onSubmit={(body) => addMut.mutate(body)}
+            />
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="btn-close-advance-manager">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Compact backfill form (kind picker) reused inside the run's advance manager.
+function AddAdvanceForm({
+  userId,
+  year,
+  month,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  userId: string;
+  year: number;
+  month: number;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (body: any) => void;
+}) {
+  const [kind, setKind] = useState<"advance" | "overpayment" | "salary_credit">("advance");
+  const [amount, setAmount] = useState("");
+  const [months, setMonths] = useState("1");
+  const [startMonth, setStartMonth] = useState(String(month));
+  const [startYear, setStartYear] = useState(String(year));
+  const [reason, setReason] = useState("");
+
+  const amt = Number(amount) || 0;
+  const canSubmit = amt > 0 && (kind === "salary_credit" || (Number(startMonth) >= 1 && Number(startYear) >= 2000));
+
+  const submit = () => {
+    const body: any = { employeeId: userId, kind, amount: amt, reason: reason.trim() || undefined };
+    if (kind === "advance" || kind === "overpayment") {
+      body.repaymentMonths = Number(months) || 1;
+      body.startMonth = Number(startMonth);
+      body.startYear = Number(startYear);
+    }
+    if (kind === "salary_credit") {
+      body.targetMonth = month;
+      body.targetYear = year;
+    }
+    onSubmit(body);
+  };
+
+  return (
+    <div className="rounded-lg border p-3 space-y-3" data-testid="form-add-advance">
+      <div className="space-y-1">
+        <Label className="text-xs">Type</Label>
+        <Select value={kind} onValueChange={(v) => setKind(v as any)}>
+          <SelectTrigger className="h-8 text-sm" data-testid="select-add-kind"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="advance">Advance</SelectItem>
+            <SelectItem value="overpayment">Overpayment</SelectItem>
+            <SelectItem value="salary_credit">Salary Credit</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          {kind === "advance"
+            ? "Created active immediately; recovers over the chosen months."
+            : kind === "overpayment"
+              ? "Recovers in installments — needs super-admin approval before payroll deducts it."
+              : "One-time credit for a payroll month — needs super-admin approval before payroll applies it."}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs">Amount (₹)</Label>
+          <Input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="input-add-amount" />
+        </div>
+        {(kind === "advance" || kind === "overpayment") && (
+          <div>
+            <Label className="text-xs">{kind === "advance" ? "Repayment" : "Recovery"} months</Label>
+            <Input type="number" min={1} max={36} value={months} onChange={(e) => setMonths(e.target.value)} data-testid="input-add-months" />
+          </div>
+        )}
+      </div>
+      {(kind === "advance" || kind === "overpayment") && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">First recovery month</Label>
+            <Select value={startMonth} onValueChange={setStartMonth}>
+              <SelectTrigger className="h-8 text-sm" data-testid="select-add-start-month"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Year</Label>
+            <Input type="number" min={2000} max={2100} value={startYear} onChange={(e) => setStartYear(e.target.value)} data-testid="input-add-start-year" />
+          </div>
+        </div>
+      )}
+      <div>
+        <Label className="text-xs">Reason / note</Label>
+        <Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="min-h-[44px] text-sm" data-testid="input-add-reason" />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" disabled={pending || !canSubmit} onClick={submit} data-testid="btn-submit-add-advance">
+          {pending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
+          {kind === "advance" ? "Record Advance" : kind === "salary_credit" ? "Submit Credit" : "Submit Overpayment"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // Approval table for a pending run
 function ApprovalTable({
   run,
@@ -851,8 +1177,18 @@ function ApprovalTable({
   onApproved: () => void;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const role = (user as any)?.role || "";
+  const canManageAdvances = SALARY_EDIT_ROLES.includes(role) && run.status === "pending_approval";
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
+  const [advanceEmail, setAdvanceEmail] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
+
+  const { data: allUsers } = useQuery<any[]>({
+    queryKey: ["/api/hr/admin/users"],
+    enabled: canManageAdvances,
+  });
+  const userIdByEmail = new Map<string, string>((allUsers || []).map((u: any) => [u.email, u.id]));
 
   const { data: snapshotGap } = useQuery<{ count: number }>({
     queryKey: ["/api/salary-advances/snapshot-gap", run.year, run.month],
@@ -904,6 +1240,17 @@ function ApprovalTable({
       toast({ title: "Failed to remove adjustment", description: err.message, variant: "destructive" });
     },
   });
+
+  const refreshRunFromSource = async () => {
+    try {
+      await apiRequest("POST", `/api/hr/reports/salary/runs/${run.id}/refresh`, {});
+    } catch (err: any) {
+      toast({ title: "Preview refresh failed", description: err.message, variant: "destructive" });
+    }
+    await refetch();
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/snapshot-gap", run.year, run.month] });
+  };
 
   const approveMutation = useMutation({
     mutationFn: async () => {
@@ -1068,7 +1415,23 @@ function ApprovalTable({
                       <td className="py-2 px-3 text-right">{row.paidLeaves}</td>
                       <td className="py-2 px-3 text-right">{fmt(row.grossSalary)}</td>
                       <td className="py-2 px-3 text-right text-red-600 dark:text-red-400">{fmt(row.deductions)}</td>
-                      <td className={`py-2 px-3 text-right ${Number(row.advanceRecovery) > 0 ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"}`} data-testid={`text-advance-recovery-${idx}`}>{fmt(Number(row.advanceRecovery) || 0)}</td>
+                      <td className={`py-2 px-3 text-right ${Number(row.advanceRecovery) > 0 ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"}`} data-testid={`text-advance-recovery-${idx}`}>
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{fmt(Number(row.advanceRecovery) || 0)}</span>
+                          {canManageAdvances && userIdByEmail.get(row.email) && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-6 w-6 text-purple-600 dark:text-purple-400" onClick={() => setAdvanceEmail(row.email)} data-testid={`btn-manage-advance-${idx}`}>
+                                    <Layers className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Manage advances &amp; adjustments</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-2 px-3 text-right font-semibold">{fmt(row.netPayable)}</td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -1180,6 +1543,17 @@ function ApprovalTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {advanceEmail && userIdByEmail.get(advanceEmail) && (
+        <AdvanceManagerPanel
+          userId={userIdByEmail.get(advanceEmail)!}
+          employeeName={rows.find(r => r.email === advanceEmail)?.employeeName || advanceEmail}
+          year={run.year}
+          month={run.month}
+          onChanged={refreshRunFromSource}
+          onClose={() => setAdvanceEmail(null)}
+        />
+      )}
     </div>
   );
 }
