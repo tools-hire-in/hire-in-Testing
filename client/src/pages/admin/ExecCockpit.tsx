@@ -4,6 +4,7 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,28 @@ interface EmployeeRow {
 function PeopleTab() {
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
+  const [downloading, setDownloading] = useState(false);
+
+  const handleExportCsv = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/hr/admin/users/export-csv", { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match ? match[1] : "employee-directory.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const { data: employees = [], isLoading } = useQuery<EmployeeRow[]>({
     queryKey: ["/api/hr/users"],
@@ -128,6 +151,17 @@ function PeopleTab() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={handleExportCsv}
+                disabled={downloading || isLoading}
+                data-testid="button-export-csv"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {downloading ? "Downloading…" : "Download CSV"}
+              </Button>
             </div>
           </div>
         </CardHeader>

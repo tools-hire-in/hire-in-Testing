@@ -2507,6 +2507,42 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/hr/admin/users/export-csv", requirePermission("hr.users", "hr"), async (req, res) => {
+    try {
+      const users = await storage.getAdminUsers();
+      const departments = await storage.getDepartments();
+      const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+
+      const escape = (val: string | null | undefined) => {
+        if (val == null) return "";
+        const s = String(val);
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+          return `"${s.replace(/"/g, '""')}"`;
+        }
+        return s;
+      };
+
+      const headers = ["Employee ID", "Name", "Email", "Department", "Role", "Status", "Joining Date"];
+      const rows = users.map((u) => [
+        escape(u.employeeId || ""),
+        escape(`${u.firstName} ${u.lastName}`),
+        escape(u.email),
+        escape(deptMap.get(u.departmentId || "") || ""),
+        escape(u.role),
+        escape(u.isActive ? "Active" : "Inactive"),
+        escape(u.joiningDate || ""),
+      ]);
+
+      const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="employee-directory-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to export users" });
+    }
+  });
+
   // --- Dashboard Stats ---
   app.get("/api/hr/dashboard-stats", requireAuth, async (req, res) => {
     try {
