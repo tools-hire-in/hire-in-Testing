@@ -3,7 +3,7 @@ import { db } from "./db";
 import { sql, eq, and, inArray, notInArray } from "drizzle-orm";
 import { adminUsers, attendanceReportManagerApprovals } from "@shared/schema";
 import { storage } from "./storage";
-import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, reconcileRunEntries, regenerateAttendanceReportRun, notifyManagersForRun } from "./attendanceReport";
+import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, reconcileRunEntries, regenerateAttendanceReportRun, notifyManagersForRun, getIstYearMonthDay } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
 import { getPortalBaseUrl, attendanceApprovalUrl } from "./portalUrl";
 import { isRoleAllowed } from "@shared/accessControl";
@@ -174,7 +174,7 @@ export function registerAttendanceReportRoutes(app: Express) {
         lastEnsureCheck = now;
         (async () => {
           const openRuns = (await db.execute(sql`
-            SELECT id FROM attendance_report_runs
+            SELECT id, notified_at FROM attendance_report_runs
             WHERE status NOT IN ('approved', 'overridden', 'deadline_expired')
               AND is_active = true
           `)).rows as any[];
@@ -183,7 +183,10 @@ export function registerAttendanceReportRoutes(app: Express) {
             // reconcile + notify any managers who gained direct reports.
             await reconcileRunEntries(r.id);
             const { added } = await reconcileManagerApprovals(r.id);
-            if (added.length > 0) await notifyManagersForRun(r.id, added);
+            // Never email while the run is still an un-sent draft (notified_at IS
+            // NULL). New managers are added silently and get emailed when HR clicks
+            // "Send for Approval". Only already-sent runs auto-notify new managers.
+            if (added.length > 0 && r.notified_at) await notifyManagersForRun(r.id, added);
           }
         })().catch(err => console.error("[attendance-report] Per-request reconcile failed:", err));
       }
@@ -198,7 +201,7 @@ export function registerAttendanceReportRoutes(app: Express) {
       if (!month || !year) return res.status(400).json({ error: "month and year required" });
 
       const [run] = (await db.execute(sql`
-        SELECT id, status, deadline_at, created_at, version, regeneration_comment, auto_added_total, last_synced_at
+        SELECT id, status, deadline_at, created_at, version, regeneration_comment, auto_added_total, last_synced_at, notified_at
         FROM attendance_report_runs
         WHERE month = ${month} AND year = ${year} AND is_active = true
         ORDER BY version DESC, created_at DESC
@@ -206,6 +209,10 @@ export function registerAttendanceReportRoutes(app: Express) {
       `)).rows as any[];
 
       if (!run) return res.json({ exists: false, approved: false });
+
+      // A run that has not yet been sent to managers is a "draft" — generated and
+      // waiting for HR to review the month, then click "Send for Approval".
+      const isDraft = !run.notified_at;
 
       // Natural read/refresh path: auto-sync the open month so newly added /
       // newly joined employees appear without manual action. Additive + idempotent.
@@ -215,7 +222,9 @@ export function registerAttendanceReportRoutes(app: Express) {
           const { added } = await reconcileRunEntries(run.id);
           if (added > 0) {
             const { added: newMgrs } = await reconcileManagerApprovals(run.id);
-            if (newMgrs.length > 0) await notifyManagersForRun(run.id, newMgrs);
+            // Only email newly-added managers if the run has already been sent.
+            // For a draft, they are added silently and get emailed when HR sends.
+            if (newMgrs.length > 0 && !isDraft) await notifyManagersForRun(run.id, newMgrs);
             await storage.createAuditLog({
               actorId: req.session.userId!,
               action: "attendance_report_auto_synced",
@@ -253,6 +262,8 @@ export function registerAttendanceReportRoutes(app: Express) {
         regenerationComment: run.regeneration_comment,
         autoAddedTotal: run.auto_added_total || 0,
         lastSyncedAt: run.last_synced_at,
+        notifiedAt: run.notified_at,
+        isDraft,
         entryCount: entryCount[0]?.cnt || 0,
         approved: run.status === "approved" || run.status === "overridden",
         overridden: run.status === "overridden",
@@ -288,10 +299,17 @@ export function registerAttendanceReportRoutes(app: Express) {
       if (!month || !year || month < 1 || month > 12) {
         return res.status(400).json({ error: "Valid month and year required" });
       }
-      // Honour explicit month/year including past months, but never a future month.
-      const now = new Date();
-      if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1)) {
-        return res.status(400).json({ error: "Cannot generate an attendance report for a future month." });
+      // Honour explicit past months, but only for months that have fully ended.
+      // Reject the current (in-progress) month and any future month, using the
+      // business timezone (IST) so a partial month can never be snapshotted here.
+      // The month-end scheduled jobs call generateAttendanceReportRun directly and
+      // are unaffected by this endpoint guard.
+      const ist = getIstYearMonthDay();
+      if (year > ist.year || (year === ist.year && month >= ist.month)) {
+        return res.status(400).json({
+          error: "Attendance reports can only be generated for a month that has already ended. This month is still in progress.",
+          code: "MONTH_NOT_ENDED",
+        });
       }
 
       const existing = (await db.execute(sql`
@@ -342,15 +360,8 @@ export function registerAttendanceReportRoutes(app: Express) {
         const { runId, version, managerIds } = await regenerateAttendanceReportRun(month, year, req.session.userId!, comment);
         const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
 
-        if (managerIds.length > 0) {
-          const managers = await db.select({
-            id: adminUsers.id,
-            email: adminUsers.email,
-            firstName: adminUsers.firstName,
-            lastName: adminUsers.lastName,
-          }).from(adminUsers).where(inArray(adminUsers.id, managerIds));
-          await notifyManagersForRun(runId, managers as any);
-        }
+        // NOTE: managers are NOT emailed here. The regenerated run is created as a draft
+        // (notified_at = NULL); HR reviews it and clicks "Send for Approval" to notify.
 
         // Flag any not-yet-approved salary run for this month as superseded so HR
         // does not approve numbers based on a stale attendance version.
@@ -392,16 +403,8 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
 
-      if (managerIds.length > 0) {
-        const managers = await db.select({
-          id: adminUsers.id,
-          email: adminUsers.email,
-          firstName: adminUsers.firstName,
-          lastName: adminUsers.lastName,
-        }).from(adminUsers).where(inArray(adminUsers.id, managerIds));
-
-        await notifyManagersForRun(runId, managers as any);
-      }
+      // NOTE: managers are NOT emailed here. The run is created as a draft
+      // (notified_at = NULL); HR reviews the month, then clicks "Send for Approval".
 
       // Audit log the run creation
       await storage.createAuditLog({
@@ -448,8 +451,11 @@ export function registerAttendanceReportRoutes(app: Express) {
   app.post("/api/hr/attendance-report/runs/:id/notify-missed", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
     try {
       const runId = req.params.id;
-      const [run] = (await db.execute(sql`SELECT id, status FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+      const [run] = (await db.execute(sql`SELECT id, status, notified_at FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!run.notified_at) {
+        return res.status(400).json({ error: "This report is still a draft. Click \"Send for Approval\" first." });
+      }
 
       const { added } = await reconcileManagerApprovals(runId);
       if (added.length > 0) await notifyManagersForRun(runId, added);
@@ -476,8 +482,11 @@ export function registerAttendanceReportRoutes(app: Express) {
   app.post("/api/hr/attendance-report/runs/:id/resend-approval", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
     try {
       const runId = String(req.params.id);
-      const [run] = (await db.execute(sql`SELECT id, status FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+      const [run] = (await db.execute(sql`SELECT id, status, notified_at FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!run.notified_at) {
+        return res.status(400).json({ error: "This report is still a draft. Click \"Send for Approval\" first." });
+      }
 
       const managers = (await db
         .select({
@@ -512,6 +521,116 @@ export function registerAttendanceReportRoutes(app: Express) {
     }
   });
 
+  // Send a manually-generated (draft) run to managers for approval. This is the
+  // deliberate "review, then send" step: manual generate/regenerate no longer emails
+  // automatically, so HR confirms the correct month here before managers are notified.
+  // The 24h approval deadline is (re)started from the moment of sending.
+  app.post("/api/hr/attendance-report/runs/:id/send-for-approval", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const runId = String(req.params.id);
+      const [run] = (await db.execute(sql`
+        SELECT id, status, is_active, notified_at, month, year FROM attendance_report_runs WHERE id = ${runId}
+      `)).rows as any[];
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.is_active === false || run.status === "cancelled") {
+        return res.status(409).json({ error: "This report run has been discarded.", code: "INACTIVE" });
+      }
+      if (run.status === "approved" || run.status === "overridden") {
+        return res.status(409).json({ error: "This report run is already finalized.", code: "ALREADY_FINALIZED" });
+      }
+      if (run.notified_at) {
+        return res.status(409).json({ error: "This report has already been sent to managers for approval.", code: "ALREADY_SENT" });
+      }
+
+      // Restart the 24h approval deadline so it runs from send time, not generation.
+      const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await db.execute(sql`
+        UPDATE attendance_report_runs SET deadline_at = ${deadlineAt.toISOString()}, updated_at = NOW() WHERE id = ${runId}
+      `);
+
+      // Notify every manager on the run who has not already approved/overridden.
+      const managers = (await db
+        .select({
+          id: adminUsers.id,
+          email: adminUsers.email,
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+        })
+        .from(attendanceReportManagerApprovals)
+        .innerJoin(adminUsers, eq(adminUsers.id, attendanceReportManagerApprovals.managerId))
+        .where(and(
+          eq(attendanceReportManagerApprovals.runId, runId),
+          notInArray(attendanceReportManagerApprovals.status, ["approved", "overridden"]),
+          eq(adminUsers.isActive, true),
+        ))) as any[];
+
+      if (managers.length > 0) {
+        // notifyManagersForRun sets notified_at on the run for us.
+        await notifyManagersForRun(runId, managers as any);
+      } else {
+        // No pending managers to email, but still mark the run as sent so it leaves
+        // the draft state (e.g. every manager already approved a prior version).
+        await db.execute(sql`
+          UPDATE attendance_report_runs SET notified_at = COALESCE(notified_at, NOW()) WHERE id = ${runId}
+        `);
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "attendance_report_sent_for_approval",
+        changes: { runId, month: run.month, year: run.year, notified: managers.map(m => m.id) },
+      });
+
+      res.json({
+        ok: true,
+        notified: managers.length,
+        managers: managers.map(m => ({ id: m.id, name: `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email })),
+      });
+    } catch (error) {
+      console.error("Send for approval error:", error);
+      res.status(500).json({ error: "Failed to send report for approval" });
+    }
+  });
+
+  // Discard/void an active attendance report run. Marks it inactive + cancelled
+  // (NOT approved), so it stops gating the salary run and disappears from managers'
+  // approval landing view and from status reads. A reason is required and audit-logged.
+  app.post("/api/hr/attendance-report/runs/:id/discard", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const runId = String(req.params.id);
+      const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+      if (!reason) {
+        return res.status(400).json({ error: "A reason is required to discard a report run.", code: "REASON_REQUIRED" });
+      }
+
+      const [run] = (await db.execute(sql`
+        SELECT id, month, year, status, is_active FROM attendance_report_runs WHERE id = ${runId}
+      `)).rows as any[];
+      if (!run) return res.status(404).json({ error: "Run not found" });
+
+      if (run.is_active === false || run.status === "cancelled") {
+        return res.status(409).json({ error: "This report run has already been discarded or superseded.", code: "ALREADY_INACTIVE" });
+      }
+
+      await db.execute(sql`
+        UPDATE attendance_report_runs
+        SET is_active = false, status = 'cancelled', updated_at = NOW()
+        WHERE id = ${runId}
+      `);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "attendance_report_run_discarded",
+        changes: { runId, month: run.month, year: run.year, priorStatus: run.status, reason },
+      });
+
+      res.json({ ok: true, runId, month: run.month, year: run.year });
+    } catch (error) {
+      console.error("Discard attendance report run error:", error);
+      res.status(500).json({ error: "Failed to discard attendance report run" });
+    }
+  });
+
   app.get("/api/hr/attendance-report/runs/:id/my-team", requireAuth, async (req: Request, res: Response) => {
     try {
       const managerId = req.session.userId!;
@@ -519,6 +638,9 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status === "cancelled" || run.is_active === false) {
+        return res.status(409).json({ error: "This report was discarded and is no longer available. HR has generated a newer version." });
+      }
 
       const [myApproval] = (await db.execute(sql`
         SELECT * FROM attendance_report_manager_approvals
@@ -562,6 +684,8 @@ export function registerAttendanceReportRoutes(app: Express) {
         FROM attendance_report_manager_approvals ma
         JOIN attendance_report_runs r ON r.id = ma.run_id
         WHERE ma.manager_id = ${managerId}
+          AND r.is_active = true
+          AND r.status <> 'cancelled'
         ORDER BY r.year DESC, r.month DESC
         LIMIT 1
       `)).rows as any[];
@@ -580,6 +704,9 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status === "cancelled" || run.is_active === false) {
+        return res.status(409).json({ error: "This report was discarded and is no longer available. HR has generated a newer version." });
+      }
       if (run.status === "approved" || run.status === "overridden") {
         return res.status(409).json({ error: "Run already closed" });
       }
@@ -625,6 +752,9 @@ export function registerAttendanceReportRoutes(app: Express) {
 
       const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
       if (!run) return res.status(404).json({ error: "Run not found" });
+      if (run.status === "cancelled" || run.is_active === false) {
+        return res.status(409).json({ error: "This report was discarded and is no longer available. HR has generated a newer version." });
+      }
       if (run.status === "approved" || run.status === "overridden") {
         return res.status(409).json({ error: "Run already closed" });
       }
@@ -885,7 +1015,8 @@ export function registerAttendanceReportRoutes(app: Express) {
       if (!run) return res.status(404).json({ error: "Not found" });
 
       const deadline = run.deadline_at ? new Date(run.deadline_at) : null;
-      const expired = deadline && deadline < new Date();
+      // A draft (never sent to managers) has no live approval clock yet.
+      const expired = deadline && deadline < new Date() && !!run.notified_at;
 
       const terminalStatuses = ["approved", "overridden", "deadline_expired"];
       if (expired && !terminalStatuses.includes(run.status)) {

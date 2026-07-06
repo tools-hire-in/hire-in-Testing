@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1860,6 +1860,9 @@ export function SalaryReportsContent() {
   const [pendingRegCount, setPendingRegCount] = useState(0);
   const [attApprovalOverrideOpen, setAttApprovalOverrideOpen] = useState(false);
   const [attApprovalOverrideReason, setAttApprovalOverrideReason] = useState("");
+  const [attDiscardDialogOpen, setAttDiscardDialogOpen] = useState(false);
+  const [attDiscardReason, setAttDiscardReason] = useState("");
+  const [attSendDialogOpen, setAttSendDialogOpen] = useState(false);
 
   const canRegenerate = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
   const isAdminLevel = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
@@ -1909,7 +1912,7 @@ export function SalaryReportsContent() {
         toast({ title: "Error", description: err.error || "Failed to generate attendance report", variant: "destructive" });
         return;
       }
-      toast({ title: "Attendance report run created", description: "Managers have been notified to approve their team's attendance." });
+      toast({ title: "Draft attendance report created", description: "Review the month below, then click \"Send for Approval\" to notify managers. Nothing has been emailed yet." });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
       refetchAttStatus();
     },
@@ -1937,11 +1940,31 @@ export function SalaryReportsContent() {
       toast({
         title: `Attendance report regenerated (v${data.version ?? "?"})`,
         description: data.supersededSalaryRuns > 0
-          ? `${data.supersededSalaryRuns} pending salary run(s) flagged as superseded — regenerate them before approving.`
-          : "Managers have been re-notified to approve their team's attendance.",
+          ? `${data.supersededSalaryRuns} pending salary run(s) flagged as superseded — regenerate them before approving. Review, then "Send for Approval" to notify managers.`
+          : "Draft created — managers have NOT been emailed yet. Review the month, then click \"Send for Approval\".",
       });
       setRegenDialogOpen(false);
       setRegenComment("");
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/versions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/salary-gate-status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const attDiscardMutation = useMutation({
+    mutationFn: ({ runId, reason }: { runId: string; reason: string }) =>
+      apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/discard`, { reason }),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ title: "Error", description: data.error || "Failed to discard attendance report", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Attendance report discarded", description: "Managers will no longer see this run, and it no longer gates the salary run." });
+      setAttDiscardDialogOpen(false);
+      setAttDiscardReason("");
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/versions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/salary-gate-status"] });
@@ -1993,6 +2016,28 @@ export function SalaryReportsContent() {
       toast({
         title: data.notified > 0 ? `Resent to ${data.notified} manager(s)` : "No managers to notify",
         description: data.notified > 0 ? (data.managers || []).map((m: any) => m.name).join(", ") : "All managers have already approved or been overridden for this run.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const attSendForApprovalMutation = useMutation({
+    mutationFn: (runId: string) =>
+      apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/send-for-approval`, {}),
+    onSuccess: async (res: any) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ title: "Error", description: data.error || "Failed to send for approval", variant: "destructive" });
+        return;
+      }
+      setAttSendDialogOpen(false);
+      toast({
+        title: data.notified > 0 ? `Sent to ${data.notified} manager(s)` : "Report sent",
+        description: data.notified > 0
+          ? `Approval requests emailed to: ${(data.managers || []).map((m: any) => m.name).join(", ")}`
+          : "No managers were pending — the report is now marked as sent.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
       refetchAttStatus();
@@ -2151,6 +2196,8 @@ export function SalaryReportsContent() {
           className={`flex flex-wrap items-start gap-3 p-4 rounded-lg border ${
             attStatus.approved
               ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700"
+              : attStatus.exists && attStatus.isDraft
+              ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
               : attStatus.exists
               ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"
               : "bg-slate-50 dark:bg-slate-900/20 border-slate-300 dark:border-slate-700"
@@ -2159,18 +2206,24 @@ export function SalaryReportsContent() {
         >
           {attStatus.approved
             ? <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+            : attStatus.exists && attStatus.isDraft
+            ? <Send className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
             : <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />}
           <div className="flex-1 min-w-0">
-            <p className={`font-semibold ${attStatus.approved ? "text-green-800 dark:text-green-200" : "text-amber-800 dark:text-amber-200"}`}>
+            <p className={`font-semibold ${attStatus.approved ? "text-green-800 dark:text-green-200" : attStatus.exists && attStatus.isDraft ? "text-blue-800 dark:text-blue-200" : "text-amber-800 dark:text-amber-200"}`}>
               {attStatus.approved
                 ? `Attendance Approved — ${mLabel} ${selectedYear} ✓`
+                : attStatus.exists && attStatus.isDraft
+                ? `Attendance Draft — ${mLabel} ${selectedYear} (not sent yet)`
                 : attStatus.exists
                 ? `Attendance Approval Pending — ${mLabel} ${selectedYear}`
                 : `No Attendance Report Run — ${mLabel} ${selectedYear}`}
             </p>
-            <p className={`text-sm mt-0.5 ${attStatus.approved ? "text-green-700 dark:text-green-300" : "text-amber-700 dark:text-amber-300"}`}>
+            <p className={`text-sm mt-0.5 ${attStatus.approved ? "text-green-700 dark:text-green-300" : attStatus.exists && attStatus.isDraft ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"}`}>
               {attStatus.approved
                 ? `Salary run generation is unlocked.${attStatus.overridden ? " (HR override applied)" : ""}`
+                : attStatus.exists && attStatus.isDraft
+                ? `Draft ready — confirm this is the right month, then click "Send for Approval" to email managers. Nothing has been sent yet.`
                 : attStatus.exists
                 ? `${(attStatus.managerApprovals || []).filter((a: any) => a.status === "pending" || a.status === "edits_submitted").length} manager(s) pending. Salary run is gated until all managers approve.`
                 : "Generate an attendance report run first. Managers will have 24 hours to approve their team's data."}
@@ -2219,7 +2272,18 @@ export function SalaryReportsContent() {
                 Manage Approvals
               </Button>
             )}
-            {attStatus.exists && !attStatus.approved && (
+            {attStatus.exists && attStatus.isDraft && !attStatus.approved && (
+              <Button
+                size="sm"
+                onClick={() => setAttSendDialogOpen(true)}
+                disabled={attSendForApprovalMutation.isPending || !attStatus.runId}
+                data-testid="button-send-for-approval"
+              >
+                {attSendForApprovalMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                Send for Approval
+              </Button>
+            )}
+            {attStatus.exists && !attStatus.isDraft && !attStatus.approved && (
               <Button
                 size="sm"
                 variant="outline"
@@ -2231,7 +2295,7 @@ export function SalaryReportsContent() {
                 Notify Missed Managers
               </Button>
             )}
-            {attStatus.exists && !attStatus.approved && (
+            {attStatus.exists && !attStatus.isDraft && !attStatus.approved && (
               <Button
                 size="sm"
                 variant="outline"
@@ -2279,6 +2343,18 @@ export function SalaryReportsContent() {
                 Regenerate Report
               </Button>
             )}
+            {attStatus.exists && canRegenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50 dark:text-red-400"
+                onClick={() => { setAttDiscardReason(""); setAttDiscardDialogOpen(true); }}
+                data-testid="button-discard-att-run"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Discard Run
+              </Button>
+            )}
             {attStatus.exists && (
               <Button
                 size="sm"
@@ -2293,6 +2369,75 @@ export function SalaryReportsContent() {
           </div>
         </div>
       )}
+
+      {/* Discard attendance run dialog */}
+      <Dialog open={attDiscardDialogOpen} onOpenChange={setAttDiscardDialogOpen}>
+        <DialogContent data-testid="dialog-discard-att-run">
+          <DialogHeader>
+            <DialogTitle>Discard Attendance Report — {mLabel} {selectedYear}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This voids the current attendance report run. It will be marked cancelled (not approved),
+              removed from managers' approval view, and will no longer gate the salary run. This cannot be undone —
+              you would need to generate a fresh run for this month.
+            </p>
+            <div>
+              <Label className="text-xs">Reason (required)</Label>
+              <Textarea
+                className="mt-1 text-sm"
+                placeholder="e.g. Generated by mistake for an in-progress month."
+                value={attDiscardReason}
+                onChange={e => setAttDiscardReason(e.target.value)}
+                data-testid="textarea-discard-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttDiscardDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={attDiscardMutation.isPending || !attDiscardReason.trim() || !attStatus?.runId}
+              onClick={() => attStatus?.runId && attDiscardMutation.mutate({ runId: attStatus.runId, reason: attDiscardReason.trim() })}
+              data-testid="button-confirm-discard"
+            >
+              {attDiscardMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Discard Run
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send-for-approval confirmation dialog */}
+      <Dialog open={attSendDialogOpen} onOpenChange={setAttSendDialogOpen}>
+        <DialogContent data-testid="dialog-send-att-approval">
+          <DialogHeader>
+            <DialogTitle>Send for Approval — {mLabel} {selectedYear}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Please confirm you are sending the <strong>correct month</strong>. This will email the reporting
+              managers and start their 24-hour approval window. Managers review the per-person details on their own screen.
+            </p>
+            <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Month</span><span className="font-medium" data-testid="text-send-month">{mLabel} {selectedYear}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Employees in report</span><span className="font-medium" data-testid="text-send-entry-count">{attStatus?.entryCount ?? 0}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Managers to notify</span><span className="font-medium" data-testid="text-send-manager-count">{(attStatus?.managerApprovals || []).filter((a: any) => a.status !== "approved" && a.status !== "overridden").length}</span></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttSendDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={attSendForApprovalMutation.isPending || !attStatus?.runId}
+              onClick={() => attStatus?.runId && attSendForApprovalMutation.mutate(attStatus.runId)}
+              data-testid="button-confirm-send-approval"
+            >
+              {attSendForApprovalMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Send for Approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Version history panel */}
       {showVersionHistory && attStatus?.exists && (

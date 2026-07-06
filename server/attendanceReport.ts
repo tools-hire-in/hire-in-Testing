@@ -15,10 +15,26 @@ export interface AttendanceReportEntry {
   totalHours: number;
 }
 
-function getWorkingDaysInMonth(year: number, month: number, holidayDates: Set<string>): number {
+/** Current date parts in the business timezone (IST, UTC+5:30). */
+export function getIstYearMonthDay(): { year: number; month: number; day: number } {
+  const nowIst = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+  return {
+    year: nowIst.getUTCFullYear(),
+    month: nowIst.getUTCMonth() + 1, // 1-indexed
+    day: nowIst.getUTCDate(),
+  };
+}
+
+/**
+ * Count Mon–Fri working days in a month, excluding public holidays.
+ * When `maxDay` is provided, only days on or before it are counted — used to keep
+ * the snapshot from treating not-yet-elapsed days of the current month as absences.
+ */
+function getWorkingDaysInMonth(year: number, month: number, holidayDates: Set<string>, maxDay?: number): number {
   const daysInMonth = new Date(year, month, 0).getDate();
+  const lastDay = maxDay != null ? Math.min(maxDay, daysInMonth) : daysInMonth;
   let workingDays = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
+  for (let d = 1; d <= lastDay; d++) {
     const date = new Date(year, month - 1, d);
     const dayOfWeek = date.getDay();
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -59,7 +75,15 @@ export async function buildAttendanceSnapshot(year: number, month: number): Prom
   ]);
 
   const publicHolidayDates = new Set(allHolidays.filter(h => h.type === "public" || h.type === "mandatory").map(h => h.date));
-  const workingDays = getWorkingDaysInMonth(year, month, publicHolidayDates);
+
+  // Elapsed-aware safeguard: when snapshotting the current (in-progress) month, only
+  // count working days up to and including the last fully-elapsed day. This prevents
+  // not-yet-elapsed days from being counted as "absent". For a completed month this is
+  // a no-op (maxDay stays undefined → whole month is counted).
+  const ist = getIstYearMonthDay();
+  const isCurrentMonth = year === ist.year && month === ist.month;
+  const maxDay = isCurrentMonth ? ist.day - 1 : undefined;
+  const workingDays = getWorkingDaysInMonth(year, month, publicHolidayDates, maxDay);
 
   const attendanceByUser = new Map<string, typeof allAttendance>();
   for (const rec of allAttendance) {
@@ -440,6 +464,14 @@ export async function notifyManagersForRun(
       }).catch(console.error);
     }
   }
+
+  // Mark the run as sent-for-approval on the first real (non-reminder) send. This is
+  // what flips a manual "draft" run into an emailed one; reminders never change it.
+  if (!opts.reminder) {
+    await db.execute(sql`
+      UPDATE attendance_report_runs SET notified_at = COALESCE(notified_at, NOW()) WHERE id = ${runId}
+    `).catch(console.error);
+  }
 }
 
 /**
@@ -469,6 +501,12 @@ export async function ensureRunForMonthAndNotify(
         .from(adminUsers)
         .where(and(inArray(adminUsers.id, managerIds), eq(adminUsers.isActive, true)))) as RunManager[];
       await notifyManagersForRun(runId, managers);
+    } else {
+      // Automated month-end path: mark the run as sent even when there are no managers
+      // to notify, so it is never mislabeled as an un-sent manual draft.
+      await db.execute(sql`
+        UPDATE attendance_report_runs SET notified_at = COALESCE(notified_at, NOW()) WHERE id = ${runId}
+      `).catch(console.error);
     }
     return { created: true, runId, notified: managers.length };
   }

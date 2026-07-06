@@ -3245,6 +3245,26 @@ async function runStartupTasks() {
     await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS regenerated_by VARCHAR REFERENCES admin_users(id)`);
     await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP`);
     await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS auto_added_total INTEGER NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS notified_at TIMESTAMP`);
+    // ONE-TIME backfill: runs created before the preview/send flow were notified at
+    // creation, so treat them as already sent (notified_at = created_at). This is
+    // guarded by a system_settings marker so it runs exactly once — otherwise it
+    // would flip every fresh manual DRAFT (intentionally notified_at IS NULL) to
+    // "sent" on the next restart, breaking the preview-before-email step.
+    {
+      const BACKFILL_KEY = "attendance_notified_at_backfilled_v1";
+      const done = await db.execute(sql`
+        SELECT 1 FROM system_settings WHERE key = ${BACKFILL_KEY} LIMIT 1
+      `);
+      if (done.rows.length === 0) {
+        await db.execute(sql`UPDATE attendance_report_runs SET notified_at = created_at WHERE notified_at IS NULL`);
+        await db.execute(sql`
+          INSERT INTO system_settings (key, value)
+          VALUES (${BACKFILL_KEY}, ${JSON.stringify({ backfilledAt: new Date().toISOString() })}::jsonb)
+          ON CONFLICT (key) DO NOTHING
+        `);
+      }
+    }
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_runs_month_year_active ON attendance_report_runs(year, month, is_active)`);
 
     // One-time backfill: assign sequential version numbers per (month,year) by

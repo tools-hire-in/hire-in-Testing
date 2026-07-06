@@ -616,6 +616,9 @@ export function startScheduler() {
       const runs = Array.from((await db.execute(sql`
         SELECT id, month, year, deadline_at, status FROM attendance_report_runs
         WHERE status != 'approved' AND status != 'overridden' AND status != 'deadline_expired'
+          AND status != 'cancelled'
+          AND is_active = true
+          AND notified_at IS NOT NULL
           AND deadline_at IS NOT NULL
           AND deadline_at > ${now.toISOString()}
           AND deadline_at <= ${twoHoursFromNow.toISOString()}
@@ -674,8 +677,11 @@ export function startScheduler() {
       const expiredRuns = Array.from((await db.execute(sql`
         SELECT id, month, year FROM attendance_report_runs
         WHERE deadline_at IS NOT NULL
+          AND notified_at IS NOT NULL
+          AND is_active = true
           AND deadline_at < ${now.toISOString()}
           AND status != 'approved' AND status != 'overridden' AND status != 'deadline_expired'
+          AND status != 'cancelled'
       `)) as any) as any[];
 
       for (const run of expiredRuns) {

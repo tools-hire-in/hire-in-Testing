@@ -2417,6 +2417,10 @@ export const attendanceReportRuns = pgTable("attendance_report_runs", {
   // Auto-sync tracking for the open (non-approved) month.
   lastSyncedAt: timestamp("last_synced_at"),
   autoAddedTotal: integer("auto_added_total").notNull().default(0),
+  // Set when the run has actually been sent to managers for approval. NULL = draft
+  // (generated but not yet emailed). Manual runs stay NULL until HR clicks "Send for
+  // Approval"; the automated month-end job sends immediately so this is set on create.
+  notifiedAt: timestamp("notified_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -2426,7 +2430,7 @@ export const insertAttendanceReportRunSchema = createInsertSchema(attendanceRepo
   createdAt: true,
   updatedAt: true,
 });
-export type AttendanceReportRunStatus = "pending" | "in_review" | "edits_pending_hr" | "approved" | "overridden" | "deadline_expired";
+export type AttendanceReportRunStatus = "pending" | "in_review" | "edits_pending_hr" | "approved" | "overridden" | "deadline_expired" | "cancelled";
 export type AttendanceReportRun = typeof attendanceReportRuns.$inferSelect;
 export type InsertAttendanceReportRun = z.infer<typeof insertAttendanceReportRunSchema>;
 
