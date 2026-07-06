@@ -387,6 +387,10 @@ function AdvanceRow({ a, onOpen, showRequester }: { a: Advance; onOpen: (id: str
           {a.outstandingBalance && parseFloat(a.outstandingBalance) > 0 && (
             <span className="text-muted-foreground"> · ₹{fmt(a.outstandingBalance)} outstanding</span>
           )}
+          {a.kind === "salary_credit" && (a as any).targetMonth && (a as any).targetYear
+            ? <span className="text-muted-foreground"> · Target: {MONTHS[(a as any).targetMonth]} {(a as any).targetYear}</span> : null}
+          {a.kind === "overpayment" && a.repaymentStartMonth && a.repaymentStartYear
+            ? <span className="text-muted-foreground"> · Recovery from {MONTHS[a.repaymentStartMonth]} {a.repaymentStartYear}</span> : null}
         </div>
         <p className="text-xs text-muted-foreground truncate mt-0.5">{a.reason}</p>
       </div>
@@ -1210,6 +1214,8 @@ function MySubmissionsTab() {
                   {row.kind === "salary_credit" && row.targetMonth && row.targetYear
                     ? ` · Target: ${MONTHS[row.targetMonth]} ${row.targetYear}` : ""}
                   {row.kind === "overpayment" && row.repaymentMonths ? ` · ${row.repaymentMonths} month(s)` : ""}
+                  {row.kind === "overpayment" && row.repaymentStartMonth && row.repaymentStartYear
+                    ? ` · Recovery from ${MONTHS[row.repaymentStartMonth]} ${row.repaymentStartYear}` : ""}
                 </div>
                 {row.reason && <div className="text-xs text-muted-foreground">Note: {row.reason}</div>}
                 {row.reviewerComment && row.status === "returned" && (
@@ -1223,7 +1229,7 @@ function MySubmissionsTab() {
                   </div>
                 )}
               </div>
-              {row.status === "returned" && editId !== row.id && (
+              {(row.status === "returned" || row.status === "rejected") && editId !== row.id && (
                 <Button size="sm" variant="outline" data-testid={`button-edit-resubmit-${row.id}`}
                   onClick={() => {
                     setEditId(row.id);
@@ -1233,7 +1239,7 @@ function MySubmissionsTab() {
                     setEditTargetMonth(String((row as any).targetMonth || ""));
                     setEditTargetYear(String((row as any).targetYear || ""));
                   }}>
-                  Edit & Resubmit
+                  {row.status === "rejected" ? "Re-open & Resubmit" : "Edit & Resubmit"}
                 </Button>
               )}
             </div>
@@ -1368,6 +1374,25 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
       refresh();
     },
     onError: (e: any) => toast({ title: "Action failed", description: e?.message, variant: "destructive" }),
+  });
+
+  // Reverse an already-approved adjustment (super_admin only). Uses PATCH.
+  const [showReverse, setShowReverse] = useState(false);
+  const [reverseComment, setReverseComment] = useState("");
+  const reverseAdjustment = useMutation({
+    mutationFn: async (comment: string) => {
+      const res = await apiRequest("PATCH", `/api/salary-advances/${advanceId}/reverse-adjustment`, { comment });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Approval reversed", description: "The adjustment was returned for edit." });
+      setShowReverse(false); setReverseComment("");
+      refresh();
+      qc.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
+    },
+    onError: (e: any) => toast({ title: "Cannot reverse", description: e.message, variant: "destructive" }),
   });
 
   const isOwner = advance?.requesterId === userId;
@@ -1665,6 +1690,46 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                     Reject
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* Reverse an approved adjustment (super_admin) */}
+            {isCeo &&
+              ((advance.kind === "overpayment" && advance.status === "disbursed") ||
+               (advance.kind === "salary_credit" && advance.status === "approved")) && (
+              <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 space-y-2">
+                {!showReverse ? (
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-muted-foreground">
+                      Made a mistake on this approved {advance.kind === "salary_credit" ? "salary credit" : "overpayment"}? Send it back for edit.
+                    </p>
+                    <Button size="sm" variant="outline" className="text-orange-600 border-orange-200"
+                      onClick={() => { setShowReverse(true); setReverseComment(""); }}
+                      data-testid="button-reverse-adjustment">
+                      Reverse / Send back for edit
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Label className="text-xs">Reason for reversal (required)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      This returns the adjustment to an editable state so it can be corrected and resubmitted. It cannot be undone once money has been recovered or paid out.
+                    </p>
+                    <Textarea value={reverseComment} onChange={e => setReverseComment(e.target.value)}
+                      placeholder="Why is this approval being reversed?" rows={2}
+                      data-testid="input-reverse-comment" />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { setShowReverse(false); setReverseComment(""); }}>Cancel</Button>
+                      <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white"
+                        disabled={!reverseComment.trim() || reverseAdjustment.isPending}
+                        onClick={() => reverseAdjustment.mutate(reverseComment.trim())}
+                        data-testid="button-confirm-reverse">
+                        {reverseAdjustment.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                        Reverse Approval
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

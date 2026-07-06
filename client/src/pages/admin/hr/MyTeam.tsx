@@ -1364,6 +1364,27 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
     onError: (e: any) => toast({ title: "Action failed", description: e.message, variant: "destructive" }),
   });
 
+  // ── Reverse an already-approved adjustment (super_admin only) ─────────────
+  // Sends an approved overpayment/credit back to the editable "returned" state.
+  const [reverseRowId, setReverseRowId] = useState<string | null>(null);
+  const [reverseComment, setReverseComment] = useState("");
+  const reverseAdjustment = useMutation({
+    mutationFn: async ({ id, comment }: { id: string; comment: string }) => {
+      const res = await apiRequest("PATCH", `/api/salary-advances/${id}/reverse-adjustment`, { comment });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Approval reversed", description: "The adjustment was returned for edit." });
+      setReverseRowId(null); setReverseComment("");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/pending-adjustments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-advances/my-submissions"] });
+    },
+    onError: (e: any) => toast({ title: "Cannot reverse", description: e.message, variant: "destructive" }),
+  });
+
   if (!canSeeAdjustments) return null;
 
   return (
@@ -1424,6 +1445,8 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                         {row.reason || "—"}
                         {row.kind === "salary_credit" && row.targetMonth && row.targetYear
                           ? ` · Target: ${ADJ_MONTHS[row.targetMonth]} ${row.targetYear}` : ""}
+                        {row.kind === "overpayment" && row.repaymentStartMonth && row.repaymentStartYear
+                          ? ` · Recovery from ${ADJ_MONTHS[row.repaymentStartMonth]} ${row.repaymentStartYear}` : ""}
                       </div>
                       {disbursedLabel && row.kind === "advance" && (
                         <div className="text-xs text-muted-foreground mt-0.5">Disbursed on: {disbursedLabel}</div>
@@ -1485,8 +1508,42 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                           Adjust start month
                         </Button>
                       )}
+                      {canApprove && reverseRowId !== row.id &&
+                        ((row.kind === "overpayment" && row.status === "disbursed") ||
+                         (row.kind === "salary_credit" && row.status === "approved")) && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-orange-600 border-orange-200"
+                          onClick={() => { setReverseRowId(row.id); setReverseComment(""); }}
+                          data-testid={`button-reverse-adj-${row.id}`}>
+                          Reverse
+                        </Button>
+                      )}
                     </div>
                   </div>
+
+                  {/* Reverse an approved adjustment (super_admin) */}
+                  {canApprove && reverseRowId === row.id && (
+                    <div className="border-t px-3 py-2 bg-orange-50/50 space-y-2">
+                      <Label className="text-xs">Reason for reversal (required)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        This sends the approved {adjKindLabel(row.kind).toLowerCase()} back to an editable state so it can be corrected and resubmitted. It cannot be undone once money has been recovered or paid out.
+                      </p>
+                      <Textarea
+                        value={reverseComment}
+                        onChange={e => setReverseComment(e.target.value)}
+                        placeholder="Why is this approval being reversed?"
+                        className="text-sm" rows={2}
+                        data-testid={`input-reverse-comment-${row.id}`} />
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="h-7" onClick={() => { setReverseRowId(null); setReverseComment(""); }}>Cancel</Button>
+                        <Button size="sm" className="h-7 bg-orange-600 hover:bg-orange-700"
+                          disabled={!reverseComment.trim() || reverseAdjustment.isPending}
+                          onClick={() => reverseAdjustment.mutate({ id: row.id, comment: reverseComment.trim() })}
+                          data-testid={`button-confirm-reverse-${row.id}`}>
+                          Reverse Approval
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Accordion: repayment schedule */}
                   {isExpanded && repayments.length > 0 && (

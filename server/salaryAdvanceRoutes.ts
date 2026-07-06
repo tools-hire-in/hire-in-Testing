@@ -1089,7 +1089,12 @@ export function registerSalaryAdvanceRoutes(app: Express) {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
-      if (advance.status !== "returned") return res.status(400).json({ error: "Only a returned adjustment can be resubmitted." });
+      // A returned adjustment (sent back for edit) or a rejected one (re-opened
+      // so it is not a dead end) can both be edited and resubmitted for approval.
+      if (!["returned", "rejected"].includes(advance.status)) {
+        return res.status(400).json({ error: "Only a returned or rejected adjustment can be resubmitted." });
+      }
+      const priorStatus = advance.status;
 
       // Only the original submitter (or super_admin/admin) may resubmit
       const actorId = req.session.userId!;
@@ -1113,6 +1118,11 @@ export function registerSalaryAdvanceRoutes(app: Express) {
         status: "pending_review",
         reviewerComment: null,
         returnNote: null,
+        // A re-opened rejected record clears its rejection metadata so the row
+        // is treated as a fresh pending submission again.
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
       };
       if (parsed.data.amount !== undefined) {
         updates.requestedAmount = parsed.data.amount.toFixed(2);
@@ -1125,9 +1135,9 @@ export function registerSalaryAdvanceRoutes(app: Express) {
 
       const updated = await storage.updateSalaryAdvance(advance.id, updates);
       await storage.addSalaryAdvanceAuditEntry({
-        advanceId: advance.id, actorId, action: "adjustment_resubmitted",
-        oldStatus: "returned", newStatus: "pending_review",
-        metadata: { changes: parsed.data },
+        advanceId: advance.id, actorId, action: priorStatus === "rejected" ? "adjustment_reopened" : "adjustment_resubmitted",
+        oldStatus: priorStatus, newStatus: "pending_review",
+        metadata: { changes: parsed.data, reopenedFrom: priorStatus },
       } as any);
 
       // Notify super admins
@@ -1143,6 +1153,150 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       res.json(updated);
     } catch {
       res.status(500).json({ error: "Failed to resubmit adjustment" });
+    }
+  });
+
+  // ── Super admin: reverse (undo) an ALREADY-APPROVED HR-recorded adjustment.
+  // Sends the record back to the editable "returned" state so a mistake (wrong
+  // amount / employee / month) can be corrected and resubmitted. Blocks the
+  // action outright when money has already moved.
+  app.patch("/api/salary-advances/:id/reverse-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const advance = await storage.getSalaryAdvance(req.params.id);
+      if (!advance) return res.status(404).json({ error: "Not found" });
+      if (!["overpayment", "salary_credit"].includes(advance.kind || "")) {
+        return res.status(400).json({ error: "Only overpayment or salary credit adjustments can be reversed." });
+      }
+
+      const schema = z.object({ comment: z.string().min(1, "A reason is required") });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "A reason is required to reverse an approval." });
+      const comment = parsed.data.comment;
+      const actorId = req.session.userId!;
+
+      if (advance.kind === "overpayment") {
+        // An approved overpayment sits in "disbursed" with a generated recovery
+        // schedule. It can only be reversed while NO installment has moved.
+        if (advance.status !== "disbursed") {
+          return res.status(400).json({ error: `Only an approved (disbursed) overpayment can be reversed. This record is "${advance.status.replace(/_/g, " ")}".` });
+        }
+        const repayments = await storage.getSalaryAdvanceRepayments(advance.id);
+        const recovered = repayments.some(r => r.status === "deducted");
+        const repaidSoFar = Number(advance.totalRepaid || 0);
+        if (recovered || repaidSoFar > 0) {
+          return res.status(400).json({
+            error: "This overpayment already has at least one installment recovered from the employee's pay, so it cannot be reversed. Record a compensating salary credit instead to return the recovered amount.",
+          });
+        }
+        // Guard the generated-but-not-finalized case: if any scheduled installment
+        // falls in a salary run that has already been generated (pending_approval)
+        // or locked, its recovery figure is already baked into that run.
+        const scheduled = repayments.filter(r => r.status === "scheduled");
+        for (const r of scheduled) {
+          const runs = await db.select({ status: salaryReportRuns.status })
+            .from(salaryReportRuns)
+            .where(and(eq(salaryReportRuns.year, r.year), eq(salaryReportRuns.month, r.month)))
+            .limit(1);
+          if (runs.length > 0) {
+            return res.status(400).json({
+              error: `The ${MONTH_NAMES[r.month]} ${r.year} salary run has already been generated with this recovery included. Regenerate that salary run first, then reverse this overpayment.`,
+            });
+          }
+        }
+
+        // Safe to reverse: drop the pending schedule and return for edit.
+        await storage.deleteScheduledRepaymentsForAdvance(advance.id);
+        const updated = await storage.updateSalaryAdvance(advance.id, {
+          status: "returned",
+          approvedAmount: null,
+          monthlyDeduction: null,
+          finalApprovedBy: null,
+          finalApprovedAt: null,
+          outstandingBalance: "0",
+          totalRepaid: "0",
+          reviewerComment: comment,
+        });
+        await storage.addSalaryAdvanceAuditEntry({
+          advanceId: advance.id, actorId, action: "adjustment_reversed",
+          oldStatus: "disbursed", newStatus: "returned",
+          metadata: { kind: advance.kind, comment },
+        } as any);
+        if ((advance as any).recordedById) {
+          await notify({
+            userId: (advance as any).recordedById, type: "salary_adjustment_returned",
+            title: "Approved overpayment reversed",
+            message: `An approved overpayment for ${Number(advance.requestedAmount).toFixed(2)} was reversed and returned for edit: ${comment}`,
+            link: "/admin/salary-advance?tab=my-submissions",
+          });
+        }
+        return res.json(updated);
+      }
+
+      // salary_credit: an approved credit waits in "approved" until a salary run
+      // applies it (→ "applied"). It can only be reversed while still unapplied
+      // AND not already snapshotted into a generated run.
+      if (advance.status !== "approved") {
+        if (advance.status === "applied") {
+          return res.status(400).json({
+            error: "This salary credit has already been paid out in a completed salary run, so it cannot be reversed. Record a compensating overpayment instead to recover it.",
+          });
+        }
+        return res.status(400).json({ error: `Only an approved salary credit can be reversed. This record is "${advance.status.replace(/_/g, " ")}".` });
+      }
+      // A credit with status "approved" is provably NOT yet applied — the salary
+      // run finalize path (applyCreditsForRun) flips any included credit to
+      // "applied". So the mere existence of a run for the target month does NOT
+      // block reversal; a credit approved AFTER a run was generated/finalized is
+      // simply excluded from that run and remains reversible. We only block when
+      // this specific credit is baked into a run's snapshot.
+      const tYear = (advance as any).targetYear as number | null;
+      const tMonth = (advance as any).targetMonth as number | null;
+      if (tYear && tMonth) {
+        const runs = await db.select({ status: salaryReportRuns.status, adjustments: salaryReportRuns.adjustments })
+          .from(salaryReportRuns)
+          .where(and(eq(salaryReportRuns.year, tYear), eq(salaryReportRuns.month, tMonth)))
+          .limit(1);
+        if (runs.length > 0) {
+          const run = runs[0];
+          const snapshot = (run.adjustments as any)?.__creditSnapshot__ as string[] | undefined;
+          const included = Array.isArray(snapshot) && snapshot.includes(advance.id);
+          if (included) {
+            // The credit's amount is already reflected in this run's gross-pay
+            // computation. For a pending run, finalizing it would apply the credit.
+            // For a finalized run that still shows the credit as "approved" (i.e.
+            // apply failed), the figure is nonetheless baked in. Either way,
+            // regenerate the run before reversing so the numbers stay consistent.
+            return res.status(400).json({
+              error: `The ${MONTH_NAMES[tMonth]} ${tYear} salary run has already been generated with this credit included. Regenerate that salary run first, then reverse this credit.`,
+            });
+          }
+        }
+      }
+
+      const updatedCredit = await storage.updateSalaryAdvance(advance.id, {
+        status: "returned",
+        approvedAmount: null,
+        finalApprovedBy: null,
+        finalApprovedAt: null,
+        reviewerComment: comment,
+      });
+      await storage.addSalaryAdvanceAuditEntry({
+        advanceId: advance.id, actorId, action: "adjustment_reversed",
+        oldStatus: "approved", newStatus: "returned",
+        metadata: { kind: advance.kind, comment },
+      } as any);
+      if ((advance as any).recordedById) {
+        await notify({
+          userId: (advance as any).recordedById, type: "salary_adjustment_returned",
+          title: "Approved salary credit reversed",
+          message: `An approved salary credit for ${Number(advance.requestedAmount).toFixed(2)} was reversed and returned for edit: ${comment}`,
+          link: "/admin/salary-advance?tab=my-submissions",
+        });
+      }
+      return res.json(updatedCredit);
+    } catch (err) {
+      console.error("Reverse adjustment error:", err);
+      res.status(500).json({ error: "Failed to reverse adjustment" });
     }
   });
 

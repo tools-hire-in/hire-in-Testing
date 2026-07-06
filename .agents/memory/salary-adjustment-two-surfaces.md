@@ -21,3 +21,15 @@ propagated to BOTH surfaces or the flow silently diverges by entry point.
 OR the stored value, so approval works one-click for new rows. Legacy rows recorded
 before the field existed have NULL start — MyTeam handles them via an inline
 approve-time month picker (prefilled from stored/next month).
+
+**Reversal (undo an approved adjustment):** `PATCH /api/salary-advances/:id/reverse-adjustment`
+(super_admin only) sends an approved overpayment (`disbursed`) or salary_credit (`approved`)
+back to editable `returned`. Money-safety guards must stay conservative: an overpayment is
+blocked if ANY installment is `deducted`, `totalRepaid>0`, OR ANY scheduled-month has ANY
+`salaryReportRuns` row (existence of a run, not proven inclusion — deliberately over-blocks).
+A credit with status `approved` is provably NOT applied (finalize's `applyCreditsForRun` flips
+included credits to `applied`), so a run merely *existing* for the target month does NOT block —
+only block when the credit id is in that run's `adjustments.__creditSnapshot__` (regenerate first).
+Rejected records
+are re-openable through the same `resubmit-adjustment` endpoint (accepts both `returned` and
+`rejected`, clears rejection metadata). Both surfaces expose the reverse action.
