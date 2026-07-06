@@ -1840,7 +1840,7 @@ function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
   );
 }
 
-export function SalaryReportsContent() {
+export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -2138,7 +2138,7 @@ export function SalaryReportsContent() {
 
   if (authLoading || !isAuthenticated) return null;
 
-  const allowedRoles = ["super_admin", "admin", "hr", "finance"];
+  const allowedRoles = ["super_admin", "admin", "hr", "finance", "executive"];
   if (user?.role && !allowedRoles.includes(user.role)) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -2174,20 +2174,22 @@ export function SalaryReportsContent() {
               {pendingRuns.map(r => `${monthName(r.month)} ${r.year}`).join(", ")} — review and approve before dispatching to finance.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {pendingRuns.map(r => (
-              <Button
-                key={r.id}
-                size="sm"
-                variant="outline"
-                className="border-amber-400 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/40"
-                onClick={() => { setSelectedRunId(r.id); setShowApprovalTable(true); }}
-                data-testid={`button-review-run-${r.id}`}
-              >
-                Review {monthName(r.month)} {r.year}
-              </Button>
-            ))}
-          </div>
+          {!readOnly && (
+            <div className="flex flex-wrap gap-2">
+              {pendingRuns.map(r => (
+                <Button
+                  key={r.id}
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-400 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                  onClick={() => { setSelectedRunId(r.id); setShowApprovalTable(true); }}
+                  data-testid={`button-review-run-${r.id}`}
+                >
+                  Review {monthName(r.month)} {r.year}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2744,8 +2746,8 @@ export function SalaryReportsContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Approval table (shown when a run is selected) */}
-      {showApprovalTable && selectedRun && (
+      {/* Approval table (shown when a run is selected — hidden in read-only mode) */}
+      {!readOnly && showApprovalTable && selectedRun && (
         <Card className="border-2 border-amber-300 dark:border-amber-700">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -2837,7 +2839,7 @@ export function SalaryReportsContent() {
 
       {isAdminLevel && <SalaryGateStatusPanel month={selectedMonth} year={selectedYear} />}
 
-      <ReportRecipientsCard />
+      {!readOnly && <ReportRecipientsCard />}
 
       {/* Preview data */}
       {previewData && (

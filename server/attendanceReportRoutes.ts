@@ -711,7 +711,7 @@ export function registerAttendanceReportRoutes(app: Express) {
       const year = parseInt(req.query.year as string);
       if (!month || !year) return res.status(400).json({ error: "month and year required" });
 
-      const canSeeAll = isRoleAllowed(role, "hr.attendanceReport.access", ["super_admin", "admin", "hr"]);
+      const canSeeAll = isRoleAllowed(role, "hr.attendanceReport.access", ["super_admin", "admin", "hr", "executive"]);
       const isManagerRole = canSeeAll || role === "manager" || role === "operations";
       if (!isManagerRole) return res.status(403).json({ error: "Not authorized for oversight view" });
 

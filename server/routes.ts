@@ -1496,6 +1496,7 @@ export async function registerRoutes(
     operations: 3,
     manager: 2,
     recruiter: 1.5,
+    executive: 1.8,
     employee: 1,
   };
 
@@ -2447,7 +2448,7 @@ export async function registerRoutes(
   // AUDIT LOGS API ROUTES
   // ==========================================
 
-  app.get("/api/admin/audit-logs", requirePermission("admin.auditLogs", "admin"), async (req, res) => {
+  app.get("/api/admin/audit-logs", requirePermission("admin.auditLogs", "admin", "executive"), async (req, res) => {
     try {
       const { actorId, targetId, action, limit, offset } = req.query;
       const filters = {

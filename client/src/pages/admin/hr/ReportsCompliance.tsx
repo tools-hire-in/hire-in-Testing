@@ -16,14 +16,16 @@ export default function ReportsCompliance() {
   const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
   const isHR = ["super_admin", "admin", "hr"].includes(user?.role || "");
   const isFinance = user?.role === "finance";
+  const isExecutive = user?.role === "executive";
+  const canViewAudit = isAdmin || isExecutive;
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
   const validTabs = [
-    ...(isHR || isFinance ? ["salary"] : []),
-    ...(isHR ? ["compliance"] : []),
-    ...(isHR ? ["policy"] : []),
-    ...(isAdmin ? ["audit"] : []),
+    ...(isHR || isFinance || isExecutive ? ["salary"] : []),
+    ...(isHR || isExecutive ? ["compliance"] : []),
+    ...(isHR || isExecutive ? ["policy"] : []),
+    ...(canViewAudit ? ["audit"] : []),
   ];
   const defaultTab = validTabs[0] || "salary";
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : defaultTab;
@@ -70,27 +72,27 @@ export default function ReportsCompliance() {
         </div>
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-reports">
           <TabsList>
-            {(isHR || isFinance) && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}
-            {isHR && <TabsTrigger value="compliance" data-testid="tab-compliance">Document Compliance</TabsTrigger>}
-            {isHR && <TabsTrigger value="policy" data-testid="tab-policy">Policy Compliance</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="audit" data-testid="tab-audit">Audit Logs</TabsTrigger>}
+            {(isHR || isFinance || isExecutive) && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}
+            {(isHR || isExecutive) && <TabsTrigger value="compliance" data-testid="tab-compliance">Document Compliance</TabsTrigger>}
+            {(isHR || isExecutive) && <TabsTrigger value="policy" data-testid="tab-policy">Policy Compliance</TabsTrigger>}
+            {canViewAudit && <TabsTrigger value="audit" data-testid="tab-audit">Audit Logs</TabsTrigger>}
           </TabsList>
-          {(isHR || isFinance) && (
+          {(isHR || isFinance || isExecutive) && (
             <TabsContent value="salary">
-              <SalaryReportsContent />
+              <SalaryReportsContent readOnly={isExecutive} />
             </TabsContent>
           )}
-          {isHR && (
+          {(isHR || isExecutive) && (
             <TabsContent value="compliance">
-              <DocumentComplianceContent />
+              <DocumentComplianceContent readOnly={isExecutive} />
             </TabsContent>
           )}
-          {isHR && (
+          {(isHR || isExecutive) && (
             <TabsContent value="policy">
-              <PolicyComplianceContent />
+              <PolicyComplianceContent readOnly={isExecutive} />
             </TabsContent>
           )}
-          {isAdmin && (
+          {canViewAudit && (
             <TabsContent value="audit">
               <AuditLogsContent />
             </TabsContent>

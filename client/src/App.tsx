@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { resolveSettingsRedirect } from "@/lib/settings-redirect";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -101,6 +102,7 @@ const SOPLibrary = lazy(() => import("@/pages/admin/sops/SOPLibrary"));
 const SOPCompliance = lazy(() => import("@/pages/admin/sops/SOPCompliance"));
 const MySopReviews = lazy(() => import("@/pages/admin/sops/MySopReviews"));
 const TrainingCatalog = lazy(() => import("@/pages/admin/training/TrainingCatalog"));
+const ExecCockpit = lazy(() => import("@/pages/admin/ExecCockpit"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -117,6 +119,20 @@ const HR_TAB_MAP: Record<string, string> = {
   regularizations: "regularizations",
   tickets: "regularizations",
 };
+
+function AdminHomeRedirect() {
+  const [, setLocation] = useLocation();
+  const { user, isLoading } = useAuth();
+  useEffect(() => {
+    if (isLoading) return;
+    if (user?.role === "executive") {
+      setLocation("/admin/executive-cockpit");
+    } else {
+      setLocation("/admin/my-desk");
+    }
+  }, [user, isLoading, setLocation]);
+  return null;
+}
 
 function HRTabRedirect() {
   const [, setLocation] = useLocation();
@@ -202,8 +218,9 @@ function PublicRouter() {
       <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
       <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
-      {/* Admin root → My Desk */}
-      <Route path="/admin">{() => <Redirect to="/admin/my-desk" />}</Route>
+      {/* Admin root → role-aware home */}
+      <Route path="/admin">{() => <AdminHomeRedirect />}</Route>
+      <Route path="/admin/executive-cockpit">{() => <Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense>}</Route>
 
       {/* Command Center */}
       <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>
@@ -335,8 +352,9 @@ function EmployeeRouter() {
       <Route path="/admin/forgot-password">{() => <Suspense fallback={<AdminFallback />}><ForgotPassword /></Suspense>}</Route>
       <Route path="/admin/reset-password">{() => <Suspense fallback={<AdminFallback />}><ResetPassword /></Suspense>}</Route>
 
-      {/* Admin root → My Desk */}
-      <Route path="/admin">{() => <Redirect to="/admin/my-desk" />}</Route>
+      {/* Admin root → role-aware home */}
+      <Route path="/admin">{() => <AdminHomeRedirect />}</Route>
+      <Route path="/admin/executive-cockpit">{() => <Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense>}</Route>
 
       {/* Command Center */}
       <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>

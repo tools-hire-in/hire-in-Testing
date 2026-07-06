@@ -7,7 +7,7 @@ import { z } from "zod";
 export * from "./models/auth";
 
 // User roles enum
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee"]);
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee", "executive"]);
 
 // Hierarchy level enum
 export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "vp", "director", "manager", "team_lead", "delivery_manager", "team_member"]);

@@ -165,7 +165,7 @@ function getEmployeeStatusBadge(emp: ComplianceEmployee) {
   return <Badge variant="destructive" data-testid="badge-employee-incomplete">Incomplete</Badge>;
 }
 
-export function DocumentComplianceContent() {
+export function DocumentComplianceContent({ readOnly }: { readOnly?: boolean } = {}) {
   const { toast } = useToast();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -276,13 +276,46 @@ export function DocumentComplianceContent() {
 
   const summary = report?.summary || { totalEmployees: 0, fullyCompliant: 0, pendingDocs: 0, noDocs: 0 };
 
+  function handleExportCSV() {
+    if (!report) return;
+    const rows = [["Employee Name", "Employee ID", "Department", "Document Type", "Category", "Status", "Upload Date", "Verified Date"]];
+    for (const emp of report.employees) {
+      for (const doc of emp.docs) {
+        rows.push([
+          `${emp.user.firstName} ${emp.user.lastName}`,
+          emp.user.employeeId || "",
+          emp.user.department || "",
+          DOC_TYPE_LABELS[doc.documentType] || doc.documentType,
+          CATEGORY_LABELS[doc.category] || doc.category,
+          doc.status,
+          doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "",
+          doc.verifiedAt ? new Date(doc.verifiedAt).toLocaleDateString() : "",
+        ]);
+      }
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `document-compliance-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Document Compliance</h1>
-        <p className="text-muted-foreground" data-testid="text-page-description">
-          Track and verify employee onboarding documents
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Document Compliance</h1>
+          <p className="text-muted-foreground" data-testid="text-page-description">
+            Track and verify employee onboarding documents
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!report} data-testid="button-export-doc-compliance-csv">
+          <Download className="h-4 w-4 mr-1.5" />
+          Export CSV
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -396,6 +429,7 @@ export function DocumentComplianceContent() {
                     isInitializePending={initializeMutation.isPending}
                     onViewBankDetails={(userId) => setBankDetailsUserId(userId)}
                     onViewEmergencyContacts={(userId) => setEmergencyContactsUserId(userId)}
+                    readOnly={readOnly}
                   />
                 ))}
               </TableBody>
@@ -565,9 +599,10 @@ interface EmployeeRowProps {
   isInitializePending: boolean;
   onViewBankDetails: (userId: string) => void;
   onViewEmergencyContacts: (userId: string) => void;
+  readOnly?: boolean;
 }
 
-function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending, onInitializeDocs, isInitializePending, onViewBankDetails, onViewEmergencyContacts }: EmployeeRowProps) {
+function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending, onInitializeDocs, isInitializePending, onViewBankDetails, onViewEmergencyContacts, readOnly }: EmployeeRowProps) {
   const progressPercent = emp.requiredTotal > 0 ? Math.round((emp.requiredUploaded / emp.requiredTotal) * 100) : 0;
   const hasPendingDocs = emp.docs.some((d) => d.isRequired && d.status === "pending");
 
@@ -629,7 +664,7 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
         <TableCell>{getEmployeeStatusBadge(emp)}</TableCell>
         <TableCell>
           <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-            {emp.requiredTotal === 0 && (
+            {!readOnly && emp.requiredTotal === 0 && (
               <Button
                 size="sm"
                 variant="outline"
@@ -641,7 +676,7 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                 Initialize
               </Button>
             )}
-            {hasPendingDocs && (
+            {!readOnly && hasPendingDocs && (
               <Button
                 size="sm"
                 variant="outline"
@@ -713,16 +748,18 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                           </div>
                           <div className="flex items-center gap-2">
                             {getStatusBadge(doc.status)}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              title={doc.isRequired ? "Mark as Optional" : "Mark as Required"}
-                              disabled={toggleRequiredMutation.isPending}
-                              onClick={() => toggleRequiredMutation.mutate(doc.id)}
-                              data-testid={`button-toggle-required-${doc.id}`}
-                            >
-                              {doc.isRequired ? <ToggleRight className="h-4 w-4 text-destructive" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
-                            </Button>
+                            {!readOnly && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title={doc.isRequired ? "Mark as Optional" : "Mark as Required"}
+                                disabled={toggleRequiredMutation.isPending}
+                                onClick={() => toggleRequiredMutation.mutate(doc.id)}
+                                data-testid={`button-toggle-required-${doc.id}`}
+                              >
+                                {doc.isRequired ? <ToggleRight className="h-4 w-4 text-destructive" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                              </Button>
+                            )}
                             {doc.fileUrl && (
                               <>
                                 <Button
@@ -745,7 +782,7 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                                 </Button>
                               </>
                             )}
-                            {(doc.status === "uploaded" || doc.status === "rejected") && (
+                            {!readOnly && (doc.status === "uploaded" || doc.status === "rejected") && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -756,7 +793,7 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                                 Verify
                               </Button>
                             )}
-                            {(doc.status === "uploaded" || doc.status === "verified") && (
+                            {!readOnly && (doc.status === "uploaded" || doc.status === "verified") && (
                               <Button
                                 size="sm"
                                 variant="outline"

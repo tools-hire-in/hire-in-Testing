@@ -110,6 +110,7 @@ const roleLabels: Record<string, { label: string; color: string }> = {
   manager: { label: "Manager", color: "bg-purple-500 text-white" },
   recruiter: { label: "Recruiter", color: "bg-cyan-500 text-white" },
   employee: { label: "Employee", color: "bg-gray-500 text-white" },
+  executive: { label: "Executive", color: "bg-teal-600 text-white" },
 };
 
 interface NavItem {
@@ -1407,6 +1408,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   ];
 
   const orgNavItems: NavItem[] = [
+    ...(userRole === "executive" ? [{
+      href: "/admin/executive-cockpit",
+      label: "Executive Cockpit",
+      icon: LayoutDashboard,
+      roles: ["executive"],
+    }] : []),
     ...(hasRecruitmentAccess ? [{
       href: "/admin/recruitment",
       label: "Recruitment",
@@ -1513,6 +1520,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/approvals") return location.startsWith("/admin/studio/approvals");
     if (href === "/admin/studio/final-approval") return location.startsWith("/admin/studio/final-approval");
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
+    if (href === "/admin/executive-cockpit") return location.startsWith("/admin/executive-cockpit");
     if (href === "/admin/control-tower") return location.startsWith("/admin/control-tower");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");

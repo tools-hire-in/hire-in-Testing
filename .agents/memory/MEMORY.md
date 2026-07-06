@@ -44,3 +44,4 @@
 - [Inline advance mgmt in approval](inline-advance-mgmt-approval.md) — pending-run only; installment edit/remove write to advance tables (outstanding preserved), then run refresh-from-source re-applies manual adjustments.
 - [Attendance report versioning & auto-sync](attendance-report-versioning.md) — no (month,year) unique; multi-row one is_active=true; all reads must filter is_active; additive auto-sync on open runs; governed regenerate + payroll-lock + superseded flag.
 - [Attendance report draft/send flow](attendance-draft-send-flow.md) — manual runs held as draft (notified_at NULL); EVERY email path must check notified_at; startup backfill of a state column must be one-time (system_settings marker) or it flips fresh drafts on restart.
+- [Executive read-only role](executive-role.md) — additive enum value; db:push stalls on unrelated unique-constraint prompt; apply enum via direct SQL ALTER TYPE instead; AdminLayout is a named export (not default).

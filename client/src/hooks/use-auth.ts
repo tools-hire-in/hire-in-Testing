@@ -6,7 +6,7 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
-  role: "super_admin" | "admin" | "hr" | "operations" | "manager" | "employee";
+  role: "super_admin" | "admin" | "hr" | "operations" | "manager" | "employee" | "finance" | "recruiter" | "executive";
   isActive: boolean;
   totpEnabled: boolean;
   employeeId?: string | null;

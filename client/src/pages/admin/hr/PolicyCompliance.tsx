@@ -297,7 +297,7 @@ function NightShiftConsentsTable({ consents }: { consents: NightShiftConsent[] }
   );
 }
 
-export function PolicyComplianceContent() {
+export function PolicyComplianceContent({ readOnly }: { readOnly?: boolean } = {}) {
   const { toast } = useToast();
 
   const { data, isLoading, refetch } = useQuery<PolicyComplianceData>({
@@ -330,6 +330,44 @@ export function PolicyComplianceContent() {
     },
   });
 
+  function handleExportCSV() {
+    if (!data) return;
+    const rows = [["Employee Name", "Employee ID", "Role", "Policy Track", "Status", "Signed Date", "Night Shift Consent"]];
+    for (const row of data.matrix) {
+      const nightShift = row.nightShiftStatus?.status ?? "not_signed";
+      for (const ts of row.trackStatuses) {
+        rows.push([
+          `${row.user.firstName} ${row.user.lastName}`,
+          row.user.employeeId || "",
+          row.user.role,
+          ts.trackTitle,
+          ts.status,
+          ts.signedAt ? new Date(ts.signedAt).toLocaleDateString() : "",
+          nightShift,
+        ]);
+      }
+      if (row.trackStatuses.length === 0) {
+        rows.push([
+          `${row.user.firstName} ${row.user.lastName}`,
+          row.user.employeeId || "",
+          row.user.role,
+          "",
+          "no_tracks",
+          "",
+          nightShift,
+        ]);
+      }
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `policy-compliance-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6" data-testid="section-policy-compliance">
       <div className="flex items-center justify-between">
@@ -346,22 +384,34 @@ export function PolicyComplianceContent() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleExportCSV}
+            disabled={!data}
+            data-testid="button-export-policy-csv"
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => { refetch(); }}
             data-testid="button-refresh-compliance"
           >
             <RefreshCw className="h-4 w-4 mr-1.5" />
             Refresh
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => retroactiveMutation.mutate()}
-            disabled={retroactiveMutation.isPending}
-            data-testid="button-retroactive-assign"
-          >
-            <Download className="h-4 w-4 mr-1.5" />
-            {retroactiveMutation.isPending ? "Assigning…" : "Assign to All"}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => retroactiveMutation.mutate()}
+              disabled={retroactiveMutation.isPending}
+              data-testid="button-retroactive-assign"
+            >
+              <Download className="h-4 w-4 mr-1.5" />
+              {retroactiveMutation.isPending ? "Assigning…" : "Assign to All"}
+            </Button>
+          )}
         </div>
       </div>
 
