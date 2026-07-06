@@ -120,6 +120,25 @@ const HR_TAB_MAP: Record<string, string> = {
   tickets: "regularizations",
 };
 
+const EXEC_ROLES = ["executive", "super_admin"] as const;
+
+function RequireRoles({ roles, children }: { roles: readonly string[]; children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && user && !roles.includes(user.role)) {
+      setLocation("/admin/my-desk");
+    }
+  }, [isLoading, user, roles, setLocation]);
+
+  if (isLoading) return <AdminFallback />;
+  if (!user) return <AdminFallback />;
+  if (!roles.includes(user.role)) return <AdminFallback />;
+
+  return <>{children}</>;
+}
+
 function AdminHomeRedirect() {
   const [, setLocation] = useLocation();
   const { user, isLoading } = useAuth();
@@ -220,7 +239,7 @@ function PublicRouter() {
 
       {/* Admin root → role-aware home */}
       <Route path="/admin">{() => <AdminHomeRedirect />}</Route>
-      <Route path="/admin/executive-cockpit">{() => <Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense>}</Route>
+      <Route path="/admin/executive-cockpit">{() => <RequireRoles roles={EXEC_ROLES}><Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense></RequireRoles>}</Route>
 
       {/* Command Center */}
       <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>
@@ -354,7 +373,7 @@ function EmployeeRouter() {
 
       {/* Admin root → role-aware home */}
       <Route path="/admin">{() => <AdminHomeRedirect />}</Route>
-      <Route path="/admin/executive-cockpit">{() => <Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense>}</Route>
+      <Route path="/admin/executive-cockpit">{() => <RequireRoles roles={EXEC_ROLES}><Suspense fallback={<AdminFallback />}><ExecCockpit /></Suspense></RequireRoles>}</Route>
 
       {/* Command Center */}
       <Route path="/admin/my-desk">{() => <Suspense fallback={<AdminFallback />}><MyDesk /></Suspense>}</Route>

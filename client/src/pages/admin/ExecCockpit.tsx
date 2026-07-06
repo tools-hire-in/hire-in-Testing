@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentComplianceContent } from "@/pages/admin/hr/DocumentCompliance";
 import { PolicyComplianceContent } from "@/pages/admin/hr/PolicyCompliance";
 import { SalaryReportsContent } from "@/pages/admin/hr/SalaryReports";
-import { useAuth } from "@/hooks/use-auth";
 import { Users, ShieldCheck, BarChart3, Search, Building2, TrendingUp, CalendarDays, CheckCircle2, Clock, AlertTriangle, Download } from "lucide-react";
 
 interface EmployeeRow {
@@ -380,14 +378,7 @@ function AttendanceTab() {
 }
 
 export default function ExecCockpit() {
-  const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
   const [tab, setTab] = useState("people");
-
-  if (!isLoading && user && !["executive", "super_admin", "admin"].includes(user.role)) {
-    setLocation("/admin/my-desk");
-    return null;
-  }
 
   return (
     <AdminLayout>
