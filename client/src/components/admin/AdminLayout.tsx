@@ -1435,6 +1435,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badgeColor: "bg-amber-500",
     }] : []),
     ...(hasHRAccess ? [{
+      href: "/admin/hr/tools",
+      label: "HR Tools",
+      icon: Wrench,
+      roles: ["super_admin", "admin", "hr"],
+    }] : []),
+    ...(hasHRAccess ? [{
       href: "/admin/communications",
       label: "Communications",
       icon: Megaphone,
@@ -1509,6 +1515,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/communications") return location === "/admin/communications" || location.startsWith("/admin/communications");
     if (href === "/admin/new-hire") return location === "/admin/new-hire" || location.startsWith("/admin/new-hire");
     if (href === "/admin/hr/people") return location === "/admin/hr/people" || location.startsWith("/admin/hr/people") || location.startsWith("/admin/users") || location.startsWith("/admin/hr/reports");
+    if (href === "/admin/hr/tools") return location === "/admin/hr/tools" || location.startsWith("/admin/hr/tools");
     if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
