@@ -1945,6 +1945,21 @@ export function SalaryReportsContent() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const attResendApprovalMutation = useMutation({
+    mutationFn: (runId: string) =>
+      apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/resend-approval`, {}),
+    onSuccess: async (res: any) => {
+      const data = await res.json().catch(() => ({ notified: 0 }));
+      toast({
+        title: data.notified > 0 ? `Resent to ${data.notified} manager(s)` : "No managers to notify",
+        description: data.notified > 0 ? (data.managers || []).map((m: any) => m.name).join(", ") : "All managers have already approved or been overridden for this run.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const editReviewMutation = useMutation({
     mutationFn: ({ editId, action, rejectionNote }: { editId: string; action: string; rejectionNote?: string }) =>
       apiRequest("PATCH", `/api/hr/attendance-report/edits/${editId}/review`, { action, rejectionNote }),
@@ -2154,6 +2169,18 @@ export function SalaryReportsContent() {
               >
                 {attNotifyMissedMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <BellRing className="h-4 w-4 mr-1" />}
                 Notify Missed Managers
+              </Button>
+            )}
+            {attStatus.exists && !attStatus.approved && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => attStatus.runId && attResendApprovalMutation.mutate(attStatus.runId)}
+                disabled={attResendApprovalMutation.isPending || !attStatus.runId}
+                data-testid="button-resend-approval-all"
+              >
+                {attResendApprovalMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                Resend Approval to All Managers
               </Button>
             )}
             {attStatus.exists && !attStatus.approved && (

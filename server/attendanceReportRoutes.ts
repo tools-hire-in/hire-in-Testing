@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
-import { sql, eq, and, inArray } from "drizzle-orm";
-import { adminUsers } from "@shared/schema";
+import { sql, eq, and, inArray, notInArray } from "drizzle-orm";
+import { adminUsers, attendanceReportManagerApprovals } from "@shared/schema";
 import { storage } from "./storage";
 import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, notifyManagersForRun } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
@@ -313,6 +313,48 @@ export function registerAttendanceReportRoutes(app: Express) {
     } catch (error) {
       console.error("Notify-missed managers error:", error);
       res.status(500).json({ error: "Failed to notify missed managers" });
+    }
+  });
+
+  // Re-send the approval request to EVERY manager who still has an open (non-finalized)
+  // approval row on this run — regardless of whether they were notified before.
+  // Managers who already approved/overrode are intentionally skipped so we don't nag them.
+  app.post("/api/hr/attendance-report/runs/:id/resend-approval", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const runId = String(req.params.id);
+      const [run] = (await db.execute(sql`SELECT id, status FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+      if (!run) return res.status(404).json({ error: "Run not found" });
+
+      const managers = (await db
+        .select({
+          id: adminUsers.id,
+          email: adminUsers.email,
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+        })
+        .from(attendanceReportManagerApprovals)
+        .innerJoin(adminUsers, eq(adminUsers.id, attendanceReportManagerApprovals.managerId))
+        .where(and(
+          eq(attendanceReportManagerApprovals.runId, runId),
+          notInArray(attendanceReportManagerApprovals.status, ["approved", "overridden"]),
+          eq(adminUsers.isActive, true),
+        ))) as any[];
+
+      if (managers.length > 0) await notifyManagersForRun(runId, managers as any);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "attendance_report_resend_approval",
+        changes: { runId, notified: managers.map(m => m.id) },
+      });
+
+      res.json({
+        notified: managers.length,
+        managers: managers.map(m => ({ id: m.id, name: `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email })),
+      });
+    } catch (error) {
+      console.error("Resend approval error:", error);
+      res.status(500).json({ error: "Failed to resend approval request" });
     }
   });
 
