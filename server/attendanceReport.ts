@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { adminUsers, attendance, leaveRequests, holidays, leaveBalances } from "@shared/schema";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { attendanceApprovalUrl } from "./portalUrl";
 
@@ -47,7 +47,7 @@ export async function buildAttendanceSnapshot(year: number, month: number): Prom
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
   const [allUsers, allAttendance, allLeaveRequests, allHolidays, allLeaveBalances] = await Promise.all([
-    db.select().from(adminUsers).where(eq(adminUsers.isActive, true)),
+    db.select().from(adminUsers).where(and(eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt))),
     db.select().from(attendance).where(and(gte(attendance.date, startDate), lte(attendance.date, endDate))),
     db.select().from(leaveRequests).where(and(
       eq(leaveRequests.status, "approved"),
@@ -133,12 +133,18 @@ export async function buildAttendanceSnapshot(year: number, month: number): Prom
   return entries;
 }
 
-export async function generateAttendanceReportRun(month: number, year: number, createdBy?: string): Promise<{ runId: string; managerIds: string[] }> {
+export async function generateAttendanceReportRun(
+  month: number,
+  year: number,
+  createdBy?: string,
+  opts: { version?: number; regenerationComment?: string; regeneratedBy?: string } = {},
+): Promise<{ runId: string; managerIds: string[] }> {
   const deadlineAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const version = opts.version ?? 1;
 
   const insertResult = await db.execute(sql`
-    INSERT INTO attendance_report_runs (month, year, status, deadline_at, created_by)
-    VALUES (${month}, ${year}, 'pending', ${deadlineAt.toISOString()}, ${createdBy || null})
+    INSERT INTO attendance_report_runs (month, year, status, deadline_at, created_by, version, is_active, regeneration_comment, regenerated_by)
+    VALUES (${month}, ${year}, 'pending', ${deadlineAt.toISOString()}, ${createdBy || null}, ${version}, true, ${opts.regenerationComment || null}, ${opts.regeneratedBy || null})
     RETURNING id
   `);
   const run = (insertResult.rows as any[])[0];
@@ -182,6 +188,108 @@ export async function generateAttendanceReportRun(month: number, year: number, c
   }
 
   return { runId, managerIds };
+}
+
+const CLOSED_RUN_STATUSES = ["approved", "overridden", "deadline_expired"];
+
+/**
+ * Additive auto-sync for an OPEN run: ensures every currently-eligible employee
+ * (active, non-deleted, non-attendance-exempt) has an entry row on the run. This
+ * heals two silent failure modes for the not-yet-approved month:
+ *   1. An empty run (0 entries) whose eligible roster is non-empty.
+ *   2. Newly hired / newly activated employees who joined after generation.
+ *
+ * It is strictly additive — existing entries (including manager corrections) are
+ * never modified or removed, so it is safe to run on every read. Closed/locked
+ * runs are left untouched. Returns the ids that were added this pass.
+ */
+export async function reconcileRunEntries(runId: string): Promise<{ added: number; addedUserIds: string[] }> {
+  const [run] = (await db.execute(sql`SELECT id, month, year, status FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+  if (!run) return { added: 0, addedUserIds: [] };
+  if (CLOSED_RUN_STATUSES.includes(run.status)) return { added: 0, addedUserIds: [] };
+
+  // Cheap pre-check: compare the eligible roster against existing entries. Only
+  // build the (relatively expensive) snapshot when someone is genuinely missing.
+  const eligibleRows = (await db.execute(sql`
+    SELECT id FROM admin_users
+    WHERE is_active = true AND deleted_at IS NULL AND attendance_exempt = false
+  `)).rows as any[];
+  const existingRows = (await db.execute(sql`
+    SELECT user_id FROM attendance_report_entries WHERE run_id = ${runId}
+  `)).rows as any[];
+  const existingSet = new Set(existingRows.map(r => r.user_id));
+  const missingIds = eligibleRows.map(r => r.id).filter(id => !existingSet.has(id));
+  if (missingIds.length === 0) return { added: 0, addedUserIds: [] };
+
+  const snapshot = await buildAttendanceSnapshot(run.year, run.month);
+  const byUser = new Map(snapshot.map(e => [e.userId, e]));
+
+  const addedUserIds: string[] = [];
+  for (const uid of missingIds) {
+    const entry = byUser.get(uid);
+    if (!entry) continue; // not in snapshot (e.g. exempt) — skip
+    await db.execute(sql`
+      INSERT INTO attendance_report_entries (
+        run_id, user_id, manager_id,
+        orig_present_days, orig_absent_days, orig_lop_days, orig_leave_days, orig_holiday_days, orig_total_hours,
+        cur_present_days, cur_absent_days, cur_lop_days, cur_leave_days, cur_holiday_days, cur_total_hours
+      ) VALUES (
+        ${runId}, ${entry.userId}, ${entry.managerId},
+        ${entry.presentDays}, ${entry.absentDays}, ${entry.lopDays}, ${entry.leaveDays}, ${entry.holidayDays}, ${entry.totalHours},
+        ${entry.presentDays}, ${entry.absentDays}, ${entry.lopDays}, ${entry.leaveDays}, ${entry.holidayDays}, ${entry.totalHours}
+      )
+    `);
+    addedUserIds.push(uid);
+  }
+
+  if (addedUserIds.length > 0) {
+    await db.execute(sql`
+      UPDATE attendance_report_runs
+      SET auto_added_total = auto_added_total + ${addedUserIds.length}, last_synced_at = NOW(), updated_at = NOW()
+      WHERE id = ${runId}
+    `);
+  }
+  return { added: addedUserIds.length, addedUserIds };
+}
+
+/**
+ * Governed regeneration of a month's attendance report. Creates a NEW active
+ * version (version+1), recomputes the snapshot from source, and re-seeds all
+ * manager approvals as pending. The prior active run is retained as immutable
+ * history and marked is_active=false.
+ *
+ * Callers MUST enforce the payroll-lock gate and comment requirement before
+ * calling this. Returns the new run id, its version, and the manager set to
+ * (re-)notify.
+ */
+export async function regenerateAttendanceReportRun(
+  month: number,
+  year: number,
+  actorId: string,
+  comment: string,
+): Promise<{ runId: string; version: number; managerIds: string[]; priorRunId: string | null }> {
+  const [prior] = (await db.execute(sql`
+    SELECT id, version FROM attendance_report_runs
+    WHERE month = ${month} AND year = ${year}
+    ORDER BY is_active DESC, version DESC, created_at DESC
+    LIMIT 1
+  `)).rows as any[];
+
+  const nextVersion = prior ? Number(prior.version || 1) + 1 : 1;
+
+  // Retire the prior active version (history is immutable; only the flag flips).
+  await db.execute(sql`
+    UPDATE attendance_report_runs SET is_active = false, updated_at = NOW()
+    WHERE month = ${month} AND year = ${year} AND is_active = true
+  `);
+
+  const { runId, managerIds } = await generateAttendanceReportRun(month, year, actorId, {
+    version: nextVersion,
+    regenerationComment: comment,
+    regeneratedBy: actorId,
+  });
+
+  return { runId, version: nextVersion, managerIds, priorRunId: prior?.id ?? null };
 }
 
 /**
@@ -346,7 +454,10 @@ export async function ensureRunForMonthAndNotify(
   createdBy?: string,
 ): Promise<{ created: boolean; runId: string; notified: number }> {
   const existing = (await db.execute(sql`
-    SELECT id FROM attendance_report_runs WHERE month = ${month} AND year = ${year} LIMIT 1
+    SELECT id FROM attendance_report_runs
+    WHERE month = ${month} AND year = ${year} AND is_active = true
+    ORDER BY version DESC, created_at DESC
+    LIMIT 1
   `)).rows as any[];
 
   if (existing.length === 0) {
@@ -363,6 +474,9 @@ export async function ensureRunForMonthAndNotify(
   }
 
   const runId = existing[0].id;
+  // Auto-sync entries first (heals empty runs and picks up new joiners), then
+  // reconcile the manager approval set to match the (possibly grown) entry set.
+  await reconcileRunEntries(runId);
   const { added } = await reconcileManagerApprovals(runId);
   if (added.length > 0) await notifyManagersForRun(runId, added);
   return { created: false, runId, notified: added.length };

@@ -3236,6 +3236,36 @@ async function runStartupTasks() {
       )
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_mgr_approvals_run ON attendance_report_manager_approvals(run_id)`);
+
+    // Versioning columns for attendance_report_runs (parity with shared/schema.ts).
+    // Multiple rows per (month,year) are allowed; exactly one is_active=true = current version.
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS regeneration_comment TEXT`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS regenerated_by VARCHAR REFERENCES admin_users(id)`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE attendance_report_runs ADD COLUMN IF NOT EXISTS auto_added_total INTEGER NOT NULL DEFAULT 0`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_report_runs_month_year_active ON attendance_report_runs(year, month, is_active)`);
+
+    // One-time backfill: assign sequential version numbers per (month,year) by
+    // creation order, and mark only the newest row of each group as active. This
+    // de-duplicates any pre-existing multiple runs for the same month (e.g. two
+    // accidental June 2026 runs) into a clean version chain.
+    await db.execute(sql`
+      WITH ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (PARTITION BY year, month ORDER BY created_at ASC, id ASC) AS v,
+               ROW_NUMBER() OVER (PARTITION BY year, month ORDER BY created_at DESC, id DESC) AS rn
+        FROM attendance_report_runs
+      )
+      UPDATE attendance_report_runs r
+      SET version = ranked.v,
+          is_active = (ranked.rn = 1)
+      FROM ranked
+      WHERE r.id = ranked.id
+        AND (r.version IS DISTINCT FROM ranked.v OR r.is_active IS DISTINCT FROM (ranked.rn = 1))
+        AND r.status NOT IN ('approved', 'overridden', 'deadline_expired')
+    `);
     log("Attendance report approval tables ensured");
   } catch (err) {
     console.error("Attendance report approval table migration error:", err);

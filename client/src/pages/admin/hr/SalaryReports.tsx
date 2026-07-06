@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers } from "lucide-react";
@@ -1916,6 +1916,46 @@ export function SalaryReportsContent() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  // Governed regeneration of the active attendance report (versioned, comment-required)
+  const [regenDialogOpen, setRegenDialogOpen] = useState(false);
+  const [regenComment, setRegenComment] = useState("");
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  const attRegenerateMutation = useMutation({
+    mutationFn: (comment: string) => apiRequest("POST", "/api/hr/attendance-report/generate", {
+      month: parseInt(selectedMonth),
+      year: parseInt(selectedYear),
+      regenerate: true,
+      comment,
+    }),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ title: data.code === "PAYROLL_LOCKED" ? "Regeneration Locked" : "Error", description: data.error || "Failed to regenerate attendance report", variant: "destructive" });
+        return;
+      }
+      toast({
+        title: `Attendance report regenerated (v${data.version ?? "?"})`,
+        description: data.supersededSalaryRuns > 0
+          ? `${data.supersededSalaryRuns} pending salary run(s) flagged as superseded — regenerate them before approving.`
+          : "Managers have been re-notified to approve their team's attendance.",
+      });
+      setRegenDialogOpen(false);
+      setRegenComment("");
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/versions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance-report/salary-gate-status"] });
+      refetchAttStatus();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: attVersions = [] } = useQuery<any[]>({
+    queryKey: ["/api/hr/attendance-report/versions", selectedMonth, selectedYear],
+    queryFn: () => fetch(`/api/hr/attendance-report/versions?month=${selectedMonth}&year=${selectedYear}`, { credentials: "include" }).then(r => r.json()),
+    enabled: showVersionHistory && !!attStatus?.exists,
+  });
+
   const attOverrideMutation = useMutation({
     mutationFn: ({ runId, managerId, note }: { runId: string; managerId: string | null; note: string }) =>
       apiRequest("POST", `/api/hr/attendance-report/runs/${runId}/override`, { managerId, overrideNote: note }),
@@ -2135,6 +2175,26 @@ export function SalaryReportsContent() {
                 ? `${(attStatus.managerApprovals || []).filter((a: any) => a.status === "pending" || a.status === "edits_submitted").length} manager(s) pending. Salary run is gated until all managers approve.`
                 : "Generate an attendance report run first. Managers will have 24 hours to approve their team's data."}
             </p>
+            {attStatus.exists && (
+              <div className="flex flex-wrap items-center gap-2 mt-1.5" data-testid="row-att-version-meta">
+                {(attStatus.version ?? 1) > 1 && (
+                  <Badge variant="outline" className="text-xs" data-testid="badge-att-version">Version {attStatus.version}</Badge>
+                )}
+                {typeof attStatus.entryCount === "number" && (
+                  <span className="text-xs text-muted-foreground" data-testid="text-att-entry-count">{attStatus.entryCount} employee(s)</span>
+                )}
+                {(attStatus.autoAddedTotal ?? 0) > 0 && (
+                  <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" data-testid="badge-att-auto-added">
+                    {attStatus.autoAddedTotal} auto-synced
+                  </Badge>
+                )}
+                {attStatus.regenerationComment && (
+                  <span className="text-xs italic text-muted-foreground truncate max-w-[240px]" title={attStatus.regenerationComment} data-testid="text-att-regen-comment">
+                    “{attStatus.regenerationComment}”
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {!attStatus.exists && (
@@ -2207,9 +2267,112 @@ export function SalaryReportsContent() {
                 Generate Anyway (Override)
               </Button>
             )}
+            {attStatus.exists && canRegenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:text-purple-400"
+                onClick={() => { setRegenComment(""); setRegenDialogOpen(true); }}
+                data-testid="button-regenerate-att-run"
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Regenerate Report
+              </Button>
+            )}
+            {attStatus.exists && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowVersionHistory(!showVersionHistory)}
+                data-testid="button-toggle-version-history"
+              >
+                <History className="h-4 w-4 mr-1" />
+                Version History
+              </Button>
+            )}
           </div>
         </div>
       )}
+
+      {/* Version history panel */}
+      {showVersionHistory && attStatus?.exists && (
+        <Card className="border-2 border-purple-200 dark:border-purple-800" data-testid="panel-version-history">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Attendance Report Versions — {mLabel} {selectedYear}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {attVersions.length === 0 && (
+              <p className="text-sm text-muted-foreground">No version history available.</p>
+            )}
+            {attVersions.map((v: any) => (
+              <div key={v.id} className="flex items-start justify-between gap-3 p-3 border rounded-lg" data-testid={`row-version-${v.version}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Version {v.version}</span>
+                    {v.is_active && <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>}
+                    <Badge variant="outline" className="text-xs">{String(v.status).replace(/_/g, " ")}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {v.entry_count} employee(s){v.auto_added_total > 0 ? ` · ${v.auto_added_total} auto-synced` : ""}
+                    {v.actor_name ? ` · by ${v.actor_name}` : ""}
+                    {v.created_at ? ` · ${new Date(v.created_at).toLocaleString()}` : ""}
+                  </p>
+                  {v.regeneration_comment && (
+                    <p className="text-xs italic text-muted-foreground mt-0.5">“{v.regeneration_comment}”</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Regenerate attendance report dialog */}
+      <Dialog open={regenDialogOpen} onOpenChange={(o) => { if (!o) { setRegenDialogOpen(false); setRegenComment(""); } }}>
+        <DialogContent data-testid="dialog-regenerate-att">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-purple-600" />
+              Regenerate Attendance Report — {mLabel} {selectedYear}
+            </DialogTitle>
+            <DialogDescription>
+              This creates a new version (v{(attStatus?.version ?? 1) + 1}) from the latest attendance data and re-requests manager approvals. The current version is retained as history. A reason is required.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="regen-comment">Reason for regeneration <span className="text-red-500">*</span></Label>
+            <Textarea
+              id="regen-comment"
+              value={regenComment}
+              onChange={(e) => setRegenComment(e.target.value)}
+              placeholder="e.g. New joiners added mid-month; corrected shift assignments"
+              rows={3}
+              data-testid="input-regen-comment"
+            />
+            {attStatus?.approved && (
+              <p className="text-xs text-amber-600">This month's attendance is already approved. Regenerating will reset approvals to pending. It is blocked if the salary run is already approved.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRegenDialogOpen(false); setRegenComment(""); }} data-testid="button-cancel-regen">Cancel</Button>
+            <Button
+              onClick={() => attRegenerateMutation.mutate(regenComment.trim())}
+              disabled={!regenComment.trim() || attRegenerateMutation.isPending}
+              data-testid="button-confirm-regen"
+            >
+              {attRegenerateMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Regenerating…</> : "Regenerate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Attendance HR Approval Panel */}
       {showAttApprovalPanel && attStatus?.exists && (

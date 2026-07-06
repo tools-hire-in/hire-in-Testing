@@ -42,3 +42,4 @@
 - [SOP ↔ goal KPI linkage](sop-goal-kpi-linkage.md) — goals' linked_sop_id points at a version row; roll-ups must resolve across sopMasterId; /api/performance/analytics doesn't exist (self-contained cards).
 - [SOP tool-access requests (OPS-001)](sop-access-requests-ops001.md) — reuse HIRD "access" type + nullable internal_requests.linked_sop_id; tagging resolves across all version ids of sopMasterId.
 - [Inline advance mgmt in approval](inline-advance-mgmt-approval.md) — pending-run only; installment edit/remove write to advance tables (outstanding preserved), then run refresh-from-source re-applies manual adjustments.
+- [Attendance report versioning & auto-sync](attendance-report-versioning.md) — no (month,year) unique; multi-row one is_active=true; all reads must filter is_active; additive auto-sync on open runs; governed regenerate + payroll-lock + superseded flag.

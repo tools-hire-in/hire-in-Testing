@@ -2409,6 +2409,14 @@ export const attendanceReportRuns = pgTable("attendance_report_runs", {
   createdBy: varchar("created_by").references(() => adminUsers.id),
   overrideBy: varchar("override_by").references(() => adminUsers.id),
   overrideNote: text("override_note"),
+  // Versioning: multiple rows per (month,year); exactly one is_active=true = current version.
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  regenerationComment: text("regeneration_comment"),
+  regeneratedBy: varchar("regenerated_by").references(() => adminUsers.id),
+  // Auto-sync tracking for the open (non-approved) month.
+  lastSyncedAt: timestamp("last_synced_at"),
+  autoAddedTotal: integer("auto_added_total").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

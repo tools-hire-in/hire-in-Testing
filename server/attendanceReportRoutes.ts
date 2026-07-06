@@ -3,7 +3,7 @@ import { db } from "./db";
 import { sql, eq, and, inArray, notInArray } from "drizzle-orm";
 import { adminUsers, attendanceReportManagerApprovals } from "@shared/schema";
 import { storage } from "./storage";
-import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, notifyManagersForRun } from "./attendanceReport";
+import { generateAttendanceReportRun, ensureRunForMonthAndNotify, reconcileManagerApprovals, reconcileRunEntries, regenerateAttendanceReportRun, notifyManagersForRun } from "./attendanceReport";
 import { sendAttendanceApprovalRequestEmail, sendAttendanceEditsSubmittedEmail, sendAttendanceDeadlineExpiredEmail, sendAttendanceApprovalCompleteEmail } from "./email";
 import { getPortalBaseUrl, attendanceApprovalUrl } from "./portalUrl";
 import { isRoleAllowed } from "@shared/accessControl";
@@ -176,8 +176,12 @@ export function registerAttendanceReportRoutes(app: Express) {
           const openRuns = (await db.execute(sql`
             SELECT id FROM attendance_report_runs
             WHERE status NOT IN ('approved', 'overridden', 'deadline_expired')
+              AND is_active = true
           `)).rows as any[];
           for (const r of openRuns) {
+            // Sync the employee set first (heals empty runs / new joiners), then
+            // reconcile + notify any managers who gained direct reports.
+            await reconcileRunEntries(r.id);
             const { added } = await reconcileManagerApprovals(r.id);
             if (added.length > 0) await notifyManagersForRun(r.id, added);
           }
@@ -194,12 +198,34 @@ export function registerAttendanceReportRoutes(app: Express) {
       if (!month || !year) return res.status(400).json({ error: "month and year required" });
 
       const [run] = (await db.execute(sql`
-        SELECT id, status, deadline_at, created_at FROM attendance_report_runs
-        WHERE month = ${month} AND year = ${year}
+        SELECT id, status, deadline_at, created_at, version, regeneration_comment, auto_added_total, last_synced_at
+        FROM attendance_report_runs
+        WHERE month = ${month} AND year = ${year} AND is_active = true
+        ORDER BY version DESC, created_at DESC
         LIMIT 1
       `)).rows as any[];
 
       if (!run) return res.json({ exists: false, approved: false });
+
+      // Natural read/refresh path: auto-sync the open month so newly added /
+      // newly joined employees appear without manual action. Additive + idempotent.
+      const isClosed = ["approved", "overridden", "deadline_expired"].includes(run.status);
+      if (!isClosed) {
+        try {
+          const { added } = await reconcileRunEntries(run.id);
+          if (added > 0) {
+            const { added: newMgrs } = await reconcileManagerApprovals(run.id);
+            if (newMgrs.length > 0) await notifyManagersForRun(run.id, newMgrs);
+            await storage.createAuditLog({
+              actorId: req.session.userId!,
+              action: "attendance_report_auto_synced",
+              changes: { runId: run.id, month, year, added },
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.error("[attendance-report] status auto-sync failed:", e);
+        }
+      }
 
       const managerApprovals = (await db.execute(sql`
         SELECT ma.manager_id, ma.status, u.first_name, u.last_name
@@ -213,12 +239,21 @@ export function registerAttendanceReportRoutes(app: Express) {
         WHERE run_id = ${run.id} AND status = 'pending'
       `)).rows as any[];
 
+      const entryCount = (await db.execute(sql`
+        SELECT COUNT(*)::int as cnt FROM attendance_report_entries WHERE run_id = ${run.id}
+      `)).rows as any[];
+
       res.json({
         exists: true,
         runId: run.id,
         status: run.status,
         deadlineAt: run.deadline_at,
         createdAt: run.created_at,
+        version: run.version,
+        regenerationComment: run.regeneration_comment,
+        autoAddedTotal: run.auto_added_total || 0,
+        lastSyncedAt: run.last_synced_at,
+        entryCount: entryCount[0]?.cnt || 0,
         approved: run.status === "approved" || run.status === "overridden",
         overridden: run.status === "overridden",
         managerApprovals,
@@ -248,18 +283,111 @@ export function registerAttendanceReportRoutes(app: Express) {
     try {
       const month = parseInt(req.body.month);
       const year = parseInt(req.body.year);
+      const regenerate = req.body.regenerate === true;
+      const comment = typeof req.body.comment === "string" ? req.body.comment.trim() : "";
       if (!month || !year || month < 1 || month > 12) {
         return res.status(400).json({ error: "Valid month and year required" });
       }
-
-      const existing = (await db.execute(sql`
-        SELECT id, status FROM attendance_report_runs WHERE month = ${month} AND year = ${year} LIMIT 1
-      `)).rows as any[];
-
-      if (existing.length > 0) {
-        return res.status(409).json({ error: "A report run already exists for this month. Use override to unlock." });
+      // Honour explicit month/year including past months, but never a future month.
+      const now = new Date();
+      if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1)) {
+        return res.status(400).json({ error: "Cannot generate an attendance report for a future month." });
       }
 
+      const existing = (await db.execute(sql`
+        SELECT id, status FROM attendance_report_runs
+        WHERE month = ${month} AND year = ${year} AND is_active = true
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1
+      `)).rows as any[];
+
+      // ── Regeneration path ────────────────────────────────────────────────────
+      if (existing.length > 0) {
+        if (!regenerate) {
+          return res.status(409).json({
+            error: "A report run already exists for this month.",
+            code: "RUN_EXISTS",
+            canRegenerate: true,
+          });
+        }
+
+        const active = existing[0];
+        const attendanceApproved = active.status === "approved" || active.status === "overridden";
+
+        // Payroll-lock gate: block regeneration only when attendance is finalized
+        // AND an approved salary run exists for the month (payroll is committed).
+        if (attendanceApproved) {
+          const approvedSalary = (await db.execute(sql`
+            SELECT id FROM salary_report_runs
+            WHERE month = ${month} AND year = ${year} AND status = 'approved'
+            LIMIT 1
+          `)).rows as any[];
+          if (approvedSalary.length > 0) {
+            await storage.createAuditLog({
+              actorId: req.session.userId!,
+              action: "attendance_report_regenerate_blocked",
+              changes: { month, year, reason: "payroll_finalized", salaryRunId: approvedSalary[0].id },
+            });
+            return res.status(409).json({
+              error: "Payroll for this month is finalized (attendance approved and salary run approved). Regeneration is locked.",
+              code: "PAYROLL_LOCKED",
+            });
+          }
+        }
+
+        if (!comment) {
+          return res.status(400).json({ error: "A regeneration comment/reason is required.", code: "COMMENT_REQUIRED" });
+        }
+
+        const { runId, version, managerIds } = await regenerateAttendanceReportRun(month, year, req.session.userId!, comment);
+        const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
+
+        if (managerIds.length > 0) {
+          const managers = await db.select({
+            id: adminUsers.id,
+            email: adminUsers.email,
+            firstName: adminUsers.firstName,
+            lastName: adminUsers.lastName,
+          }).from(adminUsers).where(inArray(adminUsers.id, managerIds));
+          await notifyManagersForRun(runId, managers as any);
+        }
+
+        // Flag any not-yet-approved salary run for this month as superseded so HR
+        // does not approve numbers based on a stale attendance version.
+        let supersededSalaryRuns = 0;
+        try {
+          const pendingSalary = (await db.execute(sql`
+            SELECT id, adjustments FROM salary_report_runs
+            WHERE month = ${month} AND year = ${year} AND status = 'pending_approval'
+          `)).rows as any[];
+          for (const sr of pendingSalary) {
+            const adj = (sr.adjustments && typeof sr.adjustments === "object") ? sr.adjustments : {};
+            adj._attendanceSuperseded = {
+              at: new Date().toISOString(),
+              attendanceVersion: version,
+              byRunId: runId,
+              note: "Attendance report was regenerated after this salary run. Regenerate the salary run before approving.",
+            };
+            await db.execute(sql`
+              UPDATE salary_report_runs SET adjustments = ${JSON.stringify(adj)}::jsonb, updated_at = NOW()
+              WHERE id = ${sr.id}
+            `);
+            supersededSalaryRuns++;
+          }
+        } catch (e) {
+          console.error("[attendance-report] Failed to flag superseded salary runs:", e);
+        }
+
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          action: "attendance_report_regenerated",
+          changes: { runId, priorRunId: active.id, month, year, version, comment, managerCount: managerIds.length, supersededSalaryRuns },
+        });
+
+        return res.status(201).json({ ...run, supersededSalaryRuns });
+      }
+
+      // ── First-time generation ────────────────────────────────────────────────
       const { runId, managerIds } = await generateAttendanceReportRun(month, year, req.session.userId);
 
       const [run] = (await db.execute(sql`SELECT * FROM attendance_report_runs WHERE id = ${runId}`)).rows as any[];
@@ -286,6 +414,32 @@ export function registerAttendanceReportRoutes(app: Express) {
     } catch (error) {
       console.error("Generate attendance report run error:", error);
       res.status(500).json({ error: "Failed to generate attendance report run" });
+    }
+  });
+
+  // Version history for a month/year — the immutable chain of report versions.
+  app.get("/api/hr/attendance-report/versions", requireAuth, requireHrOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      if (!month || !year) return res.status(400).json({ error: "month and year required" });
+
+      const versions = (await db.execute(sql`
+        SELECT r.id, r.version, r.is_active, r.status, r.regeneration_comment, r.created_at,
+               r.auto_added_total,
+               COALESCE(gen.first_name || ' ' || gen.last_name, reg.first_name || ' ' || reg.last_name) AS actor_name,
+               (SELECT COUNT(*)::int FROM attendance_report_entries e WHERE e.run_id = r.id) AS entry_count
+        FROM attendance_report_runs r
+        LEFT JOIN admin_users reg ON reg.id = r.regenerated_by
+        LEFT JOIN admin_users gen ON gen.id = r.created_by
+        WHERE r.month = ${month} AND r.year = ${year}
+        ORDER BY r.version DESC, r.created_at DESC
+      `)).rows as any[];
+
+      res.json(versions);
+    } catch (error) {
+      console.error("Attendance report versions error:", error);
+      res.status(500).json({ error: "Failed to fetch versions" });
     }
   });
 

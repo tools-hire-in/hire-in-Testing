@@ -4958,6 +4958,7 @@ export async function registerRoutes(
         SELECT id, status FROM attendance_report_runs
         WHERE year = ${parseInt(attDateMonth.split("-")[0])}
           AND month = ${parseInt(attDateMonth.split("-")[1])}
+          AND is_active = true
           AND (status = 'approved' OR status = 'overridden')
         LIMIT 1
       `)).rows as any[];
@@ -5297,6 +5298,7 @@ export async function registerRoutes(
         SELECT id FROM attendance_report_runs
         WHERE year = ${parseInt(reqYear)}
           AND month = ${parseInt(reqMonth)}
+          AND is_active = true
           AND status IN ('approved', 'overridden')
         LIMIT 1
       `)).rows as any[];
@@ -5680,6 +5682,7 @@ export async function registerRoutes(
           const locked = (await db.execute(sql`
             SELECT id FROM attendance_report_runs
             WHERE year = ${parseInt(rYear)} AND month = ${parseInt(rMonth)}
+              AND is_active = true
               AND status IN ('approved', 'overridden')
             LIMIT 1
           `)).rows as any[];
@@ -6547,11 +6550,11 @@ export async function registerRoutes(
       const year  = parseInt(req.query.year  as string) || new Date().getFullYear();
       const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
 
-      // 1. Check attendance run status
+      // 1. Check attendance run status (active version only)
       const runRows = (await db.execute(sql`
         SELECT id, status FROM attendance_report_runs
-        WHERE year = ${year} AND month = ${month}
-        ORDER BY created_at DESC LIMIT 1
+        WHERE year = ${year} AND month = ${month} AND is_active = true
+        ORDER BY version DESC, created_at DESC LIMIT 1
       `)).rows as any[];
 
       const run = runRows[0] ?? null;
@@ -6864,8 +6867,8 @@ export async function registerRoutes(
       // HR/Super Admin may bypass with explicit overrideAttendanceApproval + mandatory reason
       const attRunRows = (await db.execute(sql`
         SELECT id, status FROM attendance_report_runs
-        WHERE month = ${month} AND year = ${year}
-        ORDER BY created_at DESC LIMIT 1
+        WHERE month = ${month} AND year = ${year} AND is_active = true
+        ORDER BY version DESC, created_at DESC LIMIT 1
       `)).rows as any[];
       const attRun = attRunRows[0] ?? null;
       if (!attRun || (attRun.status !== "approved" && attRun.status !== "overridden")) {
@@ -7231,10 +7234,20 @@ export async function registerRoutes(
 
       // Attendance gate: the attendance report for the same month/year must be approved or overridden
       const attRunRows = (await db.execute(
-        sql`SELECT id, status FROM attendance_report_runs WHERE month = ${run.month} AND year = ${run.year} ORDER BY created_at DESC LIMIT 1`
+        sql`SELECT id, status FROM attendance_report_runs WHERE month = ${run.month} AND year = ${run.year} AND is_active = true ORDER BY version DESC, created_at DESC LIMIT 1`
       )).rows as any[];
       const attRunRow = attRunRows[0];
       const attStatus = attRunRow?.status ?? "none";
+
+      // If attendance was regenerated after this salary run, block approval until
+      // the salary run is regenerated against the current attendance version.
+      const runAdj = (run.adjustments && typeof run.adjustments === "object") ? run.adjustments as any : {};
+      if (runAdj._attendanceSuperseded) {
+        return res.status(409).json({
+          error: "The attendance report for this month was regenerated after this salary run. Regenerate the salary run before approving.",
+          code: "ATTENDANCE_SUPERSEDED",
+        });
+      }
       if (!["approved", "overridden"].includes(attStatus)) {
         return res.status(400).json({
           error: "Attendance approval required",
