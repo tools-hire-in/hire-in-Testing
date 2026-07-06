@@ -12,7 +12,7 @@ import { db } from "./db";
 import { eq, and, inArray, sql, desc, isNull, isNotNull, or } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
-import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY } from "@shared/accessControl";
+import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY, getStudioAddOnPermissions } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
@@ -356,13 +356,24 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 // access registry (ACCESS_REGISTRY). super_admin and admin are auto-granted.
 // The trailing role list is the defensive default seed for resolveRoles.
 function requirePermission(featureKey: string, ...allowedRoles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session?.userId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...allowedRoles])));
     if (allowed.includes(req.session.role!)) {
       return next();
+    }
+    // Studio add-on check: if the feature is a studio key, verify whether the
+    // user has an add-on that grants it (DB lookup so changes take effect immediately).
+    if (featureKey.startsWith("studio.")) {
+      try {
+        const addOn = await storage.getUserStudioAddOn(req.session.userId!);
+        const addOnPerms = getStudioAddOnPermissions(addOn);
+        if (addOnPerms.includes(featureKey)) {
+          return next();
+        }
+      } catch { /* fall through to 403 */ }
     }
     return res.status(403).json({ error: "Insufficient permissions" });
   };
@@ -14836,10 +14847,84 @@ export async function registerRoutes(
       const role = req.session.role || "";
       const matrix = getEffectiveMatrix();
       const permissions = Object.keys(matrix).filter((k) => matrix[k].includes(role));
-      res.json({ role, permissions, dbDriven: isDbDrivenAccessControl() });
+      // Union Studio add-on permissions (DB lookup for immediate effect on changes).
+      const addOn = await storage.getUserStudioAddOn(req.session.userId!).catch(() => null);
+      const addOnPerms = getStudioAddOnPermissions(addOn);
+      const allPerms = Array.from(new Set([...permissions, ...addOnPerms]));
+      res.json({ role, permissions: allPerms, dbDriven: isDbDrivenAccessControl(), studioAddOn: addOn });
     } catch (error) {
       console.error("Get my permissions error:", error);
       res.status(500).json({ error: "Failed to fetch permissions" });
+    }
+  });
+
+  // ---- Studio Add-On Access Management ----
+
+  // GET /api/admin/studio/access — list all users with a Studio add-on (admin/super_admin only)
+  app.get("/api/admin/studio/access", requireAuth, requirePermission("studio.manage_authors"), async (req: Request, res: Response) => {
+    try {
+      const users = await storage.getStudioAddOnUsers();
+      res.json(users.map((u) => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        designation: u.designation,
+        studioAddOn: u.studioAddOn,
+        createdAt: u.createdAt,
+      })));
+    } catch (error) {
+      console.error("Get studio access error:", error);
+      res.status(500).json({ error: "Failed to fetch studio access list" });
+    }
+  });
+
+  // POST /api/admin/studio/access — grant or update a user's Studio add-on
+  app.post("/api/admin/studio/access", requireAuth, requirePermission("studio.manage_authors"), async (req: Request, res: Response) => {
+    try {
+      const { userId, addOn } = req.body as { userId: string; addOn: string };
+      const VALID_ADD_ONS = ["marketing_manager", "content_creator", "influencer"];
+      if (!userId || !addOn || !VALID_ADD_ONS.includes(addOn)) {
+        return res.status(400).json({ error: "userId and valid addOn (marketing_manager, content_creator, influencer) are required" });
+      }
+      const updated = await storage.setUserStudioAddOn(userId, addOn);
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "studio_access_granted",
+        targetId: userId,
+        targetType: "user",
+        metadata: { addOn },
+      });
+      res.json({ ok: true, studioAddOn: updated.studioAddOn });
+    } catch (error) {
+      console.error("Set studio access error:", error);
+      res.status(500).json({ error: "Failed to set studio access" });
+    }
+  });
+
+  // DELETE /api/admin/studio/access/:userId — remove a user's Studio add-on
+  app.delete("/api/admin/studio/access/:userId", requireAuth, requirePermission("studio.manage_authors"), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const updated = await storage.setUserStudioAddOn(userId, null);
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        action: "studio_access_revoked",
+        targetId: userId,
+        targetType: "user",
+        metadata: {},
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Remove studio access error:", error);
+      res.status(500).json({ error: "Failed to remove studio access" });
     }
   });
 

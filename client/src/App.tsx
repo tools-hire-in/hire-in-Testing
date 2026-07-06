@@ -93,6 +93,7 @@ const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
+const StudioAccess = lazy(() => import("@/pages/admin/studio/StudioAccess"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -298,6 +299,7 @@ function PublicRouter() {
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
       <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
+      <Route path="/admin/studio/access">{() => <Suspense fallback={<AdminFallback />}><StudioAccess /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}
@@ -430,6 +432,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
       <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
       <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
+      <Route path="/admin/studio/access">{() => <Suspense fallback={<AdminFallback />}><StudioAccess /></Suspense>}</Route>
       <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
 
       {/* Public contract signing */}

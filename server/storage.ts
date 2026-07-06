@@ -710,6 +710,11 @@ export interface IStorage {
   getSalaryChangeBySource(sourceType: string, sourceDocumentId: string): Promise<SalaryChange | undefined>;
   getAppliedSalaryChanges(): Promise<SalaryChange[]>;
   getDueSalaryChanges(): Promise<SalaryChange[]>;
+
+  // Studio Add-On Access Management
+  getStudioAddOnUsers(): Promise<AdminUser[]>;
+  setUserStudioAddOn(userId: string, addOn: string | null): Promise<AdminUser | undefined>;
+  getUserStudioAddOn(userId: string): Promise<string | null>;
 }
 
 export type PublicInsightArticle = StudioArticle & {
@@ -5488,6 +5493,36 @@ export class DatabaseStorage implements IStorage {
         lte(salaryChanges.effectiveDate, today),
       ))
       .orderBy(asc(salaryChanges.effectiveDate));
+  }
+
+  // ==========================================
+  // STUDIO ADD-ON ACCESS MANAGEMENT
+  // ==========================================
+
+  async getStudioAddOnUsers(): Promise<AdminUser[]> {
+    return db.select().from(adminUsers)
+      .where(and(
+        isNotNull(adminUsers.studioAddOn),
+        isNull(adminUsers.deletedAt),
+        eq(adminUsers.isActive, true),
+      ))
+      .orderBy(adminUsers.firstName, adminUsers.lastName);
+  }
+
+  async setUserStudioAddOn(userId: string, addOn: string | null): Promise<AdminUser | undefined> {
+    const [updated] = await db.update(adminUsers)
+      .set({ studioAddOn: addOn, updatedAt: new Date() } as any)
+      .where(eq(adminUsers.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async getUserStudioAddOn(userId: string): Promise<string | null> {
+    const [row] = await db.select({ studioAddOn: adminUsers.studioAddOn })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, userId))
+      .limit(1);
+    return row?.studioAddOn ?? null;
   }
 
   // ==========================================

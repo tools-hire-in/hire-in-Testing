@@ -272,6 +272,50 @@ export const ACCESS_REGISTRY: AccessRegistry = {
 };
 
 // ============================================================================
+// Studio Add-On Permission Grants
+// ----------------------------------------------------------------------------
+// Maps each Studio add-on level to the set of studio.* permission keys it
+// grants. These are UNIONED with the user's role-based permissions at runtime.
+// Final Publish (studio.publish_article) is intentionally absent from every
+// add-on level — it remains super_admin only forever.
+// ============================================================================
+
+export const STUDIO_ADD_ON_PERMISSIONS: Record<string, string[]> = {
+  marketing_manager: [
+    "studio.view",
+    "studio.create_article",
+    "studio.edit_article",
+    "studio.generate_ai_draft",
+    "studio.manage_assets",
+    "studio.review_article",
+    "studio.marketing_approve",
+    "studio.view_analytics",
+    "studio.manage_authors",
+  ],
+  content_creator: [
+    "studio.view",
+    "studio.create_article",
+    "studio.edit_article",
+    "studio.generate_ai_draft",
+    "studio.manage_assets",
+    "studio.view_analytics",
+  ],
+  influencer: [
+    "studio.view",
+    "studio.create_article",
+  ],
+};
+
+/**
+ * Returns the Studio permission keys granted by a user's add-on level.
+ * Returns an empty array if no add-on or unrecognised value.
+ */
+export function getStudioAddOnPermissions(addOn: string | null | undefined): string[] {
+  if (!addOn) return [];
+  return STUDIO_ADD_ON_PERMISSIONS[addOn] ?? [];
+}
+
+// ============================================================================
 // Phase 2 — DB-driven live matrix
 // ----------------------------------------------------------------------------
 // The server hydrates an in-memory copy of the persisted (DB) matrix plus the

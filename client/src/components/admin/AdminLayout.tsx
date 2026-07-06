@@ -590,6 +590,7 @@ function ContentStudioSection({
   hasMarketingApproveAccess,
   hasStudioAnalyticsAccess,
   hasCmReviewAccess,
+  hasManageAuthorsAccess,
   isSuperAdmin,
   isNavActive,
   isComplianceLocked,
@@ -600,6 +601,7 @@ function ContentStudioSection({
   hasMarketingApproveAccess: boolean;
   hasStudioAnalyticsAccess: boolean;
   hasCmReviewAccess: boolean;
+  hasManageAuthorsAccess: boolean;
   isSuperAdmin: boolean;
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
@@ -642,6 +644,7 @@ function ContentStudioSection({
     { href: "/admin/studio/calendar", label: "Publishing Calendar", icon: CalendarDays, roles: [] },
     ...(hasStudioAnalyticsAccess ? [{ href: "/admin/studio/analytics", label: "Content Analytics", icon: BarChart3, roles: [] }] : []),
     { href: "/admin/studio/authors", label: "Authors", icon: Users, roles: [] },
+    ...(hasManageAuthorsAccess ? [{ href: "/admin/studio/access", label: "Studio Access", icon: ShieldCheck, roles: [] }] : []),
   ];
 
   const isStudioActive = location.startsWith("/admin/studio");
@@ -1213,6 +1216,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasStudioAccess = can("studio.view");
   const hasMarketingApproveAccess = can("studio.marketing_approve");
   const hasStudioAnalyticsAccess = can("studio.view_analytics");
+  const hasManageAuthorsAccess = can("studio.manage_authors");
   const hasCmReviewAccess = ["super_admin", "admin", "hr", "content_manager"].includes(userRole) && hasStudioAccess;
   const isSuperAdmin = userRole === "super_admin";
 
@@ -1656,6 +1660,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 hasMarketingApproveAccess={hasMarketingApproveAccess}
                 hasStudioAnalyticsAccess={hasStudioAnalyticsAccess}
                 hasCmReviewAccess={hasCmReviewAccess}
+                hasManageAuthorsAccess={hasManageAuthorsAccess}
                 isSuperAdmin={isSuperAdmin}
                 isNavActive={isNavActive}
                 isComplianceLocked={isComplianceLocked}

@@ -60,6 +60,9 @@ export const adminUsers = pgTable("admin_users", {
   photoUrl: varchar("photo_url"),
   // Per-user UI preferences (e.g. { newLook: true } for the app redesign opt-in).
   preferences: jsonb("preferences"),
+  // Studio add-on: grants Content Studio access without changing base role.
+  // Values: 'marketing_manager' | 'content_creator' | 'influencer' | null.
+  studioAddOn: text("studio_add_on"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
