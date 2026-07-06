@@ -41,6 +41,7 @@ const roleLabels: Record<string, string> = {
   hr: "HR",
   operations: "Operations",
   manager: "Manager",
+  executive: "Executive",
   employee: "Employee",
 };
 
@@ -50,6 +51,7 @@ const roleColors: Record<string, string> = {
   hr: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   operations: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
   manager: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  executive: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300",
   employee: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
 };
 
