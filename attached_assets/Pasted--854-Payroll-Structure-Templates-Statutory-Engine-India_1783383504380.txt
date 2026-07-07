@@ -1,0 +1,418 @@
+# #854 — Payroll Structure Templates & Statutory Engine (India MVP)
+### Final build spec — v2.0, revised for remote company + Delhi HQ + UP/Punjab/Bihar cluster
+### Target build environment: Replit (Node/TS + Postgres)
+
+> **Read this first.** This is v2 of the original ticket. It folds in five correctness fixes,
+> the new **Labour Codes 2025** wage rule (the original spec predates it), and a company-shape
+> adjustment for a **remote team headquartered in Delhi with staff clustered in UP / Punjab / Bihar**.
+> Everything marked 🔴 is a *compliance correctness* change from the original and should not be
+> dropped to save time. Everything marked 🟢 is a cheap architectural hedge that saves a painful
+> migration later. Have a practising CA sign off on the seed rate tables before your first live run.
+
+---
+
+## 0. Context that changes the design
+
+**Company shape:** fully remote, one physical establishment (HQ) in **Delhi**, employee cluster in
+**Uttar Pradesh, Punjab, Bihar**.
+
+Two consequences fall out of this immediately:
+
+1. **Professional Tax is mostly inert for you.** Delhi, UP, and Bihar levy **no Professional Tax**.
+   So the multi-state PT machinery the original spec deferred is *low priority* for your actual
+   headcount — but must still exist as data model, because a remote cluster moves the day you hire
+   in Bangalore or Pune.
+2. **Punjab is the trap.** Punjab has no "Professional Tax" but it has the **Punjab State
+   Development Tax (PSDT) — ₹200/month**, deducted by the employer for any employee whose taxable
+   income exceeds the income-tax exemption limit, and it requires a separate Punjab registration.
+   A "UP/Punjab/Bihar → no PT" mental model sails straight past this. It is modelled here as just
+   another row in the state-deduction table.
+
+PF and ESI are **central** statutes — one registration via your Delhi HQ covers the whole remote
+workforce nationwide. That half of the engine needs zero geography handling.
+
+---
+
+## 1. 🔴 NEW — Labour Codes 2025 "50% wage rule" (was not in original spec)
+
+India's four Labour Codes came into force on **21 November 2025**. The Code on Wages introduces a
+**uniform definition of wages** with a hard rule the payroll engine must enforce:
+
+> **Basic + DA + retaining allowance must be at least 50% of total remuneration.**
+> If excluded allowances (HRA, conveyance, etc.) exceed 50% of remuneration, the **excess is added
+> back into "wages"** for statutory computation (PF, gratuity, etc.).
+
+**Why this breaks the original spec:** the original default "Standard" structure set Basic at **40%
+of Gross**. That is now non-compliant, and — more subtly — even a structure with Basic < 50% must
+have its **PF/gratuity basis floored at 50% of remuneration**, regardless of the displayed Basic.
+
+**What the engine must do:**
+
+- The statutory engine computes a `wageFloor = 0.50 × grossAfterLOP`.
+- `pfBasis = max(basicAfterLOP, wageFloor)` **before** applying the ₹15,000 restricted-mode cap.
+- The Settings UI **warns** (does not silently block) when a structure defines Basic < 50%, showing
+  the effective statutory basis that will actually be used.
+- Default seed structure updated to **Basic = 50%** (see §5).
+
+This one rule is the single most important thing that makes the MVP *actually* compliant in 2026.
+Do not skip it.
+
+---
+
+## 2. Statutory rules — verified current figures (2026)
+
+All figures below should live in an **effective-dated `statutory_rates` table (🟢 §4)**, not as code
+constants. Values shown are current as of mid-2026.
+
+### 2.1 Provident Fund — EPF & MP Act, 1952
+| Item | Rule | Cap / Note |
+|---|---|---|
+| PF basis | `max(basicAfterLOP, 0.50 × grossAfterLOP)` then mode cap | 50% floor from Labour Codes |
+| PF ceiling — **restricted** (default) | basis capped at **₹15,000** | max employee PF = **₹1,800** |
+| PF ceiling — **unrestricted** | basis = actual (no cap) | many IT/services firms |
+| Employee PF | **12%** of PF basis | 0 if `pf_exempt` |
+| Employer EPF | **3.67%** of PF basis | absorbs EPS remainder above cap |
+| Employer EPS | **8.33%** of PF basis | hard cap **₹1,250** (= 8.33% × 15,000) |
+| Employer EDLI | **0.5%** of PF basis | cap **₹75** |
+| EPF admin charges | **0.5%** of PF wages | 🔴 **min ₹500 / establishment / month**, not a ₹75/employee cap — the ₹75 only appears arithmetically in restricted mode. Show as establishment-level cost, not per-slip. |
+
+> **Note:** The ₹15,000 ceiling was *retained* in the EPF Scheme 2026 notification but is under
+> active Supreme Court review (a hike toward ₹21,000 has been discussed for years). Effective-dating
+> the rate means a future change is a data edit, not a redeploy — and historical slips stay correct.
+
+`pf_exempt` flag: employees already in PF (UAN exists) stay enrolled regardless of salary. New joiners
+with Basic > ₹15,000 may be flagged PF-exempt by HR; the flag skips PF entirely for that employee.
+All employer-side PF amounts are **CTC / reporting only — never deducted from Net Pay.**
+
+### 2.2 ESI — ESI Act, 1948
+| Item | Rule |
+|---|---|
+| Applicability | Gross ≤ **₹21,000/month** (**₹25,000** if disability — store flag on employee) |
+| Employee ESI | **0.75%** of gross |
+| Employer ESI | **3.25%** of gross |
+
+🔴 **Contribution-period fix (the original spec had this backwards).** ESI periods run **Apr–Sep**
+and **Oct–Mar**. Once an employee is covered at the start of a period, they **remain covered and
+contributions continue until the period ends**, even if gross crosses ₹21,000 mid-period. The
+original "evaluate fresh each month" shortcut *stops* deducting mid-period — that is **under-remittance,
+a real violation**, not a conservative simplification.
+
+**MVP-safe implementation:** store `esi_covered_until` (date) on the employee. On the first month an
+employee is covered, set it to the end of the current period. Deduct while `slipMonth <= esi_covered_until`.
+Re-evaluate applicability only at each period boundary. This is simple *and* correct.
+
+Also add `esi_applicable` (boolean override, default true) on the employee — for the rare remote
+employee in a non-ESIC-implemented area.
+
+### 2.3 State deductions — Professional Tax, Development Tax, LWF (state-keyed)
+🔴 **Model all state-level deductions in one table** keyed by `(state, levy_type)`, with a
+per-state **registration status**. This handles PT, Punjab PSDT, and future LWF with one mechanism.
+
+| State | Levy | Rule | Your cluster? |
+|---|---|---|---|
+| **Delhi (HQ)** | PT | **₹0** (no PT) | ✅ HQ — nothing to deduct |
+| **Uttar Pradesh** | PT | **₹0** (no PT) | ✅ cluster |
+| **Bihar** | PT | **₹0** (no PT) | ✅ cluster |
+| **Jammu & Kashmir (UT)** | PT | **₹0** (no PT — see §2.4) | possible |
+| **Ladakh (UT)** | PT | **₹0** (no PT — separate UT, see §2.4) | possible |
+| **Punjab** | 🔴 **PSDT (Development Tax)** | **₹200/month** if employee's taxable income > IT exemption limit | ✅ cluster — **must register + deduct** |
+| Maharashtra | PT | > ₹10,000 → ₹200 (₹300 in Feb) | future |
+| Karnataka | PT | 🔴 > **₹25,000** → ₹200 (revised Apr-2023, *not* ₹15,000) | future |
+| Telangana | PT | > ₹20,000 → ₹200 | future |
+| Tamil Nadu | PT | half-yearly graded (~₹208/mo approx — flag as approximation) | future |
+| West Bengal | PT | 🔴 graded (₹110/₹130/₹150/₹200), *not* flat ₹200 | future |
+
+**Registered vs not-registered behaviour (🔴 the key remote-company feature):**
+- State marked **registered** → engine computes and deducts per slab.
+- State marked **not registered** → deduct **₹0** but **flag on internal exposure report**
+  (e.g. "PSDT applicable, not remitted — Punjab: N employees"). Makes the compliance gap *visible*
+  to the executive instead of silently invisible, and reversible with one toggle the day you register.
+- Delhi/UP/Bihar naturally resolve to ₹0 because they are genuinely no-PT states — no flag.
+
+**LWF (Labour Welfare Fund):** deferred for MVP, but it is your **most relevant deferred item** (Punjab
+and Delhi both have small LWF; UP/Bihar narrower). It slots into the *same* state-keyed table later.
+Design the table to hold it now (`levy_type: 'LWF'`, half-yearly cadence flag).
+
+**PT/PSDT basis:** slab check on gross *before* LOP; deduction amount computed *after* LOP —
+HR-configurable per the original spec.
+
+### 2.4 Special jurisdictions — Jammu & Kashmir and Ladakh
+
+**Bottom line: J&K and Ladakh need zero new engine logic.** They slot into the existing design as
+"no-PT jurisdiction + central PF/ESI". But J&K is the most historically distinct region in Indian
+payroll, so the notes below explain *why* it's free — and where the one real wrinkle sits.
+
+- **Professional Tax → none.** Both the UT of Jammu & Kashmir and the UT of Ladakh are PT-exempt.
+  Seed each as a **₹0 row** in `state_deductions` (like Delhi/UP/Bihar). No PSDT-style trap here.
+
+- **PF → fully central since 2020 (this is why the effective-dated design matters).** J&K was
+  historically *excluded* from the EPF Act and ran its own J&K EPFO. Post-Article 370, the exclusion
+  was removed **w.e.f. 31 Oct 2019** and the Act extended to the J&K and Ladakh UTs **w.e.f. 1 Jan 2020**;
+  erstwhile J&K PF subscribers were migrated to central EPFO. So today PF/EPS/EDLI for a Kashmir
+  employee is **identical central logic** — your Delhi HQ registration covers them, engine unchanged.
+  The *only* place the history bites: regenerating a **pre-2020** J&K slip should show no PF — which
+  the effective-dated `statutory_rates` table + `jurisdiction` column handle correctly and a
+  hard-coded engine would silently get wrong. (Unlikely for a new company, but it's the cleanest
+  example of why that hedge exists.)
+
+- **ESI → applies *where implemented* (the one genuine wrinkle — already handled).** ESI was extended
+  to J&K, but coverage is tied to ESIC-implemented areas, and in newer regions insured persons may be
+  routed via Ayushman Bharat where ESIC facilities are thin. So a Kashmir employee's ESI coverage
+  depends on their **locality**, not just salary. This is exactly what the **`esi_applicable`** override
+  flag on the employee record (§2.2, §5) is for — set it per employee by area; the engine respects it.
+
+- **Ladakh is a separate UT.** Store `"Ladakh"` distinctly from `"Jammu & Kashmir"` in the state field.
+  Both resolve to no-PT + central PF/ESI, but they are different jurisdictions administratively.
+
+- **Labour Codes apply.** The central Labour Codes (incl. the §1 50% wage rule) apply in J&K, with
+  enforcement following UT-level notifications. No special-casing in the engine.
+
+- **🟢 Remote-company operational note (not an engine concern):** the Kashmir Valley has a history of
+  internet shutdowns. Since slip delivery, EPFO submission, and portal access are cloud-based, keep a
+  fallback path (offline slip export, delayed-submission handling) for outage periods. For small
+  Kashmir headcount, an **Employer-of-Record** arrangement is a common way to avoid standing up direct
+  J&K compliance and enforcement friction — worth weighing against direct hire.
+
+---
+
+## 3. Component computation & LOP (unchanged core logic + one fix)
+
+`computeComponentsFromGross(gross, structureRules, presentDays, workingDays)`:
+
+1. Compute raw component amounts from rules **in dependency order** (🔴 see below).
+2. Apply LOP **proportionally per component** by each rule's `lop_mode`.
+3. **Special Allowance is the residual absorber** — it takes the rounding remainder so Earnings sum
+   to `grossAfterLOP` *exactly*.
+4. Return an itemised breakdown with **both pre-LOP and post-LOP amounts** for audit display.
+
+```
+BasicAfterLOP        = Basic × (presentDays / workingDays)
+HRAAfterLOP          = BasicAfterLOP × HRA%           (if HRA is % of Basic)
+ConveyanceAfterLOP   = Conveyance × (presentDays/workingDays)  OR fixed (per-rule lop_mode)
+SpecialAllowance     = GrossAfterLOP − BasicAfterLOP − HRAAfterLOP − ConveyanceAfterLOP − LTA
+PF basis (raw)       = BasicAfterLOP                  → then apply 50% floor + mode cap (§1, §2.1)
+```
+
+🔴 **Dependency ordering, not declaration ordering.** "HRA as % of Basic" requires Basic computed
+first. Relying on row order lets HR build a structure that silently computes wrong. Either enforce
+ordering in the rule builder or **topologically sort** rules by `reference_component` at compute time.
+
+All amounts **rounded to the nearest rupee**; the residual absorbs the rounding.
+
+---
+
+## 4. 🟢 Architecture hedges (cheap now, expensive later)
+
+These four cost little today and are what separate "works this month" from "auditable and portable":
+
+1. **Effective-dated `statutory_rates` table.** `(jurisdiction, levy, key, value, effective_from, effective_to)`.
+   The engine resolves every rate **as of the slip's pay period**, never "now". Regenerating a March
+   slip in 2028 must use March's rates. This is the one change to make *before* writing the engine.
+
+2. **Snapshot the computation onto the slip record.** Persist the full input + resolved rules + rate
+   set + itemised output as JSONB on the generated slip. Templates get edited over time; a regenerated
+   historical slip must reproduce the *original* numbers or you fail audits. (Structure *versioning*
+   can wait for Phase 2 — snapshot is enough for MVP.)
+
+3. **`jurisdiction` / `country` column** on `salary_structures` and every rate/slab table, defaulted
+   to `'IN'`. Costs nothing now; saves a migration when country #2 arrives.
+
+4. **Locale-aware formatter** for currency + number grouping in `salarySlipHtml.ts`. Keep the
+   ₹X,XX,XXX lakh/crore grouping and Apr–Mar fiscal year behind one function, not inline. These leak
+   everywhere if uncontained.
+
+**Engine layering (this is your multi-country seam):**
+- `computeComponentsFromGross(...)` → **country-agnostic** (gross → components → LOP). Keep it pure of
+  anything Indian.
+- `StatutoryEngine.compute(period, components, employeeFlags, settings) → itemizedLines[]` → a
+  **generic interface**, with `IndiaStatutoryEngine` as the first registered implementation. Do **not**
+  build a generic multi-country tax abstraction now — you'll design the wrong one. Just keep India
+  behind the interface so country #2 is an add, not a rewrite.
+
+---
+
+## 5. Schema (updated)
+
+Follow the DB drift guard: all columns in `shared/schema.ts`, no startup DDL to own columns.
+
+**`salary_structures`**
+`id, name, description, effective_date, is_active, pf_mode [restricted|unrestricted], jurisdiction (default 'IN')`
+> 🔴 Original spec was inconsistent (said "PF mode per *company*" but schema put it on structure).
+> **Resolve to per-structure** — firms genuinely run both modes across bands. Remove `pf_mode` from
+> `system_settings`.
+
+**`salary_structure_rules`**
+`id, structure_id, component_name, rule_type [percent_of_gross|percent_of_component|fixed|residual], value, reference_component, lop_mode [proportional|fixed]`
+
+**`admin_users`** — add:
+`salary_structure_id (nullable FK), pf_exempt (bool), pt_state (🔴 moved here from system_settings), work_city (nullable), esi_disability (bool), esi_applicable (bool default true), esi_covered_until (date nullable)`
+
+**`state_deductions`** (🔴 new — replaces single-state PT) —
+`id, state, levy_type [PT|PSDT|LWF], condition_type [salary_gt|annual_gt|graded], threshold, amount, feb_amount (nullable), cadence [monthly|half_yearly], is_registered (bool), registration_number (nullable), basis [gross_pre_lop|gross_post_lop], jurisdiction`
+
+**`statutory_rates`** (🟢 new) —
+`id, jurisdiction, levy [EPF|EPS|EDLI|ESI_EE|ESI_ER|...], key, value, effective_from, effective_to (nullable)`
+
+**`salary_slips`** — add:
+`computation_snapshot (JSONB)` — full input/rules/rates/output for audit reproduction.
+
+**`system_settings`** — add:
+`esi_disability_threshold, default_jurisdiction`. (PT state removed — now per-employee.)
+
+**Seed data:**
+- Default **"Standard"** structure (🔴 updated for 50% rule):
+  **Basic 50%** of Gross, HRA 50% of Basic, Conveyance ₹1,600 fixed, LTA 8.33% of Basic,
+  Special Allowance residual.
+- `state_deductions`: Delhi/UP/Bihar/**J&K/Ladakh** (₹0, no levy), **Punjab PSDT ₹200/month**, plus
+  MH/KA/TN/WB/TG seeded but `is_registered = false` (you can flip them on when you hire there).
+- `statutory_rates`: EPF/EPS/EDLI/ESI figures from §2 with `effective_from` = date of last notification.
+
+---
+
+## 6. Statutory engine signature
+
+```
+computeIndiaStatutory(
+  basicAfterLOP, grossAfterLOP,
+  pfMode, pfExempt,
+  employeeState, stateDeductions, isDisability,
+  esiCoveredUntil, esiApplicable, slipPeriod,
+  rates            // resolved from statutory_rates as of slipPeriod
+) => {
+  // PF
+  wageFloor:      0.50 × grossAfterLOP,                          // Labour Codes
+  pfBasisRaw:     max(basicAfterLOP, wageFloor),
+  pfBasis:        pfMode==='restricted' ? min(pfBasisRaw, 15000) : pfBasisRaw,
+  employeePf:     pfExempt ? 0 : round(0.12 × pfBasis),
+  employerEps:    min(round(0.0833 × pfBasis), 1250),
+  employerEpf:    round(0.12 × pfBasis) − employerEps,            // absorbs EPS remainder
+  employerEdli:   min(round(0.005 × pfBasis), 75),
+  employerAdmin:  establishment-level (min ₹500/estab) — reporting only,
+
+  // ESI (period-aware)
+  esiCovered:     esiApplicable && (grossAfterLOP ≤ (isDisability?25000:21000) || slipPeriod ≤ esiCoveredUntil),
+  employeeEsi:    esiCovered ? round(0.0075 × grossAfterLOP) : 0,
+  employerEsi:    esiCovered ? round(0.0325 × grossAfterLOP) : 0,
+
+  // State deduction (PT / PSDT / LWF)
+  stateDeduction: lookup(employeeState, stateDeductions, grossAfterLOP),  // 0 if not registered, but flagged
+  stateDeductionApplicableButUnremitted: bool,                            // drives exposure report
+}
+```
+All amounts rounded to nearest rupee; each figure returned **separately** so slips/reports display
+them individually.
+
+---
+
+## 7. Slip generation, UI, PDF
+
+- Wire the two engines into `POST /api/hr/salary-slips/generate` and `/regenerate` **only when a
+  structure is assigned**. Response includes the full component breakdown, employer-side amounts,
+  and the formula used per line. Persist the **computation snapshot** (🟢 §4).
+- Merge with existing **advance recovery** and **manual override** logic.
+- **Unstructured employees fall through to the existing manual path unchanged** (backward compatible).
+- Slip form shows **auto-filled read-only fields** when a structure is assigned; per-field
+  **"Override" toggle** unlocks editing and **requires an audit reason**.
+- Extend (don't replace) `shared/salarySlipHtml.ts`:
+  - **Earnings** table: Basic, HRA, Conveyance, LTA, Special Allowance (each with amount).
+  - **Deductions** table: Employee PF, Employee ESI, Prof Tax / PSDT, Advance Recovery, Other.
+  - **Employer Contribution** section (transparency): Employer EPF, EPS, EDLI, Employer ESI.
+  - **Net Pay.**
+  - All rupee amounts via the **locale formatter** → ₹X,XX,XXX Indian grouping.
+- Settings → new **"Salary Structures"** tab: structure list (create/edit/deactivate), per-structure
+  rule builder (component + rule type + value + LOP mode), **live preview** for a sample gross,
+  per-structure **PF mode toggle**, and a **"State Registrations"** panel (state, reg number,
+  registered/not-registered) driving the deduct-vs-flag behaviour.
+- Assign structure + set `pf_exempt` / `esi_disability` from the employee profile in **My Team**.
+
+---
+
+## 8. Access control (executive = full operational access)
+
+Per the original ticket and Task #856 pattern — **do not hard-code role checks**:
+- Register **every new API route** with `executive` in allowed roles via `shared/accessControl.ts`.
+- All frontend permission checks use `usePermission` / `hasPermission` with **registry keys**, never
+  inline role comparisons.
+- Executive can: create/edit/deactivate structures; assign structures; set PF mode, state registrations,
+  slab overrides; mark PF-exempt; generate/regenerate slips; override any auto-calculated field (with
+  audit reason).
+
+---
+
+## 9. Build order (tuned to *your* cluster)
+
+**Phase A — core correctness (where ~all your risk lives):**
+1. `statutory_rates` effective-dated table + resolver (🟢 do this first — engine depends on it).
+2. Schema migrations (§5).
+3. `computeComponentsFromGross` (country-agnostic, pure) + dependency-ordered rules.
+4. `computeIndiaStatutory` with **50% wage floor** (§1), **PF caps/splits**, **ESI period logic** (§2.2).
+5. Wire into generate/regenerate; snapshot onto slip; keep unstructured path intact.
+6. **Golden test-vector suite** (§10) — before you trust any of it.
+
+**Phase A also-include (cheap, real for you):**
+7. Per-employee `pt_state` + `state_deductions` table + registered/not-registered flag.
+8. **Seed Punjab PSDT ₹200** — the one active state levy your current cluster triggers.
+
+**Phase B (defer, but table is ready):** LWF (your most-relevant deferred item), multi-state PT
+UI polish, mid-year state change + proration, bulk payroll run, executive compliance dashboard.
+
+**Out of scope (unchanged from original):** TDS / income tax / Form 16 (Phase 3), ESIC/EPF challan
+generation, gratuity *deduction* (CTC view only), government-portal submission.
+
+---
+
+## 10. 🔴 Golden test vectors (non-negotiable — payroll bugs are found by employees on payday)
+
+Build 30–50 cases with expected outputs verified against a CA or a known-good calculator (greytHR /
+ClearTax). Cover the boundaries, not just the happy path:
+
+- Gross levels: ₹18k, ₹21,000 **exactly** (ESI boundary), ₹21,001, ₹50k, ₹1.5L.
+- Basic %: 40% (triggers 50% floor), 50%, 60%.
+- PF mode: restricted vs unrestricted at Basic > ₹15,000.
+- EPS cap: basis > ₹15,000 unrestricted → EPS = ₹1,250, EPF absorbs excess.
+- LOP: 0 days, half-month, present=working (no LOP); assert Earnings sum == GrossAfterLOP exactly.
+- ESI: covered → crosses ₹21k mid-period (must keep deducting to period end) → next period start (stops).
+- Disability flag: ESI at ₹24k (covered) vs ₹26k (not).
+- `pf_exempt`: PF = 0, ESI still computes.
+- State: Delhi/UP/Bihar → ₹0; **Punjab → ₹200 PSDT**; Punjab not-registered → ₹0 **but flagged**.
+- Rounding: residual absorbs; each figure to nearest rupee.
+
+---
+
+## 11. Building this on Replit — practical notes
+
+**Stack fit:** the design maps cleanly to a Replit setup —
+- **Runtime:** Node + TypeScript (matches the existing `shared/` code the ticket references).
+- **DB:** Replit's built-in Postgres (or Neon) — the effective-dated + JSONB-snapshot design needs a
+  real relational DB, not a KV store. Put `statutory_rates` / `state_deductions` / snapshots here.
+- **Schema:** keep Drizzle (or your existing ORM) definitions in `shared/schema.ts` per the drift guard;
+  run migrations, never startup DDL on owned columns.
+- **Secrets:** DB URL and any API keys go in Replit **Secrets**, not committed.
+
+**Feeding the Replit agent well:**
+- Give it this file as the spec, then have it build **§9 Phase A in order** — do **not** let it
+  scaffold UI before the engine + test vectors pass. Payroll UI on top of a wrong engine is worse
+  than no UI.
+- Explicitly instruct: *"Statutory numbers must come from the `statutory_rates` table resolved by
+  pay period — never hard-code ₹15000/₹21000/₹1250/12%/0.75% as constants."* Agents love to inline
+  these; the effective-dating discipline is the whole point.
+- Have it write the **golden vectors as automated tests** and make them pass before wiring slip
+  generation. Ask it to print a computed-vs-expected table so you can eyeball boundaries.
+- Ask for the `IndiaStatutoryEngine` to sit behind the generic `StatutoryEngine` interface from day
+  one (§4) — one line of instruction now, no rewrite later.
+
+**One caution about Replit + payroll:** Replit is excellent for building and testing this, but before
+you run **real employee payroll** on it, confirm data-residency and access controls meet your comfort
+level for salary/PII, and keep the CA-verified rate tables under change control. The engine can be
+perfect and still remit wrong if the seed table is stale.
+
+---
+
+## 12. Compliance disclaimer
+
+This spec encodes statutory rules as understood in mid-2026 and is engineering guidance, **not tax or
+legal advice**. The EPF ceiling is under Supreme Court review, Labour Code *Rules* are still being
+detailed state by state, and state levies change in state budgets. **Have a practising Indian CA / labour
+consultant sign off on the seed `statutory_rates` and `state_deductions` tables before your first live
+payroll run**, and re-verify at each fiscal year and whenever a notification lands. The effective-dated
+design exists precisely so these updates are data edits, not code changes.
