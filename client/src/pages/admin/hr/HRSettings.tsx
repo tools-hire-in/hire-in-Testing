@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { relocatedSettingsTabTarget } from "@/lib/settings-redirect";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -4151,5 +4151,180 @@ export default function HRSettings({ group }: { group?: string }) {
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+export function AllowedDomainsSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const { data, isLoading } = useQuery<{ domains: string[] }>({
+    queryKey: ["/api/system/allowed-domains"],
+    enabled: isSuperAdmin,
+  });
+
+  const [editing, setEditing] = useState(false);
+  const [domains, setDomains] = useState<string[]>([]);
+  const [newDomain, setNewDomain] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data?.domains) {
+      setDomains(data.domains);
+    }
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (nextDomains: string[]) => {
+      const res = await apiRequest("PATCH", "/api/system/allowed-domains", { domains: nextDomains });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system/allowed-domains"] });
+      toast({ title: "Allowed domains updated" });
+      setEditing(false);
+    },
+    onError: () => toast({ title: "Failed to update allowed domains", variant: "destructive" }),
+  });
+
+  const handleAddDomain = () => {
+    const trimmed = newDomain.trim().toLowerCase();
+    if (!trimmed) {
+      setInputError("Domain cannot be empty");
+      return;
+    }
+    if (trimmed.includes("@")) {
+      setInputError("Enter the domain without the @ symbol (e.g. hire-in.com)");
+      return;
+    }
+    if (trimmed.includes(" ")) {
+      setInputError("Domain cannot contain spaces");
+      return;
+    }
+    if (!trimmed.includes(".")) {
+      setInputError("Enter a valid domain (e.g. hire-in.com)");
+      return;
+    }
+    if (domains.includes(trimmed)) {
+      setInputError("This domain is already in the list");
+      return;
+    }
+    setInputError(null);
+    setDomains((prev) => [...prev, trimmed]);
+    setNewDomain("");
+  };
+
+  const handleRemoveDomain = (domain: string) => {
+    setDomains((prev) => prev.filter((d) => d !== domain));
+  };
+
+  const handleCancel = () => {
+    setDomains(data?.domains ?? []);
+    setNewDomain("");
+    setInputError(null);
+    setEditing(false);
+  };
+
+  if (!isSuperAdmin) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" />
+          Allowed Email Domains
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Only email addresses from these domains can log in or be registered as admin users. Changes take effect immediately — no restart required.
+        </p>
+
+        {isLoading ? (
+          <div className="flex gap-2">
+            <div className="h-6 w-24 rounded-full bg-muted animate-pulse" />
+            <div className="h-6 w-32 rounded-full bg-muted animate-pulse" />
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2" data-testid="list-allowed-domains">
+            {domains.map((domain) => (
+              <span
+                key={domain}
+                className="inline-flex items-center gap-1.5 rounded-full border bg-muted px-3 py-1 text-sm font-medium"
+                data-testid={`chip-domain-${domain}`}
+              >
+                @{domain}
+                {editing && domains.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveDomain(domain)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    data-testid={`button-remove-domain-${domain}`}
+                    aria-label={`Remove ${domain}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {editing && (
+          <div className="space-y-2">
+            <div className="flex gap-2 max-w-sm">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">@</span>
+                <Input
+                  className="pl-7"
+                  placeholder="example.com"
+                  value={newDomain}
+                  onChange={(e) => {
+                    setNewDomain(e.target.value);
+                    setInputError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddDomain();
+                    }
+                  }}
+                  data-testid="input-new-domain"
+                />
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={handleAddDomain} data-testid="button-add-domain">
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+            {inputError && <p className="text-xs text-destructive" data-testid="text-domain-error">{inputError}</p>}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          {!editing ? (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)} data-testid="button-edit-domains">
+              <Pencil className="h-4 w-4 mr-1" />
+              Edit domains
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                onClick={() => saveMutation.mutate(domains)}
+                disabled={saveMutation.isPending || domains.length === 0}
+                data-testid="button-save-domains"
+              >
+                {saveMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleCancel} disabled={saveMutation.isPending} data-testid="button-cancel-domains">
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

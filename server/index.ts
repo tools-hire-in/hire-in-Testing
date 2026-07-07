@@ -3647,6 +3647,19 @@ async function runStartupTasks() {
     console.error("Attendance exception backfill error (non-fatal):", err);
   }
 
+  // Seed the default allowed email domains (idempotent — won't overwrite
+  // a value that a super admin has already customised).
+  try {
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('allowed_email_domains', '["hire-in.com"]'::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Ensured default allowed_email_domains seed");
+  } catch (err) {
+    console.error("allowed_email_domains seed error:", err);
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();

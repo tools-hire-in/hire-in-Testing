@@ -1,6 +1,6 @@
 import { Express } from "express";
 import { db } from "./db";
-import { adminUsers, loginSchema, registerAdminSchema } from "@shared/schema";
+import { adminUsers, loginSchema, registerAdminSchema, systemSettings } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requirePermission } from "./auth";
 import { z } from "zod";
@@ -8,6 +8,18 @@ import crypto from "crypto";
 import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "./email";
+
+async function getAllowedDomains(): Promise<string[]> {
+  try {
+    const [row] = await db.select().from(systemSettings).where(eq(systemSettings.key, "allowed_email_domains"));
+    if (row && Array.isArray(row.value)) {
+      return (row.value as string[]).filter((d) => typeof d === "string" && d.length > 0);
+    }
+  } catch (err) {
+    console.error("getAllowedDomains error:", err);
+  }
+  return ["hire-in.com"];
+}
 
 export function registerAuthRoutes(app: Express) {
   // Login route (supports two-step TOTP)
@@ -21,8 +33,10 @@ export function registerAuthRoutes(app: Express) {
       const { email, password } = parsed.data;
       const totpCode = req.body.totpCode as string | undefined;
 
-      if (!email.endsWith("@hire-in.com")) {
-        return res.status(403).json({ message: "Only @hire-in.com email addresses are allowed" });
+      const allowedDomains = await getAllowedDomains();
+      if (!allowedDomains.some((d) => email.endsWith("@" + d))) {
+        const domainList = allowedDomains.map((d) => "@" + d).join(", ");
+        return res.status(403).json({ message: `Only ${domainList} email addresses are allowed` });
       }
 
       const [user] = await db
@@ -203,10 +217,7 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const setupSchema = z.object({
-        email: z.string().email().refine(
-          (email) => email.endsWith("@hire-in.com"),
-          "Only @hire-in.com email addresses are allowed"
-        ),
+        email: z.string().email(),
         password: z.string().min(8, "Password must be at least 8 characters"),
         firstName: z.string().min(1),
         lastName: z.string().min(1),
@@ -218,6 +229,12 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const { email, password, firstName, lastName } = parsed.data;
+
+      const setupAllowedDomains = await getAllowedDomains();
+      if (!setupAllowedDomains.some((d) => email.endsWith("@" + d))) {
+        const domainList = setupAllowedDomains.map((d) => "@" + d).join(", ");
+        return res.status(403).json({ message: `Only ${domainList} email addresses are allowed` });
+      }
       const hashedPassword = await hashPassword(password);
 
       const [newUser] = await db

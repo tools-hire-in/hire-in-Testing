@@ -7,7 +7,8 @@ export type TowerTab =
   | "audit-logs"
   | "data-maintenance"
   | "system-settings"
-  | "user-management";
+  | "user-management"
+  | "security";
 
 export const SUPER_ADMIN_TOWER_TABS: TowerTab[] = [
   "overview",
@@ -18,6 +19,7 @@ export const SUPER_ADMIN_TOWER_TABS: TowerTab[] = [
   "audit-logs",
   "data-maintenance",
   "user-management",
+  "security",
 ];
 
 export const HR_TOWER_TABS: TowerTab[] = ["data-maintenance"];

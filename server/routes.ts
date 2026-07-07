@@ -12529,6 +12529,39 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/system/allowed-domains", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const setting = await storage.getSystemSetting("allowed_email_domains");
+      const domains = Array.isArray(setting?.value) ? (setting!.value as string[]) : ["hire-in.com"];
+      res.json({ domains });
+    } catch (error) {
+      console.error("Get allowed domains error:", error);
+      res.status(500).json({ error: "Failed to fetch allowed domains" });
+    }
+  });
+
+  app.patch("/api/system/allowed-domains", requireAuth, requirePermission("system.allowedDomains", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        domains: z.array(
+          z.string().min(1).refine((d) => !d.includes("@") && !d.includes(" ") && d.includes("."), {
+            message: "Each domain must be a valid domain without @ prefix (e.g. hire-in.com)",
+          })
+        ).min(1, "At least one domain is required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      }
+      const domains = parsed.data.domains.map((d) => d.toLowerCase());
+      await storage.upsertSystemSetting("allowed_email_domains", domains, req.session.userId);
+      res.json({ domains });
+    } catch (error) {
+      console.error("Update allowed domains error:", error);
+      res.status(500).json({ error: "Failed to update allowed domains" });
+    }
+  });
+
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
       const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance"];

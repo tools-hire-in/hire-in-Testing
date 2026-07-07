@@ -19,6 +19,7 @@ import {
   Users,
   Loader2,
   Radar,
+  ShieldCheck,
 } from "lucide-react";
 
 const FeatureFlagsSection = lazy(() =>
@@ -36,6 +37,9 @@ const DataMaintenanceSection = lazy(() =>
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AuditLogsContent = lazy(() =>
   import("@/pages/admin/AuditLogs").then((m) => ({ default: m.AuditLogsContent })),
+);
+const AllowedDomainsSection = lazy(() =>
+  import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.AllowedDomainsSection })),
 );
 
 import {
@@ -110,6 +114,12 @@ const PANELS: ControlPanel[] = [
     description: "Manage users and roles, including super-admin soft-delete.",
     icon: Users,
   },
+  {
+    key: "security",
+    label: "Security",
+    description: "Manage allowed login email domains and authentication settings.",
+    icon: ShieldCheck,
+  },
 ];
 
 const TAB_LABELS: Record<TowerTab, string> = {
@@ -122,6 +132,7 @@ const TAB_LABELS: Record<TowerTab, string> = {
   "data-maintenance": "Data Maintenance",
   "system-settings": "System Settings",
   "user-management": "Users",
+  "security": "Security",
 };
 
 export default function ControlTower() {
@@ -294,6 +305,11 @@ export default function ControlTower() {
         {tab === "user-management" && (
           <Suspense fallback={<PanelFallback />}>
             <AdminUsers />
+          </Suspense>
+        )}
+        {tab === "security" && (
+          <Suspense fallback={<PanelFallback />}>
+            <AllowedDomainsSection />
           </Suspense>
         )}
       </div>
