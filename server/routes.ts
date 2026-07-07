@@ -6700,7 +6700,7 @@ export async function registerRoutes(
   // Salary report send/generate endpoint.
   // - Current or future month: approval-gate flow (creates pending_approval run; admin-level only)
   // - Past month (historical): direct email send (admin-level only); no approval step needed
-  app.post("/api/hr/reports/salary", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.post("/api/hr/reports/salary", requireAuth, requirePermission("hr.reports.salary.generate", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
@@ -6827,7 +6827,7 @@ export async function registerRoutes(
   // ==========================================
 
   // Count pending-approval runs (for nav badge)
-  app.get("/api/hr/reports/salary/runs/pending-count", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.get("/api/hr/reports/salary/runs/pending-count", requireAuth, requirePermission("hr.reports.salary.approve", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const runs = await db.select({ id: salaryReportRuns.id })
         .from(salaryReportRuns)
@@ -6900,7 +6900,7 @@ export async function registerRoutes(
   });
 
   // Manually generate a run for a given month (or refresh existing pending run)
-  app.post("/api/hr/reports/salary/runs/generate", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.post("/api/hr/reports/salary/runs/generate", requireAuth, requirePermission("hr.reports.salary.generate", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || (new Date().getMonth() + 1);
@@ -7054,7 +7054,7 @@ export async function registerRoutes(
   });
 
   // Save a row-level adjustment on a pending run
-  app.patch("/api/hr/reports/salary/runs/:id/adjust", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.patch("/api/hr/reports/salary/runs/:id/adjust", requireAuth, requirePermission("hr.reports.salary.adjust", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
       if (!run) return res.status(404).json({ error: "Run not found" });
@@ -7160,7 +7160,7 @@ export async function registerRoutes(
   });
 
   // Remove an adjustment from a pending run — atomically restores original row values
-  app.delete("/api/hr/reports/salary/runs/:id/adjust/:email", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.delete("/api/hr/reports/salary/runs/:id/adjust/:email", requireAuth, requirePermission("hr.reports.salary.adjust", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
       if (!run) return res.status(404).json({ error: "Run not found" });
@@ -7275,7 +7275,7 @@ export async function registerRoutes(
   });
 
   // Approve and send a pending run
-  app.post("/api/hr/reports/salary/runs/:id/approve", requireAuth, requireAdminLevel, async (req: Request, res: Response) => {
+  app.post("/api/hr/reports/salary/runs/:id/approve", requireAuth, requirePermission("hr.reports.salary.approve", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
     try {
       const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.id));
       if (!run) return res.status(404).json({ error: "Run not found" });

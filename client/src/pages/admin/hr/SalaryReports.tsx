@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import AttendanceOversight from "@/components/admin/hr/AttendanceOversight";
@@ -143,7 +144,7 @@ interface RegenerateDiffRow {
   oldVals: BreakdownVals | null;
 }
 
-const SALARY_EDIT_ROLES = ["super_admin", "admin", "hr"];
+
 const inr = (val: number | null) => val === null
   ? "—"
   : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
@@ -414,8 +415,7 @@ function EmployeeBreakdownRow({ row, canEdit, month, year, onCorrected, expanded
 
 function RegenerateMonthModal({ month, year, onClose }: { month: string; year: string; onClose: () => void }) {
   const { toast } = useToast();
-  const { user } = useAuth();
-  const role = (user as any)?.role || "";
+  const { can } = usePermissions();
   const [step, setStep] = useState<"warn" | "diff" | "done">("warn");
   const [diff, setDiff] = useState<RegenerateDiffRow[]>([]);
   const [changedCount, setChangedCount] = useState(0);
@@ -424,7 +424,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
   const [periodLocked, setPeriodLocked] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
-  const canEdit = SALARY_EDIT_ROLES.includes(role) && !periodLocked;
+  const canEdit = can("hr.salarySlips.regenerate") && !periodLocked;
   const monthLabel = MONTHS.find(m => m.value === month)?.label || month;
   const fmt = inr;
 
@@ -1178,9 +1178,10 @@ function ApprovalTable({
   onApproved: () => void;
 }) {
   const { toast } = useToast();
-  const { user } = useAuth();
-  const role = (user as any)?.role || "";
-  const canManageAdvances = SALARY_EDIT_ROLES.includes(role) && run.status === "pending_approval";
+  const { can } = usePermissions();
+  const canAdjust = can("hr.reports.salary.adjust") && run.status === "pending_approval";
+  const canApprove = can("hr.reports.salary.approve");
+  const canManageAdvances = can("hr.reports.salary.adjust") && run.status === "pending_approval";
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [advanceEmail, setAdvanceEmail] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
@@ -1436,16 +1437,18 @@ function ApprovalTable({
                       <td className="py-2 px-3 text-right font-semibold">{fmt(row.netPayable)}</td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => setEditingEmail(isEditing ? null : row.email)}
-                            data-testid={`btn-edit-row-${idx}`}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          {isAdj && (
+                          {canAdjust && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setEditingEmail(isEditing ? null : row.email)}
+                              data-testid={`btn-edit-row-${idx}`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canAdjust && isAdj && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1496,16 +1499,18 @@ function ApprovalTable({
       )}
 
       {/* Approve CTA */}
-      <div className="flex justify-end">
-        <Button
-          onClick={() => setConfirmApprove(true)}
-          className="bg-green-600 hover:bg-green-700 text-white"
-          data-testid="button-approve-send"
-        >
-          <ShieldCheck className="h-4 w-4 mr-2" />
-          Approve & Send Report
-        </Button>
-      </div>
+      {canApprove && (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => setConfirmApprove(true)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+            data-testid="button-approve-send"
+          >
+            <ShieldCheck className="h-4 w-4 mr-2" />
+            Approve & Send Report
+          </Button>
+        </div>
+      )}
 
       {/* Confirmation dialog */}
       <Dialog open={confirmApprove} onOpenChange={setConfirmApprove}>
@@ -1784,8 +1789,8 @@ function RunSlipPanel({ run }: { run: SalaryRun }) {
 }
 
 function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
-  const { user } = useAuth();
-  const isAdminLevel = user?.role && ["super_admin", "admin", "hr", "finance"].includes(user.role);
+  const { can } = usePermissions();
+  const isAdminLevel = can("hr.reports.salary.approve");
 
   const statusBadge = (status: SalaryRun["status"]) => {
     if (status === "pending_approval") return <Badge variant="outline" className="border-amber-400 text-amber-600 dark:text-amber-400 text-xs"><Clock3 className="h-3 w-3 mr-1" />Pending Approval</Badge>;
@@ -1865,8 +1870,11 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
   const [attDiscardReason, setAttDiscardReason] = useState("");
   const [attSendDialogOpen, setAttSendDialogOpen] = useState(false);
 
-  const canRegenerate = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
-  const isAdminLevel = user?.role && ["super_admin", "admin", "hr"].includes(user.role);
+  const { can } = usePermissions();
+  const canGenerateSalaryRun = can("hr.reports.salary.generate");
+  const canRegenerateSlips = can("hr.salarySlips.regenerate");
+  const canRegenerate = canGenerateSalaryRun;
+  const isAdminLevel = canGenerateSalaryRun;
 
   const currentYear = now.getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
@@ -2827,7 +2835,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
                 Generate Salary Run
               </Button>
             )}
-            {canRegenerate && (
+            {canRegenerateSlips && (
               <Button variant="secondary" onClick={() => setShowRegenerate(true)} data-testid="button-regenerate-month">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Regenerate Month
