@@ -336,6 +336,21 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath, { index: false }));
 
   app.use("/{*path}", (req, res, next) => {
+    // Guard: never serve index.html for static asset paths.
+    // When express.static can't find a fingerprinted chunk (e.g. after a
+    // redeployment renames Vite's output files), it calls next() and the
+    // catch-all would otherwise return 200 + text/html.  The browser then
+    // tries to parse HTML as a JS module, logs a MIME-type error, and the
+    // React app never boots.  Returning a clean 404 here lets the browser
+    // (and any error-boundary logic) handle the missing asset correctly.
+    // Cache-Control: no-store on index.html (below) ensures fresh shells
+    // after every redeploy, so stale cached HTML is only a transient issue —
+    // but the 404 guard eliminates the blank-screen symptom entirely.
+    const STATIC_ASSET_RE = /\.(?:js|mjs|cjs|css|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|map|json)$/i;
+    if (STATIC_ASSET_RE.test(req.path)) {
+      return res.status(404).end();
+    }
+
     (async () => {
       const hostname =
         (req.headers["x-forwarded-host"] as string)?.split(":")[0] ||
