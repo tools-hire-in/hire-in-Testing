@@ -48,12 +48,15 @@ function requireAuth(req: Request, res: Response, next: Function) {
 }
 
 // Centralized permission middleware — resolves allowed roles via the central
-// access registry (ACCESS_REGISTRY). super_admin and admin are auto-granted.
+// access registry (ACCESS_REGISTRY).
+// `super_admin` is the ONLY role auto-granted here — it is the protected
+// break-glass role. `admin` is resolved through the registry like all other
+// roles. Do NOT add `admin` back to this auto-grant.
 // The trailing role list is the defensive default seed for resolveRoles.
 function requirePermission(featureKey: string, ...roles: string[]) {
   return (req: Request, res: Response, next: Function) => {
     if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...roles])));
+    const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", ...roles])));
     if (allowed.includes(req.session.role as string)) return next();
     return res.status(403).json({ error: "Insufficient permissions" });
   };

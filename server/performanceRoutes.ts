@@ -438,11 +438,14 @@ function requireAuth(req: Request, res: Response): string | null {
   return req.session.userId;
 }
 
+// `super_admin` is the ONLY role auto-granted here — it is the protected
+// break-glass role. `admin` is resolved through the registry like all other
+// roles. Do NOT add `admin` back to this auto-grant.
 function requirePermission(req: Request, res: Response, featureKey: string, allowedRoles: string[]): string | null {
   const userId = requireAuth(req, res);
   if (!userId) return null;
   const role = req.session.role;
-  const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", "admin", ...allowedRoles])));
+  const allowed = resolveRoles(featureKey, Array.from(new Set(["super_admin", ...allowedRoles])));
   if (allowed.includes(role!)) return userId;
   res.status(403).json({ error: "Insufficient permissions" });
   return null;

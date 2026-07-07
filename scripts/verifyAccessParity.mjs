@@ -31,14 +31,15 @@ const read = f => fs.readFileSync(f, 'utf8').split('\n');
 const sites = [];
 
 // routes.ts + contractRoutes.ts + travelRoutes.ts :
-// requirePermission("key", ...roles) — auto-grant super_admin+admin
+// requirePermission("key", ...roles) — auto-grant super_admin only
+// (admin is intentionally resolved through the registry like all other roles)
 for (const file of ['server/routes.ts', 'server/contractRoutes.ts', 'server/travelRoutes.ts']) {
   read(file).forEach((line, i) => {
     if (/function requirePermission/.test(line)) return;
     const m = line.match(/requirePermission\(\s*"([^"]+)"\s*((?:,\s*"[^"]+"\s*)*)\)/);
     if (!m) return;
     const roles = parseArgs(m[2].replace(/^,/, ''));
-    sites.push({ file, line: i + 1, key: m[1], eff: dedupe(['super_admin', 'admin', ...roles]) });
+    sites.push({ file, line: i + 1, key: m[1], eff: dedupe(['super_admin', ...roles]) });
   });
 }
 
@@ -51,11 +52,12 @@ read('server/salaryAdvanceRoutes.ts').forEach((line, i) => {
   sites.push({ file: 'server/salaryAdvanceRoutes.ts', line: i + 1, key: m[1], eff: dedupe(parseArgs(m[2].replace(/^,/, ''))) });
 });
 
-// performanceRoutes.ts : requirePermission(req, res, "key", CONST) — auto-grant super_admin+admin
+// performanceRoutes.ts : requirePermission(req, res, "key", CONST) — auto-grant super_admin only
+// (admin is intentionally resolved through the registry like all other roles)
 read('server/performanceRoutes.ts').forEach((line, i) => {
   const m = line.match(/requirePermission\(req,\s*res,\s*"([^"]+)",\s*([A-Z_]+)\)/);
   if (!m) return;
-  sites.push({ file: 'server/performanceRoutes.ts', line: i + 1, key: m[1], eff: dedupe(['super_admin', 'admin', ...PERF_CONSTS[m[2]]]) });
+  sites.push({ file: 'server/performanceRoutes.ts', line: i + 1, key: m[1], eff: dedupe(['super_admin', ...PERF_CONSTS[m[2]]]) });
 });
 
 // releaseNotesRoutes.ts : ...requirePermission("key", ...ALLOWED_ROLES | "role") — NO auto-grant
@@ -103,13 +105,22 @@ for (const m of body.matchAll(/"([^"]+)":\s*\[([^\]]*)\]/g)) {
   registry[m[1]] = m[2].split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
 }
 
-// Compare
+// Compare — invariant: seed ⊆ registry.
+//
+// The registry is authoritative. The seed (call-site default) is only a
+// defensive fallback used when the key is absent from the registry. It is
+// acceptable for the registry to grant MORE roles than the seed (e.g. the 232
+// keys that include "admin" in the registry but no longer receive it via
+// auto-grant). What is NOT acceptable is the seed being MORE permissive than
+// the registry — that would silently over-grant access if the registry entry
+// were ever missing.
 let failures = 0;
 for (const s of sites) {
   const reg = registry[s.key];
   if (!reg) { console.error(`MISSING KEY  ${s.key}  (${s.file}:${s.line})`); failures++; continue; }
-  if (sortKey(reg) !== sortKey(s.eff)) {
-    console.error(`PARITY FAIL  ${s.key}  site=[${s.eff.sort()}]  registry=[${reg.slice().sort()}]  (${s.file}:${s.line})`);
+  const seedNotInReg = s.eff.filter(r => !reg.includes(r));
+  if (seedNotInReg.length > 0) {
+    console.error(`PARITY FAIL  ${s.key}  seed has extra roles not in registry: [${seedNotInReg.sort()}]  registry=[${reg.slice().sort()}]  (${s.file}:${s.line})`);
     failures++;
   }
 }

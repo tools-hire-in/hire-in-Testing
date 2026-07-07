@@ -413,7 +413,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Final approval queue (super admin)
-  app.get("/api/salary-advances/pending/final", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (_req: Request, res: Response) => {
+  app.get("/api/salary-advances/pending/final", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
     try {
       const rows = await storage.listSalaryAdvancesByStatus(["pending_final"]);
       res.json(await enrichUsers(rows));
@@ -469,7 +469,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   // ── Pre-flight: check whether a payroll month is already locked (salary run exists
   // and is not in pending_approval state).  Used by the PendingAdjustmentsTab to
   // warn the approver before they commit an overpayment to a locked month.
-  app.get("/api/salary-advances/month-locked", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.get("/api/salary-advances/month-locked", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     const year = parseInt(String(req.query.year || ""), 10);
     const month = parseInt(String(req.query.month || ""), 10);
     if (!year || !month || month < 1 || month > 12) {
@@ -1039,7 +1039,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Pending Adjustments — super_admin: global queue of pending_review overpayments/credits.
-  app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (_req: Request, res: Response) => {
+  app.get("/api/salary-advances/pending-adjustments", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (_req: Request, res: Response) => {
     try {
       const rows = await storage.listSalaryAdvancesByStatus(["pending_review"]);
       const enriched = await Promise.all(rows.map(async (a) => {
@@ -1062,7 +1062,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: approve an HR-recorded adjustment (overpayment or salary_credit).
-  app.patch("/api/salary-advances/:id/approve-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/approve-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1175,7 +1175,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: return an HR-recorded adjustment for edit.
-  app.patch("/api/salary-advances/:id/return-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/return-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1209,7 +1209,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: permanently reject an HR-recorded adjustment.
-  app.patch("/api/salary-advances/:id/reject-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.patch("/api/salary-advances/:id/reject-adjustment", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1778,7 +1778,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: final reject
-  app.post("/api/salary-advances/:id/final-reject", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/salary-advances/:id/final-reject", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
@@ -1808,7 +1808,7 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   });
 
   // ── Super admin: final approve (generate repayment schedule)
-  app.post("/api/salary-advances/:id/final-approve", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/salary-advances/:id/final-approve", requireAuth, requirePermission("salaryAdvance.finalApprove", "super_admin"), async (req: Request, res: Response) => {
     try {
       const advance = await storage.getSalaryAdvance(req.params.id);
       if (!advance) return res.status(404).json({ error: "Not found" });
