@@ -387,6 +387,25 @@ function requirePermission(featureKey: string, ...allowedRoles: string[]) {
   };
 }
 
+/**
+ * Two-layer studio permission check for use inside route handlers.
+ * Returns true if:
+ *   (a) the user's base role is in the resolved allowed-roles set for permissionKey, OR
+ *   (b) the user's studio add-on grants permissionKey.
+ * Mirrors the logic of requirePermission without short-circuiting via next().
+ */
+async function hasStudioPermission(req: Request, permissionKey: string): Promise<boolean> {
+  if (!req.session?.userId || !req.session?.role) return false;
+  const allowed = resolveRoles(permissionKey, ["super_admin"]);
+  if (allowed.includes(req.session.role)) return true;
+  try {
+    const addOn = await storage.getUserStudioAddOn(req.session.userId);
+    const addOnPerms = getStudioAddOnPermissions(addOn);
+    if (addOnPerms.includes(permissionKey)) return true;
+  } catch { /* fall through */ }
+  return false;
+}
+
 function parseDateString(dateStr: string, year: number): string | null {
   const monthNames: Record<string, number> = {
     jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
@@ -15900,13 +15919,9 @@ export async function registerRoutes(
             .json({ error: `Cannot move from ${article.status} to ${to}` });
         }
 
-        // Role check for this specific transition.
-        const role = req.session.role!;
-        const permittedRoles = resolveRoles(
-          transition.permission,
-          Array.from(new Set(["super_admin", "admin", ...transition.roles])),
-        );
-        if (!permittedRoles.includes(role)) {
+        // Role check for this specific transition — uses two-layer helper so
+        // studio add-on users (e.g. Employee + marketing_manager) are respected.
+        if (!(await hasStudioPermission(req, transition.permission))) {
           return res.status(403).json({ error: "Insufficient permissions for this transition" });
         }
 
@@ -16088,9 +16103,10 @@ export async function registerRoutes(
         const article = await storage.getStudioArticle(req.params.id);
         if (!article) return res.status(404).json({ error: "Article not found" });
 
-        const role = req.session.role!;
         const userId = req.session.userId!;
-        const isAdminProxy = ["super_admin", "admin", "hr"].includes(role);
+        const isAdminProxy =
+          ["super_admin", "admin", "hr"].includes(req.session.role!) ||
+          (await hasStudioPermission(req, "studio.marketing_approve"));
 
         if (!isAdminProxy) {
           // Only expose when the article is actually awaiting author sign-off.
@@ -16129,9 +16145,11 @@ export async function registerRoutes(
         if (!article) return res.status(404).json({ error: "Article not found" });
         const assignments = await storage.getStudioReviewAssignmentsForArticle(req.params.id);
         const active = await storage.getActiveStudioReviewAssignment(req.params.id);
-        const role = req.session.role!;
         const userId = req.session.userId!;
-        const isPrivileged = role === "super_admin" || role === "admin";
+        const isPrivileged =
+          req.session.role === "super_admin" ||
+          req.session.role === "admin" ||
+          (await hasStudioPermission(req, "studio.cm_review"));
         const isAssignedReviewer = active?.reviewerUserId === userId;
         if (!isPrivileged && !isAssignedReviewer) {
           return res.status(403).json({ error: "You are not assigned to review this article" });
@@ -16167,10 +16185,11 @@ export async function registerRoutes(
           return res.status(409).json({ error: "No active review assignment for this article" });
         }
 
-        const role = req.session.role!;
         const userId = req.session.userId!;
-        const isSuperAdmin = role === "super_admin";
-        if (active.reviewerUserId !== userId && !isSuperAdmin) {
+        const isPrivilegedReviewer =
+          req.session.role === "super_admin" ||
+          (await hasStudioPermission(req, "studio.cm_review"));
+        if (active.reviewerUserId !== userId && !isPrivilegedReviewer) {
           return res.status(403).json({ error: "You are not the assigned reviewer" });
         }
         if (article.status !== "in_review") {
@@ -16974,9 +16993,11 @@ export async function registerRoutes(
           return res.status(409).json({ error: "Article is not currently in review" });
         }
 
-        const role = req.session.role!;
         const userId = req.session.userId!;
-        const isPrivileged = role === "super_admin" || role === "admin";
+        const isPrivileged =
+          req.session.role === "super_admin" ||
+          req.session.role === "admin" ||
+          (await hasStudioPermission(req, "studio.review_article"));
         const active = await storage.getActiveStudioReviewAssignment(req.params.id);
         const isAssignedReviewer = active?.reviewerUserId === userId;
         if (!isPrivileged && !isAssignedReviewer) {
@@ -17744,9 +17765,10 @@ export async function registerRoutes(
         }
 
         // Authorization: requester must be the linked author OR an admin/super_admin/hr proxy.
-        const role = req.session.role!;
         const userId = req.session.userId!;
-        const isAdminProxy = ["super_admin", "admin", "hr"].includes(role);
+        const isAdminProxy =
+          ["super_admin", "admin", "hr"].includes(req.session.role!) ||
+          (await hasStudioPermission(req, "studio.marketing_approve"));
         if (!isAdminProxy) {
           // Look up the article's author profile and verify linked user.
           const apid = (article as any).authorProfileId;
