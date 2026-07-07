@@ -2787,6 +2787,45 @@ async function runStartupTasks() {
   } catch (err) {
     console.error("salary_slips lop_leaves migration error:", err);
   }
+  // ── Salary run execution gate ─────────────────────────────────────────────────
+  // Adds the executed status to the enum and the three execution columns to the
+  // salary_report_runs table, then one-time backfills existing approved/sent runs
+  // that already have salary slip ledger rows so historical slips stay accessible.
+  try {
+    await db.execute(sql`ALTER TYPE salary_report_status ADD VALUE IF NOT EXISTS 'executed'`);
+    await db.execute(sql`ALTER TABLE salary_report_runs ADD COLUMN IF NOT EXISTS executed_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE salary_report_runs ADD COLUMN IF NOT EXISTS executed_by VARCHAR`);
+    await db.execute(sql`ALTER TABLE salary_report_runs ADD COLUMN IF NOT EXISTS execution_note TEXT`);
+    log("Salary run execution columns ensured");
+  } catch (err) {
+    console.error("Salary run execution columns migration error:", err);
+  }
+  try {
+    const BACKFILL_KEY = "salary_run_executed_backfill_v1";
+    const done = await db.execute(sql`SELECT 1 FROM system_settings WHERE key = ${BACKFILL_KEY} LIMIT 1`);
+    if (done.rows.length === 0) {
+      // Mark all approved/sent runs that already have at least one salary slip
+      // as executed so existing slip access is not broken.
+      await db.execute(sql`
+        UPDATE salary_report_runs r
+        SET status = 'executed',
+            executed_at = COALESCE(r.approved_at, r.created_at),
+            executed_by = r.approved_by
+        WHERE r.status IN ('approved', 'sent')
+          AND EXISTS (
+            SELECT 1 FROM salary_slips s WHERE s.salary_run_id = r.id LIMIT 1
+          )
+      `);
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value)
+        VALUES (${BACKFILL_KEY}, ${JSON.stringify({ backfilledAt: new Date().toISOString() })}::jsonb)
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log("Backfilled existing salary runs with slips to executed status");
+    }
+  } catch (err) {
+    console.error("Salary run executed backfill error:", err);
+  }
   await ensureOfferLetterApprovalColumns();
   await ensureOfferLetterAddendumsTable();
   await ensureOfferLetterReferenceNumbers();

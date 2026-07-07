@@ -2111,7 +2111,7 @@ export type PraiseComment = typeof praiseComments.$inferSelect;
 // SALARY REPORT RUNS (approval gate)
 // ==========================================
 
-export const salaryReportStatusEnum = pgEnum("salary_report_status", ["pending_approval", "approved", "sent"]);
+export const salaryReportStatusEnum = pgEnum("salary_report_status", ["pending_approval", "approved", "sent", "executed"]);
 
 export const salaryReportRuns = pgTable("salary_report_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2126,6 +2126,9 @@ export const salaryReportRuns = pgTable("salary_report_runs", {
   emailSentAt: timestamp("email_sent_at"),
   dispatchedTo: jsonb("dispatched_to"),
   dispatchedAt: timestamp("dispatched_at"),
+  executedAt: timestamp("executed_at"),
+  executedBy: varchar("executed_by"),
+  executionNote: text("execution_note"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

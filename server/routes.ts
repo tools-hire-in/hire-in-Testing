@@ -6850,6 +6850,9 @@ export async function registerRoutes(
         approvedAt: salaryReportRuns.approvedAt,
         approvedBy: salaryReportRuns.approvedBy,
         emailSentAt: salaryReportRuns.emailSentAt,
+        executedAt: salaryReportRuns.executedAt,
+        executedBy: salaryReportRuns.executedBy,
+        executionNote: salaryReportRuns.executionNote,
         createdAt: salaryReportRuns.createdAt,
       }).from(salaryReportRuns)
         .orderBy(desc(salaryReportRuns.year), desc(salaryReportRuns.month));
@@ -6863,6 +6866,7 @@ export async function registerRoutes(
         return {
           ...r,
           approverName: r.approvedBy ? (userMap.get(r.approvedBy) || null) : null,
+          executorName: r.executedBy ? (userMap.get(r.executedBy) || null) : null,
           adjustedCount,
         };
       });
@@ -7440,6 +7444,45 @@ export async function registerRoutes(
     }
   });
 
+  // Mark a salary run as Executed (bank transfer confirmed). Transitions
+  // approved/sent → executed, recording who confirmed and when.
+  app.post("/api/hr/reports/salary/runs/:runId/execute", requireAuth, requirePermission("hr.reports.salary.execute", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const { runId } = req.params;
+      const { note } = req.body;
+
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, runId));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!["approved", "sent"].includes(run.status)) {
+        return res.status(409).json({ error: "Only approved or sent runs can be marked as executed" });
+      }
+
+      const actorId = req.session.userId!;
+      const now = new Date();
+
+      await db.update(salaryReportRuns)
+        .set({
+          status: "executed",
+          executedAt: now,
+          executedBy: actorId,
+          executionNote: note?.trim() || null,
+        })
+        .where(eq(salaryReportRuns.id, runId));
+
+      await storage.createAuditLog({
+        action: "salary_run_executed",
+        actorId,
+        changes: { runId, year: run.year, month: run.month, note: note?.trim() || null },
+      });
+
+      const [updated] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, runId));
+      res.json({ success: true, run: updated });
+    } catch (error) {
+      console.error("Failed to mark run as executed:", error);
+      res.status(500).json({ error: "Failed to mark run as executed" });
+    }
+  });
+
   // Employee-safe: list approved salary runs that contain the current user's email.
   // Accessible to all authenticated users (employees see their own months;
   // HR/admin see all via the existing runs list endpoint).
@@ -7451,7 +7494,7 @@ export async function registerRoutes(
       const actorUser = allUsers.find(u => u.id === actor);
       if (!actorUser) return res.status(404).json({ error: "User not found" });
 
-      // HR/admin/finance/super_admin get all approved runs
+      // HR/admin/finance/super_admin get all executed runs
       if (["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "")) {
         const runs = await db.select({
           id: salaryReportRuns.id,
@@ -7459,23 +7502,25 @@ export async function registerRoutes(
           month: salaryReportRuns.month,
           status: salaryReportRuns.status,
           approvedAt: salaryReportRuns.approvedAt,
+          executedAt: salaryReportRuns.executedAt,
         }).from(salaryReportRuns)
-          .where(eq(salaryReportRuns.status, "approved"))
-          .orderBy(desc(salaryReportRuns.approvedAt));
+          .where(eq(salaryReportRuns.status, "executed"))
+          .orderBy(desc(salaryReportRuns.executedAt));
         return res.json(runs);
       }
 
-      // Employees + managers: only runs containing their email in reportData
+      // Employees + managers: only executed runs containing their email in reportData
       const approvedRuns = await db.select({
         id: salaryReportRuns.id,
         year: salaryReportRuns.year,
         month: salaryReportRuns.month,
         status: salaryReportRuns.status,
         approvedAt: salaryReportRuns.approvedAt,
+        executedAt: salaryReportRuns.executedAt,
         reportData: salaryReportRuns.reportData,
       }).from(salaryReportRuns)
-        .where(eq(salaryReportRuns.status, "approved"))
-        .orderBy(desc(salaryReportRuns.approvedAt));
+        .where(eq(salaryReportRuns.status, "executed"))
+        .orderBy(desc(salaryReportRuns.executedAt));
 
       const myEmail = actorUser.email ?? "";
       const myRuns = approvedRuns
@@ -7522,19 +7567,19 @@ export async function registerRoutes(
         }
       }
 
-      // Find the latest approved run for this period
+      // Find the latest executed run for this period (executed = bank transfer confirmed)
       const [approvedRun] = await db.select()
         .from(salaryReportRuns)
         .where(and(
           eq(salaryReportRuns.month, m),
           eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "approved"),
+          eq(salaryReportRuns.status, "executed"),
         ))
-        .orderBy(desc(salaryReportRuns.approvedAt))
+        .orderBy(desc(salaryReportRuns.executedAt))
         .limit(1);
 
       if (!approvedRun) {
-        return res.status(404).json({ error: "No approved salary run found for this period" });
+        return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
 
       const reportRows = (approvedRun.reportData as any[]) || [];
@@ -7653,13 +7698,13 @@ export async function registerRoutes(
         .where(and(
           eq(salaryReportRuns.month, m),
           eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "approved"),
+          eq(salaryReportRuns.status, "executed"),
         ))
-        .orderBy(desc(salaryReportRuns.approvedAt))
+        .orderBy(desc(salaryReportRuns.executedAt))
         .limit(1);
 
       if (!approvedRun) {
-        return res.status(404).json({ error: "No approved salary run found for this period" });
+        return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
 
       const reportRows = (approvedRun.reportData as any[]) || [];
@@ -7735,13 +7780,13 @@ export async function registerRoutes(
         .where(and(
           eq(salaryReportRuns.month, m),
           eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "approved"),
+          eq(salaryReportRuns.status, "executed"),
         ))
-        .orderBy(desc(salaryReportRuns.approvedAt))
+        .orderBy(desc(salaryReportRuns.executedAt))
         .limit(1);
 
       if (!approvedRun) {
-        return res.status(404).json({ error: "No approved salary run found for this period" });
+        return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
 
       const reportRows = (approvedRun.reportData as any[]) || [];

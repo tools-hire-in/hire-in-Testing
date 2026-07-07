@@ -4,7 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2 } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2, Banknote } from "lucide-react";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,12 +81,16 @@ interface SalaryRun {
   id: string;
   year: number;
   month: number;
-  status: "pending_approval" | "approved" | "sent";
+  status: "pending_approval" | "approved" | "sent" | "executed";
   generatedAt: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
   approverName: string | null;
   emailSentAt: string | null;
+  executedAt: string | null;
+  executedBy: string | null;
+  executorName: string | null;
+  executionNote: string | null;
   createdAt: string | null;
   adjustedCount: number;
   reportData?: EmployeeReportRow[];
@@ -1716,6 +1721,77 @@ function GenerateSlipButton({ runId, employeeId, month, year, label }: { runId: 
   );
 }
 
+function MarkAsExecutedDialog({ run, onDone }: { run: SalaryRun; onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+
+  const executeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/hr/reports/salary/runs/${run.id}/execute`, { note: note.trim() || undefined }),
+    onSuccess: () => {
+      setOpen(false);
+      setNote("");
+      toast({ title: "Run marked as Executed", description: `${monthName(run.month)} ${run.year} payroll confirmed. Salary slips are now available.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/runs"] });
+      onDone();
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message || "Could not mark run as executed", variant: "destructive" }),
+  });
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 text-xs gap-1 border-emerald-400 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+        onClick={() => setOpen(true)}
+        data-testid={`btn-mark-executed-${run.id}`}
+      >
+        <Banknote className="h-3 w-3" />
+        Mark as Executed
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent data-testid={`dialog-execute-run-${run.id}`}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-emerald-600" />
+              Confirm Salary Disbursement
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You are confirming that salaries for <strong>{monthName(run.month)} {run.year}</strong> have been
+              disbursed to employees' bank accounts. After confirmation, employees will be able to view and
+              download their salary slips.
+            </AlertDialogDescription>
+            <div className="mt-3">
+              <label className="text-xs font-medium text-foreground">Disbursement note (optional)</label>
+              <Textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                rows={2}
+                placeholder="e.g. Bank transfer batch ref #ABC123"
+                className="mt-1 text-sm"
+                data-testid={`input-execute-note-${run.id}`}
+              />
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => executeMutation.mutate()}
+              disabled={executeMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+              data-testid={`btn-confirm-execute-${run.id}`}
+            >
+              {executeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Confirm Disbursement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 function RunSlipPanel({ run }: { run: SalaryRun }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -1723,6 +1799,7 @@ function RunSlipPanel({ run }: { run: SalaryRun }) {
   const { data: allUsers } = useQuery<any[]>({ queryKey: ["/api/hr/admin/users"], enabled: expanded });
 
   const rows: EmployeeReportRow[] = (run.reportData as any) || [];
+  const isExecuted = run.status === "executed";
 
   const handleGenerateAll = async () => {
     if (!allUsers) return;
@@ -1755,27 +1832,41 @@ function RunSlipPanel({ run }: { run: SalaryRun }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-medium flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" />Slip Controls — {monthName(run.month)} {run.year}</p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={handleGenerateAll}
-            disabled={generatingAll || !allUsers}
-            data-testid={`btn-generate-all-slips-${run.id}`}
-          >
-            {generatingAll ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Receipt className="h-3 w-3 mr-1" />}
-            Generate All Slips
-          </Button>
+          {isExecuted ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleGenerateAll}
+              disabled={generatingAll || !allUsers}
+              data-testid={`btn-generate-all-slips-${run.id}`}
+            >
+              {generatingAll ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Receipt className="h-3 w-3 mr-1" />}
+              Generate All Slips
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground italic" data-testid={`slip-gate-notice-${run.id}`}>
+              Mark run as Executed to enable slip generation.
+            </span>
+          )}
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpanded(false)}>Close</Button>
         </div>
       </div>
+      {!isExecuted && (
+        <div className="flex items-center gap-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Salary slips are only available after the run is marked as Executed (bank transfer confirmed).
+        </div>
+      )}
       <div className="max-h-48 overflow-y-auto space-y-1">
         {rows.map((row, idx) => {
           const emp = allUsers?.find((u: any) => u.email === row.email);
           return (
             <div key={idx} className="flex items-center justify-between text-xs py-1 border-b last:border-0">
               <span className="font-medium truncate max-w-[180px]">{row.employeeName}</span>
-              {emp ? (
+              {!isExecuted ? (
+                <span className="text-muted-foreground text-xs">—</span>
+              ) : emp ? (
                 <GenerateSlipButton runId={run.id} employeeId={emp.id} month={run.month} year={run.year} label="Generate" />
               ) : (
                 <span className="text-muted-foreground text-xs">not found</span>
@@ -1788,12 +1879,15 @@ function RunSlipPanel({ run }: { run: SalaryRun }) {
   );
 }
 
-function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
+function RunHistoryList({ runs, onRunsChanged }: { runs: SalaryRun[]; onRunsChanged: () => void }) {
   const { can } = usePermissions();
+  const { user } = useAuth();
   const isAdminLevel = can("hr.reports.salary.approve");
+  const canViewSlips = user?.role && ["super_admin", "admin", "hr", "finance"].includes(user.role as string);
 
   const statusBadge = (status: SalaryRun["status"]) => {
     if (status === "pending_approval") return <Badge variant="outline" className="border-amber-400 text-amber-600 dark:text-amber-400 text-xs"><Clock3 className="h-3 w-3 mr-1" />Pending Approval</Badge>;
+    if (status === "executed") return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs"><Banknote className="h-3 w-3 mr-1" />Executed</Badge>;
     if (status === "approved") return <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Approved & Sent</Badge>;
     return <Badge variant="secondary" className="text-xs"><Send className="h-3 w-3 mr-1" />Sent</Badge>;
   };
@@ -1829,11 +1923,26 @@ function RunHistoryList({ runs }: { runs: SalaryRun[] }) {
                   {run.emailSentAt && !run.approvedAt && (
                     <span className="text-muted-foreground text-xs">Sent {new Date(run.emailSentAt).toLocaleDateString()}</span>
                   )}
-                  {run.status === "approved" && isAdminLevel && (
+                  {run.status === "executed" && run.executorName && (
+                    <span className="text-muted-foreground text-xs">Executed by {run.executorName}</span>
+                  )}
+                  {run.status === "executed" && run.executedAt && (
+                    <span className="text-muted-foreground text-xs">{new Date(run.executedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  )}
+                  {run.status === "executed" && run.executionNote && (
+                    <span className="text-muted-foreground text-xs italic">"{run.executionNote}"</span>
+                  )}
+                  {(run.status === "approved" || run.status === "sent") && isAdminLevel && (
+                    <MarkAsExecutedDialog run={run} onDone={onRunsChanged} />
+                  )}
+                  {run.status === "executed" && canViewSlips && (
                     <>
                       <SlipCountChip runId={run.id} />
                       <RunSlipPanel run={run} />
                     </>
+                  )}
+                  {(run.status === "approved" || run.status === "sent") && canViewSlips && (
+                    <RunSlipPanel run={run} />
                   )}
                 </div>
               </div>
@@ -2974,7 +3083,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
       )}
 
       {/* Run history */}
-      <RunHistoryList runs={runs} />
+      <RunHistoryList runs={runs} onRunsChanged={refetchRuns} />
 
       {showRegenerate && (
         <RegenerateMonthModal month={selectedMonth} year={selectedYear} onClose={() => setShowRegenerate(false)} />
