@@ -48,6 +48,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Loader2,
   Plus,
   Trash2,
@@ -90,6 +95,8 @@ const ADD_ON_META: Record<string, { label: string; color: string; emoji: string;
       "Generate AI drafts",
       "Upload & manage assets",
       "Reviewer inbox",
+      "CM review queue",
+      "Manage authors (add, edit, deactivate)",
       "Marketing approval / sign-off",
       "Content analytics (all)",
     ],
@@ -345,29 +352,27 @@ export default function StudioAccess() {
                         </TableCell>
                         <TableCell>
                           {meta && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                                    data-testid={`button-capabilities-${user.id}`}
-                                  >
-                                    <Info className="h-3.5 w-3.5" />
-                                    {meta.capabilities.length} capabilities
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-xs p-3">
-                                  <ul className="space-y-1">
-                                    {meta.capabilities.map((cap) => (
-                                      <li key={cap} className="text-xs flex items-start gap-1.5">
-                                        <span className="mt-0.5 text-emerald-500">✓</span>
-                                        {cap}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                  data-testid={`button-capabilities-${user.id}`}
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                  {meta.capabilities.length} capabilities
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent side="bottom" className="max-w-xs p-3 w-auto">
+                                <ul className="space-y-1">
+                                  {meta.capabilities.map((cap) => (
+                                    <li key={cap} className="text-xs flex items-start gap-1.5">
+                                      <span className="mt-0.5 text-emerald-500">✓</span>
+                                      {cap}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </PopoverContent>
+                            </Popover>
                           )}
                         </TableCell>
                         {canManage && (

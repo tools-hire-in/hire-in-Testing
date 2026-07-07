@@ -1218,7 +1218,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasMarketingApproveAccess = can("studio.marketing_approve");
   const hasStudioAnalyticsAccess = can("studio.view_analytics");
   const hasManageAuthorsAccess = can("studio.manage_authors");
-  const hasCmReviewAccess = ["super_admin", "admin", "hr", "content_manager"].includes(userRole) && hasStudioAccess;
+  const hasCmReviewAccess = can("studio.cm_review");
   const isSuperAdmin = userRole === "super_admin";
 
   const { data: cmReviewCountData } = useQuery<{ count: number }>({
