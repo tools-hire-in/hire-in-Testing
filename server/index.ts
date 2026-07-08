@@ -3660,6 +3660,40 @@ async function runStartupTasks() {
     console.error("allowed_email_domains seed error:", err);
   }
 
+  // Dev-only vault seed — one sample vault + one dummy secret.
+  if (process.env.NODE_ENV === "development") {
+    try {
+      const { vaults: vaultsTable, vaultSecrets: vaultSecretsTable } = await import("../shared/schema");
+      const { encryptVaultField } = await import("./utils/vaultCrypto");
+      const existingVaults = await db.select().from(vaultsTable);
+      if (!existingVaults.length) {
+        const superAdmin = await db.execute(sql`SELECT id FROM admin_users WHERE role = 'super_admin' LIMIT 1`);
+        const saId = (superAdmin as any).rows?.[0]?.id as string | undefined;
+        if (saId) {
+          const [vault] = await db.insert(vaultsTable).values({
+            name: "IT Staffing Systems",
+            description: "Shared credentials for IT staffing tools",
+            category: "IT",
+            createdBy: saId,
+          }).returning();
+          await db.insert(vaultSecretsTable).values({
+            vaultId: vault.id,
+            systemName: "Ceipal Demo",
+            loginUrl: "https://app.ceipal.com",
+            usernameEnc: encryptVaultField("demo@hirein.com"),
+            passwordEnc: encryptVaultField("DEMO-PASSWORD-DO-NOT-USE"),
+            notesEnc: encryptVaultField("Demo account only — replace with real credentials"),
+            sensitivity: "high",
+            createdBy: saId,
+          });
+          log("Dev vault seed: created IT Staffing Systems vault with Ceipal Demo secret");
+        }
+      }
+    } catch (err) {
+      console.error("Dev vault seed error (non-fatal):", err);
+    }
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();

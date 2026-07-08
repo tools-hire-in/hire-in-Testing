@@ -22,6 +22,13 @@ export type AccessRegistry = Record<string, string[]>;
 // hand. Values are the EXACT effective role sets (auto-grants already baked in).
 // Keep entries in sync with scripts/verifyAccessParity.mjs (run it after edits).
 export const ACCESS_REGISTRY: AccessRegistry = {
+  "vault.read": ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"],
+  "vault.manage": ["super_admin", "admin"],
+  "vault.secret.create": ["super_admin", "admin"],
+  "vault.secret.edit": ["super_admin", "admin"],
+  "vault.secret.share": ["super_admin", "admin"],
+  "vault.secret.revoke": ["super_admin", "admin"],
+  "vault.audit": ["super_admin", "admin"],
   "admin.announcements": ["super_admin", "admin", "hr"],
   "admin.announcements.recipientCount": ["super_admin", "admin", "hr"],
   "admin.announcements.sendEmail": ["super_admin", "admin", "hr"],

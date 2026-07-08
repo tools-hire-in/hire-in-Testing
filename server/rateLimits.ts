@@ -1,5 +1,23 @@
 import rateLimit from "express-rate-limit";
 
+export const vaultRevealLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many reveal attempts. Please wait 15 minutes and try again." },
+  skip: () => false,
+});
+
+export const vaultCopyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many copy attempts. Please wait and try again." },
+  skip: () => false,
+});
+
 const isProd = process.env.NODE_ENV === "production";
 
 export const tokenLookupLimiter = rateLimit({

@@ -16,6 +16,7 @@ import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTR
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
+import { registerVaultRoutes, revokeUserVaultGrants } from "./vaultRoutes";
 import {
   generateArticleCards,
   renderTemplateToPng,
@@ -521,6 +522,7 @@ export async function registerRoutes(
   setupSession(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
+  registerVaultRoutes(app);
 
   // Enforce 2FA for all admin/HR API routes
   app.use("/api/admin", require2FA);
@@ -2140,6 +2142,15 @@ export async function registerRoutes(
         }
       } catch (flagErr) {
         console.error("Failed to flag salary advances for exit recovery:", flagErr);
+      }
+
+      // Vault exit hook: revoke all active vault grants and flag rotation_required.
+      try {
+        if (employmentStatus === "relieved" || employmentStatus === "left_company") {
+          await revokeUserVaultGrants(userId, req.session.userId!);
+        }
+      } catch (vaultErr) {
+        console.error("Failed to revoke vault grants on exit:", vaultErr);
       }
 
       res.json(updated);

@@ -103,6 +103,8 @@ const SOPCompliance = lazy(() => import("@/pages/admin/sops/SOPCompliance"));
 const MySopReviews = lazy(() => import("@/pages/admin/sops/MySopReviews"));
 const TrainingCatalog = lazy(() => import("@/pages/admin/training/TrainingCatalog"));
 const ExecCockpit = lazy(() => import("@/pages/admin/ExecCockpit"));
+const VaultPage = lazy(() => import("@/pages/admin/vault/VaultPage"));
+const VaultAuditPage = lazy(() => import("@/pages/admin/vault/VaultAuditPage"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -352,6 +354,10 @@ function PublicRouter() {
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
 
+      {/* Systems Vault */}
+      <Route path="/admin/vault/audit">{() => <Suspense fallback={<AdminFallback />}><VaultAuditPage /></Suspense>}</Route>
+      <Route path="/admin/vault">{() => <Suspense fallback={<AdminFallback />}><VaultPage /></Suspense>}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -485,6 +491,10 @@ function EmployeeRouter() {
       <Route path="/admin/probation-guide">{() => <Suspense fallback={<AdminFallback />}><ProbationGuide /></Suspense>}</Route>
       <Route path="/admin/performance/team-goals">{() => <Redirect to="/admin/growth?tab=team-goals" />}</Route>
       <Route path="/admin/performance/team-reviews">{() => <Redirect to="/admin/growth?tab=team-reviews" />}</Route>
+
+      {/* Systems Vault */}
+      <Route path="/admin/vault/audit">{() => <Suspense fallback={<AdminFallback />}><VaultAuditPage /></Suspense>}</Route>
+      <Route path="/admin/vault">{() => <Suspense fallback={<AdminFallback />}><VaultPage /></Suspense>}</Route>
 
       <Route component={NotFound} />
     </Switch>

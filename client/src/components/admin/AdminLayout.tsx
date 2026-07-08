@@ -48,6 +48,7 @@ import {
   FilePlus,
   UserCog,
   Receipt,
+  KeyRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1487,6 +1488,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badgeColor: "bg-orange-500",
       roles: ["super_admin", "admin", "hr", "operations"],
     }] : []),
+    {
+      href: "/admin/vault",
+      label: "Systems Vault",
+      icon: KeyRound,
+      roles: ["all"],
+    },
     ...(isSuperAdmin ? [{
       href: "/admin/control-tower",
       label: "Control Tower",
@@ -1518,6 +1525,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/hr/tools") return location === "/admin/hr/tools" || location.startsWith("/admin/hr/tools");
     if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
+    if (href === "/admin/vault") return location === "/admin/vault" || location.startsWith("/admin/vault");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/studio") return location === "/admin/studio";
     if (href === "/admin/studio/articles") return (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));

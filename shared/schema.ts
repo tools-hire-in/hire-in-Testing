@@ -3746,3 +3746,113 @@ export type RolloutWave = typeof rolloutWaves.$inferSelect;
 export type InsertRolloutWave = z.infer<typeof insertRolloutWaveSchema>;
 export type WaveSop = typeof waveSops.$inferSelect;
 export type InsertWaveSop = z.infer<typeof insertWaveSopSchema>;
+
+// ==========================================
+// SYSTEMS VAULT (Task #875)
+// ==========================================
+// Internal password manager for shared company credentials.
+// Sensitivity tiers control reveal scrutiny and audit log retention:
+//   low      – personal/own creds; click-to-reveal; 3-month retention
+//   medium   – shared team tools; reason required; 6-month retention
+//   high     – enterprise SaaS (Ceipal, VMS); reason + TOTP; 12-month retention
+//   critical – financial / HR systems; reason + TOTP + 30s auto-hide; indefinite
+
+export const vaults = pgTable("vaults", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 120 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 80 }),
+  createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
+  archivedAt: timestamp("archived_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  nameIdx: index("vaults_name_idx").on(t.name),
+}));
+
+export const vaultSecrets = pgTable("vault_secrets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vaultId: varchar("vault_id").notNull().references(() => vaults.id),
+  systemName: varchar("system_name", { length: 120 }).notNull(),
+  loginUrl: varchar("login_url", { length: 512 }),
+  usernameEnc: text("username_enc"),
+  passwordEnc: text("password_enc"),
+  notesEnc: text("notes_enc"),
+  sensitivity: varchar("sensitivity", { length: 20 }).default("medium").notNull(),
+  rotationDueAt: timestamp("rotation_due_at"),
+  rotationRequired: boolean("rotation_required").default(false).notNull(),
+  archivedAt: timestamp("archived_at"),
+  createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  vaultIdx: index("vault_secrets_vault_idx").on(t.vaultId),
+  sensitivityIdx: index("vault_secrets_sensitivity_idx").on(t.sensitivity),
+  rotationIdx: index("vault_secrets_rotation_idx").on(t.rotationRequired),
+}));
+
+export const vaultSecretGrants = pgTable("vault_secret_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  secretId: varchar("secret_id").notNull().references(() => vaultSecrets.id),
+  userId: varchar("user_id").references(() => adminUsers.id),
+  roleName: varchar("role_name", { length: 60 }),
+  canCopyPassword: boolean("can_copy_password").default(true).notNull(),
+  canRevealPassword: boolean("can_reveal_password").default(true).notNull(),
+  expiresAt: timestamp("expires_at"),
+  grantedBy: varchar("granted_by").notNull().references(() => adminUsers.id),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  secretIdx: index("vault_grants_secret_idx").on(t.secretId),
+  userIdx: index("vault_grants_user_idx").on(t.userId),
+  roleIdx: index("vault_grants_role_idx").on(t.roleName),
+}));
+
+export const vaultAuditLogs = pgTable("vault_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorId: varchar("actor_id").notNull(),
+  secretId: varchar("secret_id"),
+  vaultId: varchar("vault_id"),
+  action: varchar("action", { length: 60 }).notNull(),
+  ipHash: varchar("ip_hash", { length: 64 }),
+  uaHash: varchar("ua_hash", { length: 64 }),
+  reason: text("reason"),
+  meta: text("meta"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  actorIdx: index("vault_audit_actor_idx").on(t.actorId),
+  secretIdx: index("vault_audit_secret_idx").on(t.secretId),
+  actionIdx: index("vault_audit_action_idx").on(t.action),
+  createdAtIdx: index("vault_audit_created_at_idx").on(t.createdAt),
+}));
+
+export const vaultAccessRequests = pgTable("vault_access_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requesterId: varchar("requester_id").notNull().references(() => adminUsers.id),
+  secretId: varchar("secret_id").notNull().references(() => vaultSecrets.id),
+  reason: text("reason"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  reviewedBy: varchar("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  requesterIdx: index("vault_access_requests_requester_idx").on(t.requesterId),
+  secretIdx: index("vault_access_requests_secret_idx").on(t.secretId),
+  statusIdx: index("vault_access_requests_status_idx").on(t.status),
+}));
+
+export const insertVaultSchema = createInsertSchema(vaults).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertVaultSecretSchema = createInsertSchema(vaultSecrets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertVaultSecretGrantSchema = createInsertSchema(vaultSecretGrants).omit({ id: true, createdAt: true });
+export const insertVaultAuditLogSchema = createInsertSchema(vaultAuditLogs).omit({ id: true, createdAt: true });
+
+export type Vault = typeof vaults.$inferSelect;
+export type InsertVault = z.infer<typeof insertVaultSchema>;
+export type VaultSecret = typeof vaultSecrets.$inferSelect;
+export type InsertVaultSecret = z.infer<typeof insertVaultSecretSchema>;
+export type VaultSecretGrant = typeof vaultSecretGrants.$inferSelect;
+export type InsertVaultSecretGrant = z.infer<typeof insertVaultSecretGrantSchema>;
+export type VaultAuditLog = typeof vaultAuditLogs.$inferSelect;
+export type VaultAccessRequest = typeof vaultAccessRequests.$inferSelect;
