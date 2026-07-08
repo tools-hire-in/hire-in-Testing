@@ -1,0 +1,31 @@
+Yes — exactly right. That's the correct architectural call.
+
+Right now scheduler.ts is a collection of single-purpose cron jobs (absent sweep, salary run, leave accrual, etc.) — each domain added its own block. If both #880 and #881 each drop another separate cron in there, you end up with an employee getting 3–5 separate notifications in a day: one for an overdue goal, one for a pending SOP, one for an overdue check-in. That's noise, not signal. And the escalation logic — warn → escalate → skip-level — is the same pattern regardless of domain.
+
+The right design is one unified daily compliance sweep:
+
+Daily 09:00 IST  →  ComplianceEngine.runDailySweep()
+  ├── collectOverdueGoals(userId)
+  ├── collectPendingSops(userId)        
+  ├── collectOverdueCheckIns(userId)    ← already exists
+  └── collectTrainingOverdue(userId)
+       ↓
+  groupByUser → one batched digest per person
+  escalationPass → same ladder regardless of domain
+  adminAuditLog → one record of what ran today
+
+This matters for three reasons:
+
+Employee experience — one "here's what needs attention" digest, not four separate pings
+Escalation consistency — the 3-day → manager, 6-day → skip-level rule is the same whether the miss is a goal or a SOP. One engine = one rulebook
+Admin visibility — HR can see one sweep log, not hunt across disparate cron outputs
+What this means for #880 and #881:
+
+Both tasks currently bolt their scheduler additions directly into scheduler.ts as independent crons. That should change. The cleaner approach is:
+
+Pull the compliance sweep into its own module: server/complianceSweep.ts
+#880's goal overdue logic lives there as sweepOverdueGoals()
+#881's SOP reminder logic lives there as sweepPendingSopAcknowledgments()
+The existing check-in overdue logic moves there too
+scheduler.ts calls complianceSweep.runAll() once daily — single entry point
+Do you want me to update both #880 and #881 to reflect this unified engine approach, or create a separate foundational task for the sweep engine that both depend on?
