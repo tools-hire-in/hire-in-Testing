@@ -9,6 +9,7 @@ import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
 import { generateAttendanceReportRun, ensureRunForMonthAndNotify } from "./attendanceReport";
 import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
 import { refreshRecentZips } from "./gsaRateService";
+import { runDailySweep } from "./complianceSweep";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -873,65 +874,16 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
-  // ─── Monday 9 AM: HR overdue check-in digest ────────────────────────────────
-  // Sends each HR/admin user a single in-app notification listing all check-ins
-  // that are 3+ days overdue across all active plans. Respects notifications_enabled.
-  cron.schedule("0 9 * * 1", async () => {
+  // ─── Daily 9 AM: Unified compliance sweep ────────────────────────────────────
+  // Calls all registered collectors (check-in overdue digest and any future
+  // domain collectors) and dispatches their findings as in-app notifications.
+  // Collectors are registered in server/complianceSweep.ts; additional domains
+  // (goals, SOP/training) plug in via registerCollector() without touching this file.
+  cron.schedule("0 9 * * *", async () => {
     try {
-      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-      if (!flags?.notifications_enabled) return;
-
-      const thresholdDate = new Date();
-      thresholdDate.setDate(thresholdDate.getDate() - 3);
-      const thresholdStr = thresholdDate.toISOString().split("T")[0];
-
-      const overdueRows = (await db.execute(sql`
-        SELECT ci.id, ci.employee_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
-               ep.plan_type,
-               au.first_name || ' ' || au.last_name AS employee_name
-        FROM check_ins ci
-        JOIN employee_plans ep ON ci.plan_id = ep.id
-        JOIN admin_users au ON ci.employee_id = au.id
-        WHERE ci.scheduled_date < ${thresholdStr}
-          AND ci.status != 'completed'
-          AND ci.plan_id IS NOT NULL
-          AND ep.status = 'active'
-        ORDER BY ci.scheduled_date ASC
-      `)).rows as any[];
-
-      if (overdueRows.length === 0) {
-        console.log("[scheduler] Monday digest: no overdue plan check-ins");
-        return;
-      }
-
-      const hrAdmins = (await db.execute(sql`
-        SELECT id FROM admin_users
-        WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
-      `)).rows as any[];
-
-      const digestMsg = `${overdueRows.length} check-in${overdueRows.length !== 1 ? "s" : ""} across active plans are 3+ days overdue.`;
-      for (const hr of hrAdmins) {
-        await storage.createNotification({
-          userId: hr.id,
-          type: "checkin_overdue_digest",
-          title: `Overdue check-ins: ${overdueRows.length} pending`,
-          message: digestMsg,
-          isRead: false,
-          metadata: {
-            overdueCount: overdueRows.length,
-            items: overdueRows.slice(0, 20).map((r: any) => ({
-              employeeName: r.employee_name,
-              scheduledDate: r.scheduled_date,
-              planType: r.plan_type,
-              checkInType: r.check_in_type,
-            })),
-          },
-        });
-      }
-
-      console.log(`[scheduler] Monday digest: ${overdueRows.length} overdue check-ins notified to ${hrAdmins.length} HR/admin users`);
+      await runDailySweep();
     } catch (err) {
-      console.error("[scheduler] Monday overdue check-in digest failed:", err);
+      console.error("[scheduler] Daily compliance sweep failed:", err);
     }
   }, { timezone: "Asia/Kolkata" });
 
@@ -1413,6 +1365,7 @@ export function startScheduler() {
   console.log("  - Absent sweep: daily at 08:00 IST (all shifts ended by then; targets yesterday's date)");
   console.log("  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests");
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
+  console.log("  - Compliance sweep: daily at 9 AM IST → runs all registered collectors (check-in overdue digest + future domain collectors)");
   console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
   console.log("  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective");
 }
