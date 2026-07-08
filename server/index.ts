@@ -3443,6 +3443,17 @@ async function runStartupTasks() {
     console.error("Release notes table migration error:", err);
   }
 
+  // SOP employee progress — overdue nudge dedup guard column
+  try {
+    // overdueNudgeSentDate records the last date a daily overdue-SOP nudge was
+    // sent to this user for this SOP. The compliance sweep checks this is not
+    // today before sending, ensuring exactly one nudge per user per SOP per day.
+    await db.execute(sql`ALTER TABLE sop_employee_progress ADD COLUMN IF NOT EXISTS overdue_nudge_sent_date DATE`);
+    log("sop_employee_progress.overdue_nudge_sent_date column ensured");
+  } catch (err) {
+    console.error("sop_employee_progress overdue_nudge_sent_date migration error:", err);
+  }
+
   // Attendance exception columns on attendance table + escalation dedup log
   try {
     // Exception review fields stored directly on the attendance row (1:1 relationship)

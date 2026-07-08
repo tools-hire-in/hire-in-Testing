@@ -1605,20 +1605,25 @@ export async function registerRoutes(
         console.error("Failed to initialize documents for user:", err)
       );
 
-      // Auto-assign all published tracks to the new user
-      // - Policy tracks: immediate due date (required before portal access)
-      // - Non-policy SOP tracks: 15-day due date, filtered by role/department
+      // Auto-assign all published tracks to the new user.
+      // Phase 1 — track-level targeting: assigns every published learning track
+      //   whose targetRole/targetDepartmentId matches the new user (policy tracks
+      //   are always assigned regardless of targeting).
+      // Phase 2 — role_training_rules: assigns any additional tracks that an HR
+      //   admin has explicitly mapped to this role via the training rules table.
+      //   This is idempotent: duplicate assignments are silently skipped.
       (async () => {
         try {
           const { db: dbInstance } = await import("./db");
-          const { learningTracks: lt, trackAssignments: ta } = await import("@shared/schema");
-          const { eq, and, or, isNull } = await import("drizzle-orm");
-
-          const allPublishedTracks = await dbInstance.select().from(lt)
-            .where(eq(lt.status, "published"));
+          const { learningTracks: lt, trackAssignments: ta, roleTrainingRules: rtr } = await import("@shared/schema");
+          const { eq, and } = await import("drizzle-orm");
 
           const dueIn14Days = new Date();
           dueIn14Days.setDate(dueIn14Days.getDate() + 14);
+
+          // ── Phase 1: published tracks filtered by track-level role/dept targeting ──
+          const allPublishedTracks = await dbInstance.select().from(lt)
+            .where(eq(lt.status, "published"));
 
           for (const track of allPublishedTracks) {
             // Skip tracks that don't match the user's role/department
@@ -1640,6 +1645,32 @@ export async function registerRoutes(
             if (!existing) {
               await dbInstance.insert(ta).values({
                 trackId: track.id,
+                userId: user.id,
+                assignedBy: req.session.userId!,
+                dueDate: track.isPolicyTrack ? new Date() : dueIn14Days,
+                status: "not_started",
+              });
+            }
+          }
+
+          // ── Phase 2: role_training_rules — explicit admin-configured role→track map ──
+          // This covers tracks that may not have targetRole set on the track itself
+          // (e.g. tracks added via the HR admin training-rules UI). It is idempotent:
+          // a track already assigned by Phase 1 is silently skipped.
+          const rules = await dbInstance.select().from(rtr)
+            .where(eq(rtr.roleSlug, user.role));
+
+          for (const rule of rules) {
+            // Fetch the track to confirm it is still published and get its details.
+            const [track] = await dbInstance.select().from(lt)
+              .where(and(eq(lt.id, rule.trackId), eq(lt.status, "published")));
+            if (!track) continue; // skip if track is draft/archived
+
+            const [existing] = await dbInstance.select().from(ta)
+              .where(and(eq(ta.trackId, rule.trackId), eq(ta.userId, user.id)));
+            if (!existing) {
+              await dbInstance.insert(ta).values({
+                trackId: rule.trackId,
                 userId: user.id,
                 assignedBy: req.session.userId!,
                 dueDate: track.isPolicyTrack ? new Date() : dueIn14Days,

@@ -193,6 +193,112 @@ registerCollector("checkin_overdue_digest", async (_flags) => {
   }));
 });
 
+// ─── Built-in collector: overdue SOP acknowledgement nudge ───────────────────
+//
+// BOUNDARY NOTE — two distinct SOP notification paths exist; do NOT merge them:
+//
+//   1. assignSopTraining() (server/routes.ts) fires a "sop_training_assigned"
+//      in-app notification exactly ONCE when an SOP's training track is first
+//      assigned to a user.  This is an assignment event.
+//
+//   2. THIS COLLECTOR fires a daily "sop_overdue_nudge" for users who have not
+//      yet acknowledged an SOP after the SOP_ACK_GRACE_DAYS (15-day) grace
+//      period has expired.  This is an overdue reminder event.
+//
+// The dedup column `overdue_nudge_sent_date` on sop_employee_progress ensures
+// each user receives at most ONE nudge per calendar day even if multiple SOPs
+// are overdue (the sweep engine batches all findings into one notification).
+registerCollector("sop_overdue_nudge", async (_flags) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Find all sop_employee_progress rows that are:
+  //   • not yet acknowledged (acknowledged_at IS NULL)
+  //   • past the 15-day grace window (wave_sops.operational_at + 15d < today)
+  //   • not already nudged today (overdue_nudge_sent_date IS NULL or < today)
+  // We join through wave_sops to derive the due date — wave_sops.operational_at
+  // is the moment the SOP became active for its wave; SOP_ACK_GRACE_DAYS (15d)
+  // after that is the acknowledgement deadline.
+  const overdueRows = (
+    await db.execute(sql`
+      SELECT
+        sep.user_id,
+        sep.sop_master_id,
+        sep.id AS progress_id,
+        sep.overdue_nudge_sent_date,
+        au.first_name || ' ' || au.last_name AS user_name
+      FROM sop_employee_progress sep
+      JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+      JOIN admin_users au ON au.id = sep.user_id
+      WHERE sep.acknowledged_at IS NULL
+        AND ws.operational_at IS NOT NULL
+        AND ws.operational_at + INTERVAL '15 days' < NOW()
+        AND au.is_active = true
+        AND au.deleted_at IS NULL
+        AND (
+          sep.overdue_nudge_sent_date IS NULL
+          OR sep.overdue_nudge_sent_date < ${todayStr}::date
+        )
+      ORDER BY sep.user_id
+    `)
+  ).rows as any[];
+
+  if (overdueRows.length === 0) {
+    console.log("[complianceSweep] sop_overdue_nudge: no overdue SOP acknowledgements");
+    return [];
+  }
+
+  // Group overdue rows by user so we can emit one finding per user.
+  const byUser = new Map<string, { progressIds: string[]; sopCount: number; userName: string }>();
+  for (const row of overdueRows) {
+    const uid = String(row.user_id);
+    if (!byUser.has(uid)) {
+      byUser.set(uid, { progressIds: [], sopCount: 0, userName: String(row.user_name) });
+    }
+    const entry = byUser.get(uid)!;
+    entry.progressIds.push(String(row.progress_id));
+    entry.sopCount++;
+  }
+
+  // Mark all matched progress rows as nudged today with a single UPDATE that
+  // mirrors the same WHERE conditions as the SELECT above, avoiding any
+  // parameter-array issues and keeping the operation atomic.
+  await db.execute(sql`
+    UPDATE sop_employee_progress sep
+    SET overdue_nudge_sent_date = CURRENT_DATE
+    FROM wave_sops ws,
+         admin_users au
+    WHERE sep.sop_master_id = ws.sop_master_id
+      AND sep.user_id = au.id
+      AND sep.acknowledged_at IS NULL
+      AND ws.operational_at IS NOT NULL
+      AND ws.operational_at + INTERVAL '15 days' < NOW()
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+      AND (
+        sep.overdue_nudge_sent_date IS NULL
+        OR sep.overdue_nudge_sent_date < CURRENT_DATE
+      )
+  `);
+
+  console.log(
+    `[complianceSweep] sop_overdue_nudge: ${overdueRows.length} overdue SOP rows → ${byUser.size} users queued`
+  );
+
+  // Emit one ComplianceFinding per user; the sweep engine batches these with
+  // findings from other collectors into a single per-user notification.
+  const findings: ComplianceFinding[] = [];
+  for (const [userId, { sopCount }] of byUser) {
+    findings.push({
+      userId,
+      type: "sop_overdue_nudge",
+      title: `${sopCount} SOP${sopCount !== 1 ? "s" : ""} awaiting your acknowledgement`,
+      message: `You have ${sopCount} SOP${sopCount !== 1 ? "s" : ""} past their acknowledgement deadline. Please review and acknowledge them in the SOP library.`,
+      metadata: { overdueCount: sopCount, link: "/admin/sops/my-sops" },
+    });
+  }
+  return findings;
+});
+
 // ─── Built-in collector: overdue goal nudge & escalation ladder ───────────────
 // Detects performance_goals that are past targetDate with status not completed/
 // cancelled, then fires a strict 3-step one-time escalation ladder:

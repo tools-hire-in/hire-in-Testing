@@ -3577,6 +3577,10 @@ export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   acknowledgmentHash: varchar("acknowledgment_hash"),
   evidenceText: text("evidence_text"),
   evidenceFileUrl: varchar("evidence_file_url"),
+  // Dedup guard for the daily overdue-SOP nudge: set to the date the last
+  // overdue nudge was dispatched. The sweep checks this is not today before
+  // sending a new notification, ensuring exactly one nudge per user per day.
+  overdueNudgeSentDate: date("overdue_nudge_sent_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
