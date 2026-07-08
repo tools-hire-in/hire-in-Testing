@@ -750,10 +750,42 @@ export function registerPerformanceRoutes(app: Express) {
     if (!(await requireFeatureAccess(req, res))) return;
 
     try {
-      const goals = await db.select().from(performanceGoals)
-        .where(eq(performanceGoals.employeeId, userId))
-        .orderBy(desc(performanceGoals.createdAt));
-      res.json(goals);
+      const result = await db.execute(sql`
+        SELECT pg.*,
+               ep.start_date AS plan_start_date,
+               ep.duration_days AS plan_duration_days
+        FROM performance_goals pg
+        LEFT JOIN employee_plans ep ON pg.plan_id = ep.id
+        WHERE pg.employee_id = ${userId}
+        ORDER BY pg.start_date ASC NULLS LAST, pg.target_date ASC NULLS LAST
+      `);
+      const mapped = (result.rows as any[]).map((g) => ({
+        id: g.id,
+        userId: g.employee_id,
+        title: g.title,
+        description: g.description,
+        category: g.category,
+        startDate: g.start_date,
+        targetDate: g.target_date,
+        weight: g.weight,
+        progress: g.progress,
+        status: g.status,
+        successCriteria: g.success_criteria,
+        rayoAcademyTrackId: g.rayo_academy_track_id,
+        linkedSopId: g.linked_sop_id,
+        autoProgressFromMilestones: g.auto_progress_from_milestones,
+        sourceRef: g.source_ref,
+        notes: g.notes,
+        createdAt: g.created_at,
+        updatedAt: g.updated_at,
+        planId: g.plan_id,
+        planStartDate: g.plan_start_date,
+        planDurationDays: g.plan_duration_days,
+        employeeNudgedAt: g.employee_nudged_at,
+        lastEscalatedAt: g.last_escalated_at,
+        skipEscalatedAt: g.skip_escalated_at,
+      }));
+      res.json(mapped);
     } catch (error) {
       console.error("Error fetching goals:", error);
       res.status(500).json({ error: "Failed to fetch goals" });
@@ -771,7 +803,7 @@ export function registerPerformanceRoutes(app: Express) {
 
       const goals = await db.select().from(performanceGoals)
         .where(inArray(performanceGoals.employeeId, teamIds))
-        .orderBy(desc(performanceGoals.createdAt));
+        .orderBy(asc(performanceGoals.startDate), asc(performanceGoals.targetDate));
 
       const employees = await db.select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
         .from(adminUsers).where(inArray(adminUsers.id, teamIds));
@@ -868,11 +900,18 @@ export function registerPerformanceRoutes(app: Express) {
 
       const teamIds = teamMembers.map(m => m.id);
 
-      const goals = teamIds.length > 0
-        ? await db.select().from(performanceGoals)
-            .where(inArray(performanceGoals.employeeId, teamIds))
-            .orderBy(desc(performanceGoals.createdAt))
-        : [];
+      const rawGoals = teamIds.length > 0
+        ? (await db.execute(sql`
+            SELECT pg.*,
+                   ep.start_date AS plan_start_date,
+                   ep.duration_days AS plan_duration_days,
+                   ep.plan_type AS plan_type_from_plan
+            FROM performance_goals pg
+            LEFT JOIN employee_plans ep ON pg.plan_id = ep.id
+            WHERE pg.employee_id = ANY(${teamIds})
+            ORDER BY pg.start_date ASC NULLS LAST, pg.target_date ASC NULLS LAST
+          `)).rows as any[]
+        : [] as any[];
 
       const membersWithGoals = teamMembers.map(member => ({
         userId: member.id,
@@ -880,28 +919,33 @@ export function registerPerformanceRoutes(app: Express) {
         lastName: member.lastName,
         email: member.email,
         designation: (member as any).designation || null,
-        goals: goals.filter(g => g.employeeId === member.id).map(g => ({
+        goals: rawGoals.filter((g: any) => g.employee_id === member.id).map((g: any) => ({
           id: g.id,
-          userId: g.employeeId,
+          userId: g.employee_id,
           title: g.title,
           description: g.description,
           category: g.category,
-          startDate: g.startDate,
-          targetDate: g.targetDate,
+          startDate: g.start_date,
+          targetDate: g.target_date,
           weight: g.weight,
           progress: g.progress,
           status: g.status,
-          successCriteria: g.successCriteria,
-          autoProgressFromMilestones: g.autoProgressFromMilestones,
-          sourceRef: g.sourceRef,
-          createdAt: g.createdAt,
+          successCriteria: g.success_criteria,
+          autoProgressFromMilestones: g.auto_progress_from_milestones,
+          sourceRef: g.source_ref,
+          createdAt: g.created_at,
+          updatedAt: g.updated_at,
+          lastEscalatedAt: g.last_escalated_at,
+          planId: g.plan_id,
+          planStartDate: g.plan_start_date,
+          planDurationDays: g.plan_duration_days,
         })),
       }));
 
-      const totalGoals = goals.length;
-      const completedGoals = goals.filter(g => g.status === "completed").length;
-      const inProgressGoals = goals.filter(g => g.status === "in_progress" || g.status === "on_track").length;
-      const atRiskGoals = goals.filter(g => g.status === "at_risk").length;
+      const totalGoals = rawGoals.length;
+      const completedGoals = rawGoals.filter((g: any) => g.status === "completed").length;
+      const inProgressGoals = rawGoals.filter((g: any) => g.status === "in_progress" || g.status === "on_track").length;
+      const atRiskGoals = rawGoals.filter((g: any) => g.status === "at_risk").length;
 
       res.json({
         members: membersWithGoals,
@@ -1116,7 +1160,14 @@ export function registerPerformanceRoutes(app: Express) {
       if (targetDate !== undefined) updates.targetDate = targetDate;
       if (weight !== undefined) updates.weight = weight;
       if (status !== undefined) updates.status = status;
-      if (progress !== undefined) updates.progress = Math.min(100, Math.max(0, progress));
+      if (progress !== undefined) {
+        const clamped = Math.min(100, Math.max(0, progress));
+        updates.progress = clamped;
+        // Track when progress was last changed (distinct from any other field update)
+        if (clamped !== existing.progress) {
+          (updates as any).lastProgressUpdatedAt = new Date();
+        }
+      }
       if (rayoAcademyTrackId !== undefined) updates.rayoAcademyTrackId = rayoAcademyTrackId;
       if (autoProgressFromMilestones !== undefined) updates.autoProgressFromMilestones = autoProgressFromMilestones === true;
       if (linkedSopId !== undefined) updates.linkedSopId = linkedSopId || null;
@@ -1392,16 +1443,94 @@ export function registerPerformanceRoutes(app: Express) {
       // labeled as Day 30 / 60 / 90 review forms and the UI can render the
       // milestone scorecard and overdue state without a second round-trip.
       const planIds = Array.from(new Set(list.map(ci => ci.planId).filter(Boolean))) as string[];
-      const planMap = new Map<string, { planType: string; startDate: string }>();
+      const planMap = new Map<string, { planType: string; startDate: string; endDate?: string; durationDays?: number }>();
       if (planIds.length > 0) {
         const planRows = await db.execute(sql`
-          SELECT id, plan_type, start_date FROM employee_plans WHERE id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
+          SELECT id, plan_type, start_date, end_date, duration_days FROM employee_plans WHERE id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
         `);
         for (const r of planRows.rows as any[]) {
-          planMap.set(String(r.id), { planType: String(r.plan_type), startDate: String(r.start_date) });
+          planMap.set(String(r.id), {
+            planType: String(r.plan_type),
+            startDate: String(r.start_date),
+            endDate: r.end_date ? String(r.end_date) : undefined,
+            durationDays: r.duration_days ? Number(r.duration_days) : undefined,
+          });
         }
       }
       const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Fetch all goals for each plan so we can populate discussion context
+      const planGoalMap = new Map<string, any[]>();
+      if (planIds.length > 0) {
+        const goalRows = await db.execute(sql`
+          SELECT id, plan_id, title, progress, status, target_date, start_date, updated_at
+          FROM performance_goals
+          WHERE plan_id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
+          ORDER BY start_date ASC NULLS LAST, target_date ASC NULLS LAST
+        `);
+        for (const g of goalRows.rows as any[]) {
+          const arr = planGoalMap.get(String(g.plan_id)) ?? [];
+          arr.push(g);
+          planGoalMap.set(String(g.plan_id), arr);
+        }
+      }
+
+      // Fetch each plan's sorted check-ins to find the previous action items
+      const planCheckInsMap = new Map<string, any[]>();
+      if (planIds.length > 0) {
+        const ciRows = await db.execute(sql`
+          SELECT id, plan_id, scheduled_date, action_items, status
+          FROM check_ins
+          WHERE plan_id IN (${sql.join(planIds.map(id => sql`${id}`), sql`, `)})
+            AND status = 'completed'
+          ORDER BY scheduled_date DESC
+        `);
+        for (const c of ciRows.rows as any[]) {
+          const arr = planCheckInsMap.get(String(c.plan_id)) ?? [];
+          arr.push(c);
+          planCheckInsMap.set(String(c.plan_id), arr);
+        }
+      }
+
+      // Helper: compute the phase label for a check-in based on plan type + days elapsed
+      function computePlanPhase(
+        planType: string,
+        startDate: string,
+        scheduledDate: string,
+        durationDays?: number,
+      ): { label: string; startDay: number; endDay: number } | null {
+        const start = new Date(startDate).getTime();
+        const sched = new Date(scheduledDate).getTime();
+        const msPerDay = 86400000;
+        const elapsed = Math.max(0, Math.floor((sched - start) / msPerDay));
+        const dur = durationDays ?? (planType === "pip" ? 30 : 90);
+        const phaseCount = planType === "pip" ? 3 : 3;
+        const phaseLen = Math.ceil(dur / phaseCount);
+        const phaseIdx = Math.min(Math.floor(elapsed / phaseLen), phaseCount - 1);
+        const phaseStart = phaseIdx * phaseLen + 1;
+        const phaseEnd = Math.min((phaseIdx + 1) * phaseLen, dur);
+        return { label: `Day ${phaseStart}–${phaseEnd}`, startDay: phaseStart, endDay: phaseEnd };
+      }
+
+      // Helper: find goals "in scope" for a given phase. A goal belongs to this phase
+      // if its start_date offset (relative to plan start) falls within [startDay-1, endDay-1].
+      // Goals without a start_date are shown only in the current/next upcoming phase.
+      function goalsInPhase(
+        goals: any[],
+        startDate: string,
+        phase: { startDay: number; endDay: number } | null,
+      ): any[] {
+        if (!phase) return goals;
+        const msPerDay = 86400000;
+        const planStart = new Date(startDate).getTime();
+        return goals.filter(g => {
+          if (!g.start_date) return phase.startDay === 1; // no-date goals only in first phase
+          const gStart = new Date(g.start_date).getTime();
+          const gDayOffset = Math.floor((gStart - planStart) / msPerDay);
+          // phase.startDay and endDay are 1-indexed; offset is 0-indexed
+          return gDayOffset >= (phase.startDay - 1) && gDayOffset < phase.endDay;
+        });
+      }
 
       const enrichedList = list.map(ci => {
         const emp = userMap.get(ci.employeeId);
@@ -1414,6 +1543,50 @@ export function registerPerformanceRoutes(app: Express) {
         const milestoneLabel = milestoneDay != null ? probationMilestoneLabel(milestoneDay) : null;
         const isOverdue = ci.status !== "completed" && ci.status !== "cancelled"
           && !!ci.scheduledDate && String(ci.scheduledDate) < todayStr;
+
+        // Build discussion context for this check-in
+        let discussionContext: {
+          planPhase: string | null;
+          planType: string | null;
+          goalsInScope: Array<{ id: string; title: string; progress: number; status: string; targetDate: string | null }>;
+          overdueGoals: Array<{ id: string; title: string; targetDate: string; progress: number }>;
+          previousActionItems: string | null;
+        } | null = null;
+
+        if (ci.planId && plan) {
+          const allPlanGoals = planGoalMap.get(ci.planId) ?? [];
+          const phase = ci.scheduledDate
+            ? computePlanPhase(plan.planType, plan.startDate, String(ci.scheduledDate), plan.durationDays)
+            : null;
+          const scopeGoals = goalsInPhase(allPlanGoals, plan.startDate, phase);
+          const overdueGoals = allPlanGoals.filter(
+            g => g.target_date && g.target_date < todayStr && g.status !== "completed" && g.status !== "cancelled"
+          );
+          // Find most recent PREVIOUS check-in (completed before this one)
+          const sortedPlanCheckIns = planCheckInsMap.get(ci.planId) ?? [];
+          const prevCheckIn = sortedPlanCheckIns.find(c =>
+            c.id !== ci.id && (!ci.scheduledDate || c.scheduled_date < String(ci.scheduledDate))
+          );
+          discussionContext = {
+            planPhase: phase?.label ?? null,
+            planType: plan.planType,
+            goalsInScope: scopeGoals.map(g => ({
+              id: String(g.id),
+              title: String(g.title),
+              progress: Number(g.progress ?? 0),
+              status: String(g.status ?? "not_started"),
+              targetDate: g.target_date ? String(g.target_date) : null,
+            })),
+            overdueGoals: overdueGoals.map(g => ({
+              id: String(g.id),
+              title: String(g.title),
+              targetDate: String(g.target_date),
+              progress: Number(g.progress ?? 0),
+            })),
+            previousActionItems: prevCheckIn?.action_items ? String(prevCheckIn.action_items) : null,
+          };
+        }
+
         return {
           ...ci,
           employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
@@ -1425,6 +1598,7 @@ export function registerPerformanceRoutes(app: Express) {
           milestoneLabel,
           requiresScores: milestoneDay != null,
           isOverdue,
+          discussionContext,
         };
       });
 
@@ -1525,9 +1699,10 @@ export function registerPerformanceRoutes(app: Express) {
       }
 
       const { status, employeeNotes, managerNotes, actionItems, rating, goalId, reviewScores } = req.body;
+      const patchRole = req.session.role!;
       const updates: Partial<CheckIn> = { updatedAt: new Date() };
 
-      // Step 5: gate probation completion — manager notes always required; a
+      // Gate probation completion — manager notes always required; a
       // Day 30/60/90 milestone additionally requires a valid weighted scorecard.
       if (status === "completed") {
         const gate = await enforceProbationCompletion({
@@ -1542,6 +1717,40 @@ export function registerPerformanceRoutes(app: Express) {
         if (gate.error) return res.status(400).json({ error: gate.error });
         if (gate.reviewScoresToPersist !== undefined) {
           updates.reviewScores = gate.reviewScoresToPersist as any;
+        }
+
+        // Hard gate (employee-only): block employee self-completion if the plan
+        // has any goals past targetDate with no progress since they became overdue.
+        // Manager close path is intentionally unaffected (managers may close even
+        // with overdue goals so they can record outcomes and leave coaching notes).
+        const isEmployeeSubmitter = existing.employeeId === userId && !ADMIN_ROLES.includes(patchRole) && patchRole !== "manager";
+        if (isEmployeeSubmitter && existing.planId) {
+          const todayForGate = new Date().toISOString().slice(0, 10);
+          const blockingGoalsResult = await db.execute(sql`
+            SELECT id, title, target_date, progress
+            FROM performance_goals
+            WHERE plan_id = ${existing.planId}
+              AND employee_id = ${existing.employeeId}
+              AND status NOT IN ('completed', 'cancelled')
+              AND target_date IS NOT NULL
+              AND target_date < ${todayForGate}
+              AND (last_progress_updated_at IS NULL OR last_progress_updated_at::date <= target_date::date)
+            ORDER BY target_date ASC
+            LIMIT 10
+          `);
+          const blocking = blockingGoalsResult.rows as any[];
+          if (blocking.length > 0) {
+            return res.status(409).json({
+              error: "overdue_goals_block",
+              message: `You must log progress on ${blocking.length} overdue goal${blocking.length !== 1 ? "s" : ""} before marking this check-in complete.`,
+              blockingGoals: blocking.map(g => ({
+                id: String(g.id),
+                title: String(g.title),
+                targetDate: String(g.target_date),
+                progress: Number(g.progress ?? 0),
+              })),
+            });
+          }
         }
       }
 
@@ -2397,7 +2606,7 @@ export function registerPerformanceRoutes(app: Express) {
       }
       // Also return associated check-ins, goals, and coaching-log entries
       const checkInsResult = await db.execute(sql`SELECT * FROM check_ins WHERE plan_id = ${req.params.id} ORDER BY scheduled_date ASC`);
-      const goalsResult = await db.execute(sql`SELECT * FROM performance_goals WHERE plan_id = ${req.params.id} ORDER BY created_at ASC`);
+      const goalsResult = await db.execute(sql`SELECT * FROM performance_goals WHERE plan_id = ${req.params.id} ORDER BY start_date ASC NULLS LAST, target_date ASC NULLS LAST`);
       const coachingLogResult = await db.execute(sql`
         SELECT cl.*, a.first_name || ' ' || a.last_name AS author_name
         FROM coaching_log_entries cl

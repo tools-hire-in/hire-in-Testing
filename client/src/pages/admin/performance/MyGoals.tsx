@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   Flag,
+  TrendingUp,
 } from "lucide-react";
 import { GoalDetailPanel } from "@/components/performance/GoalDetailPanel";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -79,6 +80,34 @@ interface PerformanceGoal {
   sourceRef: string | null;
   createdAt: string;
   updatedAt: string;
+  planId?: string | null;
+  planStartDate?: string | null;
+  planDurationDays?: number | null;
+}
+
+function computeGoalPhaseLabel(goal: PerformanceGoal): string | null {
+  if (!goal.planId || !goal.planStartDate || !goal.startDate) return null;
+  const dur = goal.planDurationDays ?? 90;
+  const phaseLen = Math.ceil(dur / 3);
+  const msPerDay = 86400000;
+  const offset = Math.max(0, Math.floor(
+    (new Date(goal.startDate).getTime() - new Date(goal.planStartDate).getTime()) / msPerDay
+  ));
+  const phaseIdx = Math.min(2, Math.floor(offset / phaseLen));
+  const phaseStart = phaseIdx * phaseLen + 1;
+  const phaseEnd = Math.min((phaseIdx + 1) * phaseLen, dur);
+  return `Day ${phaseStart}–${phaseEnd}`;
+}
+
+type GoalRisk = "overdue" | "due_soon" | "none";
+
+function goalRisk(goal: PerformanceGoal, today: string): GoalRisk {
+  if (!goal.targetDate || ["completed", "cancelled"].includes(goal.status)) return "none";
+  if (goal.targetDate < today) return "overdue";
+  const msPerDay = 86400000;
+  const daysUntilDue = Math.floor((new Date(goal.targetDate).getTime() - new Date(today).getTime()) / msPerDay);
+  if (daysUntilDue <= 7 && goal.progress < 50) return "due_soon";
+  return "none";
 }
 
 const CATEGORIES = [
@@ -554,6 +583,9 @@ function GoalCard({
   onDelete: (goal: PerformanceGoal) => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const risk = goalRisk(goal, today);
+
   const statusIcon = () => {
     switch (goal.status) {
       case "completed":
@@ -569,7 +601,50 @@ function GoalCard({
   };
 
   return (
-    <Card data-testid={`card-goal-${goal.id}`} className="hover:shadow-md transition-shadow">
+    <Card
+      data-testid={`card-goal-${goal.id}`}
+      className={`hover:shadow-md transition-shadow ${risk === "overdue" ? "border-orange-400" : risk === "due_soon" ? "border-amber-300" : ""}`}
+    >
+      {risk === "overdue" && (
+        <div className="px-5 pt-3 pb-0" data-testid={`banner-goal-overdue-${goal.id}`}>
+          <div className="flex items-center justify-between gap-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md px-3 py-2">
+            <span className="text-xs font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Overdue — please log a progress update
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[11px] border-orange-300 text-orange-700 hover:bg-orange-100"
+              onClick={() => onEdit(goal)}
+              data-testid={`button-log-progress-${goal.id}`}
+            >
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Log Progress
+            </Button>
+          </div>
+        </div>
+      )}
+      {risk === "due_soon" && (
+        <div className="px-5 pt-3 pb-0" data-testid={`banner-goal-due-soon-${goal.id}`}>
+          <div className="flex items-center justify-between gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Due soon — progress below 50%
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[11px] border-amber-300 text-amber-700 hover:bg-amber-100"
+              onClick={() => onEdit(goal)}
+              data-testid={`button-log-progress-soon-${goal.id}`}
+            >
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Log Progress
+            </Button>
+          </div>
+        </div>
+      )}
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -578,6 +653,16 @@ function GoalCard({
               <h3 className="font-semibold text-base truncate" data-testid={`text-goal-title-${goal.id}`}>
                 {goal.title}
               </h3>
+              {risk === "overdue" && (
+                <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[10px] h-5" data-testid={`badge-overdue-${goal.id}`}>
+                  Overdue
+                </Badge>
+              )}
+              {risk === "due_soon" && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] h-5" data-testid={`badge-due-soon-${goal.id}`}>
+                  Due soon
+                </Badge>
+              )}
             </div>
 
             {goal.description && (
@@ -669,6 +754,67 @@ function GoalCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function PhaseGroupedGoalList({
+  goals,
+  onEdit,
+  onDelete,
+}: {
+  goals: PerformanceGoal[];
+  onEdit: (goal: PerformanceGoal) => void;
+  onDelete: (goal: PerformanceGoal) => void;
+}) {
+  const planGoals = goals.filter((g) => !!g.planId);
+  const standaloneGoals = goals.filter((g) => !g.planId);
+
+  // Group plan goals by (planId, phaseLabel)
+  type PhaseGroup = { planId: string; phaseLabel: string; goals: PerformanceGoal[] };
+  const groupMap = new Map<string, PhaseGroup>();
+  for (const g of planGoals) {
+    const label = computeGoalPhaseLabel(g) ?? "Plan Goals";
+    const key = `${g.planId}||${label}`;
+    if (!groupMap.has(key)) groupMap.set(key, { planId: g.planId!, phaseLabel: label, goals: [] });
+    groupMap.get(key)!.goals.push(g);
+  }
+  const groups = Array.from(groupMap.values());
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div key={`${group.planId}-${group.phaseLabel}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full" data-testid={`phase-label-${group.phaseLabel.replace(/\s+/g, "-")}`}>
+              {group.phaseLabel}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="space-y-3">
+            {group.goals.map((goal) => (
+              <GoalCard key={goal.id} goal={goal} onEdit={onEdit} onDelete={onDelete} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {standaloneGoals.length > 0 && (
+        <div>
+          {groups.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-semibold text-muted-foreground px-2 py-0.5 rounded-full border">
+                Standalone
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          )}
+          <div className="space-y-3">
+            {standaloneGoals.map((goal) => (
+              <GoalCard key={goal.id} goal={goal} onEdit={onEdit} onDelete={onDelete} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -816,16 +962,11 @@ export function MyGoalsContent() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {filteredGoals.map((goal) => (
-              <GoalCard
-                key={goal.id}
-                goal={goal}
-                onEdit={handleEdit}
-                onDelete={setDeleteGoal}
-              />
-            ))}
-          </div>
+          <PhaseGroupedGoalList
+            goals={filteredGoals}
+            onEdit={handleEdit}
+            onDelete={setDeleteGoal}
+          />
         )}
 
         <GoalFormDialog

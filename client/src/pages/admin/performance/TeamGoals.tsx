@@ -69,6 +69,25 @@ interface PerformanceGoal {
   autoProgressFromMilestones: boolean;
   sourceRef: string | null;
   createdAt: string;
+  updatedAt?: string;
+  lastEscalatedAt?: string | null;
+  planId?: string | null;
+  planStartDate?: string | null;
+  planDurationDays?: number | null;
+}
+
+function computeGoalPhaseLabel(goal: PerformanceGoal): string | null {
+  if (!goal.planId || !goal.planStartDate || !goal.startDate) return null;
+  const dur = goal.planDurationDays ?? 90;
+  const phaseLen = Math.ceil(dur / 3);
+  const msPerDay = 86400000;
+  const offset = Math.max(0, Math.floor(
+    (new Date(goal.startDate).getTime() - new Date(goal.planStartDate).getTime()) / msPerDay
+  ));
+  const phaseIdx = Math.min(2, Math.floor(offset / phaseLen));
+  const phaseStart = phaseIdx * phaseLen + 1;
+  const phaseEnd = Math.min((phaseIdx + 1) * phaseLen, dur);
+  return `Day ${phaseStart}–${phaseEnd}`;
 }
 
 interface TeamMemberGoals {
@@ -365,6 +384,153 @@ function CreateGoalForMemberDialog({
   );
 }
 
+function TeamGoalRow({
+  goal,
+  expandedGoals,
+  toggleGoal,
+  canEdit,
+}: {
+  goal: PerformanceGoal;
+  expandedGoals: Set<string>;
+  toggleGoal: (id: string) => void;
+  canEdit: boolean;
+}) {
+  return (
+    <div
+      className="border rounded-lg p-4 space-y-2"
+      data-testid={`card-team-goal-${goal.id}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <h4 className="font-medium text-sm">{goal.title}</h4>
+          {goal.description && (
+            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+              {goal.description}
+            </p>
+          )}
+        </div>
+        <Badge
+          className={STATUS_COLORS[goal.status] || STATUS_COLORS.not_started}
+          data-testid={`badge-team-goal-status-${goal.id}`}
+        >
+          {STATUS_LABELS[goal.status] || goal.status}
+        </Badge>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Progress value={goal.progress} className="h-1.5 flex-1" />
+        <span className="text-xs font-medium w-10 text-right">{goal.progress}%</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Calendar className="h-3 w-3" />
+          Due {formatDate(goal.targetDate)}
+        </span>
+        <span className="flex items-center gap-1">
+          <Weight className="h-3 w-3" />
+          Weight: {goal.weight}
+        </span>
+        <Badge variant="outline" className="text-[10px] h-5">
+          {CATEGORY_LABELS[goal.category] || goal.category}
+        </Badge>
+        {goal.sourceRef && (
+          <Badge variant="outline" className="text-[10px] h-5 border-amber-300 text-amber-700 bg-amber-50" data-testid={`badge-team-goal-source-${goal.id}`}>
+            Source: Addendum {goal.sourceRef}
+          </Badge>
+        )}
+        {goal.autoProgressFromMilestones && (
+          <span className="flex items-center gap-1 text-emerald-600 text-[10px]">
+            <Flag className="h-3 w-3" /> Auto-progress
+          </span>
+        )}
+      </div>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-xs text-muted-foreground"
+        onClick={() => toggleGoal(goal.id)}
+        data-testid={`button-toggle-team-detail-${goal.id}`}
+      >
+        {expandedGoals.has(goal.id) ? <ChevronDown className="h-3.5 w-3.5 mr-1" /> : <ChevronRight className="h-3.5 w-3.5 mr-1" />}
+        Milestones & check-ins
+      </Button>
+
+      {expandedGoals.has(goal.id) && (
+        <GoalDetailPanel
+          goalId={goal.id}
+          autoProgressFromMilestones={goal.autoProgressFromMilestones}
+          canEdit={canEdit}
+          onGoalChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/performance/team-goals"] })}
+        />
+      )}
+    </div>
+  );
+}
+
+function PhaseGroupedTeamGoalList({
+  goals,
+  expandedGoals,
+  toggleGoal,
+  canEdit,
+}: {
+  goals: PerformanceGoal[];
+  expandedGoals: Set<string>;
+  toggleGoal: (id: string) => void;
+  canEdit: boolean;
+}) {
+  const planGoals = goals.filter((g) => !!g.planId);
+  const standaloneGoals = goals.filter((g) => !g.planId);
+
+  type PhaseGroup = { planId: string; phaseLabel: string; goals: PerformanceGoal[] };
+  const groupMap = new Map<string, PhaseGroup>();
+  for (const g of planGoals) {
+    const label = computeGoalPhaseLabel(g) ?? "Plan Goals";
+    const key = `${g.planId}||${label}`;
+    if (!groupMap.has(key)) groupMap.set(key, { planId: g.planId!, phaseLabel: label, goals: [] });
+    groupMap.get(key)!.goals.push(g);
+  }
+  const groups = Array.from(groupMap.values());
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div key={`${group.planId}-${group.phaseLabel}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full" data-testid={`phase-label-${group.phaseLabel.replace(/\s+/g, "-")}`}>
+              {group.phaseLabel}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="space-y-3">
+            {group.goals.map((goal) => (
+              <TeamGoalRow key={goal.id} goal={goal} expandedGoals={expandedGoals} toggleGoal={toggleGoal} canEdit={canEdit} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {standaloneGoals.length > 0 && (
+        <div>
+          {groups.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-semibold text-muted-foreground px-2 py-0.5 rounded-full border">
+                Standalone
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          )}
+          <div className="space-y-3">
+            {standaloneGoals.map((goal) => (
+              <TeamGoalRow key={goal.id} goal={goal} expandedGoals={expandedGoals} toggleGoal={toggleGoal} canEdit={canEdit} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set());
@@ -385,9 +551,34 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
       ? Math.round(member.goals.reduce((sum, g) => sum + g.progress, 0) / totalCount)
       : 0;
 
+  // Action required: any goal was escalated (lastEscalatedAt set) and has not been
+  // updated since escalation (or was escalated more than 5 days ago with no fresh update)
+  const today = new Date();
+  const msPerDay = 86400000;
+  const actionRequiredGoals = member.goals.filter((g) => {
+    if (!g.lastEscalatedAt || ["completed", "cancelled"].includes(g.status)) return false;
+    const escalatedAt = new Date(g.lastEscalatedAt);
+    const updatedAt = g.updatedAt ? new Date(g.updatedAt) : null;
+    const daysSinceEscalation = Math.floor((today.getTime() - escalatedAt.getTime()) / msPerDay);
+    // "No coaching action" = goal not updated AFTER the escalation date, or updated before escalation
+    const noActionSinceEscalation = !updatedAt || updatedAt <= escalatedAt;
+    return daysSinceEscalation >= 5 && noActionSinceEscalation;
+  });
+  const hasActionRequired = actionRequiredGoals.length > 0;
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card data-testid={`card-team-member-${member.userId}`}>
+      <Card data-testid={`card-team-member-${member.userId}`} className={hasActionRequired ? "border-red-400" : ""}>
+        {hasActionRequired && (
+          <div className="px-5 pt-3 pb-0" data-testid={`banner-action-required-${member.userId}`}>
+            <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
+              <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
+              <span className="text-xs font-medium text-red-700 dark:text-red-400">
+                Action required — {actionRequiredGoals.length} goal{actionRequiredGoals.length !== 1 ? "s" : ""} escalated with no coaching response in 5+ days
+              </span>
+            </div>
+          </div>
+        )}
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
             <div className="flex items-center justify-between">
@@ -429,81 +620,12 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
                 No goals assigned yet.
               </p>
             ) : (
-              <div className="space-y-3">
-                {member.goals.map((goal) => (
-                  <div
-                    key={goal.id}
-                    className="border rounded-lg p-4 space-y-2"
-                    data-testid={`card-team-goal-${goal.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm">{goal.title}</h4>
-                        {goal.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                            {goal.description}
-                          </p>
-                        )}
-                      </div>
-                      <Badge
-                        className={STATUS_COLORS[goal.status] || STATUS_COLORS.not_started}
-                        data-testid={`badge-team-goal-status-${goal.id}`}
-                      >
-                        {STATUS_LABELS[goal.status] || goal.status}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Progress value={goal.progress} className="h-1.5 flex-1" />
-                      <span className="text-xs font-medium w-10 text-right">{goal.progress}%</span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Due {formatDate(goal.targetDate)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Weight className="h-3 w-3" />
-                        Weight: {goal.weight}
-                      </span>
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {CATEGORY_LABELS[goal.category] || goal.category}
-                      </Badge>
-                      {goal.sourceRef && (
-                        <Badge variant="outline" className="text-[10px] h-5 border-amber-300 text-amber-700 bg-amber-50" data-testid={`badge-team-goal-source-${goal.id}`}>
-                          Source: Addendum {goal.sourceRef}
-                        </Badge>
-                      )}
-                      {goal.autoProgressFromMilestones && (
-                        <span className="flex items-center gap-1 text-emerald-600 text-[10px]">
-                          <Flag className="h-3 w-3" /> Auto-progress
-                        </span>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => toggleGoal(goal.id)}
-                      data-testid={`button-toggle-team-detail-${goal.id}`}
-                    >
-                      {expandedGoals.has(goal.id) ? <ChevronDown className="h-3.5 w-3.5 mr-1" /> : <ChevronRight className="h-3.5 w-3.5 mr-1" />}
-                      Milestones & check-ins
-                    </Button>
-
-                    {expandedGoals.has(goal.id) && (
-                      <GoalDetailPanel
-                        goalId={goal.id}
-                        autoProgressFromMilestones={goal.autoProgressFromMilestones}
-                        canEdit={canEdit}
-                        onGoalChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/performance/team-goals"] })}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
+              <PhaseGroupedTeamGoalList
+                goals={member.goals}
+                expandedGoals={expandedGoals}
+                toggleGoal={toggleGoal}
+                canEdit={canEdit}
+              />
             )}
           </CardContent>
         </CollapsibleContent>

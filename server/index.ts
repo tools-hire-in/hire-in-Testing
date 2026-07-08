@@ -128,6 +128,14 @@ async function ensurePerformanceTables() {
     console.error("performance_goals notes column migration error:", err);
   }
 
+  // Ensure last_progress_updated_at column exists (set only when progress value changes)
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS last_progress_updated_at timestamp`);
+    log("Ensured last_progress_updated_at column exists on performance_goals");
+  } catch (err) {
+    console.error("performance_goals last_progress_updated_at column migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
@@ -1806,6 +1814,11 @@ async function ensureHealthcarePlansTables() {
     await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS manager_notified_at TIMESTAMP`);
     // acknowledged_name: stores the typed full name when employee digitally acknowledges a PIP plan
     await db.execute(sql`ALTER TABLE employee_plans ADD COLUMN IF NOT EXISTS acknowledged_name VARCHAR`);
+    // Overdue-goal sweep dedup columns (Task #884)
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS employee_nudged_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS last_escalated_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS skip_escalated_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE employee_plans ADD COLUMN IF NOT EXISTS manager_goal_escalated_at TIMESTAMP`);
     // plan_acknowledgements: durable evidence table for PIP name-typed acknowledgements (mirrors section_acknowledgements pattern)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS plan_acknowledgements (

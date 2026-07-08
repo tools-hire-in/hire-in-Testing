@@ -11,6 +11,11 @@ import {
   Star,
   ListChecks,
   Edit,
+  ChevronDown,
+  ChevronRight,
+  AlertCircle,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,10 +41,17 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { formatLocalDate } from "@/lib/dateUtils";
+import { PlanDetailDialog } from "@/components/performance/PlanDetailDialog";
 import {
   probationAreaKey,
   computeWeightedOverall,
@@ -60,6 +72,22 @@ interface ScoringBandsResponse {
   passRule: any;
   finalWeights: ProbationWeight[] | null;
   source: string;
+}
+
+interface GoalContextItem {
+  id: string;
+  title: string;
+  progress: number;
+  status: string;
+  targetDate: string | null;
+}
+
+interface DiscussionContext {
+  planPhase: string | null;
+  planType: string | null;
+  goalsInScope: GoalContextItem[];
+  overdueGoals: GoalContextItem[];
+  previousActionItems: string | null;
 }
 
 interface CheckIn {
@@ -85,6 +113,7 @@ interface CheckIn {
   requiresScores?: boolean;
   isOverdue?: boolean;
   reviewScores?: ProbationReviewScores | null;
+  discussionContext?: DiscussionContext | null;
 }
 
 function milestoneTitle(checkIn: { milestoneDay?: number | null; milestoneLabel?: string | null }): string | null {
@@ -412,6 +441,9 @@ function CheckInDetailDialog({
     },
   });
 
+  const [blockingGoals, setBlockingGoals] = useState<Array<{id: string; title: string; targetDate: string; progress: number}>>([]);
+  const [contextOpen, setContextOpen] = useState(false);
+
   const completeMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
@@ -432,16 +464,44 @@ function CheckInDetailDialog({
         };
         body.reviewScores = reviewScores;
       }
-      const res = await apiRequest("PATCH", `/api/performance/check-ins/${checkIn!.id}`, body);
+      // Use raw fetch so we can inspect the 409 payload before deciding to throw.
+      // apiRequest() throws on any non-2xx, making the 409 branch unreachable.
+      const res = await fetch(`/api/performance/check-ins/${checkIn!.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 409) {
+        const data = await res.json();
+        throw Object.assign(new Error(data.message || "Overdue goals block completion"), {
+          code: "overdue_goals_block",
+          blockingGoals: data.blockingGoals ?? [],
+        });
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.message || "Failed to complete check-in");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/performance/check-ins"] });
       toast({ title: "Check-in marked as completed" });
+      setBlockingGoals([]);
       onOpenChange(false);
     },
-    onError: (err: Error) => {
-      toast({ title: "Failed to complete check-in", description: err.message, variant: "destructive" });
+    onError: (err: any) => {
+      if (err.code === "overdue_goals_block") {
+        setBlockingGoals(err.blockingGoals ?? []);
+        toast({
+          title: "Cannot complete check-in",
+          description: err.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Failed to complete check-in", description: err.message, variant: "destructive" });
+      }
     },
   });
 
@@ -476,6 +536,110 @@ function CheckInDetailDialog({
               {checkIn.managerName}
             </span>
           </div>
+
+          {/* Blocking goals banner */}
+          {blockingGoals.length > 0 && (
+            <div className="rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2" data-testid="section-blocking-goals">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-orange-700 dark:text-orange-400">
+                <AlertCircle className="h-4 w-4" />
+                Update these overdue goals first
+              </div>
+              <ul className="space-y-1">
+                {blockingGoals.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between text-xs text-orange-800 dark:text-orange-300">
+                    <span className="truncate">{g.title}</span>
+                    <span className="ml-2 shrink-0">{g.progress}% · Due {g.targetDate}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-orange-600 dark:text-orange-400">
+                Go to My Goals and log a progress update, then return to complete this check-in.
+              </p>
+            </div>
+          )}
+
+          {/* Discussion Context panel (populated by backend) */}
+          {checkIn.discussionContext && (
+            <Collapsible open={contextOpen} onOpenChange={setContextOpen}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-between h-8 px-3 text-xs border border-dashed"
+                  data-testid="button-toggle-discussion-context"
+                >
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Target className="h-3.5 w-3.5 text-primary" />
+                    Discussion Context
+                    {checkIn.discussionContext.planPhase && (
+                      <Badge variant="outline" className="text-[10px] h-4 ml-1">{checkIn.discussionContext.planPhase}</Badge>
+                    )}
+                    {checkIn.discussionContext.overdueGoals.length > 0 && (
+                      <Badge className="text-[10px] h-4 bg-orange-100 text-orange-700 border-orange-200 ml-1">
+                        {checkIn.discussionContext.overdueGoals.length} overdue
+                      </Badge>
+                    )}
+                  </span>
+                  {contextOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-2 rounded-md border bg-muted/30 p-3 space-y-3 text-xs" data-testid="section-discussion-context">
+                  {/* Goals in scope */}
+                  {checkIn.discussionContext.goalsInScope.length > 0 && (
+                    <div>
+                      <p className="font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3" />
+                        Goals in scope for this phase
+                      </p>
+                      <div className="space-y-1.5">
+                        {checkIn.discussionContext.goalsInScope.map((g) => (
+                          <div key={g.id} data-testid={`context-goal-${g.id}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate">{g.title}</span>
+                              <span className="shrink-0 font-medium">{g.progress}%</span>
+                            </div>
+                            <Progress value={g.progress} className="h-1 mt-0.5" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Overdue goals callout */}
+                  {checkIn.discussionContext.overdueGoals.length > 0 && (
+                    <div className="rounded border border-orange-200 bg-orange-50 dark:bg-orange-950/20 p-2">
+                      <p className="font-medium text-orange-700 dark:text-orange-400 mb-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {checkIn.discussionContext.overdueGoals.length} overdue goal{checkIn.discussionContext.overdueGoals.length !== 1 ? "s" : ""}
+                      </p>
+                      {checkIn.discussionContext.overdueGoals.map((g) => (
+                        <p key={g.id} className="text-orange-700 dark:text-orange-400 truncate" data-testid={`context-overdue-${g.id}`}>
+                          {g.title} — due {g.targetDate}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Previous action items */}
+                  {checkIn.discussionContext.previousActionItems && (
+                    <div>
+                      <p className="font-medium text-muted-foreground mb-1">From previous check-in</p>
+                      <p className="whitespace-pre-line text-foreground/80" data-testid="context-previous-actions">
+                        {checkIn.discussionContext.previousActionItems}
+                      </p>
+                    </div>
+                  )}
+
+                  {checkIn.discussionContext.goalsInScope.length === 0 &&
+                   !checkIn.discussionContext.previousActionItems &&
+                   checkIn.discussionContext.overdueGoals.length === 0 && (
+                    <p className="text-muted-foreground text-center py-1">No contextual data available yet.</p>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
           <Separator />
 
@@ -702,9 +866,11 @@ function CheckInDetailDialog({
 function CheckInCard({
   checkIn,
   onClick,
+  onViewPlan,
 }: {
   checkIn: CheckIn;
   onClick: () => void;
+  onViewPlan?: (planId: string) => void;
 }) {
   const actionItemCount = checkIn.actionItems
     ? checkIn.actionItems.split("\n").filter((l) => l.trim()).length
@@ -719,7 +885,7 @@ function CheckInCard({
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium text-sm" data-testid={`text-checkin-date-${checkIn.id}`}>
                 {formatDate(checkIn.scheduledDate)}
@@ -747,6 +913,16 @@ function CheckInCard({
                 <Badge variant="destructive" data-testid={`badge-overdue-${checkIn.id}`}>
                   Overdue
                 </Badge>
+              )}
+              {checkIn.planId && onViewPlan && (
+                <button
+                  className="text-[11px] text-primary/70 hover:text-primary underline underline-offset-2 flex items-center gap-0.5"
+                  onClick={(e) => { e.stopPropagation(); onViewPlan(checkIn.planId!); }}
+                  data-testid={`button-view-plan-${checkIn.id}`}
+                >
+                  <ChevronRight className="h-3 w-3" />
+                  View Plan
+                </button>
               )}
             </div>
 
@@ -777,11 +953,81 @@ function CheckInCard({
                 </span>
               )}
             </div>
+
+            {/* Discussion Context — compact collapsible summary on card */}
+            {checkIn.discussionContext && (
+              <DiscussionContextCard context={checkIn.discussionContext} checkInId={checkIn.id} />
+            )}
           </div>
           <Edit className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function DiscussionContextCard({
+  context,
+  checkInId,
+}: {
+  context: DiscussionContext;
+  checkInId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasContent =
+    context.goalsInScope.length > 0 ||
+    context.overdueGoals.length > 0 ||
+    !!context.previousActionItems;
+  if (!hasContent) return null;
+  return (
+    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary"
+            data-testid={`button-discussion-context-${checkInId}`}
+          >
+            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            Discussion Context
+            {context.planPhase && (
+              <span className="ml-0.5 px-1 py-0 rounded border text-[10px] border-border">{context.planPhase}</span>
+            )}
+            {context.overdueGoals.length > 0 && (
+              <span className="ml-0.5 px-1 py-0 rounded text-[10px] bg-orange-100 text-orange-700 border border-orange-200">
+                {context.overdueGoals.length} overdue
+              </span>
+            )}
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="mt-1.5 rounded border bg-muted/30 p-2 space-y-2 text-[11px]" data-testid={`section-discussion-context-card-${checkInId}`}>
+            {context.goalsInScope.slice(0, 3).map((g) => (
+              <div key={g.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-foreground/80">{g.title}</span>
+                  <span className="shrink-0 font-medium">{g.progress}%</span>
+                </div>
+                <Progress value={g.progress} className="h-0.5 mt-0.5" />
+              </div>
+            ))}
+            {context.overdueGoals.length > 0 && (
+              <div className="rounded border border-orange-200 bg-orange-50 dark:bg-orange-950/20 px-2 py-1">
+                <span className="font-medium text-orange-700 dark:text-orange-400">Overdue: </span>
+                <span className="text-orange-700 dark:text-orange-400">
+                  {context.overdueGoals.map((g) => g.title).join(", ")}
+                </span>
+              </div>
+            )}
+            {context.previousActionItems && (
+              <div>
+                <span className="font-medium text-muted-foreground">Prior actions: </span>
+                <span className="text-foreground/80 line-clamp-2">{context.previousActionItems}</span>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }
 
@@ -795,6 +1041,7 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
   const [tab, setTab] = useState("upcoming");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCheckIn, setSelectedCheckIn] = useState<CheckIn | null>(null);
+  const [planDetailId, setPlanDetailId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<CheckInsResponse>({
     queryKey: ["/api/performance/check-ins"],
@@ -937,6 +1184,7 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
                       key={checkIn.id}
                       checkIn={checkIn}
                       onClick={() => setSelectedCheckIn(checkIn)}
+                      onViewPlan={checkIn.planId ? (id) => setPlanDetailId(id) : undefined}
                     />
                   ))}
               </div>
@@ -973,6 +1221,7 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
                       key={checkIn.id}
                       checkIn={checkIn}
                       onClick={() => setSelectedCheckIn(checkIn)}
+                      onViewPlan={checkIn.planId ? (id) => setPlanDetailId(id) : undefined}
                     />
                   ))}
               </div>
@@ -994,6 +1243,12 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
           checkIn={selectedCheckIn}
           userRole={userRole}
           userId={user?.id || ""}
+        />
+
+        <PlanDetailDialog
+          planId={planDetailId}
+          open={!!planDetailId}
+          onOpenChange={(open) => !open && setPlanDetailId(null)}
         />
       </div>
     </AdminLayout>

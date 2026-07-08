@@ -2855,6 +2855,7 @@ interface TeamPlan {
   created_at: string;
   employee_name: string | null;
   manager_name: string | null;
+  manager_goal_escalated_at?: string | null;
 }
 
 interface PlanGoal {
@@ -2864,8 +2865,45 @@ interface PlanGoal {
   category: string;
   progress: number;
   status: string;
+  start_date: string | null;
   target_date: string | null;
   plan_id: string | null;
+}
+
+function computePlanPhases(
+  planType: string,
+  startDate: string,
+  durationDays?: number | null,
+): Array<{ label: string; startDay: number; endDay: number; startDate: string; endDate: string }> {
+  const dur = durationDays ?? (planType === "pip" ? 30 : 90);
+  const msPerDay = 86400000;
+  const start = new Date(startDate).getTime();
+  const phaseLen = Math.ceil(dur / 3);
+  return Array.from({ length: 3 }, (_, i) => {
+    const phaseStart = i * phaseLen + 1;
+    const phaseEnd = Math.min((i + 1) * phaseLen, dur);
+    return {
+      label: `Day ${phaseStart}–${phaseEnd}`,
+      startDay: phaseStart,
+      endDay: phaseEnd,
+      startDate: new Date(start + (phaseStart - 1) * msPerDay).toISOString().slice(0, 10),
+      endDate: new Date(start + (phaseEnd - 1) * msPerDay).toISOString().slice(0, 10),
+    };
+  });
+}
+
+function goalPhaseIdx(
+  goal: PlanGoal,
+  planStartDate: string,
+  phases: ReturnType<typeof computePlanPhases>,
+): number {
+  if (!goal.start_date) return 0;
+  const msPerDay = 86400000;
+  const offset = Math.floor((new Date(goal.start_date).getTime() - new Date(planStartDate).getTime()) / msPerDay);
+  for (let i = 0; i < phases.length; i++) {
+    if (offset < phases[i].endDay) return i;
+  }
+  return phases.length - 1;
 }
 
 interface PlanCheckIn {
@@ -2885,10 +2923,21 @@ interface PlanCheckIn {
   created_at: string;
 }
 
+interface CoachingLogEntry {
+  id: string;
+  plan_id: string;
+  author_id: string;
+  author_name: string | null;
+  entry_date: string;
+  content: string;
+  created_at: string;
+}
+
 interface PlanDetail {
   plan: TeamPlan;
   checkIns: PlanCheckIn[];
   goals: PlanGoal[];
+  coachingLog?: CoachingLogEntry[];
 }
 
 interface PlanTemplate {
@@ -3216,7 +3265,7 @@ function PlanDetailPanel({
     );
   }
 
-  const { plan, checkIns, goals } = data;
+  const { plan, checkIns, goals, coachingLog = [] } = data;
   const remaining = daysRemaining(plan.end_date);
   const compliance = calcCompliance(checkIns);
   const overdue = overdueCount(checkIns);
@@ -3225,6 +3274,14 @@ function PlanDetailPanel({
   const selfUpdates = checkIns.filter(ci => ci.check_in_type === "weekly_update");
   const completedCIs = [...managerCheckIns].filter(ci => ci.status === "completed").sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
   const pendingCIs = managerCheckIns.filter(ci => ci.status !== "completed").sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+
+  const phases = computePlanPhases(plan.plan_type, plan.start_date, plan.duration_days ?? null);
+  const currentPhaseIdx = phases.findIndex(p => p.startDate <= today && today <= p.endDate);
+  const goalsByPhase: PlanGoal[][] = phases.map(() => []);
+  for (const g of goals) {
+    const idx = goalPhaseIdx(g, plan.start_date, phases);
+    goalsByPhase[idx].push(g);
+  }
 
   return (
     <>
@@ -3251,30 +3308,128 @@ function PlanDetailPanel({
           </DialogHeader>
 
           <div className="space-y-6 py-2">
-            {/* Goals */}
+            {/* Manager accountability banner */}
+            {(() => {
+              if (!plan.manager_goal_escalated_at) return null;
+              const escalatedAt = new Date(plan.manager_goal_escalated_at);
+              const now = new Date();
+              const daysSinceEscalation = Math.floor((now.getTime() - escalatedAt.getTime()) / 86400000);
+              if (daysSinceEscalation < 5) return null;
+              const latestGoalUpdate = goals.reduce((max, g) => {
+                const t = g.updated_at ? new Date(g.updated_at).getTime() : 0;
+                return t > max ? t : max;
+              }, 0);
+              const latestCheckInAction = checkIns.reduce((max, ci) => {
+                const t = ci.completed_at ? new Date(ci.completed_at).getTime() : 0;
+                return t > max ? t : max;
+              }, 0);
+              const latestCoachingEntry = coachingLog.reduce((max, c) => {
+                const t = c.created_at ? new Date(c.created_at).getTime() : 0;
+                return t > max ? t : max;
+              }, 0);
+              const latestCoachingAction = Math.max(latestGoalUpdate, latestCheckInAction, latestCoachingEntry);
+              if (latestCoachingAction > escalatedAt.getTime()) return null;
+              return (
+                <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/20 px-4 py-3 flex items-start gap-2" data-testid="banner-manager-action-required">
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-400">Action Required</p>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      This employee was escalated {daysSinceEscalation} days ago for overdue goals with no progress.
+                      No coaching action (check-in, goal update, or milestone) has been recorded since. Please take action.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Phase Timeline */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <ChevronRight className="h-4 w-4" /> Plan Timeline
+              </h3>
+              <div className="flex gap-2" data-testid="section-phase-timeline">
+                {phases.map((phase, idx) => {
+                  const isCurrentPhase = idx === currentPhaseIdx;
+                  const isPastPhase = phase.endDate < today;
+                  const isFuturePhase = phase.startDate > today;
+                  return (
+                    <div
+                      key={idx}
+                      data-testid={`phase-${idx}`}
+                      className={`flex-1 rounded-md px-3 py-2 border text-center transition-colors ${
+                        isCurrentPhase
+                          ? "border-primary bg-primary/10 text-primary font-semibold"
+                          : isPastPhase
+                          ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700"
+                          : "border-muted bg-muted/30 text-muted-foreground"
+                      }`}
+                    >
+                      <div className="text-xs font-medium">{phase.label}</div>
+                      <div className="text-[10px] mt-0.5">
+                        {isPastPhase ? "✓ Done" : isCurrentPhase ? "In progress" : isFuturePhase ? "Upcoming" : ""}
+                      </div>
+                      <div className="text-[10px] mt-0.5 opacity-70">
+                        {goalsByPhase[idx]?.length ?? 0} goal{(goalsByPhase[idx]?.length ?? 0) !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Goals grouped by phase */}
             {goals.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <Target className="h-4 w-4" /> Goals ({goals.length})
                 </h3>
-                <div className="space-y-2">
-                  {goals.map(g => (
-                    <div key={g.id} className="border rounded-lg p-3 space-y-2" data-testid={`plan-goal-${g.id}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-medium">{g.title}</div>
-                          {g.description && <div className="text-xs text-muted-foreground mt-0.5">{g.description}</div>}
+                <div className="space-y-4">
+                  {phases.map((phase, idx) => {
+                    const phaseGoals = goalsByPhase[idx];
+                    if (phaseGoals.length === 0) return null;
+                    const isCurrentPhase = idx === currentPhaseIdx;
+                    return (
+                      <div key={idx} data-testid={`phase-goals-${idx}`}>
+                        <div className={`text-xs font-semibold mb-2 px-2 py-1 rounded-md inline-flex items-center gap-1.5 ${
+                          isCurrentPhase ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                        }`}>
+                          {isCurrentPhase && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
+                          {phase.label}
                         </div>
-                        <span className="text-xs font-semibold shrink-0">{g.progress}%</span>
+                        <div className="space-y-2">
+                          {phaseGoals.map(g => {
+                            const isOverdue = g.target_date && g.target_date < today && !["completed", "cancelled"].includes(g.status);
+                            return (
+                              <div key={g.id} className={`border rounded-lg p-3 space-y-2 ${isOverdue ? "border-orange-300" : ""}`} data-testid={`plan-goal-${g.id}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium flex items-center gap-1.5">
+                                      {g.title}
+                                      {isOverdue && (
+                                        <Badge className="text-[10px] h-4 bg-orange-100 text-orange-700 border-orange-200">
+                                          Overdue
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {g.description && <div className="text-xs text-muted-foreground mt-0.5">{g.description}</div>}
+                                    {g.target_date && <div className="text-[10px] text-muted-foreground mt-0.5">Due {formatDate(g.target_date)}</div>}
+                                  </div>
+                                  <span className="text-xs font-semibold shrink-0">{g.progress}%</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5">
+                                  <div
+                                    className="bg-primary rounded-full h-1.5 transition-all"
+                                    style={{ width: `${g.progress}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-1.5">
-                        <div
-                          className="bg-primary rounded-full h-1.5 transition-all"
-                          style={{ width: `${g.progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

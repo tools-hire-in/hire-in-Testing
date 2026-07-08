@@ -887,6 +887,16 @@ export const performanceGoals = pgTable("performance_goals", {
   // sop_documents row selected at link time; lookups resolve by sopMasterId.
   linkedSopId: varchar("linked_sop_id").references((): any => sopDocuments.id, { onDelete: "set null" }),
   notes: text("notes"),
+  // Overdue-goal dedup columns (sweep engine uses these to avoid re-sending
+  // nudges/escalations every day). employeeNudgedAt = when the employee was last
+  // directly reminded; lastEscalatedAt = when the most recent manager/skip-level
+  // escalation email was sent. Both are NULLable — NULL means never triggered.
+  employeeNudgedAt: timestamp("employee_nudged_at"),
+  lastEscalatedAt: timestamp("last_escalated_at"),
+  skipEscalatedAt: timestamp("skip_escalated_at"),
+  // Set ONLY when the progress field changes (not on title/description/etc edits).
+  // Used by the hard gate to distinguish "touched goal" from "logged real progress".
+  lastProgressUpdatedAt: timestamp("last_progress_updated_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1003,6 +1013,10 @@ export const employeePlans = pgTable("employee_plans", {
   // 3-strike (repeated overdue check-ins) escalation has fired to HR/skip-level.
   managerBriefedAt: timestamp("manager_briefed_at"),
   strikeEscalatedAt: timestamp("strike_escalated_at"),
+  // Records when the overdue-goal sweep last escalated to the plan manager
+  // so that the "Action required" accountability banner can be surfaced on
+  // the manager's Team Goals view when no coaching action has been taken.
+  managerGoalEscalatedAt: timestamp("manager_goal_escalated_at"),
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
