@@ -16,11 +16,13 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
+import { SalaryStructuresSection, StateRegistrationsSection, CoverageSection } from "./settings/PayrollSettings";
 
 interface LeaveType {
   id: string;
@@ -53,7 +55,7 @@ interface Department {
 export function TrainingSettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
 
   const { data: flagData, isLoading } = useQuery<{ value: any }>({
     queryKey: ["/api/system-settings/onboarding_training_enabled"],
@@ -140,7 +142,7 @@ interface SalaryAdvancePolicyShape {
 function SalaryAdvancePolicySection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<SalaryAdvancePolicyShape | null>(null);
 
@@ -272,7 +274,7 @@ function SalaryAdvancePolicySection() {
 function RegularizationPolicySection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
   const [editing, setEditing] = useState(false);
   const [windowDays, setWindowDays] = useState("7");
   const [cutoffDay, setCutoffDay] = useState("20");
@@ -388,7 +390,7 @@ function RegularizationPolicySection() {
 export function PerformanceSettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
 
   const { data: flagData, isLoading } = useQuery<{ value: boolean | null }>({
     queryKey: ["/api/system-settings/performance_management_enabled"],
@@ -463,7 +465,7 @@ export function PerformanceSettingsSection() {
 export function RayoAcademySettingsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
   const [urlValue, setUrlValue] = useState("");
   const [editing, setEditing] = useState(false);
 
@@ -2470,7 +2472,7 @@ export function GoalTemplatesSection() {
 function ShiftsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
 
@@ -2810,7 +2812,7 @@ export function AccessControlSection() {
 function AttendanceExceptionThresholdsSection() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const isHrOrAbove = ["super_admin", "admin", "hr", "executive"].includes(user?.role || "");
 
   const { data: settings, isLoading } = useQuery<{
     standardShiftHours: number;
@@ -2966,7 +2968,8 @@ function AttendanceExceptionThresholdsSection() {
 
 export type SettingsGroupKey =
   | "leave-attendance"
-  | "organization";
+  | "organization"
+  | "payroll";
 
 interface SettingsGroupItem {
   id: string;
@@ -2999,6 +3002,15 @@ export const SETTINGS_GROUPS: Record<
     items: [
       { id: "departments", label: "Departments" },
       { id: "company-profile", label: "Company Profile" },
+    ],
+  },
+  payroll: {
+    label: "Payroll",
+    description: "Salary structures, state registrations, and statutory coverage",
+    items: [
+      { id: "salary-structures", label: "Salary Structures", hrOnly: true },
+      { id: "state-registrations", label: "State Registrations", hrOnly: true },
+      { id: "coverage", label: "EPF & ESI Coverage", hrOnly: true },
     ],
   },
 };
@@ -3253,7 +3265,9 @@ export default function HRSettings({ group }: { group?: string }) {
     },
   });
 
-  const isHrOrAbove = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
+  const { can } = usePermissions();
+  // Use permission key instead of inline role array so the check stays consistent with route-level guards
+  const isHrOrAbove = can("payroll.structures.read");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -4146,6 +4160,18 @@ export default function HRSettings({ group }: { group?: string }) {
           </div>
               <CompanyProfileSection />
             </>
+          )}
+
+          {activeSection === "salary-structures" && (
+            <SalaryStructuresSection />
+          )}
+
+          {activeSection === "state-registrations" && (
+            <StateRegistrationsSection />
+          )}
+
+          {activeSection === "coverage" && (
+            <CoverageSection />
           )}
 
         </div>

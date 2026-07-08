@@ -1,6 +1,7 @@
 export type SettingsGroupKey =
   | "leave-attendance"
-  | "organization";
+  | "organization"
+  | "payroll";
 
 export const DEFAULT_SETTINGS_PATH = "/admin/settings/leave-attendance";
 
@@ -12,6 +13,9 @@ export const SETTINGS_TAB_TO_GROUP: Record<string, SettingsGroupKey> = {
   "salary-advance-policy": "leave-attendance",
   departments: "organization",
   "company-profile": "organization",
+  "salary-structures": "payroll",
+  "state-registrations": "payroll",
+  coverage: "payroll",
 };
 
 const LEGACY_SETTINGS_TAB_ALIASES: Record<string, string> = {

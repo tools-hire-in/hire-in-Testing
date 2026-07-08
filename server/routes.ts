@@ -6,10 +6,11 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
+import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings } from "@shared/schema";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
-import { eq, and, inArray, sql, desc, isNull, isNotNull, or } from "drizzle-orm";
+import { eq, and, inArray, sql, desc, isNull, isNotNull, or, asc } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
 import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY, getStudioAddOnPermissions } from "@shared/accessControl";
@@ -7967,7 +7968,7 @@ export async function registerRoutes(
       const actorUser = allUsers.find(u => u.id === actor);
       if (!actorUser) return res.status(404).json({ error: "User not found" });
 
-      // HR/admin/finance/super_admin get all executed runs
+      // HR/admin/finance/super_admin get all executed runs (no personal slip needed)
       if (["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "")) {
         const runs = await db.select({
           id: salaryReportRuns.id,
@@ -7983,6 +7984,7 @@ export async function registerRoutes(
       }
 
       // Employees + managers: only executed runs containing their email in reportData
+      // LEFT JOIN salary_slips to include stored computation_snapshot (avoids extra render call in the UI)
       const approvedRuns = await db.select({
         id: salaryReportRuns.id,
         year: salaryReportRuns.year,
@@ -7991,7 +7993,12 @@ export async function registerRoutes(
         approvedAt: salaryReportRuns.approvedAt,
         executedAt: salaryReportRuns.executedAt,
         reportData: salaryReportRuns.reportData,
+        computationSnapshot: salarySlips.computationSnapshot,
       }).from(salaryReportRuns)
+        .leftJoin(salarySlips, and(
+          eq(salarySlips.salaryRunId, salaryReportRuns.id),
+          eq(salarySlips.userId, actor),
+        ))
         .where(eq(salaryReportRuns.status, "executed"))
         .orderBy(desc(salaryReportRuns.executedAt));
 
@@ -8150,6 +8157,7 @@ export async function registerRoutes(
           computationSnapshot: computationSnapshot ?? undefined,
           jurisdiction: "IN",
         });
+        (slipData as any).computationSnapshot = computationSnapshot ?? null;
       } else {
         // Subsequent access: serve deterministically from the frozen stored snapshot.
         const storedSnap = existingLedger.computationSnapshot as Record<string, any> | null | undefined;
@@ -8164,6 +8172,7 @@ export async function registerRoutes(
           slipData.advanceRecovery = parseFloat(String(existingLedger.salaryAdvanceRecovery ?? 0));
           slipData.netPayable = parseFloat(String(existingLedger.netPayable ?? 0));
         }
+        (slipData as any).computationSnapshot = storedSnap ?? null;
       }
 
       res.json({ slip: slipData });
@@ -20698,6 +20707,369 @@ export async function registerRoutes(
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);
+
+  // ============================================================================
+  // Payroll Settings API
+  // Reads: super_admin, admin, hr, executive
+  // Writes: super_admin, admin, hr
+  // ============================================================================
+
+  const requirePayrollRead = requirePermission("payroll.structures.read", "super_admin", "admin", "hr", "executive");
+  const requirePayrollWrite = requirePermission("payroll.structures.write", "super_admin", "admin", "hr", "executive");
+
+  // GET /api/payroll/structures
+  app.get("/api/payroll/structures", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT s.id, s.name, s.description, s.pf_mode, s.is_active, s.effective_date,
+               COUNT(DISTINCT r.id)::int AS rule_count,
+               COUNT(DISTINCT u.id)::int AS employee_count
+        FROM salary_structures s
+        LEFT JOIN salary_structure_rules r ON r.structure_id = s.id
+        LEFT JOIN admin_users u ON u.salary_structure_id = s.id AND u.is_active = true
+        GROUP BY s.id
+        ORDER BY s.name ASC
+      `);
+      res.json(rows.rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        pfMode: r.pf_mode,
+        isActive: r.is_active,
+        effectiveDate: r.effective_date,
+        ruleCount: parseInt(r.rule_count ?? 0),
+        employeeCount: parseInt(r.employee_count ?? 0),
+      })));
+    } catch (error) {
+      console.error("GET /api/payroll/structures:", error);
+      res.status(500).json({ error: "Failed to fetch salary structures" });
+    }
+  });
+
+  // POST /api/payroll/structures
+  app.post("/api/payroll/structures", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { name, description, pfMode } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+      const [row] = await db.insert(salaryStructures).values({
+        name: name.trim(),
+        description: description?.trim() || null,
+        pfMode: pfMode || "restricted",
+        isActive: true,
+      }).returning();
+      res.json(row);
+    } catch (error: any) {
+      if (error?.code === "23505") return res.status(400).json({ error: "A structure with this name already exists" });
+      console.error("POST /api/payroll/structures:", error);
+      res.status(500).json({ error: "Failed to create salary structure" });
+    }
+  });
+
+  // PATCH /api/payroll/structures/:id
+  app.patch("/api/payroll/structures/:id", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, description, pfMode, isActive } = req.body;
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (name !== undefined) updates.name = name.trim();
+      if (description !== undefined) updates.description = description?.trim() || null;
+      if (pfMode !== undefined) updates.pfMode = pfMode;
+      if (isActive !== undefined) updates.isActive = isActive;
+      const [row] = await db.update(salaryStructures).set(updates).where(eq(salaryStructures.id, id)).returning();
+      if (!row) return res.status(404).json({ error: "Structure not found" });
+      res.json(row);
+    } catch (error) {
+      console.error("PATCH /api/payroll/structures/:id:", error);
+      res.status(500).json({ error: "Failed to update salary structure" });
+    }
+  });
+
+  // GET /api/payroll/structures/:id/rules
+  app.get("/api/payroll/structures/:id/rules", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const rows = await db.select().from(salaryStructureRules)
+        .where(eq(salaryStructureRules.structureId, id));
+      res.json(rows.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+    } catch (error) {
+      console.error("GET /api/payroll/structures/:id/rules:", error);
+      res.status(500).json({ error: "Failed to fetch rules" });
+    }
+  });
+
+  // PUT /api/payroll/structures/:id/rules — atomically replace all rules
+  app.put("/api/payroll/structures/:id/rules", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { rules } = req.body;
+      if (!Array.isArray(rules)) return res.status(400).json({ error: "rules must be an array" });
+
+      const residuals = rules.filter((r: any) => r.ruleType === "residual");
+      if (residuals.length === 0) return res.status(400).json({ error: "Exactly one residual component is required" });
+      if (residuals.length > 1) return res.status(400).json({ error: "Only one residual component is allowed" });
+
+      const pctSum = rules.filter((r: any) => r.ruleType === "percent_of_gross")
+        .reduce((s: number, r: any) => s + (Number(r.valuePct) || 0), 0);
+      if (pctSum > 10000) return res.status(400).json({ error: `Sum of percent-of-gross rules (${(pctSum / 100).toFixed(2)}%) exceeds 100%` });
+
+      for (const r of rules) {
+        if (!String(r.componentName || "").trim()) return res.status(400).json({ error: "All components must have a name" });
+        if (r.ruleType === "percent_of_component" && !r.referenceComponent) {
+          return res.status(400).json({ error: `"${r.componentName}" requires a reference component` });
+        }
+      }
+
+      // Server-side cycle detection for percent_of_component chains
+      const ruleDeps: Record<string, string | null> = {};
+      for (const r of rules) {
+        if (r.ruleType === "percent_of_component") {
+          ruleDeps[String(r.componentName)] = r.referenceComponent || null;
+        }
+      }
+      for (const start of Object.keys(ruleDeps)) {
+        const visited = new Set<string>();
+        let cur: string | null = start;
+        while (cur && cur in ruleDeps) {
+          if (visited.has(cur)) {
+            return res.status(400).json({ error: `Circular dependency detected: "${cur}" creates a reference loop. Restructure the percent-of-component chain.` });
+          }
+          visited.add(cur);
+          cur = ruleDeps[cur];
+        }
+      }
+
+      await db.delete(salaryStructureRules).where(eq(salaryStructureRules.structureId, id));
+      if (rules.length > 0) {
+        await db.insert(salaryStructureRules).values(
+          rules.map((r: any, i: number) => ({
+            structureId: id,
+            componentName: String(r.componentName).trim(),
+            ruleType: r.ruleType,
+            valuePct: r.valuePct != null ? Number(r.valuePct) : null,
+            valueFixed: r.valueFixed != null ? Number(r.valueFixed) : null,
+            referenceComponent: r.referenceComponent || null,
+            lopMode: r.lopMode || "proportional",
+            sortOrder: r.sortOrder ?? i,
+          }))
+        );
+      }
+
+      const updated = await db.select().from(salaryStructureRules).where(eq(salaryStructureRules.structureId, id));
+      res.json(updated.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+    } catch (error) {
+      console.error("PUT /api/payroll/structures/:id/rules:", error);
+      res.status(500).json({ error: "Failed to update rules" });
+    }
+  });
+
+  // GET /api/payroll/state-deductions
+  app.get("/api/payroll/state-deductions", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const states = await db.select().from(stateDeductions).where(eq(stateDeductions.jurisdiction, "IN"));
+      const counts = await db.execute(sql`
+        SELECT pt_state, COUNT(*)::int as cnt
+        FROM admin_users
+        WHERE is_active = true AND deleted_at IS NULL AND pt_state IS NOT NULL
+        GROUP BY pt_state
+      `);
+      const countMap = new Map<string, number>();
+      for (const row of counts.rows as any[]) {
+        if (row.pt_state) countMap.set(row.pt_state, parseInt(row.cnt ?? 0));
+      }
+      const result = states
+        .sort((a, b) => (a.state ?? "").localeCompare(b.state ?? ""))
+        .map(s => ({
+          ...s,
+          employeeCount: countMap.get(s.state ?? "") ?? 0,
+          monthlyExposurePaise: (countMap.get(s.state ?? "") ?? 0) * (s.amountPaise ?? 0),
+        }));
+      res.json(result);
+    } catch (error) {
+      console.error("GET /api/payroll/state-deductions:", error);
+      res.status(500).json({ error: "Failed to fetch state deductions" });
+    }
+  });
+
+  // PATCH /api/payroll/state-deductions/:id
+  app.patch("/api/payroll/state-deductions/:id", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { isRegistered, registrationNumber, auditReason } = req.body;
+      if (!auditReason?.trim()) return res.status(400).json({ error: "auditReason is required for all state registration changes" });
+      const actorId = (req.session as any)?.userId;
+      const actorRole = (req.session as any)?.role;
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (isRegistered !== undefined) updates.isRegistered = isRegistered;
+      if (registrationNumber !== undefined) updates.registrationNumber = registrationNumber || null;
+      const [row] = await db.update(stateDeductions).set(updates).where(eq(stateDeductions.id, id)).returning();
+      if (!row) return res.status(404).json({ error: "State deduction not found" });
+      try {
+        await db.execute(sql`
+          INSERT INTO audit_logs (id, user_id, action, target_id, details, created_at)
+          VALUES (gen_random_uuid(), ${actorId}, 'state_deduction_updated', ${id},
+                  ${JSON.stringify({ isRegistered, registrationNumber: registrationNumber || null, auditReason, actorRole })}::jsonb, NOW())
+        `);
+      } catch (_e) { /* non-critical — log and continue */ }
+      res.json(row);
+    } catch (error) {
+      console.error("PATCH /api/payroll/state-deductions/:id:", error);
+      res.status(500).json({ error: "Failed to update state deduction" });
+    }
+  });
+
+  // GET /api/payroll/coverage
+  app.get("/api/payroll/coverage", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const rows = await db.select().from(establishmentCoverage)
+        .where(eq(establishmentCoverage.jurisdiction, "IN"));
+      const hc = await db.execute(sql`
+        SELECT total_count FROM headcount_history
+        WHERE jurisdiction = 'IN'
+        ORDER BY recorded_at DESC LIMIT 1
+      `);
+      const currentHeadcount = Number((hc.rows[0] as any)?.total_count ?? 0);
+      res.json(rows.map(r => ({ ...r, headcount: currentHeadcount })));
+    } catch (error) {
+      console.error("GET /api/payroll/coverage:", error);
+      res.status(500).json({ error: "Failed to fetch coverage" });
+    }
+  });
+
+  // PATCH /api/payroll/coverage/:scheme
+  app.patch("/api/payroll/coverage/:scheme", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { scheme } = req.params;
+      const { status, applicableFrom } = req.body;
+      const [existing] = await db.select().from(establishmentCoverage)
+        .where(and(eq(establishmentCoverage.jurisdiction, "IN"), eq(establishmentCoverage.scheme, scheme)));
+      if (!existing) return res.status(404).json({ error: "Coverage record not found" });
+      if (existing.isLatched && existing.status === "mandatory" && status !== "mandatory") {
+        return res.status(409).json({ error: "This scheme is permanently latched as mandatory and cannot be changed. Coverage latching is irreversible." });
+      }
+      const shouldLatch = status === "mandatory" || existing.isLatched;
+      const [row] = await db.update(establishmentCoverage)
+        .set({ status, applicableFrom: applicableFrom || null, isLatched: shouldLatch, updatedAt: new Date() })
+        .where(and(eq(establishmentCoverage.jurisdiction, "IN"), eq(establishmentCoverage.scheme, scheme)))
+        .returning();
+      res.json(row);
+    } catch (error) {
+      console.error("PATCH /api/payroll/coverage/:scheme:", error);
+      res.status(500).json({ error: "Failed to update coverage" });
+    }
+  });
+
+  // GET /api/payroll/headcount
+  app.get("/api/payroll/headcount", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT total_count, period, recorded_at FROM headcount_history
+        WHERE jurisdiction = 'IN' ORDER BY recorded_at DESC LIMIT 24
+      `);
+      const current = Number((rows.rows[0] as any)?.total_count ?? 0);
+      res.json({ current, history: rows.rows });
+    } catch (error) {
+      console.error("GET /api/payroll/headcount:", error);
+      res.status(500).json({ error: "Failed to fetch headcount" });
+    }
+  });
+
+  // POST /api/payroll/headcount
+  app.post("/api/payroll/headcount", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { count, period } = req.body;
+      if (!count || !period) return res.status(400).json({ error: "count and period are required" });
+      const periodDate = String(period).endsWith("-01") ? period : `${period}-01`;
+      await db.execute(sql`
+        INSERT INTO headcount_history (id, jurisdiction, total_count, period, recorded_at, recorded_by)
+        VALUES (gen_random_uuid(), 'IN', ${Number(count)}, ${periodDate}::date, NOW(), ${(req.session as any)?.userId ?? null})
+        ON CONFLICT (period) DO UPDATE SET total_count = EXCLUDED.total_count, recorded_at = NOW(), recorded_by = EXCLUDED.recorded_by
+      `);
+      res.json({ success: true, period: periodDate, count: Number(count) });
+    } catch (error) {
+      console.error("POST /api/payroll/headcount:", error);
+      res.status(500).json({ error: "Failed to record headcount" });
+    }
+  });
+
+  // GET /api/payroll/employees/:id/flags
+  app.get("/api/payroll/employees/:id/flags", requireAuth, requirePermission("payroll.employee.flags", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const rows = await db.execute(sql`
+        SELECT salary_structure_id, pf_exempt, pt_state, esi_applicable, esi_disability, esi_daily_wage_exempt
+        FROM admin_users WHERE id = ${id} LIMIT 1
+      `);
+      if (!rows.rows.length) return res.status(404).json({ error: "Employee not found" });
+      const r = rows.rows[0] as any;
+      res.json({
+        salaryStructureId: r.salary_structure_id ?? null,
+        pfExempt: r.pf_exempt ?? false,
+        ptState: r.pt_state ?? null,
+        esiApplicable: r.esi_applicable ?? true,
+        esiDisability: r.esi_disability ?? false,
+        esiDailyWageExempt: r.esi_daily_wage_exempt ?? false,
+      });
+    } catch (error) {
+      console.error("GET /api/payroll/employees/:id/flags:", error);
+      res.status(500).json({ error: "Failed to fetch payroll flags" });
+    }
+  });
+
+  // PATCH /api/payroll/employees/:id/payroll-flags
+  app.patch("/api/payroll/employees/:id/payroll-flags", requireAuth, requirePermission("payroll.employee.flags", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { salaryStructureId, pfExempt, esiApplicable, esiDisability, esiDailyWageExempt, ptState, note } = req.body;
+      if (!note?.trim()) return res.status(400).json({ error: "Reason is required" });
+
+      // Build individual parameterized updates
+      if (salaryStructureId !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET salary_structure_id = ${salaryStructureId || null} WHERE id = ${id}`);
+      }
+      if (pfExempt !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET pf_exempt = ${pfExempt} WHERE id = ${id}`);
+      }
+      if (esiApplicable !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_applicable = ${esiApplicable} WHERE id = ${id}`);
+      }
+      if (esiDisability !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_disability = ${esiDisability} WHERE id = ${id}`);
+      }
+      if (esiDailyWageExempt !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_daily_wage_exempt = ${esiDailyWageExempt} WHERE id = ${id}`);
+      }
+      if (ptState !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET pt_state = ${ptState || null} WHERE id = ${id}`);
+      }
+      await db.execute(sql`UPDATE admin_users SET updated_at = NOW() WHERE id = ${id}`);
+
+      // If structure assigned, record history
+      if (salaryStructureId !== undefined) {
+        try {
+          await db.insert(salaryStructureHistory).values({
+            userId: id,
+            structureId: salaryStructureId || null,
+            effectiveFrom: new Date().toISOString().slice(0, 10),
+            assignedBy: (req.session as any)?.userId,
+          });
+        } catch (_e) { /* non-critical */ }
+      }
+
+      // Audit log
+      try {
+        await db.execute(sql`
+          INSERT INTO audit_logs (id, user_id, action, target_id, details, created_at)
+          VALUES (gen_random_uuid(), ${(req.session as any)?.userId}, 'payroll_flags_updated', ${id},
+                  ${JSON.stringify({ note, fields: Object.keys(req.body).filter(k => k !== "note") })}::jsonb, NOW())
+        `);
+      } catch (_e) { /* non-critical */ }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("PATCH /api/payroll/employees/:id/payroll-flags:", error);
+      res.status(500).json({ error: "Failed to update payroll flags" });
+    }
+  });
 
   return httpServer;
 }

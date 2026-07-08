@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -678,6 +678,15 @@ function ReportRecipientsCard() {
 }
 
 // Inline edit panel for a single row
+/**
+ * RowEditPanel — override model:
+ *  - All auto-computed fields start LOCKED (read-only, showing the payroll-derived value).
+ *  - Each field has an explicit "Override" toggle to unlock it for editing.
+ *  - Deductions unlock automatically when any attendance field is overridden (re-derives),
+ *    or can be manually unlocked.
+ *  - Save is only enabled when ≥1 field is overridden AND an audit reason is provided.
+ *  - The reason field is always shown but Save is disabled until it is filled.
+ */
 function RowEditPanel({
   row,
   onSave,
@@ -689,14 +698,19 @@ function RowEditPanel({
   onCancel: () => void;
   saving: boolean;
 }) {
+  // ---- locked / override state per field ----
+  const [presentDaysLocked, setPresentDaysLocked] = useState(true);
+  const [lopLeavesLocked, setLopLeavesLocked] = useState(true);
+  const [paidLeavesLocked, setPaidLeavesLocked] = useState(true);
+  const [grossSalaryLocked, setGrossSalaryLocked] = useState(true);
+  const [deductionsLocked, setDeductionsLocked] = useState(true); // false = manually unlocked
+
+  // ---- override values (only meaningful when field is unlocked) ----
   const [presentDays, setPresentDays] = useState(String(row.presentDays));
   const [lopLeaves, setLopLeaves] = useState(String(row.lopLeaves));
   const [paidLeaves, setPaidLeaves] = useState(String(row.paidLeaves));
   const [grossSalary, setGrossSalary] = useState(String(row.grossSalary));
-  // deductionsAuto=true means deductions are derived from attendance formula (default)
-  // deductionsAuto=false means user has manually overridden the deductions field
   const [deductions, setDeductions] = useState(String(row.deductions));
-  const [deductionsAuto, setDeductionsAuto] = useState(true);
   const [comment, setComment] = useState("");
 
   const fmt = (v: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
@@ -704,124 +718,218 @@ function RowEditPanel({
   const wDays = row.workingDays || 1;
   const regionalHolidayDays = (row as any).regionalHolidayDays ?? 0;
 
-  const parsedPresent = parseFloat(presentDays) || 0;
-  const parsedPaid = parseFloat(paidLeaves) || 0;
-  const gross = parseFloat(grossSalary) || 0;
+  // Use original values for locked fields, overridden values for unlocked
+  const effPresent = presentDaysLocked ? row.presentDays : (parseFloat(presentDays) || 0);
+  const effLop = lopLeavesLocked ? (row.lopLeaves ?? 0) : (parseFloat(lopLeaves) || 0);
+  const effPaid = paidLeavesLocked ? row.paidLeaves : (parseFloat(paidLeaves) || 0);
+  const effGross = grossSalaryLocked ? row.grossSalary : (parseFloat(grossSalary) || 0);
 
-  // Mirror server-side formula exactly: effectivePresentDays + paidLeaves + regionalHolidayDays
-  const effectivePresentDays = parsedPresent + parsedPaid + regionalHolidayDays;
+  // Deductions: re-derive from attendance (auto) when deductions are locked
+  const effectivePresentDays = effPresent + effPaid + regionalHolidayDays;
   const derivedAbsentDays = Math.max(0, wDays - effectivePresentDays);
-  const derivedDeductions = Math.round(derivedAbsentDays * (gross / wDays) * 100) / 100;
+  const derivedDeductions = Math.round(derivedAbsentDays * (effGross / wDays) * 100) / 100;
   const derivedAttendancePct = wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0;
 
-  // When attendance fields or gross change, auto-refresh deductions display
+  // Keep deductions input synced to auto-derived value when locked
   useEffect(() => {
-    if (deductionsAuto) {
+    if (deductionsLocked) {
       setDeductions(String(derivedDeductions));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presentDays, paidLeaves, grossSalary, deductionsAuto]);
+  }, [deductionsLocked, effPresent, effPaid, effGross]);
 
-  const handleAttendanceChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setter(e.target.value);
-    setDeductionsAuto(true); // attendance edit → go back to auto-derived deductions
-  };
-
-  const handleDeductionsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDeductions(e.target.value);
-    setDeductionsAuto(false); // user typing in deductions field → manual override
-  };
-
-  const effectiveDeductions = deductionsAuto ? derivedDeductions : (parseFloat(deductions) || 0);
+  const effDeductions = deductionsLocked ? derivedDeductions : (parseFloat(deductions) || 0);
   const liveAdvanceRecovery = Number(row.advanceRecovery) || 0;
-  const liveNet = Math.max(0, Math.round((gross - effectiveDeductions - liveAdvanceRecovery) * 100) / 100);
-  const liveAbsentDays = deductionsAuto ? derivedAbsentDays : Math.max(0, wDays - effectivePresentDays);
-  const liveAttendancePct = deductionsAuto ? derivedAttendancePct : (wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0);
+  const liveNet = Math.max(0, Math.round((effGross - effDeductions - liveAdvanceRecovery) * 100) / 100);
+  const liveAbsentDays = deductionsLocked ? derivedAbsentDays : Math.max(0, wDays - effectivePresentDays);
+  const liveAttendancePct = deductionsLocked ? derivedAttendancePct : (wDays > 0 ? Math.round((effectivePresentDays / wDays) * 100) : 0);
+
+  // Any field overridden?
+  const hasAnyOverride = !presentDaysLocked || !lopLeavesLocked || !paidLeavesLocked || !grossSalaryLocked || !deductionsLocked;
 
   const handleSave = () => {
-    if (!comment.trim()) return;
+    if (!comment.trim() || !hasAnyOverride) return;
     const fields: Record<string, number> = {};
-    if (parseFloat(presentDays) !== row.presentDays) fields.presentDays = parseFloat(presentDays) || 0;
-    if (parseFloat(lopLeaves) !== row.lopLeaves) fields.lopLeaves = parseFloat(lopLeaves) || 0;
-    if (parseFloat(paidLeaves) !== row.paidLeaves) fields.paidLeaves = parseFloat(paidLeaves) || 0;
-    if (gross !== row.grossSalary) fields.grossSalary = gross;
-    if (effectiveDeductions !== row.deductions) fields.deductions = effectiveDeductions;
-    if (liveNet !== row.netPayable) fields.netPayable = liveNet;
+    if (!presentDaysLocked && effPresent !== row.presentDays) fields.presentDays = effPresent;
+    if (!lopLeavesLocked && effLop !== (row.lopLeaves ?? 0)) fields.lopLeaves = effLop;
+    if (!paidLeavesLocked && effPaid !== row.paidLeaves) fields.paidLeaves = effPaid;
+    if (!grossSalaryLocked && effGross !== row.grossSalary) fields.grossSalary = effGross;
+    if (Math.abs(effDeductions - row.deductions) > 0.01) fields.deductions = effDeductions;
+    if (Math.abs(liveNet - row.netPayable) > 0.01) fields.netPayable = liveNet;
     if (liveAbsentDays !== row.absentDays) fields.absentDays = liveAbsentDays;
     if (liveAttendancePct !== row.attendancePercentage) fields.attendancePercentage = liveAttendancePct;
     onSave(fields, comment.trim());
   };
 
+  /** Renders one overridable field row */
+  function OverrideField({
+    label,
+    hint,
+    locked,
+    onUnlock,
+    displayValue,
+    children,
+    testId,
+  }: {
+    label: string;
+    hint: string;
+    locked: boolean;
+    onUnlock: () => void;
+    displayValue: string;
+    children: ReactNode;
+    testId: string;
+  }) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-1">
+          <Label className="text-xs flex items-center gap-1">
+            {label}
+            {locked
+              ? <span className="text-[10px] font-normal text-blue-500">(auto — {hint})</span>
+              : <span className="text-[10px] font-normal text-orange-500">(overridden)</span>}
+          </Label>
+          {locked && (
+            <button
+              type="button"
+              onClick={onUnlock}
+              className="text-[10px] text-muted-foreground hover:text-orange-600 underline shrink-0"
+              data-testid={`${testId}-override-btn`}
+            >
+              Override
+            </button>
+          )}
+        </div>
+        {locked ? (
+          <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40 text-sm text-muted-foreground select-none" data-testid={`${testId}-locked`}>
+            {displayValue}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 space-y-4">
       <div className="font-medium text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
         <Pencil className="h-4 w-4" />
-        Editing: {row.employeeName}
+        Override Slip — {row.employeeName}
       </div>
+      <div className="flex items-start gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-700 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+        <ArrowRight className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        All fields are <strong>locked to auto-computed values</strong> by default. Click <strong>Override</strong> next to any field to unlock it for editing. An audit reason is required before saving any override.
+      </div>
+
+      {!hasAnyOverride && (
+        <div className="flex items-center gap-2 rounded-md border border-muted bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          No fields overridden yet — unlock at least one field above to enable Save.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div>
-          <Label className="text-xs">Present Days</Label>
-          <Input type="number" min={0} value={presentDays} onChange={handleAttendanceChange(setPresentDays)} className="mt-1 h-8 text-sm" data-testid="input-edit-present-days" />
-        </div>
-        <div>
-          <Label className="text-xs">LOP Leaves</Label>
-          <Input type="number" min={0} step={0.5} value={lopLeaves} onChange={handleAttendanceChange(setLopLeaves)} className="mt-1 h-8 text-sm" data-testid="input-edit-lop-leaves" />
-        </div>
-        <div>
-          <Label className="text-xs">Paid Leaves</Label>
-          <Input type="number" min={0} step={0.5} value={paidLeaves} onChange={handleAttendanceChange(setPaidLeaves)} className="mt-1 h-8 text-sm" data-testid="input-edit-paid-leaves" />
-        </div>
-        <div>
-          <Label className="text-xs">Gross Salary (₹)</Label>
-          <Input type="number" min={0} value={grossSalary} onChange={handleAttendanceChange(setGrossSalary)} className="mt-1 h-8 text-sm" data-testid="input-edit-gross-salary" />
-        </div>
-        <div>
-          <Label className="text-xs flex items-center gap-1">
-            Deductions (₹)
-            {deductionsAuto && <span className="text-[10px] font-normal text-blue-500">(auto)</span>}
-          </Label>
-          <Input
-            type="number"
-            min={0}
-            value={deductionsAuto ? String(derivedDeductions) : deductions}
-            onChange={handleDeductionsChange}
-            className="mt-1 h-8 text-sm"
-            data-testid="input-edit-deductions"
-          />
-        </div>
-        <div>
+        <OverrideField
+          label="Present Days" hint="attendance records"
+          locked={presentDaysLocked} onUnlock={() => setPresentDaysLocked(false)}
+          displayValue={String(row.presentDays)} testId="edit-present-days"
+        >
+          <Input type="number" min={0} value={presentDays} onChange={e => setPresentDays(e.target.value)} className="mt-0 h-8 text-sm" data-testid="input-edit-present-days" />
+        </OverrideField>
+
+        <OverrideField
+          label="LOP Leaves" hint="absence records"
+          locked={lopLeavesLocked} onUnlock={() => setLopLeavesLocked(false)}
+          displayValue={String(row.lopLeaves ?? 0)} testId="edit-lop-leaves"
+        >
+          <Input type="number" min={0} step={0.5} value={lopLeaves} onChange={e => setLopLeaves(e.target.value)} className="mt-0 h-8 text-sm" data-testid="input-edit-lop-leaves" />
+        </OverrideField>
+
+        <OverrideField
+          label="Paid Leaves" hint="approved leave requests"
+          locked={paidLeavesLocked} onUnlock={() => setPaidLeavesLocked(false)}
+          displayValue={String(row.paidLeaves)} testId="edit-paid-leaves"
+        >
+          <Input type="number" min={0} step={0.5} value={paidLeaves} onChange={e => setPaidLeaves(e.target.value)} className="mt-0 h-8 text-sm" data-testid="input-edit-paid-leaves" />
+        </OverrideField>
+
+        <OverrideField
+          label="Gross Salary (₹)" hint="payroll structure rules"
+          locked={grossSalaryLocked} onUnlock={() => setGrossSalaryLocked(false)}
+          displayValue={fmt(row.grossSalary)} testId="edit-gross-salary"
+        >
+          <Input type="number" min={0} value={grossSalary} onChange={e => setGrossSalary(e.target.value)} className="mt-0 h-8 text-sm" data-testid="input-edit-gross-salary" />
+        </OverrideField>
+
+        <OverrideField
+          label="Deductions (₹)" hint={`${liveAbsentDays} absent day${liveAbsentDays !== 1 ? "s" : ""} × daily rate`}
+          locked={deductionsLocked} onUnlock={() => setDeductionsLocked(false)}
+          displayValue={fmt(derivedDeductions)} testId="edit-deductions"
+        >
+          <Input type="number" min={0} value={deductions} onChange={e => setDeductions(e.target.value)} className="mt-0 h-8 text-sm" data-testid="input-edit-deductions" />
+        </OverrideField>
+
+        <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Advance Recovery (₹)</Label>
-          <div className="mt-1 h-8 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-medium text-purple-600 dark:text-purple-400" data-testid="text-live-advance-recovery">
+          <div className="h-8 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-medium text-purple-600 dark:text-purple-400" data-testid="text-live-advance-recovery">
             {fmt(liveAdvanceRecovery)}
           </div>
         </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Net Payable (auto)</Label>
-          <div className="mt-1 h-8 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-medium text-blue-700 dark:text-blue-400" data-testid="text-live-net-payable">
+
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Net Payable (derived)</Label>
+          <div className="h-8 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-medium text-blue-700 dark:text-blue-400" data-testid="text-live-net-payable">
             {fmt(liveNet)}
           </div>
         </div>
       </div>
-      {deductionsAuto && (parseFloat(presentDays) !== row.presentDays || parseFloat(paidLeaves) !== row.paidLeaves) && (
-        <p className="text-[11px] text-blue-600 dark:text-blue-400">
-          Deductions &amp; net pay auto-recalculated from attendance ({liveAbsentDays} absent day{liveAbsentDays !== 1 ? "s" : ""}, {liveAttendancePct}% attendance).
-        </p>
-      )}
+
+      {/* What-will-change diff panel */}
+      {hasAnyOverride && (() => {
+        const changed: Array<{ label: string; from: string; to: string }> = [];
+        if (!presentDaysLocked && effPresent !== row.presentDays) changed.push({ label: "Present Days", from: String(row.presentDays), to: String(effPresent) });
+        if (!lopLeavesLocked && effLop !== (row.lopLeaves ?? 0)) changed.push({ label: "LOP Leaves", from: String(row.lopLeaves ?? 0), to: String(effLop) });
+        if (!paidLeavesLocked && effPaid !== row.paidLeaves) changed.push({ label: "Paid Leaves", from: String(row.paidLeaves), to: String(effPaid) });
+        if (!grossSalaryLocked && effGross !== row.grossSalary) changed.push({ label: "Gross Salary", from: fmt(row.grossSalary), to: fmt(effGross) });
+        if (Math.abs(effDeductions - row.deductions) > 0.01) changed.push({ label: "Deductions", from: fmt(row.deductions), to: fmt(effDeductions) });
+        if (Math.abs(liveNet - row.netPayable) > 0.01) changed.push({ label: "Net Payable", from: fmt(row.netPayable), to: fmt(liveNet) });
+        if (changed.length === 0) return null;
+        return (
+          <div className="rounded-md border border-orange-200 dark:border-orange-800 bg-orange-50/60 dark:bg-orange-950/20 text-xs overflow-hidden">
+            <div className="px-3 py-1.5 font-semibold text-orange-800 dark:text-orange-300 border-b border-orange-200 dark:border-orange-800 flex items-center gap-1.5">
+              <Pencil className="h-3 w-3" /> What will change ({changed.length} field{changed.length !== 1 ? "s" : ""})
+            </div>
+            <table className="w-full">
+              <tbody>
+                {changed.map((c, i) => (
+                  <tr key={i} className="border-t border-orange-100 dark:border-orange-900 first:border-0">
+                    <td className="px-3 py-1 text-muted-foreground w-28">{c.label}</td>
+                    <td className="px-3 py-1 line-through text-muted-foreground">{c.from}</td>
+                    <td className="px-3 py-1 font-semibold text-orange-700 dark:text-orange-300">{c.to}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       <div>
-        <Label className="text-xs">Reason for Adjustment <span className="text-destructive">*</span></Label>
+        <Label className="text-xs">Audit Reason for Override <span className="text-destructive">*</span></Label>
         <Textarea
-          placeholder="Required: explain the reason for this adjustment..."
+          placeholder="Required: explain why this auto-computed value is being overridden..."
           value={comment}
           onChange={e => setComment(e.target.value)}
           className="mt-1 text-sm min-h-[60px]"
+          disabled={!hasAnyOverride}
           data-testid="input-edit-comment"
         />
+        {!hasAnyOverride && <p className="text-[11px] text-muted-foreground mt-1">Unlock at least one field above to enable the reason field.</p>}
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onCancel} data-testid="button-edit-cancel">Cancel</Button>
-        <Button size="sm" onClick={handleSave} disabled={saving || !comment.trim()} data-testid="button-edit-save">
+        <Button size="sm" onClick={handleSave} disabled={saving || !comment.trim() || !hasAnyOverride} data-testid="button-edit-save">
           {saving ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
-          Save Adjustment
+          Save Override
         </Button>
       </div>
     </div>
@@ -1191,6 +1299,26 @@ function ApprovalTable({
   const [advanceEmail, setAdvanceEmail] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
 
+  // Prior month run for diff display in the approval dialog
+  const priorYear = run.month === 1 ? run.year - 1 : run.year;
+  const priorMonth = run.month === 1 ? 12 : run.month - 1;
+  const { data: priorRunDetail } = useQuery<SalaryRun | null>({
+    queryKey: ["/api/hr/reports/salary/runs/prior", priorYear, priorMonth],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/reports/salary/runs?year=${priorYear}&month=${priorMonth}`, { credentials: "include" });
+      if (!res.ok) return null;
+      const all: SalaryRun[] = await res.json();
+      const approved = all.filter(r => ["approved", "sent", "executed"].includes(r.status) && r.year === priorYear && r.month === priorMonth);
+      if (!approved.length) return null;
+      const pick = approved[0];
+      const detail = await fetch(`/api/hr/reports/salary/runs/${pick.id}`, { credentials: "include" });
+      if (!detail.ok) return null;
+      return detail.json();
+    },
+    enabled: confirmApprove,
+    staleTime: 120_000,
+  });
+
   const { data: allUsers } = useQuery<any[]>({
     queryKey: ["/api/hr/admin/users"],
     enabled: canManageAdvances,
@@ -1534,6 +1662,53 @@ function ApprovalTable({
                 <p className="text-orange-700 dark:text-orange-300"><strong>{adjustedCount} row(s)</strong> have been manually adjusted. These will appear highlighted in the email and flagged in the CSV.</p>
               </div>
             )}
+            {/* Prior-month diff */}
+            {(() => {
+              const priorRows = priorRunDetail?.reportData;
+              if (!priorRows?.length || !rows.length) return null;
+              const curPayable = rows.reduce((s, r) => s + Number(r.netPayable), 0);
+              const prevPayable = priorRows.reduce((s, r) => s + Number(r.netPayable), 0);
+              const curDed = rows.reduce((s, r) => s + Number(r.deductions), 0);
+              const prevDed = priorRows.reduce((s, r) => s + Number(r.deductions), 0);
+              const payableDiff = curPayable - prevPayable;
+              const fmtDiff = (v: number) => `${v >= 0 ? "+" : "−"} ₹${Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+              const headcountDiff = rows.length - priorRows.length;
+              return (
+                <div className="rounded-lg border overflow-hidden text-xs">
+                  <div className="bg-muted/50 px-3 py-1.5 font-semibold text-foreground flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" /> vs {monthName(priorMonth)} {priorYear}
+                  </div>
+                  <table className="w-full">
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="py-1.5 px-3 text-muted-foreground">Headcount</td>
+                        <td className="py-1.5 px-3 text-right font-mono text-muted-foreground">{priorRows.length}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{rows.length}</td>
+                        <td className={`py-1.5 px-3 text-right font-medium ${headcountDiff !== 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                          {headcountDiff !== 0 ? `${headcountDiff > 0 ? "+" : ""}${headcountDiff}` : "—"}
+                        </td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="py-1.5 px-3 text-muted-foreground">Net Payable</td>
+                        <td className="py-1.5 px-3 text-right font-mono text-muted-foreground">₹{prevPayable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">₹{curPayable.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
+                        <td className={`py-1.5 px-3 text-right font-medium ${Math.abs(payableDiff) > 10000 ? (payableDiff > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-muted-foreground"}`}>
+                          {Math.abs(payableDiff) > 0 ? fmtDiff(payableDiff) : "—"}
+                        </td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="py-1.5 px-3 text-muted-foreground">Deductions</td>
+                        <td className="py-1.5 px-3 text-right font-mono text-muted-foreground">₹{prevDed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">₹{curDed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
+                        <td className={`py-1.5 px-3 text-right font-medium ${Math.abs(curDed - prevDed) > 5000 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                          {Math.abs(curDed - prevDed) > 0 ? fmtDiff(curDed - prevDed) : "—"}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
             <RecipientsPreviewInline />
             <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
               <Receipt className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
@@ -1978,6 +2153,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
   const [attDiscardDialogOpen, setAttDiscardDialogOpen] = useState(false);
   const [attDiscardReason, setAttDiscardReason] = useState("");
   const [attSendDialogOpen, setAttSendDialogOpen] = useState(false);
+  const [generateConfirmOpen, setGenerateConfirmOpen] = useState(false);
 
   const { can } = usePermissions();
   const canGenerateSalaryRun = can("hr.reports.salary.generate");
@@ -2179,6 +2355,25 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
   const { refetch: fetchPreview, isLoading: previewLoading, isFetching: previewFetching } = useQuery<SalaryReportResult>({
     queryKey: ["/api/hr/reports/salary/preview", { year: selectedYear, month: selectedMonth }],
     enabled: false,
+  });
+
+  // Prior month run — loaded lazily when the generate confirmation dialog opens
+  const genPriorYear = parseInt(selectedMonth) === 1 ? parseInt(selectedYear) - 1 : parseInt(selectedYear);
+  const genPriorMonth = parseInt(selectedMonth) === 1 ? 12 : parseInt(selectedMonth) - 1;
+  const { data: genPriorRun } = useQuery<SalaryRun | null>({
+    queryKey: ["/api/hr/reports/salary/runs/prior-for-gen", genPriorYear, genPriorMonth],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/reports/salary/runs`, { credentials: "include" });
+      if (!res.ok) return null;
+      const all: SalaryRun[] = await res.json();
+      const approved = all.filter(r => ["approved", "sent", "executed"].includes(r.status) && r.year === genPriorYear && r.month === genPriorMonth);
+      if (!approved.length) return null;
+      const detail = await fetch(`/api/hr/reports/salary/runs/${approved[0].id}`, { credentials: "include" });
+      if (!detail.ok) return null;
+      return detail.json();
+    },
+    enabled: generateConfirmOpen,
+    staleTime: 120_000,
   });
 
   const handlePreview = async () => {
@@ -2921,10 +3116,9 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
             {isAdminLevel && (
               <Button
                 variant="default"
-                onClick={() => generateRunMutation.mutate()}
+                onClick={() => setGenerateConfirmOpen(true)}
                 disabled={
                   generateRunMutation.isPending ||
-                  // canOverride users can always click — 409 dialogs will guide them through gates
                   (!canRegenerate && (!attStatus?.approved || !salaryCanGenerate))
                 }
                 title={
@@ -2936,7 +3130,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
                     ? `${salaryPendingReg} regularization request${salaryPendingReg === 1 ? "" : "s"} still pending — resolve them before generating the salary run`
                     : salaryPendingReg > 0
                     ? `${salaryPendingReg} pending regularization${salaryPendingReg === 1 ? "" : "s"} — click to review override options`
-                    : "Generate salary run for this month"
+                    : "Preview the report first, then generate the salary run"
                 }
                 data-testid="button-generate-run"
               >
@@ -3081,6 +3275,122 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
           </CardContent>
         </Card>
       )}
+
+      {/* Generate Salary Run — pre-confirm dialog with per-employee diff vs prior month */}
+      <Dialog open={generateConfirmOpen} onOpenChange={setGenerateConfirmOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-generate-confirm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-blue-600" />
+              Confirm — Generate {mLabel} {selectedYear} Salary Run
+            </DialogTitle>
+            <DialogDescription>
+              Review the expected figures before committing. After generation, you can correct individual rows before sending for approval.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {!previewData ? (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 p-4">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Preview not yet loaded</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Click "Preview Report" first to review each employee's auto-computed figures before generating the run.</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Aggregate summary */}
+                <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-muted-foreground text-xs">Employees</p>
+                    <p className="text-2xl font-bold font-mono">{previewData.summary.totalEmployees}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-muted-foreground text-xs">Net Payable</p>
+                    <p className="text-2xl font-bold font-mono text-green-700 dark:text-green-400">{formatCurrency(previewData.summary.totalPayable)}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-muted-foreground text-xs">Deductions</p>
+                    <p className="text-2xl font-bold font-mono text-red-600 dark:text-red-400">{formatCurrency(previewData.summary.totalDeductions)}</p>
+                  </div>
+                </div>
+
+                {/* Per-employee diff vs prior month */}
+                {genPriorRun?.reportData?.length ? (() => {
+                  const priorByEmail = new Map((genPriorRun!.reportData!).map(r => [r.email, r]));
+                  const curPayable = previewData.rows.reduce((s, r) => s + r.netPayable, 0);
+                  const prevPayable = (genPriorRun!.reportData!).reduce((s, r) => s + r.netPayable, 0);
+                  const payDiff = curPayable - prevPayable;
+                  const fmtDiff = (v: number) => `${v >= 0 ? "+" : "−"}${formatCurrency(Math.abs(v))}`;
+                  return (
+                    <div className="rounded-lg border overflow-hidden text-xs">
+                      <div className="bg-muted/50 px-3 py-2 flex items-center gap-2 font-semibold text-foreground">
+                        <History className="h-3.5 w-3.5" /> vs {monthName(genPriorMonth)} {genPriorYear}
+                        <span className={`ml-auto font-mono ${Math.abs(payDiff) > 10000 ? (payDiff > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-muted-foreground"}`}>
+                          {Math.abs(payDiff) > 0 ? `Total net ${fmtDiff(payDiff)}` : "No change in total"}
+                        </span>
+                      </div>
+                      <div className="max-h-52 overflow-y-auto">
+                        <table className="w-full">
+                          <thead className="sticky top-0 bg-background border-b">
+                            <tr>
+                              <th className="text-left py-1.5 px-3 font-medium text-muted-foreground">Employee</th>
+                              <th className="text-right py-1.5 px-3 font-medium text-muted-foreground">Prior Net</th>
+                              <th className="text-right py-1.5 px-3 font-medium text-muted-foreground">This Month</th>
+                              <th className="text-right py-1.5 px-3 font-medium text-muted-foreground">Δ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {previewData.rows.map((r, i) => {
+                              const prior = priorByEmail.get(r.email);
+                              const diff = prior ? r.netPayable - prior.netPayable : null;
+                              return (
+                                <tr key={i} className={`border-t ${diff != null && Math.abs(diff) > 500 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`} data-testid={`row-gen-preview-${i}`}>
+                                  <td className="py-1.5 px-3">{r.employeeName}</td>
+                                  <td className="py-1.5 px-3 text-right font-mono text-muted-foreground">{prior ? formatCurrency(prior.netPayable) : "—"}</td>
+                                  <td className="py-1.5 px-3 text-right font-mono">{formatCurrency(r.netPayable)}</td>
+                                  <td className={`py-1.5 px-3 text-right font-mono font-medium ${diff == null ? "text-muted-foreground" : diff > 100 ? "text-green-600 dark:text-green-400" : diff < -100 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                                    {diff == null ? "new" : Math.abs(diff) < 1 ? "—" : fmtDiff(diff)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })() : previewData.rows.length > 0 ? (
+                  <p className="text-xs text-muted-foreground italic flex items-center gap-1.5">
+                    <History className="h-3 w-3" /> No prior month approved run found — showing current month figures only.
+                  </p>
+                ) : null}
+
+                <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-700 dark:text-blue-300">
+                  <ArrowRight className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  All figures above are auto-computed from payroll rules. After generation, you can correct individual rows (each correction requires an audit reason) before sending for approval.
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenerateConfirmOpen(false)}>Cancel</Button>
+            {!previewData && (
+              <Button onClick={() => { setGenerateConfirmOpen(false); handlePreview(); }} data-testid="button-load-preview-first">
+                <Eye className="h-4 w-4 mr-2" /> Load Preview First
+              </Button>
+            )}
+            <Button
+              disabled={generateRunMutation.isPending || !previewData}
+              onClick={() => { setGenerateConfirmOpen(false); generateRunMutation.mutate(); }}
+              data-testid="button-confirm-generate"
+            >
+              {generateRunMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+              Confirm &amp; Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Run history */}
       <RunHistoryList runs={runs} onRunsChanged={refetchRuns} />

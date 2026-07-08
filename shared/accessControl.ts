@@ -22,6 +22,16 @@ export type AccessRegistry = Record<string, string[]>;
 // hand. Values are the EXACT effective role sets (auto-grants already baked in).
 // Keep entries in sync with scripts/verifyAccessParity.mjs (run it after edits).
 export const ACCESS_REGISTRY: AccessRegistry = {
+  // Payroll Settings — Salary Structures, State Deductions, Coverage, Employee Flags
+  "payroll.structures.read": ["super_admin", "admin", "hr", "executive"],
+  "payroll.structures.write": ["super_admin", "admin", "hr", "executive"],
+  "payroll.stateDeductions.read": ["super_admin", "admin", "hr", "executive"],
+  "payroll.stateDeductions.write": ["super_admin", "admin", "hr", "executive"],
+  "payroll.coverage.read": ["super_admin", "admin", "hr", "executive"],
+  "payroll.coverage.write": ["super_admin", "admin", "hr", "executive"],
+  "payroll.headcount.read": ["super_admin", "admin", "hr", "executive"],
+  "payroll.headcount.write": ["super_admin", "admin", "hr", "executive"],
+  "payroll.employee.flags": ["super_admin", "admin", "hr", "executive"],
   "vault.read": ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"],
   "vault.manage": ["super_admin", "admin"],
   "vault.secret.create": ["super_admin", "admin"],

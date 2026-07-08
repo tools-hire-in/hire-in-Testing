@@ -72,12 +72,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import { formatLocalDate } from "@/lib/dateUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 import RegularizationsPanel from "./RegularizationsPanel";
+
+const INDIA_PT_STATES = [
+  "Andhra Pradesh", "Gujarat", "Karnataka", "Kerala", "Madhya Pradesh",
+  "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Odisha",
+  "Puducherry", "Punjab", "Sikkim", "Tamil Nadu", "Telangana",
+  "Tripura", "West Bengal",
+];
 
 interface ShiftTimingInfo {
   istStart: string;
@@ -516,6 +524,7 @@ interface EmployeeDetailViewProps {
   userId: string;
   onBack: () => void;
   onEditProfile?: () => void;
+  onEditPayroll?: () => void;
   onEditAttendance?: (record: AttendanceRecord) => void;
   onAddHoliday?: () => void;
   onRemoveHoliday?: (selectionId: string, note: string) => void;
@@ -529,6 +538,7 @@ function EmployeeDetailView({
   userId,
   onBack,
   onEditProfile,
+  onEditPayroll,
   onEditAttendance,
   onAddHoliday,
   onRemoveHoliday,
@@ -642,7 +652,7 @@ function EmployeeDetailView({
         </TabsList>
 
         <TabsContent value="profile">
-          <ProfileTab profile={profile} onEdit={onEditProfile} />
+          <ProfileTab profile={profile} onEdit={onEditProfile} onEditPayroll={onEditPayroll} />
         </TabsContent>
         <TabsContent value="salary">
           <SalaryTab salary={data.salary} employeeId={userId} />
@@ -850,7 +860,7 @@ function ShiftTab({ userId }: { userId: string }) {
   );
 }
 
-function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: () => void }) {
+function ProfileTab({ profile, onEdit, onEditPayroll }: { profile: EmployeeProfile; onEdit?: () => void; onEditPayroll?: () => void }) {
   const fields = [
     { label: "Employee ID", value: profile.employeeId || "—" },
     { label: "Email", value: profile.email },
@@ -870,11 +880,18 @@ function ProfileTab({ profile, onEdit }: { profile: EmployeeProfile; onEdit?: ()
         <CardTitle className="flex items-center gap-2 text-lg">
           <UserCircle className="h-5 w-5" /> Personal Information
         </CardTitle>
-        {onEdit && (
-          <Button data-testid="button-edit-profile" variant="outline" size="sm" onClick={onEdit}>
-            <Edit className="h-4 w-4 mr-1" /> Edit
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {onEditPayroll && (
+            <Button data-testid="button-payroll-config" variant="ghost" size="sm" onClick={onEditPayroll}>
+              <DollarSign className="h-4 w-4 mr-1" /> Payroll Config
+            </Button>
+          )}
+          {onEdit && (
+            <Button data-testid="button-edit-profile" variant="outline" size="sm" onClick={onEdit}>
+              <Edit className="h-4 w-4 mr-1" /> Edit
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1036,9 +1053,9 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
 }
 
 function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; employeeId: string }) {
-  const { user } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
-  const canEdit = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
+  const { can } = usePermissions();
+  const canEdit = can("payroll.employee.flags");
 
   const historyQuery = useQuery<SalaryChangeRow[]>({
     queryKey: ["/api/hr/salary-changes", { employeeId }],
@@ -4028,6 +4045,8 @@ function PlanOverdueCell({ planId }: { planId: string }) {
 
 export default function MyTeam() {
   const { toast } = useToast();
+  const { can } = usePermissions();
+  const canEditPayroll = can("payroll.employee.flags");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections">(() => {
@@ -4041,6 +4060,7 @@ export default function MyTeam() {
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [payrollConfigOpen, setPayrollConfigOpen] = useState(false);
   const [addHolidayOpen, setAddHolidayOpen] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
@@ -4070,6 +4090,13 @@ export default function MyTeam() {
   const [formContactIsPrimary, setFormContactIsPrimary] = useState(false);
   const [formTicketStatus, setFormTicketStatus] = useState("");
   const [formTicketComment, setFormTicketComment] = useState("");
+  const [formSalaryStructureId, setFormSalaryStructureId] = useState("__none__");
+  const [formPfExempt, setFormPfExempt] = useState(false);
+  const [formPtState, setFormPtState] = useState("__none__");
+  const [formEsiApplicable, setFormEsiApplicable] = useState(true);
+  const [formEsiDisability, setFormEsiDisability] = useState(false);
+  const [formEsiDailyWageExempt, setFormEsiDailyWageExempt] = useState(false);
+  const [formPayrollNote, setFormPayrollNote] = useState("");
 
   const membersQuery = useQuery<TeamMember[]>({
     queryKey: ["/api/admin/my-team/members"],
@@ -4100,6 +4127,39 @@ export default function MyTeam() {
     queryKey: ["/api/hr/holidays"],
   });
 
+  const structuresQuery = useQuery<Array<{ id: string; name: string; isActive: boolean }>>({
+    queryKey: ["/api/payroll/structures"],
+  });
+
+  const employeePayrollFlagsQuery = useQuery<{
+    salaryStructureId: string | null;
+    pfExempt: boolean;
+    ptState: string | null;
+    esiApplicable: boolean;
+    esiDisability: boolean;
+    esiDailyWageExempt: boolean;
+  }>({
+    queryKey: ["/api/payroll/employees", selectedUserId, "flags"],
+    queryFn: async () => {
+      const res = await fetch(`/api/payroll/employees/${selectedUserId}/flags`, { credentials: "include" });
+      if (!res.ok) return { salaryStructureId: null, pfExempt: false, ptState: null, esiApplicable: true, esiDisability: false, esiDailyWageExempt: false };
+      return res.json();
+    },
+    enabled: !!selectedUserId && payrollConfigOpen,
+  });
+
+  useEffect(() => {
+    if (!payrollConfigOpen) return;
+    const d = employeePayrollFlagsQuery.data;
+    if (!d) return;
+    setFormSalaryStructureId(d.salaryStructureId || "__none__");
+    setFormPfExempt(d.pfExempt || false);
+    setFormPtState(d.ptState || "__none__");
+    setFormEsiApplicable(d.esiApplicable ?? true);
+    setFormEsiDisability(d.esiDisability || false);
+    setFormEsiDailyWageExempt(d.esiDailyWageExempt || false);
+  }, [payrollConfigOpen, employeePayrollFlagsQuery.data]);
+
   const editAttendanceMutation = useMutation({
     mutationFn: async (data: { punchIn?: string; punchOut?: string; status?: string; note: string }) => {
       await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/attendance/${editAttendanceRecord!.id}`, data);
@@ -4127,6 +4187,21 @@ export default function MyTeam() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to update profile", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const payrollFlagsMutation = useMutation({
+    mutationFn: async (data: { salaryStructureId: string | null; pfExempt: boolean; esiApplicable: boolean; esiDisability: boolean; esiDailyWageExempt: boolean; ptState: string | null; note: string }) => {
+      await apiRequest("PATCH", `/api/payroll/employees/${selectedUserId}/payroll-flags`, data);
+    },
+    onSuccess: () => {
+      toast({ title: "Payroll config updated", description: "The employee's payroll configuration has been saved." });
+      setPayrollConfigOpen(false);
+      setFormPayrollNote("");
+      queryClient.invalidateQueries({ queryKey: ["/api/payroll/employees", selectedUserId, "flags"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update payroll config", description: err.message, variant: "destructive" });
     },
   });
 
@@ -4256,6 +4331,18 @@ export default function MyTeam() {
     setEditAttendanceOpen(true);
   }
 
+  function openPayrollConfig() {
+    const d = employeePayrollFlagsQuery.data;
+    setFormSalaryStructureId(d?.salaryStructureId || "__none__");
+    setFormPfExempt(d?.pfExempt || false);
+    setFormPtState(d?.ptState || "__none__");
+    setFormEsiApplicable(d?.esiApplicable ?? true);
+    setFormEsiDisability(d?.esiDisability || false);
+    setFormEsiDailyWageExempt(d?.esiDailyWageExempt || false);
+    setFormPayrollNote("");
+    setPayrollConfigOpen(true);
+  }
+
   function openEditProfile() {
     const user = detailsQuery.data?.user;
     if (!user) return;
@@ -4309,6 +4396,7 @@ export default function MyTeam() {
           userId={selectedUserId}
           onBack={() => setSelectedUserId(null)}
           onEditProfile={openEditProfile}
+          onEditPayroll={canEditPayroll ? openPayrollConfig : undefined}
           onEditAttendance={openEditAttendance}
           onAddHoliday={() => { setFormNote(""); setFormHolidayId(""); setAddHolidayOpen(true); }}
           onRemoveHoliday={(selectionId, note) => removeHolidayMutation.mutate({ selectionId, note })}
@@ -4532,6 +4620,90 @@ export default function MyTeam() {
                 }}
               >
                 {editProfileMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={payrollConfigOpen} onOpenChange={setPayrollConfigOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Payroll Configuration</DialogTitle>
+              <DialogDescription>Assign a salary structure and configure statutory flags for this employee.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Salary Structure</label>
+                <Select value={formSalaryStructureId} onValueChange={setFormSalaryStructureId}>
+                  <SelectTrigger data-testid="select-salary-structure">
+                    <SelectValue placeholder="Select a structure" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Unassigned —</SelectItem>
+                    {(structuresQuery.data || []).filter(s => s.isActive).map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">PT State</label>
+                <Select value={formPtState} onValueChange={setFormPtState}>
+                  <SelectTrigger data-testid="select-pt-state">
+                    <SelectValue placeholder="Select state for Professional Tax" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {INDIA_PT_STATES.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" data-testid="checkbox-pf-exempt" checked={formPfExempt} onChange={e => setFormPfExempt(e.target.checked)} className="rounded" />
+                  <span className="text-sm">PF Exempt</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" data-testid="checkbox-esi-applicable" checked={formEsiApplicable} onChange={e => setFormEsiApplicable(e.target.checked)} className="rounded" />
+                  <span className="text-sm">ESI Applicable</span>
+                </label>
+                {formEsiApplicable && (
+                  <>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" data-testid="checkbox-esi-disability" checked={formEsiDisability} onChange={e => setFormEsiDisability(e.target.checked)} className="rounded" />
+                      <span className="text-sm">ESI Disability</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" data-testid="checkbox-esi-daily-wage" checked={formEsiDailyWageExempt} onChange={e => setFormEsiDailyWageExempt(e.target.checked)} className="rounded" />
+                      <span className="text-sm">ESI Daily Wage Exempt</span>
+                    </label>
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason *</label>
+                <Textarea data-testid="input-payroll-note" value={formPayrollNote} onChange={e => setFormPayrollNote(e.target.value)} placeholder="Why are you updating this configuration?" />
+                {!formPayrollNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button data-testid="button-cancel-payroll" variant="outline" onClick={() => setPayrollConfigOpen(false)}>Cancel</Button>
+              <Button
+                data-testid="button-save-payroll"
+                disabled={!formPayrollNote.trim() || payrollFlagsMutation.isPending}
+                onClick={() => payrollFlagsMutation.mutate({
+                  salaryStructureId: formSalaryStructureId === "__none__" ? null : formSalaryStructureId,
+                  pfExempt: formPfExempt,
+                  esiApplicable: formEsiApplicable,
+                  esiDisability: formEsiDisability,
+                  esiDailyWageExempt: formEsiDailyWageExempt,
+                  ptState: formPtState === "__none__" ? null : formPtState,
+                  note: formPayrollNote,
+                })}
+              >
+                {payrollFlagsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>
