@@ -63,6 +63,15 @@ export const adminUsers = pgTable("admin_users", {
   // Studio add-on: grants Content Studio access without changing base role.
   // Values: 'marketing_manager' | 'content_creator' | 'influencer' | null.
   studioAddOn: text("studio_add_on"),
+  // Payroll / statutory fields (India Labour Codes 2025)
+  salaryStructureId: varchar("salary_structure_id").references(() => salaryStructures.id, { onDelete: "set null" }),
+  pfExempt: boolean("pf_exempt").notNull().default(false),
+  ptState: varchar("pt_state"),
+  workCity: varchar("work_city"),
+  esiDisability: boolean("esi_disability").notNull().default(false),
+  esiApplicable: boolean("esi_applicable").notNull().default(true),
+  esiCoveredUntil: date("esi_covered_until"),
+  esiDailyWageExempt: boolean("esi_daily_wage_exempt").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -289,8 +298,12 @@ export const salarySlips = pgTable("salary_slips", {
   attendancePercentage: numeric("attendance_percentage").notNull().default("0"),
   generatedAt: timestamp("generated_at").defaultNow(),
   generatedBy: varchar("generated_by").references(() => adminUsers.id),
+  computationSnapshot: jsonb("computation_snapshot"),
+  jurisdiction: varchar("jurisdiction").notNull().default("IN"),
 }, (table) => [
   uniqueIndex("idx_salary_slips_user_period_version").on(table.userId, table.year, table.month, table.version),
+  uniqueIndex("salary_slips_user_year_month_run_unique").on(table.userId, table.year, table.month, table.salaryRunId),
+  uniqueIndex("salary_slips_user_period_jurisdiction_unique").on(table.userId, table.year, table.month, table.jurisdiction),
 ]);
 
 // Leave balance adjustments table
@@ -3874,3 +3887,219 @@ export type VaultSecretGrant = typeof vaultSecretGrants.$inferSelect;
 export type InsertVaultSecretGrant = z.infer<typeof insertVaultSecretGrantSchema>;
 export type VaultAuditLog = typeof vaultAuditLogs.$inferSelect;
 export type VaultAccessRequest = typeof vaultAccessRequests.$inferSelect;
+
+// ==========================================
+// PAYROLL ENGINE — India Statutory Computation (#854-A)
+// ==========================================
+
+// Salary component breakdown rule types
+export const ruleTypeEnum = pgEnum("rule_type", ["percent_of_gross", "percent_of_component", "fixed", "residual"]);
+// LOP deduction mode per component
+export const lopModeEnum = pgEnum("lop_mode", ["proportional", "fixed"]);
+// PF computation mode
+export const pfModeEnum = pgEnum("pf_mode", ["restricted", "unrestricted"]);
+// Establishment coverage status
+export const coverageStatusEnum = pgEnum("coverage_status", ["not_applicable", "voluntary", "mandatory"]);
+// Rounding mode for statutory rates
+export const roundingModeEnum = pgEnum("rounding_mode", ["nearest", "up"]);
+
+// Salary component structure (e.g. "Standard", custom)
+export const salaryStructures = pgTable("salary_structures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  description: text("description"),
+  effectiveDate: date("effective_date").notNull().default(sql`CURRENT_DATE`),
+  isActive: boolean("is_active").notNull().default(true),
+  pfMode: pfModeEnum("pf_mode").notNull().default("restricted"),
+  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Individual component rules within a structure
+export const salaryStructureRules = pgTable("salary_structure_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  structureId: varchar("structure_id").notNull().references(() => salaryStructures.id, { onDelete: "cascade" }),
+  componentName: varchar("component_name", { length: 80 }).notNull(),
+  ruleType: ruleTypeEnum("rule_type").notNull(),
+  // For percent_of_gross / percent_of_component: percentage × 100 stored as integer
+  // e.g. 50% → 5000; 8.33% → 833
+  valuePct: integer("value_pct"),
+  // For fixed: amount in paise (integer)
+  valueFixed: integer("value_fixed"),
+  // For percent_of_component: the component name to use as the base
+  referenceComponent: varchar("reference_component", { length: 80 }),
+  lopMode: lopModeEnum("lop_mode").notNull().default("proportional"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// State-level deductions (PT, PSDT, LWF)
+export const stateDeductions = pgTable("state_deductions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  state: varchar("state", { length: 50 }).notNull(),
+  levyType: varchar("levy_type", { length: 20 }).notNull(),
+  // Slab condition type: "gross_gte" | "gross_between" | "flat"
+  conditionType: varchar("condition_type", { length: 40 }),
+  // Gross threshold for slab (in paise)
+  thresholdPaise: integer("threshold_paise"),
+  // Monthly deduction amount (in paise)
+  amountPaise: integer("amount_paise").notNull().default(0),
+  // February-specific amount (in paise, if different)
+  febAmountPaise: integer("feb_amount_paise"),
+  // Flat levy: never prorated by LOP
+  isFlat: boolean("is_flat").notNull().default(true),
+  // monthly | half_yearly | annually
+  cadence: varchar("cadence", { length: 20 }).notNull().default("monthly"),
+  // JSON array of 1-based month numbers when deduction applies (null = all)
+  deductionMonths: jsonb("deduction_months"),
+  // Whether the company is registered for this levy
+  isRegistered: boolean("is_registered").notNull().default(false),
+  registrationNumber: varchar("registration_number"),
+  // Basis for PSDT: "gross" | "basic"
+  basis: varchar("basis", { length: 20 }).default("gross"),
+  // Annual gross threshold for PSDT applicability (in paise)
+  psdtAnnualThresholdPaise: integer("psdt_annual_threshold_paise"),
+  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("state_deductions_state_levy_idx").on(t.state, t.levyType),
+  uniqueIndex("state_deductions_state_levy_jurisdiction_unique").on(t.state, t.levyType, t.jurisdiction),
+]);
+
+// Establishment-level coverage tracking for EPF & ESI
+export const establishmentCoverage = pgTable("establishment_coverage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scheme: varchar("scheme", { length: 10 }).notNull(),
+  status: coverageStatusEnum("status").notNull().default("not_applicable"),
+  // Headcount threshold that triggers mandatory coverage
+  threshold: integer("threshold").notNull(),
+  // Date from which mandatory coverage applies (if triggered)
+  applicableFrom: date("applicable_from"),
+  // Once mandatory, always mandatory (ratchet rule)
+  isLatched: boolean("is_latched").notNull().default(false),
+  triggerReason: text("trigger_reason"),
+  registrationNumber: varchar("registration_number"),
+  effectiveFrom: date("effective_from"),
+  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  uniqueIndex("establishment_coverage_scheme_jur_idx").on(t.scheme, t.jurisdiction),
+]);
+
+// Monthly headcount snapshots (for coverage threshold tracking)
+export const headcountHistory = pgTable("headcount_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // First day of the month this record covers (YYYY-MM-01)
+  period: date("period").notNull().unique(),
+  totalCount: integer("total_count").notNull(),
+  // JSONB breakdown e.g. { permanent: 12, contractor: 3, partTime: 1 }
+  breakdown: jsonb("breakdown"),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+  recordedBy: varchar("recorded_by"),
+});
+
+// Statutory rate schedule (EPF, ESI, etc.) — never hard-coded
+export const statutoryRates = pgTable("statutory_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
+  // Scheme: EPF | ESI | EDLI | EPS | EPF_ADMIN
+  levy: varchar("levy", { length: 30 }).notNull(),
+  // Key within levy: employee | employer | admin_fee | ...
+  key: varchar("key", { length: 40 }).notNull(),
+  // Rate as integer basis points (100 = 1%)
+  valueBps: integer("value_bps").notNull(),
+  // Minimum amount in paise (e.g. EPF admin fee min ₹500)
+  minimumPaise: integer("minimum_paise"),
+  // Maximum amount in paise (e.g. EPS cap ₹1,250/month)
+  maximumPaise: integer("maximum_paise"),
+  rounding: roundingModeEnum("rounding").notNull().default("nearest"),
+  effectiveFrom: date("effective_from").notNull(),
+  effectiveTo: date("effective_to"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("statutory_rates_levy_key_idx").on(t.jurisdiction, t.levy, t.key),
+  uniqueIndex("statutory_rates_jurisdiction_levy_key_effective_from_unique").on(t.jurisdiction, t.levy, t.key, t.effectiveFrom),
+]);
+
+// Immutable revision history for salary slips (stores prior version on regenerate)
+export const salarySlipRevisions = pgTable("salary_slip_revisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  originalSlipId: varchar("original_slip_id").notNull().references(() => salarySlips.id),
+  snapshot: jsonb("snapshot").notNull(),
+  replacedAt: timestamp("replaced_at").defaultNow(),
+  replacedBy: varchar("replaced_by").references(() => adminUsers.id),
+});
+
+export const insertSalaryStructureSchema = createInsertSchema(salaryStructures).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSalaryStructureRuleSchema = createInsertSchema(salaryStructureRules).omit({ id: true, createdAt: true });
+export const insertStateDeductionSchema = createInsertSchema(stateDeductions).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEstablishmentCoverageSchema = createInsertSchema(establishmentCoverage).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertStatutoryRateSchema = createInsertSchema(statutoryRates).omit({ id: true, createdAt: true });
+export const insertSalarySlipRevisionSchema = createInsertSchema(salarySlipRevisions).omit({ id: true, replacedAt: true });
+export const insertHeadcountHistorySchema = createInsertSchema(headcountHistory).omit({ id: true, recordedAt: true });
+
+export type SalaryStructure = typeof salaryStructures.$inferSelect;
+export type InsertSalaryStructure = z.infer<typeof insertSalaryStructureSchema>;
+export type SalaryStructureRule = typeof salaryStructureRules.$inferSelect;
+export type InsertSalaryStructureRule = z.infer<typeof insertSalaryStructureRuleSchema>;
+export type StateDeduction = typeof stateDeductions.$inferSelect;
+export type InsertStateDeduction = z.infer<typeof insertStateDeductionSchema>;
+export type EstablishmentCoverage = typeof establishmentCoverage.$inferSelect;
+export type InsertEstablishmentCoverage = z.infer<typeof insertEstablishmentCoverageSchema>;
+export type StatutoryRate = typeof statutoryRates.$inferSelect;
+export type InsertStatutoryRate = z.infer<typeof insertStatutoryRateSchema>;
+export type SalarySlipRevision = typeof salarySlipRevisions.$inferSelect;
+export type InsertSalarySlipRevision = z.infer<typeof insertSalarySlipRevisionSchema>;
+export type HeadcountHistory = typeof headcountHistory.$inferSelect;
+export type InsertHeadcountHistory = z.infer<typeof insertHeadcountHistorySchema>;
+
+// ---------------------------------------------------------------------------
+// Payroll Settings — typed configuration for the India statutory payroll engine
+// ---------------------------------------------------------------------------
+export const payrollSettings = pgTable("payroll_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Jurisdiction this row applies to (ISO 3166-1 alpha-2, e.g. "IN"). */
+  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
+  /**
+   * "actual_working_days" — LOP/actual_working_days × gross  (spec default)
+   * "calendar"            — LOP/calendar_days × gross
+   */
+  lopBasis: varchar("lop_basis", { length: 30 }).notNull().default("actual_working_days"),
+  /** Whether to print employer EPF/ESI contribution on the employee-visible PDF. */
+  showEmployerContributionOnSlip: boolean("show_employer_contribution_on_slip").notNull().default(true),
+  /** Default jurisdiction for new employees when pt_state is not set. */
+  defaultJurisdiction: varchar("default_jurisdiction", { length: 10 }).notNull().default("IN"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by"),
+}, (table) => [
+  uniqueIndex("payroll_settings_jurisdiction_unique").on(table.jurisdiction),
+]);
+
+export const insertPayrollSettingsSchema = createInsertSchema(payrollSettings).omit({ id: true, updatedAt: true });
+export type PayrollSettings = typeof payrollSettings.$inferSelect;
+export type InsertPayrollSettings = z.infer<typeof insertPayrollSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Salary Structure History — tracks which salary structure was assigned to
+// each employee and when, enabling period-start structure resolution.
+// A baseline row is seeded at platform startup for all existing employees.
+// ---------------------------------------------------------------------------
+export const salaryStructureHistory = pgTable("salary_structure_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  structureId: varchar("structure_id").references(() => salaryStructures.id, { onDelete: "set null" }),
+  /** Inclusive date from which this structure assignment applies. */
+  effectiveFrom: date("effective_from").notNull(),
+  assignedBy: varchar("assigned_by"),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+}, (t) => [
+  index("salary_structure_history_user_idx").on(t.userId),
+  index("salary_structure_history_user_date_idx").on(t.userId, t.effectiveFrom),
+]);
+
+export const insertSalaryStructureHistorySchema = createInsertSchema(salaryStructureHistory).omit({ id: true, assignedAt: true });
+export type SalaryStructureHistory = typeof salaryStructureHistory.$inferSelect;
+export type InsertSalaryStructureHistory = z.infer<typeof insertSalaryStructureHistorySchema>;

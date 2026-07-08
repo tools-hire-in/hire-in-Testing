@@ -64,6 +64,7 @@ import path from "path";
 import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferLetterAcceptance, recordSignature } from "./documentSigningService";
 import * as sopGov from "./sopGovernance";
 import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData } from "@shared/salarySlipHtml";
+import { IndiaStatutoryEngine, computeComponentsFromGross, applyWaterfall, endOfContributionPeriod, rupeesToPaise, paiseToRupees, type IndiaEmployeeConfig, type CoverageConfig, type ResolvedRate, type StructureRule, type WaterfallInput, type StateDeductionConfig } from "./payrollEngine";
 import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress } from "./sopAssignmentEngine";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
@@ -7552,6 +7553,409 @@ export async function registerRoutes(
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // buildComputationSnapshot — load payroll config from DB and run the India
+  // statutory engine. Returns null if the employee has no salary structure
+  // assigned (graceful degradation; legacy slips continue to work).
+  // ---------------------------------------------------------------------------
+  /**
+   * Run the India statutory engine for one employee+period.
+   * Returns a fully self-contained, reproducible snapshot that is frozen at
+   * first write and never recomputed on subsequent reads.
+   *
+   * @param overrideStructureId  When provided (e.g. from a frozen snapshot on
+   *   regeneration), this structure is used instead of the employee's current
+   *   assignment — preserving the "structure-as-of-first-access" invariant.
+   */
+  async function buildComputationSnapshot(
+    userId: string,
+    grossRupees: number,
+    periodYear: number,
+    periodMonth: number,
+    lopDays: number,
+    workingDays: number,
+    overrideStructureId?: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      // 1. Employee payroll config fields
+      const empRows = (await db.execute(sql`
+        SELECT salary_structure_id, pf_exempt, pt_state,
+               esi_disability, esi_applicable, esi_covered_until, esi_daily_wage_exempt
+        FROM admin_users WHERE id = ${userId} LIMIT 1
+      `)).rows as Array<{
+        salary_structure_id: string | null;
+        pf_exempt: boolean;
+        pt_state: string | null;
+        esi_disability: boolean;
+        esi_applicable: boolean;
+        esi_covered_until: string | Date | null;
+        esi_daily_wage_exempt: boolean;
+      }>;
+      if (!empRows.length) return null;
+      const emp = empRows[0];
+      // Resolve salary structure as-of the first day of the pay period.
+      // Priority order:
+      //   1. overrideStructureId — passed on regeneration from the frozen snapshot
+      //      (preserves the exact structure used on first generation).
+      //   2. salary_structure_history — the most-recent assignment row whose
+      //      effective_from ≤ first day of the pay period.
+      //   3. emp.salary_structure_id — current assignment (fallback when no
+      //      history row exists, i.e. before history was introduced).
+      const periodStartDate = `${periodYear}-${String(periodMonth).padStart(2, "0")}-01`;
+
+      let resolvedStructureId = overrideStructureId;
+      if (!resolvedStructureId) {
+        const histRows = (await db.execute(sql`
+          SELECT structure_id FROM salary_structure_history
+          WHERE user_id = ${userId}
+            AND effective_from <= ${periodStartDate}
+          ORDER BY effective_from DESC
+          LIMIT 1
+        `)).rows as Array<{ structure_id: string | null }>;
+        resolvedStructureId = histRows[0]?.structure_id ?? emp.salary_structure_id ?? null;
+      }
+      if (!resolvedStructureId) return null; // No structure — skip engine
+
+      // Normalize date fields: pg returns Date objects for date columns
+      const esiCoveredUntil = emp.esi_covered_until
+        ? (emp.esi_covered_until instanceof Date
+          ? emp.esi_covered_until.toISOString().slice(0, 10)
+          : String(emp.esi_covered_until).slice(0, 10))
+        : null;
+
+      // 2. Salary structure + rules (pfMode from parent structure) — frozen at resolvedStructureId
+      const structureRows = (await db.execute(sql`
+        SELECT s.pf_mode,
+               r.component_name, r.rule_type, r.value_pct, r.value_fixed,
+               r.reference_component, r.lop_mode, r.sort_order
+        FROM salary_structures s
+        JOIN salary_structure_rules r ON r.structure_id = s.id
+        WHERE s.id = ${resolvedStructureId}
+        ORDER BY r.sort_order ASC
+      `)).rows as Array<{
+        pf_mode: string;
+        component_name: string;
+        rule_type: string;
+        value_pct: number | null;
+        value_fixed: number | null;
+        reference_component: string | null;
+        lop_mode: string;
+        sort_order: number;
+      }>;
+      if (!structureRows.length) return null;
+
+      const pfMode = (structureRows[0].pf_mode ?? "restricted") as "restricted" | "unrestricted";
+
+      const rules: StructureRule[] = structureRows.map(r => ({
+        componentName: r.component_name,
+        ruleType: r.rule_type as StructureRule["ruleType"],
+        valuePct: r.value_pct,
+        valueFixed: r.value_fixed,
+        referenceComponent: r.reference_component,
+        lopMode: (r.lop_mode ?? "proportional") as "proportional" | "fixed",
+        sortOrder: r.sort_order,
+      }));
+
+      // 3. Establishment coverage — CoverageConfig = { status, applicableFrom }
+      const covRows = (await db.execute(sql`
+        SELECT scheme, status, applicable_from
+        FROM establishment_coverage
+        WHERE jurisdiction = 'IN'
+      `)).rows as Array<{ scheme: string; status: string; applicable_from: string | Date | null }>;
+
+      const getCoverage = (scheme: string): CoverageConfig => {
+        const c = covRows.find(r => r.scheme === scheme);
+        const af = c?.applicable_from;
+        return {
+          status: (c?.status ?? "not_applicable") as CoverageConfig["status"],
+          applicableFrom: af
+            ? (af instanceof Date ? af.toISOString().slice(0, 10) : String(af).slice(0, 10))
+            : null,
+        };
+      };
+
+      // 4. Statutory rates — resolve against last day of the pay period so historical
+      //    rates are used even when the DB has newer rates in effect today.
+      const daysInPayMonth = new Date(periodYear, periodMonth, 0).getDate();
+      const periodEndDate = `${periodYear}-${String(periodMonth).padStart(2, "0")}-${String(daysInPayMonth).padStart(2, "0")}`;
+
+      const rateRows = (await db.execute(sql`
+        SELECT DISTINCT ON (jurisdiction, levy, key)
+               levy, key, value_bps, minimum_paise, maximum_paise, rounding, effective_from
+        FROM statutory_rates
+        WHERE jurisdiction = 'IN'
+          AND effective_from <= ${periodEndDate}
+          AND (effective_to IS NULL OR effective_to >= ${periodEndDate})
+        ORDER BY jurisdiction, levy, key, effective_from DESC
+      `)).rows as Array<{
+        levy: string; key: string; value_bps: number;
+        minimum_paise: number | null; maximum_paise: number | null;
+        rounding: string; effective_from: string | Date;
+      }>;
+
+      // Keep frozenRates (with effective_from) for the snapshot so future audits
+      // can prove which rate schedule was applied.
+      const frozenRates = rateRows.map(r => ({
+        levy: r.levy,
+        key: r.key,
+        valueBps: Number(r.value_bps),
+        minimumPaise: r.minimum_paise != null ? Number(r.minimum_paise) : null,
+        maximumPaise: r.maximum_paise != null ? Number(r.maximum_paise) : null,
+        rounding: r.rounding,
+        effectiveFrom: r.effective_from instanceof Date
+          ? r.effective_from.toISOString().slice(0, 10)
+          : String(r.effective_from).slice(0, 10),
+      }));
+
+      const rates: ResolvedRate[] = frozenRates.map(r => ({
+        levy: r.levy,
+        key: r.key,
+        valueBps: r.valueBps,
+        minimumPaise: r.minimumPaise,
+        maximumPaise: r.maximumPaise,
+        rounding: r.rounding as "nearest" | "up",
+      }));
+
+      // 5. State deduction config — include threshold_paise for slab eligibility check
+      let stateDeductionConfig: StateDeductionConfig | null = null;
+      if (emp.pt_state) {
+        const sdRows = (await db.execute(sql`
+          SELECT state, levy_type, amount_paise, feb_amount_paise,
+                 is_flat, is_registered, deduction_months, threshold_paise,
+                 psdt_annual_threshold_paise
+          FROM state_deductions
+          WHERE state = ${emp.pt_state}
+            AND jurisdiction = 'IN'
+          ORDER BY is_registered DESC
+          LIMIT 1
+        `)).rows as Array<{
+          state: string; levy_type: string; amount_paise: number;
+          feb_amount_paise: number | null; is_flat: boolean; is_registered: boolean;
+          deduction_months: number[] | null; threshold_paise: number | null;
+          psdt_annual_threshold_paise: number | null;
+        }>;
+        if (sdRows.length) {
+          const sd = sdRows[0];
+          stateDeductionConfig = {
+            state: sd.state,
+            levyType: sd.levy_type,
+            amountPaise: Number(sd.amount_paise),
+            febAmountPaise: sd.feb_amount_paise != null ? Number(sd.feb_amount_paise) : null,
+            isFlat: sd.is_flat,
+            isRegistered: sd.is_registered,
+            deductionMonths: sd.deduction_months,
+            thresholdPaise: sd.threshold_paise != null ? Number(sd.threshold_paise) : null,
+            psdtAnnualThresholdPaise: sd.psdt_annual_threshold_paise != null ? Number(sd.psdt_annual_threshold_paise) : null,
+          };
+        }
+      }
+
+      // 6. Active advances for waterfall (oldest-first FIFO)
+      const advRows = (await db.execute(sql`
+        SELECT id, outstanding_paise
+        FROM salary_advances
+        WHERE employee_id = ${userId}
+          AND status IN ('disbursed', 'partial')
+        ORDER BY created_at ASC
+      `)).rows as Array<{ id: string; outstanding_paise: number }>;
+
+      const advancesPaise: WaterfallInput["advancesPaise"] = advRows.map(a => ({
+        id: a.id,
+        outstandingPaise: Number(a.outstanding_paise),
+      }));
+
+      // 7. Run engine — (grossPaise, rules, presentDays, workingDays)
+      const grossPaise = rupeesToPaise(grossRupees);
+      const period = { year: periodYear, month: periodMonth };
+      const presentDays = Math.max(0, workingDays - lopDays);
+
+      const componentResult = computeComponentsFromGross(grossPaise, rules, presentDays, workingDays);
+
+      const empConfig: IndiaEmployeeConfig = {
+        pfMode,
+        pfExempt: Boolean(emp.pf_exempt),
+        state: emp.pt_state,
+        esiCoveredUntil,
+        esiApplicable: Boolean(emp.esi_applicable),
+        esiDisability: Boolean(emp.esi_disability),
+        esiDailyWageExempt: Boolean(emp.esi_daily_wage_exempt),
+        epfCoverage: getCoverage("EPF"),
+        esiCoverage: getCoverage("ESI"),
+      };
+
+      const statutoryLines = IndiaStatutoryEngine.compute(
+        period,
+        componentResult.components,
+        componentResult.grossAfterLopPaise,
+        empConfig,
+        rates,
+        stateDeductionConfig,
+      );
+
+      const waterfallResult = applyWaterfall({
+        grossAfterLopPaise: componentResult.grossAfterLopPaise,
+        statutoryDeductionLines: statutoryLines,
+        advancesPaise,
+        otherDeductionsPaise: 0,
+      });
+
+      // Return self-contained frozen snapshot. The snapshot includes:
+      // - salaryStructureId + frozenRules: which structure/rules were applied
+      // - frozenRates with effective_from: which rate schedule was in force
+      // - period inputs (grossRupees, lopDays, workingDays): for exact replay
+      return {
+        engine: "IndiaStatutoryEngine@v1",
+        salaryStructureId: resolvedStructureId,
+        frozenRules: rules,
+        frozenRates,
+        period,
+        grossRupees,
+        lopDays,
+        workingDays,
+        presentDays,
+        pfMode,
+        grossAfterLopPaise: componentResult.grossAfterLopPaise,
+        componentFlags: componentResult.flags,
+        components: componentResult.components.map(c => ({
+          name: c.name,
+          prelopPaise: c.prelopPaise,
+          postlopPaise: c.postlopPaise,
+          lopMode: c.lopMode,
+        })),
+        statutoryLines: statutoryLines.map(l => ({
+          key: l.key,
+          labelEn: l.labelEn,
+          amountPaise: l.amountPaise,
+          isEmployerContribution: l.isEmployerContribution,
+          scheme: l.scheme,
+          flags: l.flags,
+        })),
+        waterfall: {
+          netPayPaise: waterfallResult.netPayPaise,
+          totalStatutoryDeductionsPaise: waterfallResult.totalStatutoryDeductionsPaise,
+          advanceRecoveredPaise: waterfallResult.advanceRecoveredPaise,
+          advanceShortfallByIdPaise: waterfallResult.advanceShortfallByIdPaise,
+          otherDeductionsPaise: waterfallResult.otherDeductionsPaise,
+        },
+      };
+    } catch (err) {
+      console.error("[payroll-snapshot] Engine error (non-fatal):", err);
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Salary slip regeneration — archives old ledger row to salary_slip_revisions
+  // then re-runs the computation engine and updates the row.
+  // HR/admin/finance/super_admin only.
+  // ---------------------------------------------------------------------------
+  app.post("/api/hr/salary-slips/regenerate/:userId/:month/:year", requireAuth, requirePermission("hr.salarySlips.regenerateUser", "super_admin", "admin", "hr", "finance"), async (req: Request, res: Response) => {
+    try {
+      const { userId, month, year } = req.params;
+      const m = parseInt(month);
+      const y = parseInt(year);
+      if (!m || !y || m < 1 || m > 12) return res.status(400).json({ error: "Invalid month or year" });
+
+      const actor = req.session.userId!;
+
+      // Find the active executed run
+      const [approvedRun] = await db.select()
+        .from(salaryReportRuns)
+        .where(and(
+          eq(salaryReportRuns.month, m),
+          eq(salaryReportRuns.year, y),
+          eq(salaryReportRuns.status, "executed"),
+        ))
+        .orderBy(desc(salaryReportRuns.executedAt))
+        .limit(1);
+
+      if (!approvedRun) return res.status(404).json({ error: "No executed salary run found for this period" });
+
+      // Find existing ledger row — unique per (user, period, jurisdiction)
+      const [existing] = await db.select().from(salarySlips)
+        .where(and(
+          eq(salarySlips.userId, userId),
+          eq(salarySlips.year, y),
+          eq(salarySlips.month, m),
+          eq(salarySlips.jurisdiction, "IN"),
+        ))
+        .limit(1);
+
+      if (!existing) return res.status(404).json({ error: "No existing salary slip ledger row found to regenerate" });
+
+      // Archive old row to salary_slip_revisions
+      await db.execute(sql`
+        INSERT INTO salary_slip_revisions (id, original_slip_id, snapshot, replaced_at, replaced_by)
+        VALUES (
+          gen_random_uuid(),
+          ${existing.id},
+          ${JSON.stringify(existing)},
+          now(),
+          ${actor}
+        )
+      `);
+
+      // Prefer stored snapshot inputs (frozen at original write) so regeneration
+      // uses the same period inputs AND the same salary structure that was in effect
+      // at first access (structure-as-of-period-start invariant).
+      const storedSnap = existing.computationSnapshot as Record<string, any> | null | undefined;
+
+      let inputGross: number;
+      let inputLopDays: number;
+      let inputWorkingDays: number;
+      let frozenStructureId: string | undefined;
+
+      if (storedSnap?.grossRupees != null) {
+        inputGross = Number(storedSnap.grossRupees);
+        inputLopDays = Number(storedSnap.lopDays ?? 0);
+        inputWorkingDays = Number(storedSnap.workingDays ?? 22);
+        // Restore the structure that was frozen at original write
+        frozenStructureId = storedSnap.salaryStructureId ?? undefined;
+      } else {
+        // No stored snapshot — derive inputs from the executed run's reportData
+        const reportRows = (approvedRun.reportData as any[]) || [];
+        const allUsers = await storage.getAdminUsers();
+        const targetUser = allUsers.find(u => u.id === userId);
+        if (!targetUser) return res.status(404).json({ error: "Employee not found" });
+        const row = reportRows.find((r: any) => r.email === targetUser.email);
+        if (!row) return res.status(404).json({ error: "Employee not found in this salary run" });
+        inputGross = Number(row.grossSalary || 0);
+        inputLopDays = Number(row.lopLeaves || 0);
+        inputWorkingDays = Number(row.workingDays || 22);
+      }
+
+      // Pass frozenStructureId so engine uses the structure that was in effect
+      // at the time of first access (not whatever is currently assigned to the employee).
+      const newSnapshot = await buildComputationSnapshot(
+        userId, inputGross, y, m, inputLopDays, inputWorkingDays, frozenStructureId,
+      );
+
+      // Derive engine-authoritative ledger values from the new snapshot
+      const newSnap = newSnapshot as Record<string, any> | null;
+      const newWf = newSnap?.waterfall as Record<string, number> | undefined;
+
+      await db.execute(sql`
+        UPDATE salary_slips
+        SET computation_snapshot = ${newSnapshot ? JSON.stringify(newSnapshot) : null},
+            deductions = COALESCE(${newWf ? String(newWf.totalStatutoryDeductionsPaise / 100) : null}, deductions),
+            salary_advance_recovery = COALESCE(${newWf ? String(newWf.advanceRecoveredPaise / 100) : null}, salary_advance_recovery),
+            net_payable = COALESCE(${newWf ? String(newWf.netPayPaise / 100) : null}, net_payable),
+            version = version + 1
+        WHERE id = ${existing.id}
+      `);
+
+      res.json({
+        message: "Salary slip regenerated",
+        slipId: existing.id,
+        snapshotPresent: newSnapshot !== null,
+        engineAuthoritative: newWf != null,
+      });
+    } catch (error) {
+      console.error("Failed to regenerate salary slip:", error);
+      res.status(500).json({ error: "Failed to regenerate salary slip" });
+    }
+  });
+
   // Employee-safe: list approved salary runs that contain the current user's email.
   // Accessible to all authenticated users (employees see their own months;
   // HR/admin see all via the existing runs list endpoint).
@@ -7692,34 +8096,49 @@ export async function registerRoutes(
         approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
       };
 
-      // Write / update ledger row on first access (idempotent per run+user)
+      // Idempotent check per employee+period+jurisdiction.
+      // The engine runs ONCE on first access; subsequent reads serve the frozen
+      // stored snapshot to guarantee deterministic replay regardless of later
+      // structure/rate changes.
       const [existingLedger] = await db.select().from(salarySlips)
         .where(and(
           eq(salarySlips.userId, userId),
           eq(salarySlips.year, y),
           eq(salarySlips.month, m),
-          eq(salarySlips.salaryRunId, approvedRun.id),
+          eq(salarySlips.jurisdiction, "IN"),
         ))
         .limit(1);
 
       if (!existingLedger) {
-        // Find max version for this user/month/year and increment
-        const maxVersionRows = (await db.execute(
-          sql`SELECT COALESCE(MAX(version), 0) AS max_ver FROM salary_slips WHERE user_id = ${userId} AND year = ${y} AND month = ${m}`
-        )).rows as any[];
-        const nextVersion = (Number(maxVersionRows[0]?.max_ver ?? 0)) + 1;
+        // First access: run engine once, freeze snapshot, write ledger row.
+        const computationSnapshot = await buildComputationSnapshot(
+          userId,
+          Number(row.grossSalary || 0),
+          y, m,
+          Number(row.lopLeaves || 0),
+          Number(row.workingDays || 22),
+        );
+
+        // Engine is authoritative for statutory deductions + net pay.
+        const snap = computationSnapshot as Record<string, any> | null;
+        const wf = snap?.waterfall as Record<string, number> | undefined;
+        if (wf) {
+          slipData.deductions = wf.totalStatutoryDeductionsPaise / 100;
+          slipData.advanceRecovery = wf.advanceRecoveredPaise / 100;
+          slipData.netPayable = wf.netPayPaise / 100;
+        }
 
         await db.insert(salarySlips).values({
           userId,
           year: y,
           month: m,
-          version: nextVersion,
+          version: 1,
           salaryRunId: approvedRun.id,
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
-          deductions: String(row.deductions),
-          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
-          netPayable: String(row.netPayable),
+          deductions: String(slipData.deductions),
+          salaryAdvanceRecovery: String(slipData.advanceRecovery),
+          netPayable: String(slipData.netPayable),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
           daysAbsent: row.absentDays,
@@ -7728,7 +8147,23 @@ export async function registerRoutes(
           totalHours: String(row.totalHours),
           attendancePercentage: String(row.attendancePercentage),
           generatedBy: actor,
+          computationSnapshot: computationSnapshot ?? undefined,
+          jurisdiction: "IN",
         });
+      } else {
+        // Subsequent access: serve deterministically from the frozen stored snapshot.
+        const storedSnap = existingLedger.computationSnapshot as Record<string, any> | null | undefined;
+        const storedWf = storedSnap?.waterfall as Record<string, number> | undefined;
+        if (storedWf) {
+          slipData.deductions = storedWf.totalStatutoryDeductionsPaise / 100;
+          slipData.advanceRecovery = storedWf.advanceRecoveredPaise / 100;
+          slipData.netPayable = storedWf.netPayPaise / 100;
+        } else {
+          // Legacy row written before snapshot support — use stored column values.
+          slipData.deductions = parseFloat(String(existingLedger.deductions ?? 0));
+          slipData.advanceRecovery = parseFloat(String(existingLedger.salaryAdvanceRecovery ?? 0));
+          slipData.netPayable = parseFloat(String(existingLedger.netPayable ?? 0));
+        }
       }
 
       res.json({ slip: slipData });
@@ -8334,6 +8769,7 @@ export async function registerRoutes(
       const report = await generateMonthlySalaryReport(year, month);
       const generatedBy = req.session.userId!;
       let created = 0;
+      let engineAuthoritative = 0;
 
       const allUsers = await storage.getAdminUsers();
       const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
@@ -8341,15 +8777,39 @@ export async function registerRoutes(
       for (const row of report.rows) {
         const userId = userEmailMap.get(row.email);
         if (!userId) continue;
-        await storage.createSalarySlip({
+
+        // Run the India statutory engine and freeze a computation snapshot at
+        // generation time. This snapshot is the canonical authoritative record;
+        // subsequent reads serve from it without re-running the engine.
+        const computationSnapshot = await buildComputationSnapshot(
+          userId,
+          Number(row.grossSalary || 0),
+          year, month,
+          Number(row.lopLeaves || 0),
+          Number(row.workingDays || 22),
+        );
+
+        const snap = computationSnapshot as Record<string, any> | null;
+        const wf = snap?.waterfall as Record<string, number> | undefined;
+
+        // Engine is authoritative when a snapshot was produced; fall back to
+        // report values for employees without a salary structure assigned.
+        const engineDeductions = wf ? String(wf.totalStatutoryDeductionsPaise / 100) : String(row.deductions);
+        const engineAdvanceRecovery = wf ? String(wf.advanceRecoveredPaise / 100) : String(row.advanceRecovery || 0);
+        const engineNetPay = wf ? String(wf.netPayPaise / 100) : String(row.netPayable);
+
+        if (wf) engineAuthoritative++;
+
+        await db.insert(salarySlips).values({
           userId,
           year,
           month,
+          version: 1,
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
-          deductions: String(row.deductions),
-          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
-          netPayable: String(row.netPayable),
+          deductions: engineDeductions,
+          salaryAdvanceRecovery: engineAdvanceRecovery,
+          netPayable: engineNetPay,
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
           daysAbsent: row.absentDays,
@@ -8358,11 +8818,13 @@ export async function registerRoutes(
           totalHours: String(row.totalHours),
           attendancePercentage: String(row.attendancePercentage),
           generatedBy,
+          computationSnapshot: computationSnapshot ?? undefined,
+          jurisdiction: "IN",
         });
         created++;
       }
 
-      res.json({ success: true, created, month, year });
+      res.json({ success: true, created, engineAuthoritative, month, year });
     } catch (error) {
       res.status(500).json({ error: "Failed to generate salary slips" });
     }

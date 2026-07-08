@@ -2527,6 +2527,94 @@ async function backfillGrowthPlansFromAddendums() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// ESI Backfill (G2) — one-time, gated by system_settings marker
+// Sets esi_covered_until for active employees currently within ESI gross limit.
+// ---------------------------------------------------------------------------
+async function runEsiBackfill(): Promise<void> {
+  const MARKER_KEY = "esi_backfill_v1_done";
+  const existing = (await db.execute(sql`
+    SELECT 1 FROM system_settings WHERE key = ${MARKER_KEY} LIMIT 1
+  `)).rows;
+  if (existing.length > 0) return; // Already ran
+
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+
+  // endOfContributionPeriod logic (inline — no circular import)
+  function esiWindowEnd(y: number, m: number): string {
+    if (m >= 4 && m <= 9) return `${y}-09-30`;
+    if (m >= 10 && m <= 12) return `${y + 1}-03-31`;
+    return `${y}-03-31`;
+  }
+
+  const coveredUntil = esiWindowEnd(year, month);
+
+  // Read ESI gross thresholds from statutory_rates (data-driven, not hardcoded).
+  // Falls back to legislated defaults if the seed hasn't run yet.
+  const thresholdRows = (await db.execute(sql`
+    SELECT DISTINCT ON (key) key, maximum_paise
+    FROM statutory_rates
+    WHERE jurisdiction = 'IN'
+      AND levy = 'ESI'
+      AND key IN ('gross_threshold_paise', 'disability_threshold_paise')
+      AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+    ORDER BY key, effective_from DESC
+  `)).rows as Array<{ key: string; maximum_paise: number | null }>;
+
+  const getThreshold = (key: string, fallback: number): number => {
+    const r = thresholdRows.find(t => t.key === key);
+    return r?.maximum_paise != null ? Number(r.maximum_paise) : fallback;
+  };
+
+  const ESI_THRESHOLD_PAISE = getThreshold("gross_threshold_paise", 2100000);
+  const ESI_DISABILITY_THRESHOLD_PAISE = getThreshold("disability_threshold_paise", 2500000);
+
+  const employees = (await db.execute(sql`
+    SELECT id, salary, esi_disability
+    FROM admin_users
+    WHERE is_active = true
+      AND deleted_at IS NULL
+      AND employment_status = 'active'
+      AND salary IS NOT NULL
+      AND esi_covered_until IS NULL
+  `)).rows as Array<{ id: string; salary: string; esi_disability: boolean }>;
+
+  let updated = 0;
+  const affected: string[] = [];
+
+  for (const emp of employees) {
+    // admin_users.salary stores rupees; convert to paise for threshold comparison
+    const salaryPaise = Math.round(Number(emp.salary) * 100);
+    const threshold = emp.esi_disability ? ESI_DISABILITY_THRESHOLD_PAISE : ESI_THRESHOLD_PAISE;
+    if (salaryPaise <= threshold) {
+      await db.execute(sql`
+        UPDATE admin_users SET esi_covered_until = ${coveredUntil} WHERE id = ${emp.id}
+      `);
+      affected.push(emp.id);
+      updated++;
+    }
+  }
+
+  // Record one-time marker so this never re-runs
+  await db.execute(sql`
+    INSERT INTO system_settings (key, value, updated_at)
+    VALUES (
+      ${MARKER_KEY},
+      ${JSON.stringify({ ran_at: new Date().toISOString(), updated, affected_count: updated, threshold_paise: ESI_THRESHOLD_PAISE, disability_threshold_paise: ESI_DISABILITY_THRESHOLD_PAISE })},
+      now()
+    )
+    ON CONFLICT (key) DO NOTHING
+  `);
+
+  if (updated > 0) {
+    log(`[ESI Backfill] Set esi_covered_until=${coveredUntil} for ${updated} employee(s) (threshold ₹${ESI_THRESHOLD_PAISE / 100}). Review required before live payroll run.`);
+  } else {
+    log(`[ESI Backfill] No employees required esi_covered_until backfill (threshold ₹${ESI_THRESHOLD_PAISE / 100}).`);
+  }
+}
+
 // All schema "ensure" / seed / backfill work. Runs AFTER the HTTP port is open
 // (see bootstrap below) so the deployment healthcheck never sees a closed port
 // during boot. These blocks are idempotent, so running them post-listen is safe.
@@ -3716,6 +3804,19 @@ async function runStartupTasks() {
     } catch (err) {
       console.error("Dev vault seed error (non-fatal):", err);
     }
+  }
+
+  // Payroll engine — seed statutory defaults and run ESI backfill (idempotent)
+  try {
+    const { seedPayrollDefaults } = await import("./payrollSeed");
+    await seedPayrollDefaults();
+  } catch (err) {
+    console.error("[startup] Payroll seed error (non-fatal):", err);
+  }
+  try {
+    await runEsiBackfill();
+  } catch (err) {
+    console.error("[startup] ESI backfill error (non-fatal):", err);
   }
 
   // Cron/scheduled jobs start only after schema is ensured so they query
