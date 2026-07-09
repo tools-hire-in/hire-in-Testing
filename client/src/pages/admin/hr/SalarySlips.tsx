@@ -1,17 +1,26 @@
 import { useState, useCallback, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Receipt, Download, Calendar, Loader2, CheckCircle2, FileText,
-  Eye, Mail, Clock3, ChevronDown, ChevronUp, Info,
+  Eye, Mail, Clock3, ChevronDown, ChevronUp, Info, Pencil,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData, type ComputationSnapshot } from "@shared/salarySlipHtml";
+import type { SlipComponents } from "@shared/salaryEngineTypes";
 import { cn } from "@/lib/utils";
 
 interface ApprovedRun {
@@ -266,15 +275,256 @@ function BreakdownPanel({ snap }: { snap: ComputationSnapshot }) {
   );
 }
 
+function fmt(n: number) {
+  return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+interface SlipDetailDialogProps {
+  slip: SalarySlipData;
+  userId: string;
+  onClose: () => void;
+  isPrivileged: boolean;
+}
+
+function SlipDetailDialog({ slip, userId, onClose, isPrivileged }: SlipDetailDialogProps) {
+  const { toast } = useToast();
+  const sc: SlipComponents | null = slip.components ?? null;
+
+  const [earningToggles, setEarningToggles] = useState<Record<string, boolean>>({});
+  const [earningValues, setEarningValues] = useState<Record<string, string>>({});
+  const [statToggles, setStatToggles] = useState<Record<string, boolean>>({});
+  const [statValues, setStatValues] = useState<Record<string, string>>({});
+  const [overrideReason, setOverrideReason] = useState("");
+
+  const hasAnyOverride =
+    Object.values(earningToggles).some(Boolean) ||
+    Object.values(statToggles).some(Boolean);
+
+  const overrideMutation = useMutation({
+    mutationFn: async () => {
+      const earningOverrides: Record<string, number> = {};
+      for (const [k, on] of Object.entries(earningToggles)) {
+        if (on && earningValues[k] !== undefined && earningValues[k].trim() !== "") {
+          earningOverrides[k] = parseFloat(earningValues[k]);
+        }
+      }
+      const overrides: Record<string, number> = {};
+      const statMap: Record<string, string> = {
+        employeePf: statValues.employeePf ?? "",
+        employeeEsi: statValues.employeeEsi ?? "",
+        professionalTax: statValues.professionalTax ?? "",
+      };
+      for (const [k, on] of Object.entries(statToggles)) {
+        if (on && statMap[k] !== undefined && statMap[k].trim() !== "") {
+          overrides[k] = parseFloat(statMap[k]);
+        }
+      }
+      return apiRequest("POST", "/api/hr/salary-slips/override-statutory", {
+        userId,
+        month: slip.month,
+        year: slip.year,
+        overrides: Object.keys(overrides).length ? overrides : undefined,
+        earningOverrides: Object.keys(earningOverrides).length ? earningOverrides : undefined,
+        reason: overrideReason,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Overrides saved", description: "Salary slip corrections recorded with audit trail." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-slips/my-runs"] });
+      onClose();
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to save overrides", description: e.message || "Unknown error", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {SLIP_MONTH_NAMES[slip.month - 1]} {slip.year} — Salary Slip
+          </DialogTitle>
+          <DialogDescription>
+            {slip.employeeName} · {slip.designation || "—"}
+            {isPrivileged && " · Use Override toggles to apply HR corrections with audit reason"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {sc ? (
+          <div className="space-y-5">
+            <div className="rounded-md border">
+              <div className="px-3 py-2 bg-muted/40 font-medium text-sm">Earnings Breakdown</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="px-3 py-1.5 text-left font-normal">Component</th>
+                    <th className="px-3 py-1.5 text-right font-normal">Auto-Calculated</th>
+                    {isPrivileged && <th className="px-3 py-1.5 text-center font-normal w-20">Override</th>}
+                    {isPrivileged && <th className="px-3 py-1.5 text-right font-normal">Override Value</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sc.earnings.map((c) => (
+                    <tr key={c.componentName} className="border-b last:border-0">
+                      <td className="px-3 py-1.5">{c.displayName}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{fmt(c.amount)}</td>
+                      {isPrivileged && (
+                        <td className="px-3 py-1.5 text-center">
+                          <Switch
+                            checked={!!earningToggles[c.componentName]}
+                            onCheckedChange={(v) =>
+                              setEarningToggles((p) => ({ ...p, [c.componentName]: v }))
+                            }
+                            data-testid={`toggle-override-earning-${c.componentName}`}
+                          />
+                        </td>
+                      )}
+                      {isPrivileged && (
+                        <td className="px-3 py-1.5 text-right">
+                          {earningToggles[c.componentName] ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-7 w-28 text-right text-sm ml-auto"
+                              placeholder={String(c.amount)}
+                              value={earningValues[c.componentName] ?? ""}
+                              onChange={(e) =>
+                                setEarningValues((p) => ({ ...p, [c.componentName]: e.target.value }))
+                              }
+                              data-testid={`input-override-earning-${c.componentName}`}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  <tr className="font-medium bg-muted/20">
+                    <td className="px-3 py-1.5">Total Gross After LOP</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(sc.grossAfterLOP)}</td>
+                    {isPrivileged && <td />}
+                    {isPrivileged && <td />}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="rounded-md border">
+              <div className="px-3 py-2 bg-muted/40 font-medium text-sm">Statutory Deductions</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="px-3 py-1.5 text-left font-normal">Item</th>
+                    <th className="px-3 py-1.5 text-right font-normal">Auto-Calculated</th>
+                    {isPrivileged && <th className="px-3 py-1.5 text-center font-normal w-20">Override</th>}
+                    {isPrivileged && <th className="px-3 py-1.5 text-right font-normal">Override Value</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { key: "employeePf", label: `Employee EPF (12% of ₹${sc.statutory.pfBasis.toLocaleString("en-IN")})`, val: sc.statutory.employeePf },
+                    { key: "employeeEsi", label: "Employee ESI (0.75%)", val: sc.statutory.employeeEsi },
+                    { key: "professionalTax", label: "Professional Tax", val: sc.statutory.professionalTax },
+                  ].map(({ key, label, val }) => (
+                    <tr key={key} className="border-b last:border-0">
+                      <td className="px-3 py-1.5">{label}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{fmt(val)}</td>
+                      {isPrivileged && (
+                        <td className="px-3 py-1.5 text-center">
+                          <Switch
+                            checked={!!statToggles[key]}
+                            onCheckedChange={(v) =>
+                              setStatToggles((p) => ({ ...p, [key]: v }))
+                            }
+                            data-testid={`toggle-override-stat-${key}`}
+                          />
+                        </td>
+                      )}
+                      {isPrivileged && (
+                        <td className="px-3 py-1.5 text-right">
+                          {statToggles[key] ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-7 w-28 text-right text-sm ml-auto"
+                              placeholder={String(val)}
+                              value={statValues[key] ?? ""}
+                              onChange={(e) =>
+                                setStatValues((p) => ({ ...p, [key]: e.target.value }))
+                              }
+                              data-testid={`input-override-stat-${key}`}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-between items-center text-sm font-medium px-1">
+              <span>Net Payable</span>
+              <span className="tabular-nums text-base">{fmt(slip.netPayable)}</span>
+            </div>
+
+            {isPrivileged && hasAnyOverride && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <Label htmlFor="override-reason">Reason for Override <span className="text-destructive">*</span></Label>
+                  <Textarea
+                    id="override-reason"
+                    placeholder="Describe the correction being made (min 5 characters)…"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    rows={2}
+                    data-testid="textarea-override-reason"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => overrideMutation.mutate()}
+                    disabled={overrideMutation.isPending || overrideReason.trim().length < 5}
+                    data-testid="button-save-overrides"
+                  >
+                    {overrideMutation.isPending ? (
+                      <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</>
+                    ) : (
+                      <><Pencil className="h-3.5 w-3.5 mr-1.5" />Save Overrides</>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-4">
+            Structured breakdown not available for this slip (no salary structure assigned).
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function SalarySlips() {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
-  const [loadingMonthAction, setLoadingMonthAction] = useState<{ month: number; action: "view" | "pdf" | "email" | "breakdown" } | null>(null);
+  const [loadingMonthAction, setLoadingMonthAction] = useState<{ month: number; action: "view" | "pdf" | "email" | "breakdown" | "detail" } | null>(null);
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Set<string>>(new Set());
   const [breakdownData, setBreakdownData] = useState<Record<string, SalarySlipData | "error">>({});
+  const [detailSlip, setDetailSlip] = useState<{ slip: SalarySlipData; userId: string } | null>(null);
+
+  // HR/admin/executive have the salarySlips.regenerate permission and may apply overrides.
+  const isPrivileged = can("hr.salarySlips.regenerate");
 
   const { data: runs = [], isLoading } = useQuery<ApprovedRun[]>({
     queryKey: ["/api/hr/salary-slips/my-runs"],
@@ -290,7 +540,7 @@ export default function SalarySlips() {
 
   const approvedRunByMonth = new Map<number, ApprovedRun>();
   for (const run of runs) {
-    if (run.status === "approved" && String(run.year) === selectedYear) {
+    if ((run.status === "approved" || run.status === "executed") && String(run.year) === selectedYear) {
       const existing = approvedRunByMonth.get(run.month);
       if (!existing || (run.approvedAt && (!existing.approvedAt || run.approvedAt > existing.approvedAt))) {
         approvedRunByMonth.set(run.month, run);
@@ -326,6 +576,20 @@ export default function SalarySlips() {
         newTab.document.write(html);
         newTab.document.close();
       }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to load salary slip.", variant: "destructive" });
+    } finally {
+      setLoadingMonthAction(null);
+    }
+  };
+
+  const handleViewDetails = async (run: ApprovedRun) => {
+    if (!user?.id) return;
+    setLoadingMonthAction({ month: run.month, action: "detail" });
+    try {
+      const slip = await fetchSlipData(run);
+      if (!slip) return;
+      setDetailSlip({ slip, userId: user.id });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to load salary slip.", variant: "destructive" });
     } finally {
@@ -412,11 +676,20 @@ export default function SalarySlips() {
     }
   };
 
-  const isActing = (month: number, action: "view" | "pdf" | "email" | "breakdown") =>
+  const isActing = (month: number, action: "view" | "pdf" | "email" | "breakdown" | "detail") =>
     loadingMonthAction?.month === month && loadingMonthAction?.action === action;
 
   return (
     <div className="space-y-6">
+      {detailSlip && (
+        <SlipDetailDialog
+          slip={detailSlip.slip}
+          userId={detailSlip.userId}
+          onClose={() => setDetailSlip(null)}
+          isPrivileged={isPrivileged}
+        />
+      )}
+
       <div className="flex items-start justify-between gap-4" data-testid="text-salary-slips-title">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold leading-tight">My Payslips</h1>
@@ -501,13 +774,14 @@ export default function SalarySlips() {
               return null;
             })();
 
+
             return (
               <Card key={month} data-testid={`card-run-${run.id}`}>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                   <CardTitle className="text-base">{monthName}</CardTitle>
                   <Badge variant="outline" className="border-green-500 text-green-600 dark:text-green-400 text-xs" data-testid={`badge-approved-${run.id}`}>
                     <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Approved
+                    {run.status === "executed" ? "Executed" : "Approved"}
                   </Badge>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -530,6 +804,21 @@ export default function SalarySlips() {
                   </div>
 
                   <div className="space-y-2">
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={() => handleViewDetails(run)}
+                      disabled={!!loadingMonthAction}
+                      data-testid={`button-view-details-${run.id}`}
+                    >
+                      {isActing(month, "detail") ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Receipt className="h-4 w-4 mr-2" />
+                      )}
+                      {isActing(month, "detail") ? "Loading…" : isPrivileged ? "View & Override" : "View Breakdown"}
+                    </Button>
+
                     <Button
                       variant="outline"
                       className="w-full"

@@ -93,8 +93,11 @@ import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEsc
 import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
-import { trainingSopLinks, roleTrainingRules } from "@shared/schema";
+import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
+import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
+import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings } from "@shared/schema";
 import { tokenLookupLimiter, verifyLetterLimiter } from "./rateLimits";
+import type { SlipComponents } from "@shared/salaryEngineTypes";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -7957,6 +7960,76 @@ export async function registerRoutes(
     }
   });
 
+  // ── Salary engine helper: compute structured components for a pay period ────
+  // Fetches structure + rules from DB and calls the pure computation functions.
+  async function computeSlipComponents(opts: {
+    userId: string;
+    gross: number;
+    presentDays: number;
+    workingDays: number;
+    structureId: string;
+    pfExempt: boolean;
+    esiDisability: boolean;
+    month: number; // 1-12, used to detect February for Maharashtra PT
+  }): Promise<SlipComponents> {
+    const [structure] = await db.select().from(salaryStructures)
+      .where(eq(salaryStructures.id, opts.structureId)).limit(1);
+    if (!structure) throw new Error(`Salary structure ${opts.structureId} not found`);
+
+    const dbRules = await db.select().from(salaryStructureRules)
+      .where(eq(salaryStructureRules.structureId, opts.structureId));
+
+    const rules: StructureRule[] = dbRules.map((r) => ({
+      componentName: r.componentName,
+      ruleType: r.ruleType as any,
+      value: Number(r.value),
+      referenceComponent: r.referenceComponent ?? null,
+      lopMode: (r.lopMode as "proportional" | "fixed") || "proportional",
+      sortOrder: r.sortOrder,
+    }));
+
+    const { components, grossAfterLOP, lopFactor } = computeComponentsFromGross(
+      opts.gross, rules, opts.presentDays, opts.workingDays
+    );
+
+    // Look up PT state and PT basis from system_settings
+    let ptState: string | null = null;
+    let ptBasis: string = "gross_after_lop";
+    try {
+      const settings = await db.select({ key: systemSettings.key, value: systemSettings.value })
+        .from(systemSettings).where(inArray(systemSettings.key, ["pt_state", "pt_basis"]));
+      for (const row of settings) {
+        if (row.key === "pt_state") ptState = row.value as string | null ?? null;
+        if (row.key === "pt_basis") ptBasis = (row.value as string) || "gross_after_lop";
+      }
+    } catch {}
+
+    const customSlabs = await getPtCustomSlabs();
+    const basicComp = components.find((c) => c.componentName === "basic");
+    const statutory = computeIndiaStatutory({
+      basicAfterLOP: basicComp?.amount ?? 0,
+      grossAfterLOP,
+      pfMode: (structure.pfMode as "restricted" | "unrestricted") || "restricted",
+      pfExempt: opts.pfExempt,
+      ptState: ptState || null,
+      ptCustomSlabs: customSlabs,
+      isDisability: opts.esiDisability,
+      isFebruary: opts.month === 2,
+      // When pt_basis = "gross_before_lop", pass the pre-LOP gross for PT slab check.
+      ptGrossBasis: ptBasis === "gross_before_lop" ? opts.gross : undefined,
+    });
+
+    return {
+      earnings: components,
+      statutory,
+      pfMode: (structure.pfMode as "restricted" | "unrestricted") || "restricted",
+      structureId: structure.id,
+      structureName: structure.name,
+      lopFactor,
+      grossAfterLOP,
+    };
+  }
+
   // Employee-safe: list approved salary runs that contain the current user's email.
   // Accessible to all authenticated users (employees see their own months;
   // HR/admin see all via the existing runs list endpoint).
@@ -7968,8 +8041,8 @@ export async function registerRoutes(
       const actorUser = allUsers.find(u => u.id === actor);
       if (!actorUser) return res.status(404).json({ error: "User not found" });
 
-      // HR/admin/finance/super_admin get all executed runs (no personal slip needed)
-      if (["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "")) {
+      // HR/admin/finance/executive/super_admin get all executed runs (no personal slip needed)
+      if (["super_admin", "admin", "hr", "finance", "executive"].includes(actorRole ?? "")) {
         const runs = await db.select({
           id: salaryReportRuns.id,
           year: salaryReportRuns.year,
@@ -8032,7 +8105,7 @@ export async function registerRoutes(
       //   - HR / admin / finance / super_admin may view any slip.
       const actor = req.session.userId!;
       const actorRole = (req.session as any).role as string | undefined;
-      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "");
+      const isPrivileged = ["super_admin", "admin", "hr", "finance", "executive"].includes(actorRole ?? "");
       const isManager = actorRole === "manager";
       if (!isPrivileged && actor !== userId) {
         if (isManager) {
@@ -8075,6 +8148,98 @@ export async function registerRoutes(
       const adjustments = (approvedRun.adjustments as Record<string, any>) || {};
       const adj = adjustments[targetUser.email ?? ""];
 
+      // Check for existing ledger row first — stored components snapshot takes priority
+      // over recomputing from current rules (historical reproducibility)
+      const [existingLedger] = await db.select().from(salarySlips)
+        .where(and(
+          eq(salarySlips.userId, userId),
+          eq(salarySlips.year, y),
+          eq(salarySlips.month, m),
+          eq(salarySlips.salaryRunId, approvedRun.id),
+        ))
+        .limit(1);
+
+      // Use stored snapshot if available; compute fresh only on first render.
+      // Pass row.salary (pre-LOP base) so the engine applies LOP once via presentDays/workingDays.
+      let slipComponents: SlipComponents | null = null;
+      let storedNetPayable: number | null = null;
+      if (existingLedger?.components) {
+        slipComponents = existingLedger.components as unknown as SlipComponents;
+        // Stored net pay is already override-adjusted — use it directly.
+        storedNetPayable = Number(existingLedger.netPayable ?? null);
+        // Merge any saved statutory overrides into the statutory object so the
+        // rendered deduction lines reflect what HR actually set, not the auto values.
+        const raw = existingLedger.components as Record<string, any>;
+        const ov: Record<string, any> = raw.overrides || {};
+        if (slipComponents && (ov.employeePf !== undefined || ov.employeeEsi !== undefined || ov.professionalTax !== undefined)) {
+          const s = slipComponents.statutory;
+          const effPf  = ov.employeePf !== undefined ? Number(ov.employeePf) : s.employeePf;
+          const effEsi = ov.employeeEsi !== undefined ? Number(ov.employeeEsi) : s.employeeEsi;
+          const effPt  = ov.professionalTax !== undefined ? Number(ov.professionalTax) : s.professionalTax;
+          slipComponents = {
+            ...slipComponents,
+            statutory: {
+              ...s,
+              employeePf: effPf,
+              employeeEsi: effEsi,
+              professionalTax: effPt,
+              totalEmployeeDeductions: effPf + effEsi + effPt,
+            },
+          };
+        }
+        // Merge earnings component overrides (display-level corrections).
+        const earningOv: Record<string, number> = ov.earnings || {};
+        if (slipComponents && Object.keys(earningOv).length > 0) {
+          slipComponents = {
+            ...slipComponents,
+            earnings: slipComponents.earnings.map((c) => ({
+              ...c,
+              amount: earningOv[c.componentName] !== undefined ? earningOv[c.componentName] : c.amount,
+            })),
+          };
+        }
+      } else {
+        try {
+          if (targetUser.salaryStructureId) {
+            slipComponents = await computeSlipComponents({
+              userId,
+              // grossSalary = monthlySalary + salaryCredit — use this as the engine
+              // gross so component percentages are computed from the actual gross
+              // (including salary credit) rather than the bare CTC salary.
+              gross: Number(row.grossSalary || row.salary || 0),
+              // LOP factor = effectivePresentDays / workingDays, matching salaryReport.ts canonical math:
+              //   effectivePresentDays = presentDays + paidLeaves + regionalHolidayDays
+              // Regional holidays count as paid attendance; national holidays are already excluded
+              // from workingDays (denominator) so they must NOT be added to the numerator.
+              presentDays: Number(row.presentDays || 0) + Number(row.paidLeaves || 0) + Number(row.regionalHolidayDays || 0),
+              workingDays: Number(row.workingDays || 1),
+              structureId: targetUser.salaryStructureId,
+              pfExempt: !!targetUser.pfExempt,
+              esiDisability: !!targetUser.esiDisability,
+              month: m,
+            });
+          }
+        } catch (engErr) {
+          console.error("[salary-engine] component computation failed, continuing without structured breakdown:", engErr);
+        }
+      }
+
+      // Net pay priority:
+      //   1. Stored ledger net pay (override-adjusted and authoritative once saved).
+      //   2. row.netPayable minus auto statutory (first-render path, no ledger yet).
+      //   3. row.netPayable as-is (no structured components).
+      const advRecovery = Number(row.advanceRecovery || 0);
+      const netPayableRender = storedNetPayable !== null
+        ? storedNetPayable
+        : slipComponents
+          ? Math.max(0, Math.round((
+              Number(row.netPayable || 0)
+              - slipComponents.statutory.employeePf
+              - slipComponents.statutory.employeeEsi
+              - slipComponents.statutory.professionalTax
+            ) * 100) / 100)
+          : Number(row.netPayable || 0);
+
       const slipData: SalarySlipData = {
         userId,
         employeeName: row.employeeName,
@@ -8086,10 +8251,10 @@ export async function registerRoutes(
         salary: Number(row.salary || 0),
         grossSalary: Number(row.grossSalary || 0),
         deductions: Number(row.deductions || 0),
-        advanceRecovery: Number(row.advanceRecovery || 0),
+        advanceRecovery: advRecovery,
         advanceRecoveryBreakdown: (row.advanceRecoveryBreakdown as { advance: number; overpayment: number } | null) ?? null,
         salaryCredit: Number(row.salaryCredit || 0),
-        netPayable: Number(row.netPayable || 0),
+        netPayable: netPayableRender,
         workingDays: row.workingDays,
         presentDays: row.presentDays,
         absentDays: row.absentDays,
@@ -8101,6 +8266,7 @@ export async function registerRoutes(
         adjustmentComment: adj?.comment ?? null,
         salaryRunId: approvedRun.id,
         approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
+        components: slipComponents,
       };
 
       // Idempotent check per employee+period+jurisdiction.
@@ -8115,6 +8281,7 @@ export async function registerRoutes(
           eq(salarySlips.jurisdiction, "IN"),
         ))
         .limit(1);
+
 
       if (!existingLedger) {
         // First access: run engine once, freeze snapshot, write ledger row.
@@ -8143,9 +8310,9 @@ export async function registerRoutes(
           salaryRunId: approvedRun.id,
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
-          deductions: String(slipData.deductions),
-          salaryAdvanceRecovery: String(slipData.advanceRecovery),
-          netPayable: String(slipData.netPayable),
+          deductions: String(row.deductions),
+          salaryAdvanceRecovery: String(row.advanceRecovery || 0),
+          netPayable: String(netPayableRender),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
           daysAbsent: row.absentDays,
@@ -8156,6 +8323,7 @@ export async function registerRoutes(
           generatedBy: actor,
           computationSnapshot: computationSnapshot ?? undefined,
           jurisdiction: "IN",
+          ...(slipComponents && { components: slipComponents as any }),
         });
         (slipData as any).computationSnapshot = computationSnapshot ?? null;
       } else {
@@ -8193,7 +8361,7 @@ export async function registerRoutes(
 
       const actor = req.session.userId!;
       const actorRole = (req.session as any).role as string | undefined;
-      const isPrivileged = ["super_admin", "admin", "hr", "finance"].includes(actorRole ?? "");
+      const isPrivileged = ["super_admin", "admin", "hr", "finance", "executive"].includes(actorRole ?? "");
       const isManager = actorRole === "manager";
       if (!isPrivileged && actor !== userId) {
         if (isManager) {
@@ -8230,6 +8398,83 @@ export async function registerRoutes(
 
       const monthName = SLIP_MONTH_NAMES[m - 1];
       const adj = ((approvedRun.adjustments as Record<string, any>) || {})[targetUser.email ?? ""];
+
+      // PDF path: prefer stored components snapshot (same as render path for consistency)
+      const [pdfLedger] = await db.select().from(salarySlips)
+        .where(and(
+          eq(salarySlips.userId, userId),
+          eq(salarySlips.year, y),
+          eq(salarySlips.month, m),
+          eq(salarySlips.salaryRunId, approvedRun.id),
+        ))
+        .limit(1);
+
+      let pdfSlipComponents: SlipComponents | null = null;
+      let pdfStoredNetPayable: number | null = null;
+      if (pdfLedger?.components) {
+        pdfSlipComponents = pdfLedger.components as unknown as SlipComponents;
+        pdfStoredNetPayable = Number(pdfLedger.netPayable ?? null);
+        // Merge any saved statutory overrides so the PDF deduction lines are authoritative.
+        const rawPdf = pdfLedger.components as Record<string, any>;
+        const ovPdf: Record<string, any> = rawPdf.overrides || {};
+        if (pdfSlipComponents && (ovPdf.employeePf !== undefined || ovPdf.employeeEsi !== undefined || ovPdf.professionalTax !== undefined)) {
+          const s = pdfSlipComponents.statutory;
+          const effPf  = ovPdf.employeePf !== undefined ? Number(ovPdf.employeePf) : s.employeePf;
+          const effEsi = ovPdf.employeeEsi !== undefined ? Number(ovPdf.employeeEsi) : s.employeeEsi;
+          const effPt  = ovPdf.professionalTax !== undefined ? Number(ovPdf.professionalTax) : s.professionalTax;
+          pdfSlipComponents = {
+            ...pdfSlipComponents,
+            statutory: {
+              ...s,
+              employeePf: effPf,
+              employeeEsi: effEsi,
+              professionalTax: effPt,
+              totalEmployeeDeductions: effPf + effEsi + effPt,
+            },
+          };
+        }
+        // Merge earnings component overrides (display-level corrections) for PDF.
+        const earningOvPdf: Record<string, number> = ovPdf.earnings || {};
+        if (pdfSlipComponents && Object.keys(earningOvPdf).length > 0) {
+          pdfSlipComponents = {
+            ...pdfSlipComponents,
+            earnings: pdfSlipComponents.earnings.map((c) => ({
+              ...c,
+              amount: earningOvPdf[c.componentName] !== undefined ? earningOvPdf[c.componentName] : c.amount,
+            })),
+          };
+        }
+      } else {
+        try {
+          if (targetUser.salaryStructureId) {
+            pdfSlipComponents = await computeSlipComponents({
+              userId,
+              gross: Number(row.grossSalary || row.salary || 0),
+              presentDays: Number(row.presentDays || 0) + Number(row.paidLeaves || 0) + Number(row.regionalHolidayDays || 0),
+              workingDays: Number(row.workingDays || 1),
+              structureId: targetUser.salaryStructureId,
+              pfExempt: !!targetUser.pfExempt,
+              esiDisability: !!targetUser.esiDisability,
+              month: m,
+            });
+          }
+        } catch (engErr) {
+          console.error("[salary-engine] PDF component computation failed:", engErr);
+        }
+      }
+
+      const advRecoveryPdf = Number(row.advanceRecovery || 0);
+      const netPayablePdf = pdfStoredNetPayable !== null
+        ? pdfStoredNetPayable
+        : pdfSlipComponents
+          ? Math.max(0, Math.round((
+              Number(row.netPayable || 0)
+              - pdfSlipComponents.statutory.employeePf
+              - pdfSlipComponents.statutory.employeeEsi
+              - pdfSlipComponents.statutory.professionalTax
+            ) * 100) / 100)
+          : Number(row.netPayable || 0);
+
       const slipData: SalarySlipData = {
         userId,
         employeeName: row.employeeName,
@@ -8241,10 +8486,10 @@ export async function registerRoutes(
         salary: Number(row.salary || 0),
         grossSalary: Number(row.grossSalary || 0),
         deductions: Number(row.deductions || 0),
-        advanceRecovery: Number(row.advanceRecovery || 0),
+        advanceRecovery: advRecoveryPdf,
         advanceRecoveryBreakdown: (row.advanceRecoveryBreakdown as { advance: number; overpayment: number } | null) ?? null,
         salaryCredit: Number(row.salaryCredit || 0),
-        netPayable: Number(row.netPayable || 0),
+        netPayable: netPayablePdf,
         workingDays: row.workingDays,
         presentDays: row.presentDays,
         absentDays: row.absentDays,
@@ -8256,6 +8501,7 @@ export async function registerRoutes(
         adjustmentComment: adj?.comment ?? null,
         salaryRunId: approvedRun.id,
         approvedAt: approvedRun.approvedAt ? String(approvedRun.approvedAt) : null,
+        components: pdfSlipComponents,
       };
       const html = generateSalarySlipHtml(slipData);
 
@@ -8765,7 +9011,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/salary-slips/generate", requireAuth, requirePermission("hr.salarySlips.generate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/salary-slips/generate", requireAuth, requirePermission("hr.salarySlips.generate", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
     try {
       const year = parseInt(req.body.year) || new Date().getFullYear();
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
@@ -8782,14 +9028,17 @@ export async function registerRoutes(
 
       const allUsers = await storage.getAdminUsers();
       const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
+      const userProfileMap = new Map(allUsers.map(u => [u.id, {
+        structureId: u.salaryStructureId,
+        pfExempt: !!u.pfExempt,
+        esiDisability: !!u.esiDisability,
+      }]));
 
       for (const row of report.rows) {
         const userId = userEmailMap.get(row.email);
         if (!userId) continue;
 
-        // Run the India statutory engine and freeze a computation snapshot at
-        // generation time. This snapshot is the canonical authoritative record;
-        // subsequent reads serve from it without re-running the engine.
+        // Run the India statutory engine (paise-based snapshot — authoritative for deductions/net pay).
         const computationSnapshot = await buildComputationSnapshot(
           userId,
           Number(row.grossSalary || 0),
@@ -8801,13 +9050,35 @@ export async function registerRoutes(
         const snap = computationSnapshot as Record<string, any> | null;
         const wf = snap?.waterfall as Record<string, number> | undefined;
 
-        // Engine is authoritative when a snapshot was produced; fall back to
-        // report values for employees without a salary structure assigned.
         const engineDeductions = wf ? String(wf.totalStatutoryDeductionsPaise / 100) : String(row.deductions);
         const engineAdvanceRecovery = wf ? String(wf.advanceRecoveredPaise / 100) : String(row.advanceRecovery || 0);
         const engineNetPay = wf ? String(wf.netPayPaise / 100) : String(row.netPayable);
 
         if (wf) engineAuthoritative++;
+
+        // Also compute SlipComponents (rupee-based) for structured display if no snapshot.
+        let slipComponents: SlipComponents | undefined;
+        if (!wf) {
+          const profile = userProfileMap.get(userId);
+          if (profile?.structureId) {
+            try {
+              slipComponents = await computeSlipComponents({
+                userId,
+                gross: Number(row.grossSalary || row.salary || 0),
+                // effectivePresentDays = presentDays + paidLeaves + regionalHolidayDays
+                // (matches salaryReport.ts canonical formula; national holidays excluded from workingDays).
+                presentDays: Number(row.presentDays || 0) + Number(row.paidLeaves || 0) + Number(row.regionalHolidayDays || 0),
+                workingDays: Number(row.workingDays || 1),
+                structureId: profile.structureId,
+                pfExempt: profile.pfExempt,
+                esiDisability: profile.esiDisability,
+                month,
+              });
+            } catch (engErr) {
+              console.error(`[salary-gen] SlipComponents fallback failed for ${userId}:`, engErr);
+            }
+          }
+        }
 
         await db.insert(salarySlips).values({
           userId,
@@ -8829,6 +9100,7 @@ export async function registerRoutes(
           generatedBy,
           computationSnapshot: computationSnapshot ?? undefined,
           jurisdiction: "IN",
+          ...(slipComponents && { components: slipComponents as any }),
         });
         created++;
       }
@@ -8840,7 +9112,7 @@ export async function registerRoutes(
   });
 
   // Salary slip regeneration (replace existing slips for a month)
-  app.post("/api/hr/salary-slips/regenerate", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/salary-slips/regenerate", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
     try {
       const { month, year, userIds, dryRun } = req.body;
       const m = parseInt(month);
@@ -8853,6 +9125,11 @@ export async function registerRoutes(
       const allUsers = await storage.getAdminUsers();
       const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
       const userNameMap = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+      const userProfileMapRegen = new Map(allUsers.map(u => [u.id, {
+        structureId: u.salaryStructureId,
+        pfExempt: !!u.pfExempt,
+        esiDisability: !!u.esiDisability,
+      }]));
 
       const existingSlips = await storage.getLatestSalarySlipsByMonth(y, m);
       const existingByUser = new Map(existingSlips.map(s => [s.userId, s]));
@@ -8900,6 +9177,7 @@ export async function registerRoutes(
         // Full pay-math breakdown so the preview can explain every number.
         newVals: BreakdownVals;
         oldVals: BreakdownVals | null;
+        components: any | null;
       }> = [];
 
       const slipsToUpsert: Array<Parameters<typeof storage.upsertSalarySlip>[0]> = [];
@@ -8913,6 +9191,33 @@ export async function registerRoutes(
         const existing = existingByUser.get(userId);
         const isNew = !existing;
 
+        // Compute statutory deductions for employees with a salary structure assigned
+        let regenDeductions = Number(row.deductions || 0);
+        let regenNetPayable = Number(row.netPayable || 0);
+        let regenComponents: SlipComponents | undefined;
+        const regenProfile = userProfileMapRegen.get(userId);
+        if (regenProfile?.structureId) {
+          try {
+            regenComponents = await computeSlipComponents({
+              userId,
+              gross: Number(row.grossSalary || row.salary || 0),
+              presentDays: Number(row.presentDays || 0) + Number(row.paidLeaves || 0) + Number(row.regionalHolidayDays || 0),
+              workingDays: Number(row.workingDays || 1),
+              structureId: regenProfile.structureId,
+              pfExempt: regenProfile.pfExempt,
+              esiDisability: regenProfile.esiDisability,
+              month: m,
+            });
+            const s = regenComponents.statutory;
+            const statutoryEmployee = s.employeePf + s.employeeEsi + s.professionalTax;
+            regenDeductions = Math.round((regenDeductions + statutoryEmployee) * 100) / 100;
+            // row.netPayable = grossSalary - attendanceDeductions - advance; subtract statutory on top
+            regenNetPayable = Math.max(0, Math.round((Number(row.netPayable || 0) - statutoryEmployee) * 100) / 100);
+          } catch (engErr) {
+            console.error(`[salary-regen] Statutory computation failed for ${userId}:`, engErr);
+          }
+        }
+
         const oldNet = existing ? parseFloat(String(existing.netPayable)) : null;
         const oldLop = existing ? parseFloat(String(existing.lopLeaves ?? 0)) : null;
         const oldGross = existing ? parseFloat(String(existing.grossSalary)) : null;
@@ -8920,10 +9225,10 @@ export async function registerRoutes(
         const oldAdvance = existing ? parseFloat(String(existing.salaryAdvanceRecovery ?? 0)) : null;
         const oldDaysPresent = existing ? existing.daysPresent : null;
 
-        const netDiff = !isNew ? row.netPayable - oldNet! : 0;
+        const netDiff = !isNew ? regenNetPayable - oldNet! : 0;
         const lopDiff = !isNew ? row.lopLeaves - oldLop! : 0;
         const grossDiff = !isNew ? row.grossSalary - oldGross! : 0;
-        const deductionsDiff = !isNew ? row.deductions - oldDeductions! : 0;
+        const deductionsDiff = !isNew ? regenDeductions - oldDeductions! : 0;
         const advanceDiff = !isNew ? (row.advanceRecovery || 0) - oldAdvance! : 0;
         const presentDiff = !isNew ? row.presentDays - oldDaysPresent! : 0;
 
@@ -8984,10 +9289,10 @@ export async function registerRoutes(
           absentDays: row.absentDays,
           paidLeaves: row.paidLeaves,
           lopLeaves: row.lopLeaves,
-          deductions: row.deductions,
+          deductions: regenDeductions,
           dailyRate: newDailyRate,
           advanceRecovery: row.advanceRecovery || 0,
-          netPayable: row.netPayable,
+          netPayable: regenNetPayable,
         };
         const oldVals: BreakdownVals | null = existing ? {
           baseSalary: parseFloat(String(existing.basicSalary ?? 0)),
@@ -9009,7 +9314,7 @@ export async function registerRoutes(
           name: userNameMap.get(userId) ?? row.employeeName,
           email: row.email,
           oldNetPayable: oldNet,
-          newNetPayable: row.netPayable,
+          newNetPayable: regenNetPayable,
           oldLopLeaves: oldLop,
           newLopLeaves: row.lopLeaves,
           isNew,
@@ -9017,6 +9322,7 @@ export async function registerRoutes(
           changeReason,
           newVals,
           oldVals,
+          components: regenComponents ?? null,
         });
 
         slipsToUpsert.push({
@@ -9025,9 +9331,9 @@ export async function registerRoutes(
           month: m,
           basicSalary: String(row.salary),
           grossSalary: String(row.grossSalary),
-          deductions: String(row.deductions),
+          deductions: String(regenDeductions),
           salaryAdvanceRecovery: String(row.advanceRecovery || 0),
-          netPayable: String(row.netPayable),
+          netPayable: String(regenNetPayable),
           totalWorkingDays: row.workingDays,
           daysPresent: row.presentDays,
           daysAbsent: row.absentDays,
@@ -9036,6 +9342,7 @@ export async function registerRoutes(
           totalHours: String(row.totalHours),
           attendancePercentage: String(row.attendancePercentage),
           generatedBy,
+          components: regenComponents ? (regenComponents as any) : undefined,
         });
       }
 
@@ -9099,6 +9406,105 @@ export async function registerRoutes(
   // existing /api/hr/salary-changes behavior); admin/HR create a maker-checker
   // pending change for super-admin approval. A reason is mandatory and the acting
   // user is recorded in the audit trail.
+  // ── Per-field statutory override: patch components.overrides on a salary_slips row ──
+  app.post("/api/hr/salary-slips/override-statutory", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        userId: z.string().min(1),
+        month: z.number().int().min(1).max(12),
+        year: z.number().int().min(2000).max(2100),
+        // Statutory overrides (PF / ESI / PT) — affect net pay when changed.
+        overrides: z.object({
+          employeePf: z.number().min(0).optional(),
+          employeeEsi: z.number().min(0).optional(),
+          professionalTax: z.number().min(0).optional(),
+        }).optional(),
+        // Earnings component overrides (Basic, HRA, etc.) — display-level corrections;
+        // they update the breakdown shown on the slip but do not change the run's net pay.
+        earningOverrides: z.record(z.string(), z.number().min(0)).optional(),
+        reason: z.string().trim().min(5, "Please provide a reason (at least 5 characters)"),
+      }).refine(
+        d => (d.overrides && Object.values(d.overrides).some(v => v !== undefined)) ||
+             (d.earningOverrides && Object.keys(d.earningOverrides).length > 0),
+        { message: "At least one field must be overridden" }
+      );
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", errors: parsed.error.errors });
+      const { userId, month, year, overrides, earningOverrides, reason } = parsed.data;
+      const actorId = req.session.userId!;
+
+      // Statutory overrides are HR/executive audit-corrections on an existing ledger
+      // row; they are intentionally permitted regardless of run status so corrections
+      // can be applied at any time. The audit trail (updatedBy + reason) is the
+      // safeguard; we do NOT add a run-status lock here.
+
+      // Fetch the current slip row.
+      const [slip] = await db.select().from(salarySlips)
+        .where(and(eq(salarySlips.userId, userId), eq(salarySlips.year, year), eq(salarySlips.month, month)))
+        .orderBy(desc(salarySlips.version))
+        .limit(1);
+      if (!slip) return res.status(404).json({ error: "No salary slip found for this period" });
+      if (!slip.components) return res.status(400).json({ error: "No structured components on this slip; cannot override statutory values" });
+
+      const existingComponents = slip.components as Record<string, any>;
+      const updatedComponents = {
+        ...existingComponents,
+        overrides: {
+          ...(existingComponents.overrides || {}),
+          ...(overrides || {}),
+          // Earnings component overrides: merged into overrides.earnings map.
+          earnings: {
+            ...((existingComponents.overrides?.earnings) || {}),
+            ...(earningOverrides || {}),
+          },
+          reason,
+          updatedAt: new Date().toISOString(),
+          updatedBy: actorId,
+        },
+      };
+
+      // Idempotent net-pay recomputation:
+      //   1. Determine what statutory was ALREADY applied to slip.netPayable
+      //      (use prior override values if any, otherwise auto-statutory).
+      //   2. Restore base net: slip.netPayable + currentEffectiveStatutory.
+      //   3. Apply new effective statutory (merge overrides with current).
+      // This makes repeated overrides safe — each call produces the same result
+      // given the same input, regardless of how many overrides came before.
+      const statutory = existingComponents.statutory as any;
+      const priorOverrides = existingComponents.overrides as Record<string, any> || {};
+      const currentEpf = priorOverrides.employeePf !== undefined ? Number(priorOverrides.employeePf) : (statutory.employeePf ?? 0);
+      const currentEsi = priorOverrides.employeeEsi !== undefined ? Number(priorOverrides.employeeEsi) : (statutory.employeeEsi ?? 0);
+      const currentPt  = priorOverrides.professionalTax !== undefined ? Number(priorOverrides.professionalTax) : (statutory.professionalTax ?? 0);
+      const currentEffectiveStatutory = currentEpf + currentEsi + currentPt;
+      // Restore the baseline net before any statutory deduction.
+      const baseNetBeforeStatutory = Number(slip.netPayable) + currentEffectiveStatutory;
+      // Compute new effective values (merge: new override wins, else keep current effective).
+      // `overrides` may be undefined when only earningOverrides are submitted (earnings-only path).
+      const safeOv = overrides ?? {};
+      const newEpf = safeOv.employeePf !== undefined ? safeOv.employeePf : currentEpf;
+      const newEsi = safeOv.employeeEsi !== undefined ? safeOv.employeeEsi : currentEsi;
+      const newPt  = safeOv.professionalTax !== undefined ? safeOv.professionalTax : currentPt;
+      const newNetPayable = Math.max(0, Math.round((baseNetBeforeStatutory - newEpf - newEsi - newPt) * 100) / 100);
+
+      await db.update(salarySlips)
+        .set({ components: updatedComponents, netPayable: String(newNetPayable) })
+        .where(eq(salarySlips.id, slip.id));
+
+      await storage.createAuditLog({
+        userId: actorId,
+        action: "statutory_override",
+        entityType: "salary_slip",
+        entityId: slip.id,
+        changes: { userId, month, year, overrides, reason, newNetPayable },
+      });
+
+      res.json({ ok: true, newNetPayable });
+    } catch (err) {
+      console.error("Statutory override failed:", err);
+      res.status(500).json({ error: "Failed to save override" });
+    }
+  });
+
   app.post("/api/hr/salary-slips/correct-salary", requireAuth, requirePermission("hr.salarySlips.regenerate", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
       const schema = z.object({
@@ -20704,9 +21110,12 @@ export async function registerRoutes(
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
   registerTrainingCatalogRoutes(app);
+  registerSalaryStructureRoutes(app, requirePermission);
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);
+  // Seed default "Standard" salary structure (idempotent)
+  seedDefaultSalaryStructure().catch(console.error);
 
   // ============================================================================
   // Payroll Settings API

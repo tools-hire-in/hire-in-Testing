@@ -167,8 +167,8 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "hr.reports.salary.adjust": ["super_admin", "admin", "executive"],
   "hr.reports.salary.approve": ["super_admin", "admin", "executive"],
   "hr.reports.salary.execute": ["super_admin", "admin", "hr", "executive"],
-  "hr.salarySlips.generate": ["super_admin", "admin", "hr"],
-  "hr.salarySlips.regenerate": ["super_admin", "admin", "hr"],
+  "hr.salarySlips.generate": ["super_admin", "admin", "hr", "executive"],
+  "hr.salarySlips.regenerate": ["super_admin", "admin", "hr", "executive"],
   "hr.shifts.currentTiming": ["super_admin", "admin", "hr", "manager"],
   "hr.tickets": ["super_admin", "admin", "hr"],
   "hr.tickets.review": ["super_admin", "admin", "hr"],
@@ -295,6 +295,13 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "travel.quotes": ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"],
   "travel.quotes.approve": ["super_admin", "admin", "hr"],
   "travel.marginFloors": ["super_admin", "admin", "hr"],
+  // ── Salary Structure Templates & India Statutory Engine ──────────────────
+  // executive has FULL operational access (primary person running India payroll)
+  "hr.salaryStructures.view": ["super_admin", "admin", "hr", "finance", "executive"],
+  "hr.salaryStructures.manage": ["super_admin", "admin", "hr", "executive"],
+  "hr.salaryStructures.assign": ["super_admin", "admin", "hr", "executive"],
+  "hr.employee.pfExempt": ["super_admin", "admin", "hr", "executive"],
+  "hr.payroll.settings": ["super_admin", "admin", "hr", "executive"],
 };
 
 // ============================================================================

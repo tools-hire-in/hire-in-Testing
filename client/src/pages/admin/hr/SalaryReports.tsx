@@ -134,6 +134,11 @@ interface BreakdownVals {
   netPayable: number;
 }
 
+// Mirror of shared/salaryEngineTypes.ts — kept here to avoid a circular import in the preview path.
+interface ComponentBreakdown { componentName: string; displayName: string; rawAmount: number; amount: number; ruleDescription: string; }
+interface StatutoryResult { employeePf: number; employerEpf: number; employerEps: number; employerEdli: number; employerAdminCharges: number; employeeEsi: number; employerEsi: number; professionalTax: number; pfBasis: number; esiApplicable: boolean; totalEmployeeDeductions: number; totalEmployerCost: number; }
+interface SlipComponents { earnings: ComponentBreakdown[]; grossAfterLOP: number; lopFactor: number; statutory: StatutoryResult; pfMode: string; structureId: string; structureName: string; overrides?: { employeePf?: number; employeeEsi?: number; professionalTax?: number; reason?: string; updatedAt?: string; updatedBy?: string; }; }
+
 interface RegenerateDiffRow {
   userId: string;
   name: string;
@@ -147,6 +152,7 @@ interface RegenerateDiffRow {
   changeReason?: string;
   newVals: BreakdownVals;
   oldVals: BreakdownVals | null;
+  components?: SlipComponents | null;
 }
 
 
@@ -178,6 +184,102 @@ function BreakdownLine({
         <span className={changed ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>{format(newV)}</span>
       </span>
     </div>
+  );
+}
+
+// ── Audited per-field statutory override dialog. ────────────────────────────
+// Allows HR/Admin to override EPF, ESI, or PT for a specific employee+period
+// with a mandatory reason. Persisted in salary_slips.components.overrides and
+// reflected in net payable.
+function StatutoryOverrideEditor({ row, month, year, onDone }: { row: RegenerateDiffRow; month: string; year: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const s = row.components?.statutory;
+  const ov = row.components?.overrides;
+  const [epf, setEpf] = useState(String(ov?.employeePf ?? s?.employeePf ?? ""));
+  const [esi, setEsi] = useState(String(ov?.employeeEsi ?? s?.employeeEsi ?? ""));
+  const [pt, setPt] = useState(String(ov?.professionalTax ?? s?.professionalTax ?? ""));
+
+  const save = useMutation({
+    mutationFn: () => {
+      const overrides: Record<string, number> = {};
+      if (epf !== "" && s?.employeePf !== undefined) overrides.employeePf = Number(epf);
+      if (esi !== "" && s?.employeeEsi !== undefined) overrides.employeeEsi = Number(esi);
+      if (pt !== "" && s?.professionalTax !== undefined) overrides.professionalTax = Number(pt);
+      return apiRequest("POST", "/api/hr/salary-slips/override-statutory", {
+        userId: row.userId,
+        month: Number(month),
+        year: Number(year),
+        overrides,
+        reason,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Statutory override saved" });
+      setOpen(false);
+      onDone();
+    },
+    onError: (e: any) => toast({ title: "Override failed", description: e.message, variant: "destructive" }),
+  });
+
+  if (!row.components) return null;
+
+  return (
+    <>
+      <button
+        data-testid={`btn-statutory-override-${row.userId}`}
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-muted"
+      >Override Statutory</button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal>
+          <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="font-semibold text-sm">Override Statutory Deductions — {row.name}</h3>
+            <p className="text-xs text-muted-foreground">Leave a field blank to keep its auto-calculated value. Net pay recalculates on save.</p>
+            {s && s.employeePf > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium">EPF (employee) — auto: {inr(s.employeePf)}</label>
+                <input data-testid="input-override-epf" type="number" min="0" value={epf}
+                  onChange={e => setEpf(e.target.value)}
+                  className="w-full rounded-md border px-3 py-1.5 text-sm" placeholder="Leave blank for auto" />
+              </div>
+            )}
+            {s && s.employeeEsi > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium">ESI (employee) — auto: {inr(s.employeeEsi)}</label>
+                <input data-testid="input-override-esi" type="number" min="0" value={esi}
+                  onChange={e => setEsi(e.target.value)}
+                  className="w-full rounded-md border px-3 py-1.5 text-sm" placeholder="Leave blank for auto" />
+              </div>
+            )}
+            {s && s.professionalTax > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Professional Tax — auto: {inr(s.professionalTax)}</label>
+                <input data-testid="input-override-pt" type="number" min="0" value={pt}
+                  onChange={e => setPt(e.target.value)}
+                  className="w-full rounded-md border px-3 py-1.5 text-sm" placeholder="Leave blank for auto" />
+              </div>
+            )}
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Reason <span className="text-destructive">*</span></label>
+              <textarea data-testid="input-override-reason" value={reason} onChange={e => setReason(e.target.value)}
+                rows={2} className="w-full rounded-md border px-3 py-1.5 text-sm resize-none"
+                placeholder="Mandatory — explain why the statutory value is being overridden" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setOpen(false)} className="rounded-md border px-3 py-1.5 text-xs">Cancel</button>
+              <button
+                data-testid="btn-save-statutory-override"
+                onClick={() => save.mutate()}
+                disabled={save.isPending || reason.trim().length < 5}
+                className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs disabled:opacity-50"
+              >{save.isPending ? "Saving…" : "Save Override"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -406,10 +508,61 @@ function EmployeeBreakdownRow({ row, canEdit, month, year, onCorrected, expanded
               <BreakdownLine label="Absent Days" oldV={ov?.absentDays ?? null} newV={nv.absentDays} format={fmtDays} />
             </div>
           </div>
+          {row.components && (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-1.5" data-testid={`breakdown-statutory-${row.userId}`}>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Auto-filled Statutory &amp; Component Breakdown</p>
+              <div className="grid sm:grid-cols-2 gap-x-8 text-xs">
+                <div>
+                  {(row.components.earnings ?? []).map((c: ComponentBreakdown) => (
+                    <div key={c.componentName} className="flex justify-between gap-2 py-0.5">
+                      <span className="capitalize text-muted-foreground">{c.displayName || c.componentName.replace(/_/g, " ")}</span>
+                      <span className="font-mono">{inr(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  {row.components.statutory.employeePf > 0 && (
+                    <div className="flex justify-between gap-2 py-0.5">
+                      <span className="text-muted-foreground">EPF (employee 12%){row.components.overrides?.employeePf !== undefined && <span className="ml-1 text-amber-600 text-[10px]">overridden</span>}</span>
+                      <span className="font-mono text-destructive">−{inr(row.components.overrides?.employeePf ?? row.components.statutory.employeePf)}</span>
+                    </div>
+                  )}
+                  {row.components.statutory.employeeEsi > 0 && (
+                    <div className="flex justify-between gap-2 py-0.5">
+                      <span className="text-muted-foreground">ESI (employee 0.75%){row.components.overrides?.employeeEsi !== undefined && <span className="ml-1 text-amber-600 text-[10px]">overridden</span>}</span>
+                      <span className="font-mono text-destructive">−{inr(row.components.overrides?.employeeEsi ?? row.components.statutory.employeeEsi)}</span>
+                    </div>
+                  )}
+                  {row.components.statutory.professionalTax > 0 && (
+                    <div className="flex justify-between gap-2 py-0.5">
+                      <span className="text-muted-foreground">Professional Tax{row.components.overrides?.professionalTax !== undefined && <span className="ml-1 text-amber-600 text-[10px]">overridden</span>}</span>
+                      <span className="font-mono text-destructive">−{inr(row.components.overrides?.professionalTax ?? row.components.statutory.professionalTax)}</span>
+                    </div>
+                  )}
+                  {(row.components.statutory.employerEpf + row.components.statutory.employerEps) > 0 && (
+                    <div className="flex justify-between gap-2 py-0.5 text-muted-foreground/70">
+                      <span>Employer PF (CTC)</span>
+                      <span className="font-mono">{inr(row.components.statutory.employerEpf + row.components.statutory.employerEps)}</span>
+                    </div>
+                  )}
+                  {row.components.statutory.employerEsi > 0 && (
+                    <div className="flex justify-between gap-2 py-0.5 text-muted-foreground/70">
+                      <span>Employer ESI (CTC)</span>
+                      <span className="font-mono">{inr(row.components.statutory.employerEsi)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {row.components.overrides?.reason && (
+                <p className="text-[10px] text-amber-600 border-t pt-1">Override reason: {row.components.overrides.reason}</p>
+              )}
+            </div>
+          )}
           {canEdit && (
             <div className="flex flex-wrap gap-2 pt-1">
               <BaseSalaryEditor row={row} month={month} year={year} onDone={onCorrected} />
               <AttendanceCorrector row={row} month={month} year={year} onDone={onCorrected} />
+              {row.components && <StatutoryOverrideEditor row={row} month={month} year={year} onDone={onCorrected} />}
             </div>
           )}
         </div>

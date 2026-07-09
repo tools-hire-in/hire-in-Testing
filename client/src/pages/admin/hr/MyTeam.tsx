@@ -78,6 +78,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import { formatLocalDate } from "@/lib/dateUtils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/hooks/use-permissions";
 import RegularizationsPanel from "./RegularizationsPanel";
 
 const INDIA_PT_STATES = [
@@ -1177,7 +1179,200 @@ function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; 
       </Card>
 
       <EmployeeAdvancesCard employeeId={employeeId} role={user?.role || ""} />
+      <PayrollProfileCard employeeId={employeeId} />
     </div>
+  );
+}
+
+// ── Payroll Profile Card — structure assignment + statutory flags ──────────────
+
+interface PayrollProfile {
+  id: string;
+  salaryStructureId: string | null;
+  pfExempt: boolean;
+  esiDisability: boolean;
+}
+
+interface StructureOption {
+  id: string;
+  name: string;
+  pfMode: string;
+}
+
+function PayrollProfileCard({ employeeId }: { employeeId: string }) {
+  const { toast } = useToast();
+  const { can } = usePermissions();
+  const canEdit = can("hr.salaryStructures.manage");
+  const [editOpen, setEditOpen] = useState(false);
+  const [draft, setDraft] = useState<{ salaryStructureId: string; pfExempt: boolean; esiDisability: boolean } | null>(null);
+
+  const profileQuery = useQuery<PayrollProfile>({
+    queryKey: ["/api/hr/employees", employeeId, "payroll-profile"],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/employees/${employeeId}/payroll-profile`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch payroll profile");
+      return res.json();
+    },
+    enabled: !!employeeId,
+  });
+
+  const structuresQuery = useQuery<StructureOption[]>({
+    queryKey: ["/api/hr/salary-structures"],
+    enabled: editOpen,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: { salaryStructureId: string | null; pfExempt: boolean; esiDisability: boolean }) => {
+      const res = await apiRequest("PUT", `/api/hr/employees/${employeeId}/payroll-profile`, payload);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Payroll profile updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/employees", employeeId, "payroll-profile"] });
+      setEditOpen(false);
+    },
+    onError: () => toast({ title: "Failed to update payroll profile", variant: "destructive" }),
+  });
+
+  function openEdit() {
+    if (!profileQuery.data) return;
+    setDraft({
+      salaryStructureId: profileQuery.data.salaryStructureId || "",
+      pfExempt: profileQuery.data.pfExempt,
+      esiDisability: profileQuery.data.esiDisability,
+    });
+    setEditOpen(true);
+  }
+
+  const profile = profileQuery.data;
+  const structures = structuresQuery.data || [];
+  const assignedStructure = structures.find(s => s.id === profile?.salaryStructureId);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" /> Payroll Settings
+          </CardTitle>
+          {canEdit && profile && (
+            <Button size="sm" variant="outline" onClick={openEdit} data-testid="button-edit-payroll-profile">
+              <Edit className="h-4 w-4 mr-1" /> Edit
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {profileQuery.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : !profile ? (
+          <div className="text-sm text-muted-foreground text-center py-4">Payroll profile unavailable.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground font-medium mb-1">Salary Structure</p>
+              <p data-testid="text-payroll-structure">
+                {profile.salaryStructureId
+                  ? (assignedStructure?.name || `Structure ${profile.salaryStructureId.slice(0, 8)}…`)
+                  : <span className="text-muted-foreground">None assigned</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium mb-1">PF Mode</p>
+              <p data-testid="text-payroll-pf-mode">
+                {profile.salaryStructureId && assignedStructure
+                  ? (assignedStructure.pfMode === "restricted" ? "Restricted (₹15,000 cap)" : "Unrestricted")
+                  : "—"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground font-medium">PF Exempt</span>
+              <span data-testid="text-payroll-pf-exempt" className={`text-xs px-2 py-0.5 rounded-full font-medium ${profile.pfExempt ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}>
+                {profile.pfExempt ? "Yes" : "No"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground font-medium">ESI Disability</span>
+              <span data-testid="text-payroll-esi-disability" className={`text-xs px-2 py-0.5 rounded-full font-medium ${profile.esiDisability ? "bg-blue-100 text-blue-800" : "bg-muted text-muted-foreground"}`}>
+                {profile.esiDisability ? "Yes (₹25k threshold)" : "No"}
+              </span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Payroll Settings</DialogTitle>
+            <DialogDescription>
+              Assign a salary structure and configure statutory exemption flags for this employee.
+            </DialogDescription>
+          </DialogHeader>
+          {draft && (
+            <div className="space-y-5 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="payroll-structure-select">Salary Structure</Label>
+                <Select
+                  value={draft.salaryStructureId || "none"}
+                  onValueChange={v => setDraft(d => d ? { ...d, salaryStructureId: v === "none" ? "" : v } : d)}
+                >
+                  <SelectTrigger id="payroll-structure-select" data-testid="select-payroll-structure">
+                    <SelectValue placeholder="Select structure…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (no breakdown)</SelectItem>
+                    {structuresQuery.isLoading
+                      ? <SelectItem value="_loading" disabled>Loading…</SelectItem>
+                      : structures.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="pf-exempt-toggle">PF Exempt</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Employee contributes 0% toward EPF</p>
+                </div>
+                <Switch
+                  id="pf-exempt-toggle"
+                  checked={draft.pfExempt}
+                  onCheckedChange={v => setDraft(d => d ? { ...d, pfExempt: v } : d)}
+                  data-testid="toggle-pf-exempt"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="esi-disability-toggle">ESI Disability (Higher Threshold)</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Raises ESI applicability threshold from ₹21,000 to ₹25,000 gross/month (ESIC disability rule)</p>
+                </div>
+                <Switch
+                  id="esi-disability-toggle"
+                  checked={draft.esiDisability}
+                  onCheckedChange={v => setDraft(d => d ? { ...d, esiDisability: v } : d)}
+                  data-testid="toggle-esi-disability"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => draft && saveMutation.mutate({ salaryStructureId: draft.salaryStructureId || null, pfExempt: draft.pfExempt, esiDisability: draft.esiDisability })}
+              disabled={saveMutation.isPending}
+              data-testid="button-save-payroll-profile"
+            >
+              {saveMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
 

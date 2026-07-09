@@ -2966,6 +2966,797 @@ function AttendanceExceptionThresholdsSection() {
   );
 }
 
+// ── Professional Tax State Settings Card ──────────────────────────────────────
+
+const PT_STATE_OPTIONS = [
+  { value: "none", label: "None (PT not applicable)" },
+  { value: "maharashtra", label: "Maharashtra" },
+  { value: "karnataka", label: "Karnataka" },
+  { value: "telangana", label: "Telangana" },
+  { value: "tamil_nadu", label: "Tamil Nadu" },
+  { value: "andhra_pradesh", label: "Andhra Pradesh" },
+  { value: "west_bengal", label: "West Bengal" },
+  { value: "gujarat", label: "Gujarat" },
+  { value: "madhya_pradesh", label: "Madhya Pradesh" },
+  { value: "odisha", label: "Odisha" },
+];
+
+function ProfessionalTaxSettingsCard() {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [selectedState, setSelectedState] = useState("none");
+  const [selectedBasis, setSelectedBasis] = useState("gross_after_lop");
+
+  const { data, isLoading } = useQuery<{ ptState: string }>({
+    queryKey: ["/api/hr/payroll/pt-state"],
+  });
+
+  const { data: basisData } = useQuery<{ ptBasis: string }>({
+    queryKey: ["/api/hr/payroll/pt-basis"],
+  });
+
+  const { data: slabsData } = useQuery<{ defaults: Record<string, any[]>; custom: Record<string, any[]> }>({
+    queryKey: ["/api/hr/payroll/pt-slabs"],
+    enabled: editing,
+  });
+
+  useEffect(() => {
+    if (data?.ptState) setSelectedState(data.ptState);
+  }, [data]);
+
+  useEffect(() => {
+    if (basisData?.ptBasis) setSelectedBasis(basisData.ptBasis);
+  }, [basisData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async ({ ptState, ptBasis }: { ptState: string; ptBasis: string }) => {
+      await apiRequest("PUT", "/api/hr/payroll/pt-state", { ptState });
+      await apiRequest("PUT", "/api/hr/payroll/pt-basis", { ptBasis });
+    },
+    onSuccess: () => {
+      toast({ title: "Professional Tax settings saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/pt-state"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/pt-basis"] });
+      setEditing(false);
+    },
+    onError: () => toast({ title: "Failed to save PT settings", variant: "destructive" }),
+  });
+
+  const [slabEditMode, setSlabEditMode] = useState(false);
+  const [editableSlabs, setEditableSlabs] = useState<{ minGross: string; amount: string }[]>([]);
+
+  useEffect(() => {
+    if (!slabsData || selectedState === "none") return;
+    const raw = slabsData.custom?.[selectedState] || slabsData.defaults?.[selectedState] || [];
+    setEditableSlabs(
+      [...raw]
+        .sort((a: any, b: any) => Number(a.minGross) - Number(b.minGross))
+        .map((s: any) => ({ minGross: String(s.minGross), amount: String(s.amount) }))
+    );
+  }, [slabsData, selectedState]);
+
+  const saveSlabsMutation = useMutation({
+    mutationFn: async () => {
+      const slabs = editableSlabs.map(s => ({
+        minGross: Number(s.minGross) || 0,
+        amount: Number(s.amount) || 0,
+      }));
+      return apiRequest("PUT", "/api/hr/payroll/pt-slabs", { state: selectedState, slabs });
+    },
+    onSuccess: () => {
+      toast({ title: "PT slab overrides saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/pt-slabs"] });
+      setSlabEditMode(false);
+    },
+    onError: () => toast({ title: "Failed to save PT slabs", variant: "destructive" }),
+  });
+
+  const currentLabel = PT_STATE_OPTIONS.find(o => o.value === (data?.ptState || "none"))?.label || "None";
+  const currentBasisLabel = (basisData?.ptBasis || "gross_after_lop") === "gross_before_lop" ? "Gross before LOP" : "Gross after LOP";
+  const slabs = slabsData?.custom?.[selectedState] || slabsData?.defaults?.[selectedState] || [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="h-4 w-4" />
+          Professional Tax (PT)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Set the state whose PT slab applies to all employees. PT is deducted monthly based on gross salary thresholds.
+        </p>
+
+        {isLoading ? (
+          <Skeleton className="h-9 w-48" />
+        ) : !editing ? (
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div>
+                <span className="text-sm font-medium" data-testid="text-pt-state-current">State: </span>
+                <span className="text-sm" data-testid="text-pt-state-value">{currentLabel}</span>
+              </div>
+              <div>
+                <span className="text-sm font-medium">PT slab basis: </span>
+                <span className="text-sm text-muted-foreground" data-testid="text-pt-basis-value">{currentBasisLabel}</span>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)} data-testid="button-edit-pt-state">
+              <Pencil className="h-4 w-4 mr-1" /> Edit
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="pt-state-select">PT State</Label>
+              <Select value={selectedState} onValueChange={setSelectedState}>
+                <SelectTrigger id="pt-state-select" data-testid="select-pt-state" className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PT_STATE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedState !== "none" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">
+                    PT Slabs
+                    {slabsData?.custom?.[selectedState] && (
+                      <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(custom override active)</span>
+                    )}
+                  </Label>
+                  {!slabEditMode ? (
+                    <Button
+                      size="sm" variant="outline"
+                      onClick={() => { setSlabEditMode(true); }}
+                      data-testid="button-edit-pt-slabs"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Edit Slabs
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm" variant="ghost"
+                      onClick={() => {
+                        const raw = slabsData?.custom?.[selectedState] || slabsData?.defaults?.[selectedState] || [];
+                        setEditableSlabs([...raw].sort((a: any, b: any) => Number(a.minGross) - Number(b.minGross)).map((s: any) => ({ minGross: String(s.minGross), amount: String(s.amount) })));
+                        setSlabEditMode(false);
+                      }}
+                    >Cancel</Button>
+                  )}
+                </div>
+
+                {slabEditMode ? (
+                  <div className="space-y-2">
+                    <div className="rounded-md border text-sm overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium">Gross above (₹)</th>
+                            <th className="text-left px-3 py-2 font-medium">PT/month (₹)</th>
+                            <th className="px-2 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editableSlabs.map((slab, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="px-2 py-1.5">
+                                <Input
+                                  type="number" min={0} className="h-7 w-28 text-sm"
+                                  value={slab.minGross}
+                                  onChange={e => setEditableSlabs(prev => prev.map((s, j) => j === i ? { ...s, minGross: e.target.value } : s))}
+                                  data-testid={`input-pt-slab-mingross-${i}`}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Input
+                                  type="number" min={0} className="h-7 w-24 text-sm"
+                                  value={slab.amount}
+                                  onChange={e => setEditableSlabs(prev => prev.map((s, j) => j === i ? { ...s, amount: e.target.value } : s))}
+                                  data-testid={`input-pt-slab-amount-${i}`}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Button
+                                  size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                                  onClick={() => setEditableSlabs(prev => prev.filter((_, j) => j !== i))}
+                                  data-testid={`button-remove-pt-slab-${i}`}
+                                >×</Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm" variant="outline"
+                        onClick={() => setEditableSlabs(prev => [...prev, { minGross: "", amount: "0" }])}
+                        data-testid="button-add-pt-slab"
+                      >+ Add Slab</Button>
+                      <Button
+                        size="sm" variant="outline"
+                        onClick={() => {
+                          const defs = slabsData?.defaults?.[selectedState] || [];
+                          setEditableSlabs([...defs].sort((a: any, b: any) => Number(a.minGross) - Number(b.minGross)).map((s: any) => ({ minGross: String(s.minGross), amount: String(s.amount) })));
+                        }}
+                        data-testid="button-reset-pt-slabs"
+                      >Reset to Default</Button>
+                      <Button
+                        size="sm"
+                        onClick={() => saveSlabsMutation.mutate()}
+                        disabled={saveSlabsMutation.isPending || editableSlabs.length === 0}
+                        data-testid="button-save-pt-slabs"
+                      >
+                        {saveSlabsMutation.isPending ? "Saving…" : "Save Slab Overrides"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  slabs.length > 0 && (
+                    <div className="rounded-md border text-sm overflow-hidden max-w-xs">
+                      <table className="w-full">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium">Gross above (₹)</th>
+                            <th className="text-right px-3 py-2 font-medium">PT/month (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...slabs].sort((a: any, b: any) => Number(a.minGross) - Number(b.minGross)).map((slab: any, i: number) => (
+                            <tr key={i} className="border-t">
+                              <td className="px-3 py-1.5">{Number(slab.minGross) === 0 ? "Any" : Number(slab.minGross).toLocaleString("en-IN")}</td>
+                              <td className="text-right px-3 py-1.5">{slab.amount}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="pt-basis-select">PT Slab Basis</Label>
+              <Select value={selectedBasis} onValueChange={setSelectedBasis}>
+                <SelectTrigger id="pt-basis-select" data-testid="select-pt-basis" className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gross_after_lop">Gross after LOP (default — uses actual paid gross)</SelectItem>
+                  <SelectItem value="gross_before_lop">Gross before LOP (uses full CTC gross regardless of LOP)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Controls which gross figure is checked against PT slabs. Most states use gross after LOP.</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => saveMutation.mutate({ ptState: selectedState, ptBasis: selectedBasis })} disabled={saveMutation.isPending} data-testid="button-save-pt-state">
+                {saveMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setEditing(false); setSelectedState(data?.ptState || "none"); setSelectedBasis(basisData?.ptBasis || "gross_after_lop"); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Salary Structures Section ─────────────────────────────────────────────────
+
+interface SalaryStructureRule {
+  id?: string;
+  componentName: string;
+  ruleType: string;
+  value: string;
+  referenceComponent: string;
+  lopMode: string;
+  sortOrder: number;
+}
+
+interface SalaryStructure {
+  id: string;
+  name: string;
+  description: string | null;
+  effectiveDate: string | null;
+  isActive: boolean;
+  pfMode: string;
+  rules: SalaryStructureRule[];
+}
+
+const COMPONENT_OPTIONS = [
+  { value: "basic", label: "Basic Salary" },
+  { value: "hra", label: "HRA" },
+  { value: "conveyance", label: "Conveyance Allowance" },
+  { value: "lta", label: "LTA" },
+  { value: "special_allowance", label: "Special Allowance" },
+  { value: "medical", label: "Medical Allowance" },
+  { value: "other", label: "Other Allowance" },
+];
+
+const RULE_TYPE_OPTIONS = [
+  { value: "percent_of_gross", label: "% of Gross" },
+  { value: "percent_of_component", label: "% of Component" },
+  { value: "fixed", label: "Fixed Amount (₹)" },
+  { value: "residual", label: "Residual (remainder)" },
+];
+
+const DEFAULT_RULE: SalaryStructureRule = {
+  componentName: "basic",
+  ruleType: "percent_of_gross",
+  value: "40",
+  referenceComponent: "",
+  lopMode: "proportional",
+  sortOrder: 1,
+};
+
+const BLANK_STRUCTURE = {
+  name: "",
+  description: "",
+  pfMode: "restricted",
+  effectiveDate: "",
+};
+
+function SalaryStructuresSection() {
+  const { toast } = useToast();
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null);
+  const [form, setForm] = useState(BLANK_STRUCTURE);
+  const [rules, setRules] = useState<SalaryStructureRule[]>([{ ...DEFAULT_RULE }]);
+  const [previewGross, setPreviewGross] = useState("50000");
+  const [previewResult, setPreviewResult] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"list" | "preview">("list");
+
+  const { data: structures = [], isLoading } = useQuery<SalaryStructure[]>({
+    queryKey: ["/api/hr/salary-structures"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest("POST", "/api/hr/salary-structures", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Structure created" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-structures"] });
+      setShowDialog(false);
+    },
+    onError: () => toast({ title: "Failed to create structure", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
+      await apiRequest("PUT", `/api/hr/salary-structures/${id}`, payload);
+      await apiRequest("PUT", `/api/hr/salary-structures/${id}/rules`, { rules: payload.rules });
+    },
+    onSuccess: () => {
+      toast({ title: "Structure updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-structures"] });
+      setShowDialog(false);
+    },
+    onError: () => toast({ title: "Failed to update structure", variant: "destructive" }),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/hr/salary-structures/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Structure deactivated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/salary-structures"] });
+    },
+    onError: () => toast({ title: "Failed to deactivate", variant: "destructive" }),
+  });
+
+  function openCreate() {
+    setEditingStructure(null);
+    setForm(BLANK_STRUCTURE);
+    setRules([
+      { componentName: "basic", ruleType: "percent_of_gross", value: "40", referenceComponent: "", lopMode: "proportional", sortOrder: 1 },
+      { componentName: "hra", ruleType: "percent_of_component", value: "50", referenceComponent: "basic", lopMode: "proportional", sortOrder: 2 },
+      { componentName: "conveyance", ruleType: "fixed", value: "1600", referenceComponent: "", lopMode: "proportional", sortOrder: 3 },
+      { componentName: "lta", ruleType: "percent_of_component", value: "8.33", referenceComponent: "basic", lopMode: "proportional", sortOrder: 4 },
+      { componentName: "special_allowance", ruleType: "residual", value: "0", referenceComponent: "", lopMode: "proportional", sortOrder: 5 },
+    ]);
+    setShowDialog(true);
+  }
+
+  function openEdit(s: SalaryStructure) {
+    setEditingStructure(s);
+    setForm({ name: s.name, description: s.description || "", pfMode: s.pfMode || "restricted", effectiveDate: s.effectiveDate || "" });
+    setRules(s.rules.length > 0 ? s.rules.map(r => ({ ...r, value: String(r.value), referenceComponent: r.referenceComponent || "" })) : [{ ...DEFAULT_RULE }]);
+    setShowDialog(true);
+  }
+
+  function handleSave() {
+    const payload = {
+      ...form,
+      effectiveDate: form.effectiveDate || null,
+      rules: rules.map((r, i) => ({ ...r, sortOrder: i + 1 })),
+    };
+    if (editingStructure) {
+      updateMutation.mutate({ id: editingStructure.id, payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  }
+
+  function addRule() {
+    setRules(prev => [...prev, { ...DEFAULT_RULE, sortOrder: prev.length + 1 }]);
+  }
+
+  function removeRule(idx: number) {
+    setRules(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateRule(idx: number, field: keyof SalaryStructureRule, value: string) {
+    setRules(prev => prev.map((r, i) => i === idx ? { ...r, [field]: field === "sortOrder" ? parseInt(value) : value } : r));
+  }
+
+  async function runPreview(structureId: string) {
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/hr/salary-structures/preview", {
+        structureId,
+        gross: parseFloat(previewGross) || 50000,
+        presentDays: 26,
+        workingDays: 26,
+      });
+      const data = await res.json();
+      setPreviewResult(data);
+    } catch {
+      toast({ title: "Preview failed", variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          <Button
+            variant={activeTab === "list" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("list")}
+            data-testid="button-tab-list"
+          >Structures</Button>
+          <Button
+            variant={activeTab === "preview" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("preview")}
+            data-testid="button-tab-preview"
+          >Preview</Button>
+        </div>
+        <Button onClick={openCreate} size="sm" data-testid="button-add-structure">
+          <Plus className="h-4 w-4 mr-1" /> Add Structure
+        </Button>
+      </div>
+
+      {activeTab === "list" && (
+        <div className="space-y-3">
+          {structures.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                No salary structures defined yet. Click "Add Structure" to create one.
+              </CardContent>
+            </Card>
+          )}
+          {structures.map((s) => (
+            <Card key={s.id} className={cn(!s.isActive && "opacity-60")}>
+              <CardContent className="py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm" data-testid={`text-structure-name-${s.id}`}>{s.name}</span>
+                      <Badge variant={s.isActive ? "default" : "secondary"} className="text-xs">
+                        {s.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        PF: {s.pfMode === "restricted" ? "Restricted (≤₹15k)" : "Unrestricted"}
+                      </Badge>
+                    </div>
+                    {s.description && <p className="text-xs text-muted-foreground mt-1">{s.description}</p>}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {s.rules.map((r) => (
+                        <Badge key={r.id || r.componentName} variant="outline" className="text-xs capitalize">
+                          {r.componentName.replace(/_/g, " ")}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" onClick={() => { runPreview(s.id); setActiveTab("preview"); }} data-testid={`button-preview-${s.id}`}>
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(s)} data-testid={`button-edit-structure-${s.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    {s.isActive && (
+                      <Button variant="ghost" size="icon" onClick={() => deactivateMutation.mutate(s.id)} data-testid={`button-deactivate-${s.id}`}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {activeTab === "preview" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Salary Breakdown Preview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-3 items-end">
+              <div>
+                <Label className="text-xs">Gross Monthly (₹)</Label>
+                <Input
+                  type="number"
+                  value={previewGross}
+                  onChange={e => setPreviewGross(e.target.value)}
+                  className="w-36 mt-1"
+                  data-testid="input-preview-gross"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Structure</Label>
+                <Select onValueChange={(id) => runPreview(id)}>
+                  <SelectTrigger className="w-52 mt-1" data-testid="select-preview-structure">
+                    <SelectValue placeholder="Select structure…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {structures.filter(s => s.isActive).map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {previewLoading && <span className="text-xs text-muted-foreground">Computing…</span>}
+            </div>
+
+            {previewResult && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Earnings</p>
+                  <table className="w-full text-sm border rounded-md overflow-hidden">
+                    <tbody>
+                      {previewResult.components?.map((c: any) => (
+                        <tr key={c.componentName} className="border-b last:border-0">
+                          <td className="px-3 py-2 capitalize">{c.displayName}</td>
+                          <td className="px-3 py-2 text-right font-mono">₹{Number(c.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 text-right text-xs text-muted-foreground">{c.ruleDescription}</td>
+                        </tr>
+                      ))}
+                      <tr className="font-semibold bg-muted/30">
+                        <td className="px-3 py-2">Total Gross</td>
+                        <td className="px-3 py-2 text-right font-mono">₹{Number(previewResult.grossAfterLOP || previewResult.gross).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Statutory Deductions</p>
+                  <table className="w-full text-sm border rounded-md overflow-hidden">
+                    <tbody>
+                      {previewResult.statutory?.employeePf > 0 && (
+                        <tr className="border-b">
+                          <td className="px-3 py-2">Employee PF</td>
+                          <td className="px-3 py-2 text-right font-mono text-destructive">−₹{Number(previewResult.statutory.employeePf).toLocaleString("en-IN")}</td>
+                        </tr>
+                      )}
+                      {previewResult.statutory?.employeeEsi > 0 && (
+                        <tr className="border-b">
+                          <td className="px-3 py-2">Employee ESI</td>
+                          <td className="px-3 py-2 text-right font-mono text-destructive">−₹{Number(previewResult.statutory.employeeEsi).toLocaleString("en-IN")}</td>
+                        </tr>
+                      )}
+                      {previewResult.statutory?.professionalTax > 0 && (
+                        <tr className="border-b">
+                          <td className="px-3 py-2">Professional Tax</td>
+                          <td className="px-3 py-2 text-right font-mono text-destructive">−₹{Number(previewResult.statutory.professionalTax).toLocaleString("en-IN")}</td>
+                        </tr>
+                      )}
+                      {previewResult.statutory?.totalEmployeeDeductions === 0 && (
+                        <tr><td className="px-3 py-2 text-muted-foreground italic" colSpan={2}>No statutory deductions at this gross</td></tr>
+                      )}
+                      <tr className="font-semibold bg-muted/30">
+                        <td className="px-3 py-2">Net Take-Home</td>
+                        <td className="px-3 py-2 text-right font-mono">₹{Number(previewResult.netPayable).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {previewResult.statutory?.employerEpf > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Employer contribution: EPF ₹{previewResult.statutory.employerEpf} + EPS ₹{previewResult.statutory.employerEps} + EDLI ₹{previewResult.statutory.employerEdli} + ESI ₹{previewResult.statutory.employerEsi}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create / Edit Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingStructure ? "Edit Salary Structure" : "New Salary Structure"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name *</Label>
+                <Input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Standard, Senior, Contract"
+                  data-testid="input-structure-name"
+                />
+              </div>
+              <div>
+                <Label>PF Mode</Label>
+                <Select value={form.pfMode} onValueChange={v => setForm(f => ({ ...f, pfMode: v }))}>
+                  <SelectTrigger data-testid="select-pf-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="restricted">Restricted — PF on min(Basic, ₹15,000)</SelectItem>
+                    <SelectItem value="unrestricted">Unrestricted — PF on actual Basic</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label>Description</Label>
+              <Textarea
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                rows={2}
+                placeholder="Optional notes about this structure"
+                data-testid="textarea-structure-description"
+              />
+            </div>
+
+            <div>
+              <Label>Effective Date</Label>
+              <Input
+                type="date"
+                value={form.effectiveDate}
+                onChange={e => setForm(f => ({ ...f, effectiveDate: e.target.value }))}
+                data-testid="input-effective-date"
+              />
+            </div>
+
+            {/* Rules editor */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold">Component Rules</Label>
+                <Button size="sm" variant="outline" onClick={addRule} data-testid="button-add-rule">
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {rules.map((rule, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-end border rounded-md p-2 text-xs">
+                    <div className="col-span-3">
+                      {idx === 0 && <Label className="text-xs">Component</Label>}
+                      <Select value={rule.componentName} onValueChange={v => updateRule(idx, "componentName", v)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`select-component-${idx}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COMPONENT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-3">
+                      {idx === 0 && <Label className="text-xs">Rule Type</Label>}
+                      <Select value={rule.ruleType} onValueChange={v => updateRule(idx, "ruleType", v)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`select-rule-type-${idx}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RULE_TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      {idx === 0 && <Label className="text-xs">Value</Label>}
+                      <Input
+                        className="h-8 text-xs"
+                        value={rule.value}
+                        disabled={rule.ruleType === "residual"}
+                        onChange={e => updateRule(idx, "value", e.target.value)}
+                        placeholder="0"
+                        data-testid={`input-rule-value-${idx}`}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      {idx === 0 && <Label className="text-xs">Ref Component</Label>}
+                      <Select
+                        value={rule.referenceComponent || "__none__"}
+                        disabled={rule.ruleType !== "percent_of_component"}
+                        onValueChange={v => updateRule(idx, "referenceComponent", v === "__none__" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid={`select-ref-${idx}`}>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">—</SelectItem>
+                          {COMPONENT_OPTIONS.filter(o => o.value !== rule.componentName).map(o =>
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1">
+                      {idx === 0 && <Label className="text-xs">LOP</Label>}
+                      <Select value={rule.lopMode} onValueChange={v => updateRule(idx, "lopMode", v)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`select-lop-${idx}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="proportional">Prop</SelectItem>
+                          <SelectItem value="fixed">Fixed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      {idx === 0 && <Label className="text-xs invisible">X</Label>}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => removeRule(idx)}
+                        data-testid={`button-remove-rule-${idx}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button
+              onClick={handleSave}
+              disabled={createMutation.isPending || updateMutation.isPending || !form.name.trim()}
+              data-testid="button-save-structure"
+            >
+              {(createMutation.isPending || updateMutation.isPending) ? "Saving…" : "Save Structure"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export type SettingsGroupKey =
   | "leave-attendance"
   | "organization"
@@ -4163,7 +4954,14 @@ export default function HRSettings({ group }: { group?: string }) {
           )}
 
           {activeSection === "salary-structures" && (
-            <SalaryStructuresSection />
+            <>
+              <div>
+                <h1 className="text-2xl font-bold" data-testid="text-section-salary-structures">Salary Structures</h1>
+                <p className="text-muted-foreground text-sm">Define component rules (Basic, HRA, Conveyance…) and India statutory settings for payroll computation.</p>
+              </div>
+              <ProfessionalTaxSettingsCard />
+              <SalaryStructuresSection />
+            </>
           )}
 
           {activeSection === "state-registrations" && (

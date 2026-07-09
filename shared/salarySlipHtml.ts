@@ -4,7 +4,15 @@
  *  - Server (Download PDF + Email to Me): routes.ts salary slip endpoints
  *
  * Keeping one template guarantees on-screen, PDF, and email all match exactly.
+ *
+ * When `components` is present the slip renders a structured earnings table
+ * (Basic, HRA, Conveyance, etc.) plus a statutory deductions section (PF, ESI, PT).
+ * Without components it falls back to the original simple view (backward-compatible).
  */
+
+import type { SlipComponents } from "./salaryEngineTypes";
+
+export type { SlipComponents };
 
 export interface ComputationSnapshotComponent {
   name: string;
@@ -74,10 +82,12 @@ export interface SalarySlipData {
   adjustmentComment: string | null;
   salaryRunId: string;
   approvedAt: string | null;
-  /** When present, enables itemized earnings/deductions/employer sections */
+  /** When present, enables itemized earnings/deductions/employer sections (paise-based ComputationSnapshot) */
   computationSnapshot?: ComputationSnapshot | null;
   /** Whether to render employer contribution section in the PDF */
   showEmployerContribution?: boolean;
+  // Optional structured components (rupee-based, populated when employee has a salary structure)
+  components?: SlipComponents | null;
 }
 
 export const SLIP_MONTH_NAMES = [
@@ -106,12 +116,34 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
     ? `<div class="adj-note">&#9888; This slip contains a manual adjustment: ${slip.adjustmentComment}</div>`
     : "";
 
+  // ── Shared advance/credit row builders (used by SlipComponents + legacy paths) ──
+  const advanceRows = (() => {
+    if (slip.advanceRecoveryBreakdown) {
+      const parts: string[] = [];
+      if (slip.advanceRecoveryBreakdown.advance > 0) {
+        parts.push(`<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.advance)}</td></tr>`);
+      }
+      if (slip.advanceRecoveryBreakdown.overpayment > 0) {
+        parts.push(`<tr><td>Overpayment Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.overpayment)}</td></tr>`);
+      }
+      return parts.join("");
+    }
+    if (slip.advanceRecovery > 0) {
+      return `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecovery)}</td></tr>`;
+    }
+    return "";
+  })();
+
+  const creditRow = (slip.salaryCredit ?? 0) > 0
+    ? `<tr><td>Salary Adjustment Credit</td><td class="amount">+ ${formatSlipCurrency(slip.salaryCredit!)}</td></tr>`
+    : "";
+
+  // ── Build earnings/deductions/employer sections ─────────────────────────────
+  // Tier 1: ComputationSnapshot (paise-based India statutory engine — main branch)
+  // Tier 2: SlipComponents (rupee-based simplified salary structure engine)
+  // Tier 3: Legacy fallback (no structured breakdown)
   const snap = slip.computationSnapshot;
   const hasSnapshot = !!(snap?.components?.length && snap?.statutoryLines);
-
-  // -------------------------------------------------------------------------
-  // Build earnings section
-  // -------------------------------------------------------------------------
   let earningsSection = "";
   let deductionsSection = "";
   let employerSection = "";
@@ -121,7 +153,6 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
     const statutoryLines = snap.statutoryLines!;
     const grossAfterLop = snap.grossAfterLopPaise ?? 0;
 
-    // Earnings rows (employee-visible components)
     const componentRows = components.map(c => {
       const hasLop = c.prelopPaise !== c.postlopPaise;
       const lopNote = hasLop
@@ -148,7 +179,6 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
     </table>
   </div>`;
 
-    // Employee deduction lines
     const empLines = statutoryLines.filter(l => !l.isEmployerContribution);
     const footnotes: Array<{ num: number; text: string }> = [];
     let fnCounter = 0;
@@ -169,19 +199,19 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
     const advRec = rupeesFromPaise(snap.waterfall?.advanceRecoveredPaise ?? 0);
     const netPay = rupeesFromPaise(snap.waterfall?.netPayPaise ?? 0);
 
-    let advRows = "";
+    let snapAdvRows = "";
     if (slip.advanceRecoveryBreakdown) {
       if (slip.advanceRecoveryBreakdown.advance > 0) {
-        advRows += `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.advance)}</td></tr>`;
+        snapAdvRows += `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.advance)}</td></tr>`;
       }
       if (slip.advanceRecoveryBreakdown.overpayment > 0) {
-        advRows += `<tr><td>Overpayment Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.overpayment)}</td></tr>`;
+        snapAdvRows += `<tr><td>Overpayment Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.overpayment)}</td></tr>`;
       }
     } else if (advRec > 0) {
-      advRows = `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(advRec)}</td></tr>`;
+      snapAdvRows = `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; &#8377; ${formatSlipCurrency(advRec)}</td></tr>`;
     }
 
-    const creditRow = (slip.salaryCredit ?? 0) > 0
+    const snapCreditRow = (slip.salaryCredit ?? 0) > 0
       ? `<tr><td>Salary Adjustment Credit</td><td class="amount">+ &#8377; ${formatSlipCurrency(slip.salaryCredit!)}</td></tr>`
       : "";
 
@@ -191,14 +221,13 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
     <table>
       <tr><th>Description</th><th class="amount">Amount (&#8377;)</th></tr>
       ${empRows}
-      ${advRows}
-      ${creditRow}
+      ${snapAdvRows}
+      ${snapCreditRow}
       <tr style="background:#f7fafc;"><td style="font-weight:600;">Total Statutory Deductions</td><td class="amount" style="font-weight:600;">&#8722; &#8377; ${formatSlipCurrency(totalStatDed)}</td></tr>
       <tr class="total-row"><td>Net Payable</td><td class="amount">&#8377; ${formatSlipCurrency(netPay)}</td></tr>
     </table>
   </div>`;
 
-    // Employer contribution section
     if (slip.showEmployerContribution !== false) {
       const emplLines = statutoryLines.filter(l => l.isEmployerContribution);
       if (emplLines.length > 0) {
@@ -207,7 +236,6 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
         ).join("");
         const totalEmpl = emplLines.reduce((s, l) => s + l.amountPaise, 0);
         const ctc = rupeesFromPaise(grossAfterLop + totalEmpl);
-
         employerSection = `
   <div class="section">
     <div class="section-title">Employer Contributions (for reference)</div>
@@ -220,29 +248,86 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
       }
     }
   } else {
-    // Legacy format — no snapshot
-    const advanceRows = (() => {
-      if (slip.advanceRecoveryBreakdown) {
-        const parts: string[] = [];
-        if (slip.advanceRecoveryBreakdown.advance > 0) {
-          parts.push(`<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.advance)}</td></tr>`);
-        }
-        if (slip.advanceRecoveryBreakdown.overpayment > 0) {
-          parts.push(`<tr><td>Overpayment Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecoveryBreakdown.overpayment)}</td></tr>`);
-        }
-        return parts.join("");
-      }
-      if (slip.advanceRecovery > 0) {
-        return `<tr><td>Salary Advance Recovery</td><td class="amount">&#8722; ${formatSlipCurrency(slip.advanceRecovery)}</td></tr>`;
-      }
-      return "";
-    })();
+    const sc = slip.components;
+    if (sc?.earnings?.length) {
+      // Tier 2: SlipComponents rendering (rupee-based salary structure engine)
+      const earningRows = sc.earnings
+        .map((c) => `<tr><td>${c.displayName}</td><td class="amount">${formatSlipCurrency(c.amount)}</td></tr>`)
+        .join("");
+      const totalEarnings = sc.earnings.reduce((s, c) => s + c.amount, 0);
 
-    const creditRow = (slip.salaryCredit ?? 0) > 0
-      ? `<tr><td>Salary Adjustment Credit</td><td class="amount">+ ${formatSlipCurrency(slip.salaryCredit!)}</td></tr>`
-      : "";
+      const stat = sc.statutory;
+      const deductionRows: string[] = [];
+      if (stat.employeePf > 0) {
+        deductionRows.push(`<tr><td>Employee Provident Fund (EPF @ 12% of ₹${stat.pfBasis.toLocaleString("en-IN")})</td><td class="amount">&#8722; ${formatSlipCurrency(stat.employeePf)}</td></tr>`);
+      }
+      if (stat.employeeEsi > 0) {
+        deductionRows.push(`<tr><td>Employee State Insurance (ESI @ 0.75%)</td><td class="amount">&#8722; ${formatSlipCurrency(stat.employeeEsi)}</td></tr>`);
+      }
+      if (stat.professionalTax > 0) {
+        deductionRows.push(`<tr><td>Professional Tax</td><td class="amount">&#8722; ${formatSlipCurrency(stat.professionalTax)}</td></tr>`);
+      }
+      if (slip.advanceRecovery > 0 || slip.advanceRecoveryBreakdown) {
+        deductionRows.push(advanceRows);
+      }
+      if ((slip.salaryCredit ?? 0) > 0) {
+        deductionRows.push(creditRow);
+      }
 
-    deductionsSection = `
+      const totalDeductions = stat.totalEmployeeDeductions
+        + slip.advanceRecovery
+        - (slip.salaryCredit ?? 0);
+
+      const employerRowsArr: string[] = [];
+      if (stat.employerEpf > 0 || stat.employerEps > 0) {
+        employerRowsArr.push(`<tr><td>Employer EPF (3.67% of ₹${stat.pfBasis.toLocaleString("en-IN")})</td><td class="amount">${formatSlipCurrency(stat.employerEpf)}</td></tr>`);
+        employerRowsArr.push(`<tr><td>Employer EPS (8.33%, capped ₹1,250)</td><td class="amount">${formatSlipCurrency(stat.employerEps)}</td></tr>`);
+      }
+      if (stat.employerEdli > 0) {
+        employerRowsArr.push(`<tr><td>EDLI Contribution (0.5%)</td><td class="amount">${formatSlipCurrency(stat.employerEdli)}</td></tr>`);
+      }
+      if (stat.employerEsi > 0) {
+        employerRowsArr.push(`<tr><td>Employer ESI (3.25%)</td><td class="amount">${formatSlipCurrency(stat.employerEsi)}</td></tr>`);
+      }
+
+      const empSection = employerRowsArr.length > 0 ? `
+  <div class="section">
+    <div class="section-title">Employer Contributions (CTC component — not deducted from pay)</div>
+    <table>
+      <tr><th>Description</th><th class="amount">Amount (INR)</th></tr>
+      ${employerRowsArr.join("")}
+      <tr class="total-row"><td>Total Employer Cost</td><td class="amount">${formatSlipCurrency(stat.totalEmployerCost)}</td></tr>
+    </table>
+  </div>` : "";
+
+      const lopNote = sc.lopFactor < 1
+        ? `<div class="lop-note">&#9432; LOP applied: ${(sc.lopFactor * 100).toFixed(1)}% attendance factor (${slip.presentDays} / ${slip.workingDays} days)</div>`
+        : "";
+
+      deductionsSection = `
+  ${lopNote}
+  <div class="section two-col-section">
+    <div class="col">
+      <div class="section-title">Earnings</div>
+      <table>
+        <tr><th>Component</th><th class="amount">Amount (INR)</th></tr>
+        ${earningRows}
+        <tr class="total-row"><td>Total Earnings</td><td class="amount">${formatSlipCurrency(totalEarnings)}</td></tr>
+      </table>
+    </div>
+    <div class="col">
+      <div class="section-title">Deductions</div>
+      <table>
+        <tr><th>Description</th><th class="amount">Amount (INR)</th></tr>
+        ${deductionRows.join("") || '<tr><td colspan="2" style="color:#718096;font-style:italic;">No statutory deductions</td></tr>'}
+        <tr class="total-row"><td>Total Deductions</td><td class="amount">&#8722; ${formatSlipCurrency(Math.max(0, totalDeductions))}</td></tr>
+      </table>
+    </div>
+  </div>
+  ${empSection}`;
+    } else {
+      // Tier 3: Legacy fallback (no structured breakdown)
+      deductionsSection = `
   <div class="section">
     <div class="section-title">Earnings &amp; Deductions</div>
     <table>
@@ -255,6 +340,7 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
       <tr class="total-row"><td>Net Payable</td><td class="amount">${formatSlipCurrency(slip.netPayable)}</td></tr>
     </table>
   </div>`;
+    }
   }
 
   return `<!DOCTYPE html>
@@ -265,7 +351,7 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; background: #fff; padding: 40px; }
-  .slip { max-width: 800px; margin: 0 auto; border: 2px solid #1a365d; }
+  .slip { max-width: 860px; margin: 0 auto; border: 2px solid #1a365d; }
   .header { background: #1a365d; color: #fff; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
   .header h1 { font-size: 22px; font-weight: 700; }
   .header .period { font-size: 14px; opacity: 0.9; }
@@ -275,6 +361,8 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
   .info-label { color: #718096; min-width: 100px; }
   .info-value { font-weight: 600; color: #1a202c; }
   .section { padding: 20px 32px; }
+  .two-col-section { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 20px 32px; }
+  .col {}
   .section-title { font-size: 14px; font-weight: 700; color: #1a365d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 10px 16px; text-align: left; font-size: 13px; }
@@ -288,6 +376,7 @@ export function generateSalarySlipHtml(slip: SalarySlipData): string {
   .net-pay .value { font-size: 24px; font-weight: 700; }
   .footer { padding: 16px 32px; font-size: 11px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; }
   .adj-note { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 10px 16px; margin: 0 32px 12px; font-size: 12px; color: #c2410c; }
+  .lop-note { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 8px 16px; margin: 12px 32px 0; font-size: 12px; color: #92400e; }
   @media print { body { padding: 0; } .slip { border: none; } }
 </style>
 </head>
