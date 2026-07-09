@@ -1,0 +1,399 @@
+Do not implement the previous final document exactly as-is. Use it as strategy/context, but update the actual execution into separate sequenced tasks. The feedback is right: one mega “Master Implementation Prompt” is risky and will create half-built features across calendar, campaign, AI, analytics, roles, and outreach.
+
+The pasted review correctly identifies that the current implementation needs a canonical split across #906 / #907 / #908 / #914 / #915 instead of one mega-task.
+
+My Decision
+
+I agree with these corrections:
+
+1. Master Implementation Prompt = context only, not work order.
+2. Do not add new Studio roles in Phase 1.
+3. Reduce T1 content types to Article + Social Post + Story.
+4. Move polish items after the three-lens pipeline works.
+5. Reuse existing reactions analytics and social card engine.
+6. Use direct SQL scripts where drizzle-kit push is risky in this repo.
+7. Repurpose output should become normal calendar ideas, not a separate parallel asset system.
+8. Move Studio to /studio behind a feature flag.
+
+This is the right direction.
+
+1. Master Implementation Prompt Should Be Retired as a Work Order
+
+I agree 100%.
+
+A mega-task creates this failure mode:
+
+Calendar 60% done
+Campaigns 40% done
+AI 70% done
+Analytics 30% done
+Outreach 20% done
+Nothing production-ready
+
+The master prompt should become:
+
+Background context only
+Architecture intent only
+Not a dev ticket
+Not a Replit execution prompt
+
+Actual dev should be split:
+
+#906 — T1 Foundation / Studio Shell / Calendar Pipeline
+#907 — T2 Campaign + Brand Voice + Repurposing + Outreach
+#908 — T3 Notifications + Analytics + Engagement Tracking
+#914 — Playbook / Docs / Route updates
+#915 — Social Card Engine alignment
+
+This is also safer with feature flags. Feature flags are commonly used to keep unfinished features hidden while still integrating code, but they require lifecycle management to avoid toggle debt. So the Studio V2 flag should be explicit and eventually removed after full rollout.
+
+2. Do Not Add New Role Enums in Phase 1
+
+I strongly agree.
+
+Given your codebase has had enum issues before, adding:
+
+studio_admin
+marketing_manager
+content_editor
+reviewer
+author
+viewer
+
+is not worth the risk right now.
+
+Instead, Phase 1 should use existing roles through the current access registry.
+
+Recommended rule:
+
+No new role enum values in T1.
+Use existing roles and feature access mapping.
+Add Studio permissions through feature registry/config only.
+
+Example:
+
+super_admin → full Studio access
+admin / HR admin / existing management role → configured access if needed
+specific existing marketing/content users → allow via registry
+employee → no Studio access unless explicitly granted
+
+This matches the security principle of least privilege and deny-by-default. OWASP specifically recommends deny-by-default and validating permissions on every request, so the key is not role names — it is server-side route enforcement.
+
+So yes: zero new enum values for now.
+
+3. Phase 1 Content Types Should Be Reduced
+
+I agree again.
+
+For T1, ship only:
+
+Article
+Social Post
+Story
+
+Defer:
+
+Carousel
+Reel / Video
+Job Promotion
+Newsletter
+Lead Magnet
+Case Study
+
+Why?
+
+Because each extra type needs:
+
+fields
+validation
+AI prompt
+preview
+status rules
+import mapping
+calendar display
+permissions
+QA
+
+For a one-person content operation, Article + Social Post + Story is enough to get out of Excel and into the Studio.
+
+Recommended T1 taxonomy:
+
+Type	Purpose	Public author needed
+Article	Hire’in Insights blog/article	Yes, only when published publicly
+Social Post	LinkedIn / Instagram / Facebook / X caption or creative plan	No
+Story	Instagram/Facebook story content	No
+
+Everything else can be Phase 2/3 config.
+
+4. Polish Items Should Not Block T1
+
+I agree.
+
+These are valuable:
+
+keyboard shortcuts
+Cmd+K
+triage chips
+gap indicators
+balance rows
+AI planning shortcuts
+
+But they are not foundation.
+
+T1 should first deliver:
+
+/studio shell
+three-lens pipeline
+calendar view
+board view
+table view
+right-side peek panel
+Excel import
+AI generation bug fix
+author-gate fix
+approval-to-article handoff
+
+Then polish can come after.
+
+My sequence:
+
+T1A — Stable shell + routing + feature flag
+T1B — Content ideas data model + APIs
+T1C — Calendar / Board / Table views
+T1D — Import + rollback
+T1E — AI generation fix + promote-to-article flow
+T1F — polish layer
+5. Existing Features Must Be Reused
+
+This is critical.
+
+The feedback says the current codebase already has:
+
+emoji reactions analytics
+social card engine
+drizzle push limitations
+
+So the updated tasks must explicitly say:
+
+Do not rebuild reactions.
+Do not rebuild social card rendering.
+Do not rely on drizzle-kit push where direct SQL is required.
+
+Drizzle supports several migration approaches, including generating SQL migration files and applying them, or applying SQL directly/external tooling. That supports your repo-specific decision to use direct SQL scripts where interactive push stalls.
+
+So the dev instruction should be:
+
+Update shared/schema.ts for TypeScript types.
+Use additive direct SQL migration scripts for DB changes.
+Do not use interactive drizzle-kit push for enum-sensitive or production changes.
+6. Repurpose-to-Ideas Is Better Than studio_repurposed_assets
+
+I agree strongly.
+
+If the core principle is:
+
+One pipeline, one status taxonomy
+
+then repurposed assets should not live in a separate parallel table in Phase 1.
+
+Better model:
+
+Article approved
+→ Repurpose
+→ Creates linked content ideas:
+   - LinkedIn Post Series
+   - Email Copy / Newsletter idea later
+   - X Thread idea
+   - Story idea
+   - Outreach copy idea later
+
+Each repurposed output becomes a normal pipeline item with:
+
+parent_article_id
+campaign_id
+source_type = repurposed
+origin = ai
+status = suggested / draft
+
+This is cleaner.
+
+Only add a separate repurposed_assets table later if you need reusable asset history independent of the publishing pipeline.
+
+7. Studio Should Move to /studio, Not a Separate Product Yet
+
+I agree with the latest direction.
+
+Use:
+
+hire-in.com/studio
+
+or internally routed:
+
+/studio/*
+
+behind login.
+
+Do not move to a separate subdomain yet unless deployment forces it.
+
+Reason:
+
+same app
+same auth
+same cookies/session
+same API
+same permissions
+same DB
+lower risk
+
+Important:
+
+All /studio routes must be noindexed.
+
+Google’s noindex guidance says a noindex meta tag or response header prevents supported search engines from indexing a page, and Google provides both meta-tag and HTTP-header options. Use this on every internal Studio route.
+
+Recommended:
+
+<meta name="robots" content="noindex, nofollow">
+
+And/or:
+
+X-Robots-Tag: noindex, nofollow
+Final Canonical Task Direction
+#906 — T1: Studio Shell + Content Planning Pipeline
+
+This should be the biggest rewrite.
+
+Include:
+
+/studio route shell
+studio_v2_enabled feature flag
+redirects from /admin/studio/* to /studio/*
+STUDIO_BASE constant
+noindex/noindex header
+three-lens architecture: Calendar / Board / Table
+content type/channel/pillar split
+Article + Social Post + Story only
+nullable date for backlog
+suggested status
+origin field: manual/import/ai/repurposed
+expanded state machine
+right-side peek panel
+comments table
+import batches with rollback
+Excel import into Table lens
+AI article generation bug fix
+server-side contentType validation
+approved idea → article promotion
+publish sync-back to original idea
+#907 — T2: Campaign + Brand Voice + Repurpose + Outreach
+
+Include:
+
+Campaign Manager
+campaign ICP
+funnel stage
+primary CTA
+Brand Voice Hub fields
+AIDA/default framework setting
+Repurpose article → linked ideas
+copy-only Outreach Suite
+no CRM send
+no LinkedIn auto-send
+no external publishing APIs
+
+Keep:
+
+repurpose-to-ideas
+
+Avoid:
+
+studio_repurposed_assets table in Phase 1
+#908 — T3: Notifications + Analytics
+
+Update:
+
+/api/studio paths
+central notify() gateway
+notification preferences
+digest default opt-in when no preference row exists
+comment notifications
+assignment notifications
+deadline notifications
+review decision notifications
+
+Keep existing:
+
+emoji reactions
+2x2 content performance matrix
+views
+CTA clicks
+reaction events
+campaign analytics
+
+For CTA clicks, do not rely only on UTM.
+
+Use either:
+
+/api/track/click → 302 redirect
+
+or a frontend beacon.
+
+UTM helps destination analytics, but it does not automatically create your internal events.
+
+#914 — Playbook / Documentation
+
+Update:
+
+/admin/studio → /studio
+Studio shell screenshots/content
+top nav structure
+calendar/board/table usage
+import process
+approval flow
+#915 — Social Cards
+
+Keep mostly unchanged.
+
+Just update:
+
+route constants
+reuse existing social card engine
+generate cards from approved article/social idea
+do not rebuild image rendering
+Updated Development Guardrails
+
+This should go at the top of every task:
+
+Development guardrails:
+
+1. Do not implement this as one mega-task.
+2. Do not add new role enum values in Phase 1.
+3. Reuse existing auth, RBAC registry, notification table, email gateway, analytics/reactions, and social card engine.
+4. Do not create duplicate systems when an existing service can be extended.
+5. Add new features behind studio_v2_enabled.
+6. Keep old /admin/studio routes working via redirects.
+7. Add noindex/noindex headers to /studio routes.
+8. Use direct SQL migration scripts where drizzle-kit push is unsafe or interactive.
+9. Add server-side validation for content types and workflow transitions.
+10. Do not break existing employee portal, article editor, public insights, author pages, analytics, or social card generation.
+11. Every task must include FE + BE + API + DB + QA acceptance criteria.
+12. Review downstream impact before modifying shared schema, routes, notifications, or article generation.
+Final Architect Verdict
+
+The feedback is right.
+
+I would not hand the previous final doc directly to Replit as the build prompt.
+
+I would now create a new final canonical task pack:
+
+T1: /studio Shell + Planning Pipeline + Import + AI Bug Fixes
+T2: Campaign + Brand Voice + Repurpose-to-Ideas + Copy-only Outreach
+T3: Notifications + Engagement Analytics
+T4: Social Card Engine Alignment
+T5: Playbook / QA / Rollout
+
+And I would mark the previous final document as:
+
+Strategic reference only — superseded for implementation by canonical sequenced tasks.
+
+That is the safest and most professional path.
