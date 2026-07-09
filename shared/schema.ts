@@ -3910,36 +3910,9 @@ export const coverageStatusEnum = pgEnum("coverage_status", ["not_applicable", "
 // Rounding mode for statutory rates
 export const roundingModeEnum = pgEnum("rounding_mode", ["nearest", "up"]);
 
-// Salary component structure (e.g. "Standard", custom)
-export const salaryStructures = pgTable("salary_structures", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 100 }).notNull().unique(),
-  description: text("description"),
-  effectiveDate: date("effective_date").notNull().default(sql`CURRENT_DATE`),
-  isActive: boolean("is_active").notNull().default(true),
-  pfMode: pfModeEnum("pf_mode").notNull().default("restricted"),
-  jurisdiction: varchar("jurisdiction", { length: 10 }).notNull().default("IN"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Individual component rules within a structure
-export const salaryStructureRules = pgTable("salary_structure_rules", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  structureId: varchar("structure_id").notNull().references(() => salaryStructures.id, { onDelete: "cascade" }),
-  componentName: varchar("component_name", { length: 80 }).notNull(),
-  ruleType: ruleTypeEnum("rule_type").notNull(),
-  // For percent_of_gross / percent_of_component: percentage × 100 stored as integer
-  // e.g. 50% → 5000; 8.33% → 833
-  valuePct: integer("value_pct"),
-  // For fixed: amount in paise (integer)
-  valueFixed: integer("value_fixed"),
-  // For percent_of_component: the component name to use as the base
-  referenceComponent: varchar("reference_component", { length: 80 }),
-  lopMode: lopModeEnum("lop_mode").notNull().default("proportional"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// salaryStructures and salaryStructureRules are defined earlier in this file (lines ~322).
+// The enum aliases (pfModeEnum, ruleTypeEnum, lopModeEnum) are registered in the DB
+// schema but the table definitions are NOT duplicated here.
 
 // State-level deductions (PT, PSDT, LWF)
 export const stateDeductions = pgTable("state_deductions", {
@@ -4040,18 +4013,12 @@ export const salarySlipRevisions = pgTable("salary_slip_revisions", {
   replacedBy: varchar("replaced_by").references(() => adminUsers.id),
 });
 
-export const insertSalaryStructureSchema = createInsertSchema(salaryStructures).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertSalaryStructureRuleSchema = createInsertSchema(salaryStructureRules).omit({ id: true, createdAt: true });
 export const insertStateDeductionSchema = createInsertSchema(stateDeductions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEstablishmentCoverageSchema = createInsertSchema(establishmentCoverage).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStatutoryRateSchema = createInsertSchema(statutoryRates).omit({ id: true, createdAt: true });
 export const insertSalarySlipRevisionSchema = createInsertSchema(salarySlipRevisions).omit({ id: true, replacedAt: true });
 export const insertHeadcountHistorySchema = createInsertSchema(headcountHistory).omit({ id: true, recordedAt: true });
 
-export type SalaryStructure = typeof salaryStructures.$inferSelect;
-export type InsertSalaryStructure = z.infer<typeof insertSalaryStructureSchema>;
-export type SalaryStructureRule = typeof salaryStructureRules.$inferSelect;
-export type InsertSalaryStructureRule = z.infer<typeof insertSalaryStructureRuleSchema>;
 export type StateDeduction = typeof stateDeductions.$inferSelect;
 export type InsertStateDeduction = z.infer<typeof insertStateDeductionSchema>;
 export type EstablishmentCoverage = typeof establishmentCoverage.$inferSelect;

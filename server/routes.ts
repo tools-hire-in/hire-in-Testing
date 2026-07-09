@@ -17,6 +17,7 @@ import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTR
 import { registerAuthRoutes } from "./authRoutes";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
+import { registerBulkPayrollRoutes } from "./bulkPayrollRoutes";
 import { registerVaultRoutes, revokeUserVaultGrants } from "./vaultRoutes";
 import {
   generateArticleCards,
@@ -528,6 +529,7 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
   registerVaultRoutes(app);
+  registerBulkPayrollRoutes(app);
 
   // Enforce 2FA for all admin/HR API routes
   app.use("/api/admin", require2FA);
@@ -8281,7 +8283,6 @@ export async function registerRoutes(
           eq(salarySlips.jurisdiction, "IN"),
         ))
         .limit(1);
-
 
       if (!existingJurisdictionLedger) {
         // First access: run engine once, freeze snapshot, write ledger row.

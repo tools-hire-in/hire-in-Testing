@@ -163,7 +163,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "hr.reports.salary.recipients.get": ["super_admin", "admin", "hr", "finance", "executive"],
   "hr.reports.salary.recipients.put": ["super_admin", "admin", "hr"],
   "hr.reports.salary.runs": ["super_admin", "admin", "hr", "finance", "executive"],
-  "hr.reports.salary.generate": ["super_admin", "admin", "executive"],
+  "hr.reports.salary.generate": ["super_admin", "admin", "hr", "executive"],
   "hr.reports.salary.adjust": ["super_admin", "admin", "executive"],
   "hr.reports.salary.approve": ["super_admin", "admin", "executive"],
   "hr.reports.salary.execute": ["super_admin", "admin", "hr", "executive"],
@@ -302,6 +302,10 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "hr.salaryStructures.assign": ["super_admin", "admin", "hr", "executive"],
   "hr.employee.pfExempt": ["super_admin", "admin", "hr", "executive"],
   "hr.payroll.settings": ["super_admin", "admin", "hr", "executive"],
+  "payroll.bulkRun.validate": ["super_admin", "admin", "hr", "executive"],
+  "payroll.bulkRun.generate": ["super_admin", "admin", "hr", "executive"],
+  "payroll.executiveDashboard": ["super_admin", "admin", "hr", "executive", "finance"],
+  "payroll.statutoryExport": ["super_admin", "admin", "hr", "executive", "finance"],
 };
 
 // ============================================================================

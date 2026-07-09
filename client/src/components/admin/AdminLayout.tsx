@@ -49,6 +49,7 @@ import {
   UserCog,
   Receipt,
   KeyRound,
+  DollarSign,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1214,6 +1215,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const hasHRAccess = ["super_admin", "admin", "hr"].includes(userRole) && can("hr.users");
   const hasNewHireAccess = ["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && can("hr.newHire.onboardingStatus");
   const hasFinanceAccess = ["super_admin", "admin", "finance"].includes(userRole) && can("hr.reports.salary.runs");
+  const hasPayrollAccess = can("payroll.executiveDashboard");
   const hasHelpDeskAccess = ["super_admin", "admin", "hr", "operations"].includes(userRole) && can("helpDesk.queue");
   const hasStudioAccess = can("studio.view");
   const hasMarketingApproveAccess = can("studio.marketing_approve");
@@ -1480,6 +1482,16 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: FileText,
       roles: ["super_admin", "admin"],
     }] : []),
+    ...(hasPayrollAccess ? [{
+      href: "/admin/payroll/executive",
+      label: "Payroll Dashboard",
+      icon: DollarSign,
+      roles: ["super_admin", "admin", "hr", "executive"],
+      children: [
+        { href: "/admin/payroll/executive", label: "Executive Summary", icon: DollarSign },
+        { href: "/admin/payroll/run", label: "Bulk Payroll Run", icon: DollarSign },
+      ],
+    }] : []),
     ...(hasHelpDeskAccess ? [{
       href: "/admin/help-desk",
       label: "Help Desk",
@@ -1527,6 +1539,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/vault") return location === "/admin/vault" || location.startsWith("/admin/vault");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
+    if (href === "/admin/payroll/executive") return location.startsWith("/admin/payroll");
     if (href === "/admin/studio") return location === "/admin/studio";
     if (href === "/admin/studio/articles") return (location.startsWith("/admin/studio/articles") && !location.startsWith("/admin/studio/articles/") || /\/admin\/studio\/articles\/[^/]+\/edit/.test(location));
     if (href === "/admin/studio/live") return location.startsWith("/admin/studio/live");
