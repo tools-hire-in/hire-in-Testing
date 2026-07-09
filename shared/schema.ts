@@ -313,47 +313,6 @@ export const salarySlips = pgTable("salary_slips", {
   uniqueIndex("salary_slips_user_period_jurisdiction_unique").on(table.userId, table.year, table.month, table.jurisdiction),
 ]);
 
-// ==========================================
-// SALARY STRUCTURE TEMPLATES (India Payroll)
-// ==========================================
-// Named templates that define component rules (Basic%, HRA%, Conveyance fixed, etc.)
-// and PF mode. Assigned to employees for automatic salary-slip computation.
-
-export const salaryStructures = pgTable("salary_structures", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name").notNull(),
-  description: text("description"),
-  effectiveDate: date("effective_date"),
-  isActive: boolean("is_active").notNull().default(true),
-  // 'restricted'  — PF computed on min(Basic, ₹15,000)  [default, safe]
-  // 'unrestricted' — PF computed on actual Basic (many IT/professional firms)
-  pfMode: varchar("pf_mode").notNull().default("restricted"),
-  createdBy: varchar("created_by").references(() => adminUsers.id),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Component rules for each salary structure (ordered by sort_order).
-export const salaryStructureRules = pgTable("salary_structure_rules", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  structureId: varchar("structure_id").notNull().references(() => salaryStructures.id),
-  componentName: varchar("component_name").notNull(), // 'basic'|'hra'|'conveyance'|'lta'|'special_allowance'
-  // Rule types:
-  //   percent_of_gross     — value = % of gross (e.g. Basic = 40)
-  //   percent_of_component — value = % of referenceComponent (e.g. HRA = 50% of Basic)
-  //   fixed                — value = fixed rupee amount (e.g. Conveyance = 1600)
-  //   residual             — absorbs remainder (used for Special Allowance)
-  ruleType: varchar("rule_type").notNull(),
-  value: numeric("value").notNull().default("0"),
-  referenceComponent: varchar("reference_component"), // for percent_of_component
-  // LOP mode for this component:
-  //   proportional — amount * (presentDays / workingDays)
-  //   fixed        — amount unchanged regardless of LOP
-  lopMode: varchar("lop_mode").notNull().default("proportional"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
 // Leave balance adjustments table
 export const leaveAdjustments = pgTable("leave_adjustments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -664,20 +623,6 @@ export const insertSalarySlipSchema = createInsertSchema(salarySlips).omit({
   id: true,
   generatedAt: true,
 });
-
-export const insertSalaryStructureSchema = createInsertSchema(salaryStructures).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export const insertSalaryStructureRuleSchema = createInsertSchema(salaryStructureRules).omit({
-  id: true,
-  createdAt: true,
-});
-export type SalaryStructure = typeof salaryStructures.$inferSelect;
-export type InsertSalaryStructure = z.infer<typeof insertSalaryStructureSchema>;
-export type SalaryStructureRule = typeof salaryStructureRules.$inferSelect;
-export type InsertSalaryStructureRule = z.infer<typeof insertSalaryStructureRuleSchema>;
 
 export const insertLeaveAdjustmentSchema = createInsertSchema(leaveAdjustments).omit({
   id: true,

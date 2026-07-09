@@ -93,6 +93,34 @@ app.use((req, res, next) => {
   next();
 });
 
+async function ensureSalaryStructuresTable() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS salary_structures (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        pf_mode VARCHAR NOT NULL DEFAULT 'restricted',
+        jurisdiction VARCHAR(10) NOT NULL DEFAULT 'IN',
+        created_by VARCHAR,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      ALTER TABLE salary_structures ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(10) NOT NULL DEFAULT 'IN'
+    `);
+    await db.execute(sql`
+      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS salary_structure_id VARCHAR REFERENCES salary_structures(id) ON DELETE SET NULL
+    `);
+    log("Ensured salary_structures table and admin_users.salary_structure_id column");
+  } catch (err) {
+    console.error("salary_structures ensure error:", err);
+  }
+}
+
 async function ensurePerformanceTables() {
   // Always run signed_version migration regardless of whether performance tables exist
   try {
@@ -2879,6 +2907,7 @@ async function runStartupTasks() {
         "seeds) will NOT run. To apply migration files, restart with RUN_MIGRATIONS=true.",
     );
   }
+  await ensureSalaryStructuresTable();
   await ensurePerformanceTables();
   await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();

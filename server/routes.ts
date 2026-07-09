@@ -8273,7 +8273,7 @@ export async function registerRoutes(
       // The engine runs ONCE on first access; subsequent reads serve the frozen
       // stored snapshot to guarantee deterministic replay regardless of later
       // structure/rate changes.
-      const [existingLedger] = await db.select().from(salarySlips)
+      const [existingJurisdictionLedger] = await db.select().from(salarySlips)
         .where(and(
           eq(salarySlips.userId, userId),
           eq(salarySlips.year, y),
@@ -8283,7 +8283,7 @@ export async function registerRoutes(
         .limit(1);
 
 
-      if (!existingLedger) {
+      if (!existingJurisdictionLedger) {
         // First access: run engine once, freeze snapshot, write ledger row.
         const computationSnapshot = await buildComputationSnapshot(
           userId,
@@ -8328,7 +8328,7 @@ export async function registerRoutes(
         (slipData as any).computationSnapshot = computationSnapshot ?? null;
       } else {
         // Subsequent access: serve deterministically from the frozen stored snapshot.
-        const storedSnap = existingLedger.computationSnapshot as Record<string, any> | null | undefined;
+        const storedSnap = existingJurisdictionLedger.computationSnapshot as Record<string, any> | null | undefined;
         const storedWf = storedSnap?.waterfall as Record<string, number> | undefined;
         if (storedWf) {
           slipData.deductions = storedWf.totalStatutoryDeductionsPaise / 100;
@@ -8336,9 +8336,9 @@ export async function registerRoutes(
           slipData.netPayable = storedWf.netPayPaise / 100;
         } else {
           // Legacy row written before snapshot support — use stored column values.
-          slipData.deductions = parseFloat(String(existingLedger.deductions ?? 0));
-          slipData.advanceRecovery = parseFloat(String(existingLedger.salaryAdvanceRecovery ?? 0));
-          slipData.netPayable = parseFloat(String(existingLedger.netPayable ?? 0));
+          slipData.deductions = parseFloat(String(existingJurisdictionLedger.deductions ?? 0));
+          slipData.advanceRecovery = parseFloat(String(existingJurisdictionLedger.salaryAdvanceRecovery ?? 0));
+          slipData.netPayable = parseFloat(String(existingJurisdictionLedger.netPayable ?? 0));
         }
         (slipData as any).computationSnapshot = storedSnap ?? null;
       }
