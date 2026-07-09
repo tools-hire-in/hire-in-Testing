@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History, FolderOpen } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History, FolderOpen, Copy, Check } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { EmployeeDossierSheet } from "@/components/admin/EmployeeDossierSheet";
 import { Button } from "@/components/ui/button";
@@ -145,6 +145,9 @@ export default function AdminUsers() {
 
   const [newEmployeeCategory, setNewEmployeeCategory] = useState("experienced");
 
+  const [execCredentials, setExecCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [credCopied, setCredCopied] = useState(false);
+
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, trainingExempt: false, employeeCategory: "experienced", employmentType: "Full-time / Regular" });
@@ -239,8 +242,12 @@ export default function AdminUsers() {
     onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       let rayoMsg = "";
+      let credentials: { email: string; password: string } | null = null;
       try {
         const data = await res.json();
+        if (data.credentials?.password) {
+          credentials = data.credentials;
+        }
         if (data.rayoProvisioning?.success) {
           rayoMsg = data.rayoProvisioning.tempPassword
             ? ` Rayo Academy account provisioned. Temporary password: ${data.rayoProvisioning.tempPassword} (also emailed to user).`
@@ -249,7 +256,13 @@ export default function AdminUsers() {
           rayoMsg = ` Rayo Academy provisioning failed: ${data.rayoProvisioning.error || "unknown error"}.`;
         }
       } catch {}
-      toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
+      if (credentials) {
+        setCredCopied(false);
+        setExecCredentials(credentials);
+        toast({ title: "Executive created", description: "No email was sent. Share the login credentials shown on screen privately." });
+      } else {
+        toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
+      }
       setInviteOpen(false);
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
       setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced"); setNewShiftId("");
@@ -891,7 +904,11 @@ export default function AdminUsers() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
-              <DialogDescription>Add a new team member. They'll receive an email with login credentials.</DialogDescription>
+              <DialogDescription>
+                {newRole === "executive"
+                  ? "Add an executive (read-only observer). No email will be sent — you'll see their login credentials once so you can share them privately."
+                  : "Add a new team member. They'll receive an email with login credentials."}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -925,120 +942,179 @@ export default function AdminUsers() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hierarchyLevel">Level</Label>
-                  <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
-                    <SelectTrigger data-testid="select-invite-level"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ceo">CEO</SelectItem>
-                      <SelectItem value="vp">Vice President</SelectItem>
-                      <SelectItem value="director">Director</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="team_lead">Team Lead</SelectItem>
-                      <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
-                      <SelectItem value="team_member">Team Member</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {newRole !== "executive" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="hierarchyLevel">Level</Label>
+                    <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
+                      <SelectTrigger data-testid="select-invite-level"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ceo">CEO</SelectItem>
+                        <SelectItem value="vp">Vice President</SelectItem>
+                        <SelectItem value="director">Director</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="team_lead">Team Lead</SelectItem>
+                        <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
+                        <SelectItem value="team_member">Team Member</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="joiningDate">Joining Date</Label>
-                  <Input id="joiningDate" type="date" value={newJoiningDate} onChange={(e) => setNewJoiningDate(e.target.value)} data-testid="input-invite-joining-date" />
+              {newRole !== "executive" && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="joiningDate">Joining Date</Label>
+                      <Input id="joiningDate" type="date" value={newJoiningDate} onChange={(e) => setNewJoiningDate(e.target.value)} data-testid="input-invite-joining-date" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="designation">Designation</Label>
+                      <Select value={newDesignation} onValueChange={setNewDesignation}>
+                        <SelectTrigger data-testid="select-invite-designation"><SelectValue placeholder="Select designation" /></SelectTrigger>
+                        <SelectContent>
+                          {DESIGNATIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="employeeCategory">Employee Category</Label>
+                    <Select value={newEmployeeCategory} onValueChange={setNewEmployeeCategory}>
+                      <SelectTrigger data-testid="select-invite-employee-category"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="experienced">Experienced</SelectItem>
+                        <SelectItem value="fresher">Fresher</SelectItem>
+                        <SelectItem value="intern">Intern</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="salary">Salary</Label>
+                      <Input id="salary" type="number" placeholder="e.g. 85000" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} data-testid="input-invite-salary" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reportingTo">Reporting To</Label>
+                      <Select value={newManagerId} onValueChange={setNewManagerId}>
+                        <SelectTrigger data-testid="select-invite-manager"><SelectValue placeholder="Select manager" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No manager</SelectItem>
+                          {users?.filter(u => u.isActive).map(u => (
+                            <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
+                    <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
+                      <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department (required)" /></SelectTrigger>
+                      <SelectContent>
+                        {deptList?.filter(d => d.isActive).map(d => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select value={newGender} onValueChange={setNewGender}>
+                        <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="shift">Shift <span className="text-destructive">*</span></Label>
+                      <Select value={newShiftId} onValueChange={setNewShiftId}>
+                        <SelectTrigger data-testid="select-invite-shift"><SelectValue placeholder="Select shift (required)" /></SelectTrigger>
+                        <SelectContent>
+                          {(shiftDefs || []).map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.displayLabel || s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!newShiftId && <p className="text-xs text-destructive">Shift is required for attendance tracking.</p>}
+                    </div>
+                  </div>
+                </>
+              )}
+              <Button
+                className="w-full"
+                onClick={() => inviteMutation.mutate(
+                  newRole === "executive"
+                    ? {
+                        email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
+                      }
+                    : {
+                        email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
+                        joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
+                        departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
+                        hierarchyLevel: newHierarchyLevel || undefined,
+                        salary: newSalary || undefined,
+                        managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
+                        gender: newGender || undefined,
+                        employeeCategory: newEmployeeCategory,
+                        shiftId: newShiftId || undefined,
+                      } as any
+                )}
+                disabled={
+                  !newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending ||
+                  (newRole !== "executive" && (!newDepartmentId || newDepartmentId === "none" || !newShiftId))
+                }
+                data-testid="button-send-invite"
+              >
+                {inviteMutation.isPending ? (newRole === "executive" ? "Creating..." : "Sending...") : (newRole === "executive" ? "Create Executive" : "Send Invite")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Executive Credentials Dialog (shown once after creating an executive) */}
+        <Dialog open={!!execCredentials} onOpenChange={(open) => { if (!open) { setExecCredentials(null); setCredCopied(false); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Executive Login Credentials</DialogTitle>
+              <DialogDescription>
+                No email was sent. These credentials are shown only once — copy them now and share them privately. This is the working password; no change is required on first login.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/50 p-4 space-y-2 font-mono text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground font-sans text-xs">Email</span>
+                  <span data-testid="text-exec-cred-email">{execCredentials?.email}</span>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="designation">Designation</Label>
-                  <Select value={newDesignation} onValueChange={setNewDesignation}>
-                    <SelectTrigger data-testid="select-invite-designation"><SelectValue placeholder="Select designation" /></SelectTrigger>
-                    <SelectContent>
-                      {DESIGNATIONS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="employeeCategory">Employee Category</Label>
-                <Select value={newEmployeeCategory} onValueChange={setNewEmployeeCategory}>
-                  <SelectTrigger data-testid="select-invite-employee-category"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="experienced">Experienced</SelectItem>
-                    <SelectItem value="fresher">Fresher</SelectItem>
-                    <SelectItem value="intern">Intern</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="salary">Salary</Label>
-                  <Input id="salary" type="number" placeholder="e.g. 85000" value={newSalary} onChange={(e) => setNewSalary(e.target.value)} data-testid="input-invite-salary" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reportingTo">Reporting To</Label>
-                  <Select value={newManagerId} onValueChange={setNewManagerId}>
-                    <SelectTrigger data-testid="select-invite-manager"><SelectValue placeholder="Select manager" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No manager</SelectItem>
-                      {users?.filter(u => u.isActive).map(u => (
-                        <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
-                <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
-                  <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department (required)" /></SelectTrigger>
-                  <SelectContent>
-                    {deptList?.filter(d => d.isActive).map(d => (
-                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select value={newGender} onValueChange={setNewGender}>
-                    <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shift">Shift <span className="text-destructive">*</span></Label>
-                  <Select value={newShiftId} onValueChange={setNewShiftId}>
-                    <SelectTrigger data-testid="select-invite-shift"><SelectValue placeholder="Select shift (required)" /></SelectTrigger>
-                    <SelectContent>
-                      {(shiftDefs || []).map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.displayLabel || s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!newShiftId && <p className="text-xs text-destructive">Shift is required for attendance tracking.</p>}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground font-sans text-xs">Password</span>
+                  <span data-testid="text-exec-cred-password">{execCredentials?.password}</span>
                 </div>
               </div>
               <Button
                 className="w-full"
-                onClick={() => inviteMutation.mutate({
-                  email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
-                  joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
-                  departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
-                  hierarchyLevel: newHierarchyLevel || undefined,
-                  salary: newSalary || undefined,
-                  managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
-                  gender: newGender || undefined,
-                  employeeCategory: newEmployeeCategory,
-                  shiftId: newShiftId || undefined,
-                } as any)}
-                disabled={!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || !newDepartmentId || newDepartmentId === "none" || !newShiftId || inviteMutation.isPending}
-                data-testid="button-send-invite"
+                variant="outline"
+                onClick={async () => {
+                  if (!execCredentials) return;
+                  try {
+                    await navigator.clipboard.writeText(`Email: ${execCredentials.email}\nPassword: ${execCredentials.password}`);
+                    setCredCopied(true);
+                    setTimeout(() => setCredCopied(false), 2000);
+                  } catch {
+                    toast({ title: "Copy failed", description: "Please copy the credentials manually.", variant: "destructive" });
+                  }
+                }}
+                data-testid="button-copy-exec-credentials"
               >
-                {inviteMutation.isPending ? "Sending..." : "Send Invite"}
+                {credCopied ? <><Check className="w-4 h-4 mr-2" /> Copied</> : <><Copy className="w-4 h-4 mr-2" /> Copy Credentials</>}
+              </Button>
+              <Button className="w-full" onClick={() => { setExecCredentials(null); setCredCopied(false); }} data-testid="button-close-exec-credentials">
+                Done
               </Button>
             </div>
           </DialogContent>

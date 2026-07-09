@@ -1553,21 +1553,28 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
       }
 
-      if (!departmentId) {
+      // Executives are read-only observers — no attendance tracking or payroll
+      // onboarding, so Department/Shift are not required for them.
+      const isExecutive = assignedRole === "executive";
+
+      if (!departmentId && !isExecutive) {
         return res.status(400).json({ error: "Department is required when creating a new employee" });
       }
 
       // Shift is mandatory: without it the attendance engine cannot determine the
       // employee's working window (late-marking, absent sweep, day-completion all
       // depend on it). Validate the shift exists and is active.
-      if (!shiftId) {
+      // Executives are exempt — the attendance sweep safely skips shiftless users.
+      if (!shiftId && !isExecutive) {
         return res.status(400).json({ error: "Shift is required when creating a new employee" });
       }
-      const shiftCheck = await db.execute(sql`
-        SELECT id FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1
-      `);
-      if (shiftCheck.rows.length === 0) {
-        return res.status(400).json({ error: "Selected shift is invalid or inactive" });
+      if (shiftId) {
+        const shiftCheck = await db.execute(sql`
+          SELECT id FROM shifts WHERE id = ${shiftId} AND is_active = true LIMIT 1
+        `);
+        if (shiftCheck.rows.length === 0) {
+          return res.status(400).json({ error: "Selected shift is invalid or inactive" });
+        }
       }
       
       const existing = await storage.getAdminUserByEmail(email);
@@ -1605,7 +1612,7 @@ export async function registerRoutes(
         managerId: managerId || null,
         gender: gender || null,
         employeeCategory: categoryVal,
-        shiftId: shiftId,
+        shiftId: shiftId || null,
       });
 
       storage.initializeEmployeeDocuments(user.id, categoryVal).catch(err =>
@@ -1700,19 +1707,25 @@ export async function registerRoutes(
       const baseUrl = process.env.BASE_URL || "https://employee.hire-in.com";
       const loginUrl = `${baseUrl}/admin/login`;
 
-      sendInvitationEmail({
-        to: email.toLowerCase(),
-        firstName: firstName || email.split("@")[0],
-        lastName: lastName || "",
-        role: assignedRole,
-        temporaryPassword: tempPassword,
-        loginUrl,
-        employeeId: employeeIdVal,
-      }).catch((err) => console.error("Background invitation email error:", err));
+      // Executives don't receive a credentials email — the password is returned
+      // once in the creation response so the admin can share it privately.
+      if (!isExecutive) {
+        sendInvitationEmail({
+          to: email.toLowerCase(),
+          firstName: firstName || email.split("@")[0],
+          lastName: lastName || "",
+          role: assignedRole,
+          temporaryPassword: tempPassword,
+          loginUrl,
+          employeeId: employeeIdVal,
+        }).catch((err) => console.error("Background invitation email error:", err));
+      }
 
       let rayoProvisioning: { success: boolean; tempPassword?: string; error?: string } | null = null;
       try {
-        const rayoEnabled = await isRayoEnabled();
+        // Executives are read-only observers — no training, so skip Rayo Academy
+        // provisioning (which would also email them credentials).
+        const rayoEnabled = !isExecutive && await isRayoEnabled();
         if (rayoEnabled) {
           rayoProvisioning = await provisionRayoUser(
             email.toLowerCase(),
@@ -1740,7 +1753,14 @@ export async function registerRoutes(
         console.error("Rayo Academy provisioning failed (non-fatal):", err);
       }
 
-      res.status(201).json({ ...user, rayoProvisioning });
+      const { password: _pw, ...safeUser } = user as any;
+      res.status(201).json({
+        ...safeUser,
+        rayoProvisioning,
+        // One-time credentials for executives — shown to the admin so they can
+        // share them privately. This is the working password (no forced change).
+        ...(isExecutive ? { credentials: { email: email.toLowerCase(), password: tempPassword } } : {}),
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to create user" });
     }
