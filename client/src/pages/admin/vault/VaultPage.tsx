@@ -229,16 +229,17 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
   };
 
   if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">Loading credentials…</div>;
-  if (!secrets.length) return (
-    <div className="py-12 text-center">
-      <KeyRound className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-      <p className="text-muted-foreground text-sm">No credentials yet.</p>
-      {isAdmin && <Button size="sm" className="mt-3" onClick={() => { setEditingSecret(null); setSecretFormOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Add Credential</Button>}
-    </div>
-  );
 
   return (
     <div>
+      {!secrets.length ? (
+        <div className="py-12 text-center">
+          <KeyRound className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="text-muted-foreground text-sm">No credentials yet.</p>
+          {isAdmin && <Button size="sm" className="mt-3" onClick={() => { setEditingSecret(null); setSecretFormOpen(true); }} data-testid="button-add-secret-empty"><Plus className="h-4 w-4 mr-1" /> Add Credential</Button>}
+        </div>
+      ) : (
+      <>
       {isAdmin && (
         <div className="flex justify-end mb-3">
           <Button size="sm" onClick={() => { setEditingSecret(null); setSecretFormOpen(true); }} data-testid="button-add-secret">
@@ -316,13 +317,17 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
           ))}
         </TableBody>
       </Table>
+      </>
+      )}
 
-      <SecretFormDialog
-        open={secretFormOpen}
-        onClose={() => { setSecretFormOpen(false); setEditingSecret(null); }}
-        vaultId={vaultId}
-        existing={editingSecret}
-      />
+      {secretFormOpen && (
+        <SecretFormDialog
+          open={secretFormOpen}
+          onClose={() => { setSecretFormOpen(false); setEditingSecret(null); }}
+          vaultId={vaultId}
+          existing={editingSecret}
+        />
+      )}
       {revealSecret && (
         <RevealSecretDialog secret={revealSecret} onClose={() => setRevealSecret(null)} />
       )}

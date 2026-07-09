@@ -19,6 +19,7 @@ import {
   Sparkles,
   AlertTriangle,
   ClipboardList,
+  KeyRound,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,6 +191,11 @@ export default function CommandCenterV2() {
     queryKey: ["/api/hr/dashboard-stats"],
     enabled: isAuthenticated,
     refetchInterval: 30000,
+  });
+
+  const { data: myVaultAccess = [] } = useQuery<any[]>({
+    queryKey: ["/api/my-vault-access"],
+    enabled: isAuthenticated,
   });
 
   const { data: leaveTypes } = useQuery<LeaveType[]>({
@@ -628,6 +634,16 @@ export default function CommandCenterV2() {
           tone={(trainingAlerts?.overdue ?? 0) > 0 ? "amber" : "green"}
           onClick={() => setLocation("/admin/growth?tab=training")}
           testId="ccv2-training"
+        />
+
+        {/* My Vault Access */}
+        <StatTile
+          icon={KeyRound}
+          label="My Vault Access"
+          value={`${myVaultAccess.length}`}
+          hint={myVaultAccess.length > 0 ? "credentials shared with you" : "no credentials shared"}
+          onClick={() => setLocation("/admin/vault")}
+          testId="ccv2-vault-access"
         />
 
         {/* Open tickets (resolver roles only) */}

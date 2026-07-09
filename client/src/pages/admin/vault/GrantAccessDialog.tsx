@@ -44,9 +44,10 @@ export default function GrantAccessDialog({ secret, onClose }: { secret: Secret;
     queryKey: [`/api/secrets/${secret.id}/grants`],
   });
 
-  const { data: users = [] } = useQuery<any[]>({
+  const { data: usersData } = useQuery<{ users: any[]; counts: Record<string, number> }>({
     queryKey: ["/api/admin/users"],
   });
+  const users = usersData?.users ?? [];
 
   const addMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/secrets/${secret.id}/grants`, {

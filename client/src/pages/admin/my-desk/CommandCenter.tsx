@@ -17,6 +17,7 @@ import {
   AlertCircle,
   ClipboardCheck,
   ArrowRight,
+  KeyRound,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,11 @@ export default function CommandCenter() {
     queryKey: ["/api/hr/dashboard-stats"],
     enabled: isAuthenticated,
     refetchInterval: 30000,
+  });
+
+  const { data: myVaultAccess = [] } = useQuery<any[]>({
+    queryKey: ["/api/my-vault-access"],
+    enabled: isAuthenticated,
   });
 
   const { data: leaveTypes } = useQuery<LeaveType[]>({
@@ -555,6 +561,40 @@ export default function CommandCenter() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* My Vault Access */}
+        <Card data-testid="cc-vault-access-card" className="shadow-sm">
+          <CardHeader className="pb-1 pt-3 px-4">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <KeyRound className="h-3.5 w-3.5" />
+              My Vault Access
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-3xl font-bold font-mono leading-none ${myVaultAccess.length > 0 ? "text-foreground" : "text-muted-foreground/40"}`}
+                  data-testid="cc-vault-access-count"
+                >
+                  {myVaultAccess.length}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {myVaultAccess.length === 1 ? "credential shared with you" : "credentials shared with you"}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs h-7 text-muted-foreground"
+                onClick={() => setLocation("/admin/vault")}
+                data-testid="cc-link-vault-access"
+              >
+                Open Systems Vault →
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
