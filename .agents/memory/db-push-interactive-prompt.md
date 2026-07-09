@@ -40,3 +40,15 @@ Replit Publish diffs the **dev DB against the prod DB via introspection** (NOT s
   carries it to prod. **Do NOT add startup DDL to server/index.ts to self-heal** — the codebase has
   many such ensure-blocks but the official guidance (database-migrations-on-publish) is against
   adding new ones; they run on prod boot too. Repair dev DB + rely on db:push + Publish instead.
+
+## Status update (July 2026)
+The two known stalling prompts are now permanently resolved: `offer_letters_reference_number_unique`
+and `salary_structures_name_unique` were added directly to the dev DB via SQL (both tables verified
+duplicate-free first), and db:push now applies cleanly with "[✓] Changes applied".
+
+## 3. Task merges can silently delete schema table definitions
+Two overlapping task merges each removed "duplicate" salaryStructures/salaryStructureRules
+definitions — the second merge deleted the surviving copy, leaving a stale comment claiming the
+tables were "defined earlier in this file" when they weren't. Server crashed on import; drizzle-kit
+threw ReferenceError. **After any merge touching shared/schema.ts, verify every table referenced by
+`.references(() => X.id)` is actually exported** — a stale locator comment is not proof.

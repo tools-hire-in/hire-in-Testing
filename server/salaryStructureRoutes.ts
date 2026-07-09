@@ -39,6 +39,43 @@ import {
 // requirePermission factory as every other route in the system.
 type PermissionFactory = (featureKey: string, ...allowedRoles: string[]) => RequestHandler;
 
+// ── Legacy `value` ↔ schema column conversion ────────────────────────────────
+// The salary_structure_rules table stores percentages in basis points
+// (value_pct: 40% → 4000) and fixed amounts in paise (value_fixed: ₹1600 → 160000).
+// This API's clients send/expect a human-readable `value` (e.g. "40", "1600"),
+// so we convert on the way in and decorate rows on the way out.
+
+function ruleToDbColumns(r: any): { valuePct: number | null; valueFixed: number | null } {
+  if (r.valuePct !== undefined || r.valueFixed !== undefined) {
+    const pct = r.valuePct == null ? null : Math.round(Number(r.valuePct));
+    const fixed = r.valueFixed == null ? null : Math.round(Number(r.valueFixed));
+    return {
+      valuePct: Number.isFinite(pct as number) ? pct : null,
+      valueFixed: Number.isFinite(fixed as number) ? fixed : null,
+    };
+  }
+  const num = parseFloat(String(r.value ?? 0)) || 0;
+  if (r.ruleType === "fixed") {
+    return { valuePct: null, valueFixed: Math.round(num * 100) };
+  }
+  if (r.ruleType === "percent_of_gross" || r.ruleType === "percent_of_component") {
+    return { valuePct: Math.round(num * 100), valueFixed: null };
+  }
+  return { valuePct: null, valueFixed: null }; // residual
+}
+
+function ruleValueNumber(row: { ruleType: string; valuePct: number | null; valueFixed: number | null }): number {
+  if (row.ruleType === "fixed") return (row.valueFixed ?? 0) / 100;
+  if (row.ruleType === "percent_of_gross" || row.ruleType === "percent_of_component") {
+    return (row.valuePct ?? 0) / 100;
+  }
+  return 0;
+}
+
+function withLegacyValue<T extends { ruleType: string; valuePct: number | null; valueFixed: number | null }>(row: T) {
+  return { ...row, value: String(ruleValueNumber(row)) };
+}
+
 // ── Seed helper ───────────────────────────────────────────────────────────────
 
 /**
@@ -67,46 +104,51 @@ export async function seedDefaultSalaryStructure(): Promise<void> {
       {
         structureId,
         componentName: "basic",
-        ruleType: "percent_of_gross",
-        value: "40",
+        ruleType: "percent_of_gross" as const,
+        valuePct: 4000, // 40%
+        valueFixed: null,
         referenceComponent: null,
-        lopMode: "proportional",
+        lopMode: "proportional" as const,
         sortOrder: 1,
       },
       {
         structureId,
         componentName: "hra",
-        ruleType: "percent_of_component",
-        value: "50",
+        ruleType: "percent_of_component" as const,
+        valuePct: 5000, // 50% of basic
+        valueFixed: null,
         referenceComponent: "basic",
-        lopMode: "proportional",
+        lopMode: "proportional" as const,
         sortOrder: 2,
       },
       {
         structureId,
         componentName: "conveyance",
-        ruleType: "fixed",
-        value: "1600",
+        ruleType: "fixed" as const,
+        valuePct: null,
+        valueFixed: 160000, // ₹1,600 in paise
         referenceComponent: null,
-        lopMode: "proportional",
+        lopMode: "proportional" as const,
         sortOrder: 3,
       },
       {
         structureId,
         componentName: "lta",
-        ruleType: "percent_of_component",
-        value: "8.33",
+        ruleType: "percent_of_component" as const,
+        valuePct: 833, // 8.33% of basic
+        valueFixed: null,
         referenceComponent: "basic",
-        lopMode: "proportional",
+        lopMode: "proportional" as const,
         sortOrder: 4,
       },
       {
         structureId,
         componentName: "special_allowance",
-        ruleType: "residual",
-        value: "0",
+        ruleType: "residual" as const,
+        valuePct: null,
+        valueFixed: null,
         referenceComponent: null,
-        lopMode: "proportional",
+        lopMode: "proportional" as const,
         sortOrder: 5,
       },
     ]);
@@ -131,8 +173,9 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
       const structures = await db.select().from(salaryStructures).orderBy(asc(salaryStructures.createdAt));
       const rules = await db.select().from(salaryStructureRules).orderBy(asc(salaryStructureRules.structureId), asc(salaryStructureRules.sortOrder));
 
-      const rulesByStructure: Record<string, typeof rules> = {};
-      for (const rule of rules) {
+      const decorated = rules.map(withLegacyValue);
+      const rulesByStructure: Record<string, typeof decorated> = {};
+      for (const rule of decorated) {
         if (!rulesByStructure[rule.structureId]) rulesByStructure[rule.structureId] = [];
         rulesByStructure[rule.structureId].push(rule);
       }
@@ -159,7 +202,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
         .where(eq(salaryStructureRules.structureId, req.params.id))
         .orderBy(asc(salaryStructureRules.sortOrder));
 
-      res.json({ ...structure, rules });
+      res.json({ ...structure, rules: rules.map(withLegacyValue) });
     } catch (err) {
       console.error("Failed to fetch salary structure:", err);
       res.status(500).json({ error: "Failed to fetch salary structure" });
@@ -172,14 +215,12 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
       const { name, description, effectiveDate, pfMode, rules = [] } = req.body;
       if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
 
-      const actor = req.session.userId!;
       const [structure] = await db.insert(salaryStructures).values({
         name: name.trim(),
         description: description || null,
         effectiveDate: effectiveDate || null,
         isActive: true,
         pfMode: pfMode || "restricted",
-        createdBy: actor,
       }).returning();
 
       if (rules.length > 0) {
@@ -188,7 +229,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
             structureId: structure.id,
             componentName: r.componentName,
             ruleType: r.ruleType,
-            value: String(r.value || 0),
+            ...ruleToDbColumns(r),
             referenceComponent: r.referenceComponent || null,
             lopMode: r.lopMode || "proportional",
             sortOrder: r.sortOrder ?? i + 1,
@@ -246,7 +287,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
       const rules = await db.select().from(salaryStructureRules)
         .where(eq(salaryStructureRules.structureId, req.params.id))
         .orderBy(asc(salaryStructureRules.sortOrder));
-      res.json(rules);
+      res.json(rules.map(withLegacyValue));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch rules" });
     }
@@ -266,7 +307,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
             structureId: req.params.id,
             componentName: r.componentName,
             ruleType: r.ruleType,
-            value: String(r.value || 0),
+            ...ruleToDbColumns(r),
             referenceComponent: r.referenceComponent || null,
             lopMode: r.lopMode || "proportional",
             sortOrder: r.sortOrder ?? i + 1,
@@ -278,7 +319,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
         .where(eq(salaryStructureRules.structureId, req.params.id))
         .orderBy(asc(salaryStructureRules.sortOrder));
 
-      res.json(updated);
+      res.json(updated.map(withLegacyValue));
     } catch (err) {
       console.error("Failed to replace rules:", err);
       res.status(500).json({ error: "Failed to update rules" });
@@ -312,7 +353,7 @@ export function registerSalaryStructureRoutes(app: Express, requirePermission: P
       const rulesMapped: StructureRule[] = rules.map((r) => ({
         componentName: r.componentName,
         ruleType: r.ruleType as any,
-        value: Number(r.value),
+        value: ruleValueNumber(r),
         referenceComponent: r.referenceComponent,
         lopMode: r.lopMode as "proportional" | "fixed",
         sortOrder: r.sortOrder,
