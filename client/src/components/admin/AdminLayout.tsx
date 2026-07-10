@@ -1782,14 +1782,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center font-semibold text-primary text-sm shrink-0">
                     {user?.firstName?.[0] || "?"}{user?.lastName?.[0] || ""}
                   </div>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="font-semibold text-sm truncate leading-tight">
-                      {user?.firstName} {user?.lastName}
-                    </p>
-                    <Badge className={`text-[10px] px-1.5 py-0 mt-0.5 ${roleInfo.color}`} data-testid="badge-user-role">
-                      {roleInfo.label}
-                    </Badge>
-                  </div>
+
                 </div>
               </Link>
               {/* Logo row - visible in expanded mode */}
