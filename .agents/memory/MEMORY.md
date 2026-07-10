@@ -52,3 +52,4 @@
 - [Studio occasions & idea cards](studio-occasions-idea-cards.md) — occasionPreferences opt-in (NULL=no curated, custom always show); seed ends 2027; ideas live only as calendar chips + IdeaCardGallery.
 - [Studio AI propose→confirm](studio-ai-propose-confirm.md) — bulk AI generation must be preview (no writes) then confirm (re-validate all rows, then insert as suggested).
 - [App.tsx duplicate route blocks](app-tsx-duplicate-route-blocks.md) — studio/legacy route lists exist twice; new routes need replace_all into both blocks or the page 404s in one context.
+- [Salary disbursement flow](salary-disbursement-flow.md) — per-employee payslip unlock via salary_run_payments; run auto-executes when all deposited; new slip endpoints must use findSlipRunForEmail.

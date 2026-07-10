@@ -2184,6 +2184,36 @@ export const salaryReportRunsRelations = relations(salaryReportRuns, ({ one }) =
 }));
 
 // ==========================================
+// SALARY RUN PAYMENTS (per-employee disbursement tracking)
+// ==========================================
+// Tracks the offline bank-transfer confirmation per employee row of an approved
+// salary run. Rows are keyed by (runId, email) because run reportData rows are
+// email-keyed. status: "pending" | "deposited". Marking deposited unlocks the
+// employee's payslip for that month; when every row is deposited the run
+// auto-transitions to "executed".
+export const salaryRunPayments = pgTable("salary_run_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull().references(() => salaryReportRuns.id),
+  email: varchar("email").notNull(),
+  userId: varchar("user_id").references(() => adminUsers.id),
+  status: varchar("status").notNull().default("pending"),
+  note: text("note"),
+  markedBy: varchar("marked_by").references(() => adminUsers.id),
+  markedAt: timestamp("marked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("salary_run_payments_run_email_unique").on(table.runId, table.email),
+]);
+
+export const insertSalaryRunPaymentSchema = createInsertSchema(salaryRunPayments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SalaryRunPayment = typeof salaryRunPayments.$inferSelect;
+export type InsertSalaryRunPayment = z.infer<typeof insertSalaryRunPaymentSchema>;
+
+// ==========================================
 // PENDING CHANGES (Automated-job guardrail)
 // ==========================================
 // Automated/scheduled jobs that would otherwise overwrite user-entered values

@@ -165,7 +165,7 @@ function getEmployeeStatusBadge(emp: ComplianceEmployee) {
   return <Badge variant="destructive" data-testid="badge-employee-incomplete">Incomplete</Badge>;
 }
 
-export function DocumentComplianceContent({ readOnly }: { readOnly?: boolean } = {}) {
+export function DocumentComplianceContent({ readOnly, allowReminders }: { readOnly?: boolean; allowReminders?: boolean } = {}) {
   const { toast } = useToast();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -430,6 +430,7 @@ export function DocumentComplianceContent({ readOnly }: { readOnly?: boolean } =
                     onViewBankDetails={(userId) => setBankDetailsUserId(userId)}
                     onViewEmergencyContacts={(userId) => setEmergencyContactsUserId(userId)}
                     readOnly={readOnly}
+                    allowReminders={allowReminders}
                   />
                 ))}
               </TableBody>
@@ -600,9 +601,10 @@ interface EmployeeRowProps {
   onViewBankDetails: (userId: string) => void;
   onViewEmergencyContacts: (userId: string) => void;
   readOnly?: boolean;
+  allowReminders?: boolean;
 }
 
-function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending, onInitializeDocs, isInitializePending, onViewBankDetails, onViewEmergencyContacts, readOnly }: EmployeeRowProps) {
+function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendReminder, isReminderPending, onInitializeDocs, isInitializePending, onViewBankDetails, onViewEmergencyContacts, readOnly, allowReminders }: EmployeeRowProps) {
   const progressPercent = emp.requiredTotal > 0 ? Math.round((emp.requiredUploaded / emp.requiredTotal) * 100) : 0;
   const hasPendingDocs = emp.docs.some((d) => d.isRequired && d.status === "pending");
 
@@ -676,7 +678,7 @@ function EmployeeRow({ emp, isExpanded, onToggle, onVerify, onReject, onSendRemi
                 Initialize
               </Button>
             )}
-            {!readOnly && hasPendingDocs && (
+            {(!readOnly || allowReminders) && hasPendingDocs && (
               <Button
                 size="sm"
                 variant="outline"

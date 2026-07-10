@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DocumentComplianceContent } from "@/pages/admin/hr/DocumentCompliance";
 import { PolicyComplianceContent } from "@/pages/admin/hr/PolicyCompliance";
-import { SalaryReportsContent } from "@/pages/admin/hr/SalaryReports";
-import { Users, ShieldCheck, BarChart3, Search, Building2, TrendingUp, CalendarDays, CheckCircle2, Clock, AlertTriangle, Download } from "lucide-react";
+import { Users, ShieldCheck, BarChart3, Search, Building2, TrendingUp, CalendarDays, CheckCircle2, Clock, AlertTriangle, Download, Banknote, Undo2, Loader2 } from "lucide-react";
 
 interface EmployeeRow {
   id: string;
@@ -411,8 +414,331 @@ function AttendanceTab() {
   );
 }
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+const formatINR = (n: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
+
+interface DisbursementRunSummary {
+  id: string;
+  year: number;
+  month: number;
+  status: string;
+  approvedAt: string | null;
+  executedAt: string | null;
+  executionNote: string | null;
+  employeeCount: number;
+  depositedCount: number;
+  totalPayable: number;
+}
+
+interface DisbursementRow {
+  employeeName: string;
+  email: string;
+  designation: string | null;
+  department: string | null;
+  netPayable: number;
+  grossSalary: number;
+  deductions: number;
+  paymentStatus: "pending" | "deposited";
+  note: string | null;
+  markedBy: string | null;
+  markedAt: string | null;
+}
+
+function DisbursementTab() {
+  const { toast } = useToast();
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [markDialog, setMarkDialog] = useState<{ row: DisbursementRow; toStatus: "pending" | "deposited" } | null>(null);
+  const [note, setNote] = useState("");
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  const { data: runs = [], isLoading: runsLoading } = useQuery<DisbursementRunSummary[]>({
+    queryKey: ["/api/hr/reports/salary/disbursement/runs"],
+  });
+
+  useEffect(() => {
+    if (!selectedRunId && runs.length > 0) {
+      const active = runs.find(r => r.status !== "executed");
+      setSelectedRunId((active || runs[0]).id);
+    }
+  }, [runs, selectedRunId]);
+
+  const { data: detail, isLoading: detailLoading } = useQuery<{ run: DisbursementRunSummary; rows: DisbursementRow[] }>({
+    queryKey: ["/api/hr/reports/salary/disbursement/runs", selectedRunId],
+    enabled: !!selectedRunId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/reports/salary/disbursement/runs"] });
+  };
+
+  const markMutation = useMutation({
+    mutationFn: async (payload: { email: string; status: "pending" | "deposited"; note?: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/hr/reports/salary/disbursement/runs/${selectedRunId}/payments`, payload);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      invalidate();
+      setMarkDialog(null);
+      setNote("");
+      if (data?.autoExecuted) {
+        toast({ title: "Payroll run completed", description: "All salaries are deposited — the run has been marked as executed and payslips are unlocked for everyone." });
+      } else {
+        toast({ title: "Payment updated" });
+      }
+    },
+    onError: (err: any) => toast({ title: "Failed to update payment", description: err?.message, variant: "destructive" }),
+  });
+
+  const markAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/hr/reports/salary/disbursement/runs/${selectedRunId}/mark-all-deposited`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      invalidate();
+      setConfirmAll(false);
+      toast({
+        title: "All salaries marked deposited",
+        description: data?.autoExecuted ? "The run is now complete and payslips are unlocked." : `${data?.marked ?? 0} payment(s) marked.`,
+      });
+    },
+    onError: (err: any) => toast({ title: "Failed to mark all", description: err?.message, variant: "destructive" }),
+  });
+
+  const selectedRun = runs.find(r => r.id === selectedRunId) || null;
+  const isEditable = selectedRun ? selectedRun.status !== "executed" : false;
+  const rows = detail?.rows || [];
+  const pendingCount = rows.filter(r => r.paymentStatus === "pending").length;
+
+  if (runsLoading) {
+    return <div className="space-y-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-64 w-full" /></div>;
+  }
+
+  if (runs.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground" data-testid="text-no-disbursement-runs">
+          <Banknote className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          <p className="font-medium">No approved payroll runs yet</p>
+          <p className="text-sm mt-1">Once a salary report is approved, it will appear here for disbursement.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={selectedRunId ?? undefined} onValueChange={setSelectedRunId}>
+          <SelectTrigger className="w-64" data-testid="select-disbursement-run">
+            <SelectValue placeholder="Select payroll run" />
+          </SelectTrigger>
+          <SelectContent>
+            {runs.map(r => (
+              <SelectItem key={r.id} value={r.id} data-testid={`option-run-${r.id}`}>
+                {MONTH_NAMES[r.month - 1]} {r.year} — {r.status === "executed" ? "Completed" : `${r.depositedCount}/${r.employeeCount} deposited`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedRun && (
+          selectedRun.status === "executed" ? (
+            <Badge className="bg-green-600 text-white" data-testid="badge-run-status">
+              <CheckCircle2 className="h-3 w-3 mr-1" /> Completed
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-amber-600 border-amber-300" data-testid="badge-run-status">
+              <Clock className="h-3 w-3 mr-1" /> In progress
+            </Badge>
+          )
+        )}
+        {isEditable && pendingCount > 0 && (
+          <Button
+            size="sm"
+            className="ml-auto"
+            onClick={() => setConfirmAll(true)}
+            disabled={markAllMutation.isPending}
+            data-testid="button-mark-all-deposited"
+          >
+            {markAllMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+            Mark All Deposited ({pendingCount})
+          </Button>
+        )}
+      </div>
+
+      {selectedRun && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card data-testid="card-disb-employees">
+            <CardContent className="pt-5">
+              <p className="text-2xl font-bold">{selectedRun.employeeCount}</p>
+              <p className="text-xs text-muted-foreground">Employees</p>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-disb-deposited">
+            <CardContent className="pt-5">
+              <p className="text-2xl font-bold text-green-600">{selectedRun.depositedCount}</p>
+              <p className="text-xs text-muted-foreground">Deposited</p>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-disb-pending">
+            <CardContent className="pt-5">
+              <p className="text-2xl font-bold text-amber-600">{selectedRun.employeeCount - selectedRun.depositedCount}</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-disb-total">
+            <CardContent className="pt-5">
+              <p className="text-2xl font-bold">{formatINR(selectedRun.totalPayable)}</p>
+              <p className="text-xs text-muted-foreground">Total Net Payable</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          {detailLoading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground">Employee</th>
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground hidden sm:table-cell">Designation</th>
+                    <th className="text-right px-4 py-2 font-medium text-muted-foreground">Net Payable</th>
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground">Status</th>
+                    <th className="text-right px-4 py-2 font-medium text-muted-foreground">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, idx) => (
+                    <tr key={r.email} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-disbursement-${idx}`}>
+                      <td className="px-4 py-2.5">
+                        <p className="font-medium">{r.employeeName}</p>
+                        <p className="text-xs text-muted-foreground">{r.email}</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{r.designation || "—"}</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatINR(r.netPayable)}</td>
+                      <td className="px-4 py-2.5">
+                        {r.paymentStatus === "deposited" ? (
+                          <div>
+                            <Badge className="bg-green-600 text-white" data-testid={`badge-status-${idx}`}>
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Deposited
+                            </Badge>
+                            {(r.markedBy || r.markedAt) && (
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                {r.markedBy ? `by ${r.markedBy}` : ""}{r.markedAt ? ` · ${new Date(r.markedAt).toLocaleDateString()}` : ""}
+                              </p>
+                            )}
+                            {r.note && <p className="text-[11px] text-muted-foreground italic mt-0.5">{r.note}</p>}
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300" data-testid={`badge-status-${idx}`}>
+                            <Clock className="h-3 w-3 mr-1" /> Pending
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {isEditable && (
+                          r.paymentStatus === "pending" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => { setNote(r.note || ""); setMarkDialog({ row: r, toStatus: "deposited" }); }}
+                              data-testid={`button-mark-deposited-${idx}`}
+                            >
+                              <Banknote className="h-3.5 w-3.5 mr-1" /> Mark Deposited
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => { setNote(r.note || ""); setMarkDialog({ row: r, toStatus: "pending" }); }}
+                              data-testid={`button-undo-deposit-${idx}`}
+                            >
+                              <Undo2 className="h-3.5 w-3.5 mr-1" /> Undo
+                            </Button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!markDialog} onOpenChange={(open) => { if (!open) { setMarkDialog(null); setNote(""); } }}>
+        <DialogContent data-testid="dialog-mark-payment">
+          <DialogHeader>
+            <DialogTitle>
+              {markDialog?.toStatus === "deposited" ? "Mark salary as deposited" : "Move back to pending"}
+            </DialogTitle>
+            <DialogDescription>
+              {markDialog?.toStatus === "deposited"
+                ? `Confirm that ${markDialog?.row.employeeName}'s salary of ${markDialog ? formatINR(markDialog.row.netPayable) : ""} has been transferred. They will be notified and their payslip will be unlocked.`
+                : `Move ${markDialog?.row.employeeName}'s payment back to pending. Their payslip will be locked again unless the run is completed.`}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Optional note (e.g. bank reference, reason)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            data-testid="input-payment-note"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setMarkDialog(null); setNote(""); }} data-testid="button-cancel-mark">Cancel</Button>
+            <Button
+              onClick={() => markDialog && markMutation.mutate({ email: markDialog.row.email, status: markDialog.toStatus, note: note.trim() || null })}
+              disabled={markMutation.isPending}
+              data-testid="button-confirm-mark"
+            >
+              {markMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {markDialog?.toStatus === "deposited" ? "Confirm Deposit" : "Move to Pending"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmAll} onOpenChange={setConfirmAll}>
+        <DialogContent data-testid="dialog-mark-all">
+          <DialogHeader>
+            <DialogTitle>Mark all remaining as deposited?</DialogTitle>
+            <DialogDescription>
+              This will mark {pendingCount} pending payment(s) as deposited, notify each employee, and complete the payroll run (unlocking all payslips).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAll(false)} data-testid="button-cancel-mark-all">Cancel</Button>
+            <Button onClick={() => markAllMutation.mutate()} disabled={markAllMutation.isPending} data-testid="button-confirm-mark-all">
+              {markAllMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Mark All Deposited
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function ExecCockpit() {
-  const [tab, setTab] = useState("people");
+  const [tab, setTab] = useState(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get("tab");
+      if (param && ["people", "compliance", "attendance", "reports"].includes(param)) return param;
+    } catch {}
+    return "people";
+  });
 
   return (
     <AdminLayout>
@@ -453,7 +779,7 @@ export default function ExecCockpit() {
                   <ShieldCheck className="h-4 w-4" />
                   Document Compliance
                 </h2>
-                <DocumentComplianceContent readOnly />
+                <DocumentComplianceContent readOnly allowReminders />
               </section>
               <section>
                 <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
@@ -470,7 +796,7 @@ export default function ExecCockpit() {
           </TabsContent>
 
           <TabsContent value="reports" data-testid="panel-reports">
-            <SalaryReportsContent readOnly />
+            <DisbursementTab />
           </TabsContent>
         </Tabs>
       </div>

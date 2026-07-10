@@ -6,7 +6,8 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
-import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings } from "@shared/schema";
+import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments } from "@shared/schema";
+import { getPortalBaseUrl } from "./portalUrl";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db } from "./db";
@@ -89,7 +90,7 @@ import { z } from "zod";
 // express-rate-limit kept for other potential uses; verify endpoint uses a
 // custom sliding-window implementation (see slidingWindowVerifyLimiter below).
 import { verifyInputSchema } from "@shared/verifySchema";
-import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendSalaryReportDispatch, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, type SalaryReportAdjustment } from "./email";
+import { sendInvitationEmail, sendWelcomeEmail, sendSalaryReport, sendSalaryReportDispatch, sendDocumentReminderEmail, sendOfferLetterEmail, sendOnboardingWelcomeEmail, sendRayoAcademyCredentialsEmail, sendHrLetterEmail, sendAddendumEmail, sendAddendumReminderEmail, sendAddendumAcceptedEmail, sendOfferLetterPendingApprovalEmail, sendOfferLetterApprovalDecisionEmail, sendLeaveAppliedEmail, sendLeaveDecisionEmail, sendStudioPublishedEmail, sendStudioRejectionEmail, sendStudioAuthorSignOffEmail, sendNewsletterWelcomeEmail, sendSalaryRunReadyEmail, sendSalaryDepositedEmail, sendDocumentReminderManagerEmail, type SalaryReportAdjustment } from "./email";
 import { notifyNewContentSubscribers, makeUnsubscribeToken, verifyUnsubscribeToken, unsubscribeUrlFor, insightsUrl, NEWSLETTER_FLAG_KEY } from "./newsletterService";
 import { generateMonthlySalaryReport } from "./salaryReport";
 import crypto from "crypto";
@@ -7492,70 +7493,84 @@ export async function registerRoutes(
         generatedAt: (run.generatedAt || new Date()).toISOString(),
       };
 
-      // Build CSV with ADJUSTED column
-      const csvHeaders = [
-        "Employee Name", "Email", "Designation", "Department", "Salary",
-        "Working Days", "Present Days", "Absent Days", "Paid Leaves", "LOP Leaves (Unpaid)", "Holidays",
-        "Total Hours", "Attendance %", "Gross Salary", "Deductions", "Net Payable",
-        "ADJUSTED", "ADJUSTMENT_COMMENT",
-      ];
-      const csvRows = rows.map((r: any) => {
-        const adj = adjustments[r.email];
-        return [
-          `"${r.employeeName}"`, `"${r.email}"`, `"${r.designation}"`, `"${r.department}"`,
-          r.salary, r.workingDays, r.presentDays, r.absentDays, r.paidLeaves, r.lopLeaves, r.holidays,
-          r.totalHours, r.attendancePercentage, r.grossSalary, r.deductions, r.netPayable,
-          adj ? "Y" : "N", adj ? `"${adj.comment.replace(/"/g, '""')}"` : "",
-        ].join(",");
-      });
-      const csv = [csvHeaders.join(","), ...csvRows].join("\n");
-
-      const recipientsSetting = await storage.getSystemSetting("salary_report_recipients");
-      const recipientsConfig = recipientsSetting?.value as { to: string[]; cc: string[] } | undefined;
-      const toList = recipientsConfig?.to?.filter(Boolean) ?? [];
-      const ccList = recipientsConfig?.cc?.filter(Boolean) ?? [];
-
       const now = new Date();
-      let dispatched = false;
-      let dispatchSkippedReason: string | null = null;
-
-      if (toList.length === 0) {
-        // No recipients configured — skip dispatch but continue to approve
-        dispatchSkippedReason = "No recipients configured in salary_report_recipients setting";
-        console.warn(`[salary_run:${run.id}] ${dispatchSkippedReason}`);
-      } else {
-        // Route through dispatchAutomatedEmail so CCC policy, hold-for-approval,
-        // and audit logging are all respected automatically.
-        const emailResult = await sendSalaryReportDispatch({
-          runId: run.id,
-          csvContent: csv,
-          summary,
-          recipients: { to: toList, cc: ccList },
-          adjustments,
-          rows,
-        });
-
-        if (!emailResult.success && !emailResult.held && !emailResult.disabled) {
-          return res.status(500).json({ error: "Salary report email dispatch failed: " + emailResult.error });
-        }
-        dispatched = true;
-      }
 
       await db.update(salaryReportRuns)
         .set({
           status: "approved",
           approvedAt: now,
           approvedBy: actorId,
-          emailSentAt: dispatched ? now : null,
-          dispatchedTo: dispatched ? ({ to: toList, cc: ccList } as any) : null,
-          dispatchedAt: dispatched ? now : null,
+          emailSentAt: null,
+          dispatchedTo: null,
+          dispatchedAt: null,
         })
         .where(eq(salaryReportRuns.id, req.params.id));
 
-      // Apply scheduled salary-advance recoveries for this run (idempotent: only
-      // 'scheduled' repayments for this year/month are marked deducted).
       const allUsers = await storage.getAdminUsers();
       const userEmailMap = new Map(allUsers.map(u => [u.email, u.id]));
+
+      // Seed per-employee payment rows for the disbursement workflow (idempotent).
+      try {
+        if (rows.length > 0) {
+          await db.insert(salaryRunPayments)
+            .values(rows.map((r: any) => ({
+              runId: run.id,
+              email: r.email,
+              userId: userEmailMap.get(r.email) ?? null,
+              status: "pending",
+            })))
+            .onConflictDoNothing();
+        }
+      } catch (seedErr) {
+        console.error("Failed to seed salary run payment rows:", seedErr);
+      }
+
+      // Notify executives that the run is ready for processing — lightweight
+      // ping only (no figures, no CSV attachment). Data lives in the cockpit.
+      let executivesNotified = 0;
+      let dispatchSkippedReason: string | null = null;
+      const executives = allUsers.filter(u => u.role === "executive" && u.isActive !== false && !(u as any).deletedAt);
+      if (executives.length === 0) {
+        dispatchSkippedReason = "No active executive users to notify";
+        console.warn(`[salary_run:${run.id}] ${dispatchSkippedReason}`);
+      } else {
+        try {
+          const emailResult = await sendSalaryRunReadyEmail({
+            to: executives.map(e => e.email),
+            runId: run.id,
+            year: run.year,
+            monthName,
+            portalUrl: getPortalBaseUrl(),
+          });
+          if (!emailResult.success && !emailResult.held && !emailResult.disabled) {
+            console.error(`[salary_run:${run.id}] executive ready email failed:`, emailResult.error);
+          }
+        } catch (mailErr) {
+          console.error(`[salary_run:${run.id}] executive ready email failed:`, mailErr);
+        }
+        try {
+          const flagsSetting = await storage.getSystemSetting("feature_flags");
+          const flags = (flagsSetting?.value as Record<string, boolean>) || {};
+          if (flags.notifications_enabled) {
+            for (const exec of executives) {
+              await storage.createNotification({
+                userId: exec.id,
+                type: "salary_run_ready",
+                title: "Salary Report Ready for Processing",
+                message: `The ${monthName} ${run.year} salary report has been approved and is ready for disbursement.`,
+                isRead: false,
+                metadata: { runId: run.id, year: run.year, month: run.month, link: "/admin/executive-cockpit?tab=reports" },
+              });
+            }
+          }
+        } catch (notifErr) {
+          console.error(`[salary_run:${run.id}] executive notification failed:`, notifErr);
+        }
+        executivesNotified = executives.length;
+      }
+
+      // Apply scheduled salary-advance recoveries for this run (idempotent: only
+      // 'scheduled' repayments for this year/month are marked deducted).
       let advancesRecovered = 0;
       try {
         advancesRecovered = await applyAdvanceRecoveriesForRun({
@@ -7589,10 +7604,10 @@ export async function registerRoutes(
       await storage.createAuditLog({
         action: "salary_report_approved",
         actorId,
-        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered, creditsApplied },
+        changes: { runId: run.id, year: run.year, month: run.month, adjustedRows: Object.keys(adjustments).length, executivesNotified, dispatchSkippedReason, advancesRecovered, creditsApplied, summary },
       });
 
-      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, dispatched, dispatchSkippedReason, advancesRecovered });
+      res.json({ success: true, adjustedRows: Object.keys(adjustments).length, executivesNotified, dispatchSkippedReason, advancesRecovered });
     } catch (error) {
       console.error("Failed to approve salary run:", error);
       res.status(500).json({ error: "Failed to approve and send salary report" });
@@ -7635,6 +7650,307 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to mark run as executed:", error);
       res.status(500).json({ error: "Failed to mark run as executed" });
+    }
+  });
+
+  // ==========================================
+  // PAYROLL DISBURSEMENT (Executive Cockpit)
+  // ==========================================
+  // Per-employee payment confirmation for approved salary runs. The executive
+  // reviews the approved run, performs the bank transfer offline, then marks
+  // each employee as Deposited. When every row is deposited the run
+  // auto-transitions to "executed" (which unlocks payslips run-wide).
+
+  // Notify + email one employee that their salary was deposited. Failures are
+  // logged but never block the marking operation.
+  async function notifyEmployeeDeposited(opts: {
+    runId: string; year: number; month: number;
+    email: string; userId: string | null; firstName: string;
+  }) {
+    const monthName = new Date(opts.year, opts.month - 1, 1).toLocaleString("en-US", { month: "long" });
+    try {
+      await sendSalaryDepositedEmail({
+        to: opts.email,
+        firstName: opts.firstName,
+        runId: opts.runId,
+        year: opts.year,
+        monthName,
+        portalUrl: getPortalBaseUrl(),
+      });
+    } catch (err) {
+      console.error(`[salary_run:${opts.runId}] deposited email failed for ${opts.email}:`, err);
+    }
+    if (!opts.userId) return;
+    try {
+      const flagsSetting = await storage.getSystemSetting("feature_flags");
+      const flags = (flagsSetting?.value as Record<string, boolean>) || {};
+      if (flags.notifications_enabled) {
+        await storage.createNotification({
+          userId: opts.userId,
+          type: "salary_deposited",
+          title: "Salary Deposited",
+          message: `Your ${monthName} ${opts.year} salary has been deposited. Your payslip is now available.`,
+          isRead: false,
+          metadata: { runId: opts.runId, year: opts.year, month: opts.month, link: "/admin/my-desk?tab=payslips" },
+        });
+      }
+    } catch (err) {
+      console.error(`[salary_run:${opts.runId}] deposited notification failed for ${opts.email}:`, err);
+    }
+  }
+
+  // If every payment row of the run is deposited, transition the run to
+  // "executed". Returns true when the transition happened.
+  async function maybeAutoExecuteRun(runId: string, actorId: string): Promise<boolean> {
+    const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, runId));
+    if (!run || !["approved", "sent"].includes(run.status)) return false;
+    const rows = (run.reportData as any[]) || [];
+    const payments = await db.select().from(salaryRunPayments).where(eq(salaryRunPayments.runId, runId));
+    const statusByEmail = new Map(payments.map(p => [p.email, p.status]));
+    const allDeposited = rows.length > 0 && rows.every((r: any) => statusByEmail.get(r.email) === "deposited");
+    if (!allDeposited) return false;
+    const now = new Date();
+    await db.update(salaryReportRuns)
+      .set({
+        status: "executed",
+        executedAt: now,
+        executedBy: actorId,
+        executionNote: "All employee payments confirmed deposited",
+      })
+      .where(eq(salaryReportRuns.id, runId));
+    await storage.createAuditLog({
+      action: "salary_run_executed",
+      actorId,
+      changes: { runId, year: run.year, month: run.month, note: "Auto-transition: all employee payments deposited" },
+    });
+    return true;
+  }
+
+  // List runs relevant to disbursement (approved/sent = in progress, executed = done)
+  app.get("/api/hr/reports/salary/disbursement/runs", requireAuth, requirePermission("hr.reports.salary.disburse", "super_admin", "admin", "executive"), async (_req: Request, res: Response) => {
+    try {
+      const runs = await db.select().from(salaryReportRuns)
+        .where(inArray(salaryReportRuns.status, ["approved", "sent", "executed"]))
+        .orderBy(desc(salaryReportRuns.year), desc(salaryReportRuns.month));
+      const runIds = runs.map(r => r.id);
+      const payments = runIds.length > 0
+        ? await db.select().from(salaryRunPayments).where(inArray(salaryRunPayments.runId, runIds))
+        : [];
+      const paymentsByRun = new Map<string, typeof payments>();
+      for (const p of payments) {
+        const list = paymentsByRun.get(p.runId) || [];
+        list.push(p);
+        paymentsByRun.set(p.runId, list);
+      }
+      const result = runs.map(run => {
+        const rows = (run.reportData as any[]) || [];
+        const runPayments = paymentsByRun.get(run.id) || [];
+        const statusByEmail = new Map(runPayments.map(p => [p.email, p.status]));
+        const depositedCount = rows.filter((r: any) => statusByEmail.get(r.email) === "deposited").length;
+        const totalPayable = rows.reduce((s: number, r: any) => s + Number(r.netPayable || 0), 0);
+        return {
+          id: run.id,
+          year: run.year,
+          month: run.month,
+          status: run.status,
+          approvedAt: run.approvedAt,
+          executedAt: run.executedAt,
+          executionNote: run.executionNote,
+          employeeCount: rows.length,
+          depositedCount,
+          totalPayable: Math.round(totalPayable * 100) / 100,
+        };
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to list disbursement runs:", error);
+      res.status(500).json({ error: "Failed to list disbursement runs" });
+    }
+  });
+
+  // Per-employee rows of one run, merged with payment status
+  app.get("/api/hr/reports/salary/disbursement/runs/:runId", requireAuth, requirePermission("hr.reports.salary.disburse", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.runId));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!["approved", "sent", "executed"].includes(run.status)) {
+        return res.status(409).json({ error: "Run is not approved yet" });
+      }
+      const rows = (run.reportData as any[]) || [];
+      const payments = await db.select().from(salaryRunPayments).where(eq(salaryRunPayments.runId, run.id));
+      const paymentByEmail = new Map(payments.map(p => [p.email, p]));
+      const allUsers = await storage.getAdminUsers();
+      const userNameById = new Map(allUsers.map(u => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+      const result = rows.map((r: any) => {
+        const p = paymentByEmail.get(r.email);
+        return {
+          employeeName: r.employeeName,
+          email: r.email,
+          designation: r.designation,
+          department: r.department,
+          netPayable: Number(r.netPayable || 0),
+          grossSalary: Number(r.grossSalary || 0),
+          deductions: Number(r.deductions || 0),
+          paymentStatus: p?.status === "deposited" ? "deposited" : "pending",
+          note: p?.note ?? null,
+          markedBy: p?.markedBy ? (userNameById.get(p.markedBy) || null) : null,
+          markedAt: p?.markedAt ?? null,
+        };
+      });
+      res.json({
+        run: {
+          id: run.id,
+          year: run.year,
+          month: run.month,
+          status: run.status,
+          approvedAt: run.approvedAt,
+          executedAt: run.executedAt,
+          executionNote: run.executionNote,
+        },
+        rows: result,
+      });
+    } catch (error) {
+      console.error("Failed to load disbursement run:", error);
+      res.status(500).json({ error: "Failed to load disbursement run" });
+    }
+  });
+
+  // Mark one employee row Pending/Deposited (with optional note)
+  app.patch("/api/hr/reports/salary/disbursement/runs/:runId/payments", requireAuth, requirePermission("hr.reports.salary.disburse", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
+    try {
+      const bodySchema = z.object({
+        email: z.string().email(),
+        status: z.enum(["pending", "deposited"]),
+        note: z.string().max(500).optional().nullable(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });
+      const { email, status, note } = parsed.data;
+
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.runId));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!["approved", "sent"].includes(run.status)) {
+        return res.status(409).json({ error: run.status === "executed" ? "Run is already fully processed" : "Run is not approved yet" });
+      }
+      const rows = (run.reportData as any[]) || [];
+      const row = rows.find((r: any) => r.email === email);
+      if (!row) return res.status(404).json({ error: "Employee not found in this run" });
+
+      const actorId = req.session.userId!;
+      const allUsers = await storage.getAdminUsers();
+      const employee = allUsers.find(u => u.email === email);
+      const now = new Date();
+
+      const [existing] = await db.select().from(salaryRunPayments)
+        .where(and(eq(salaryRunPayments.runId, run.id), eq(salaryRunPayments.email, email)));
+      const wasDeposited = existing?.status === "deposited";
+
+      await db.insert(salaryRunPayments)
+        .values({
+          runId: run.id,
+          email,
+          userId: employee?.id ?? null,
+          status,
+          note: note?.trim() || null,
+          markedBy: actorId,
+          markedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [salaryRunPayments.runId, salaryRunPayments.email],
+          set: {
+            status,
+            note: note?.trim() || null,
+            markedBy: actorId,
+            markedAt: now,
+            userId: employee?.id ?? null,
+          },
+        });
+
+      await storage.createAuditLog({
+        action: "salary_payment_marked",
+        actorId,
+        targetId: employee?.id ?? undefined,
+        changes: { runId: run.id, year: run.year, month: run.month, email, status, note: note?.trim() || null },
+      });
+
+      // Notify the employee only on a fresh pending → deposited transition
+      if (status === "deposited" && !wasDeposited) {
+        await notifyEmployeeDeposited({
+          runId: run.id,
+          year: run.year,
+          month: run.month,
+          email,
+          userId: employee?.id ?? null,
+          firstName: employee?.firstName || row.employeeName?.split(" ")[0] || "there",
+        });
+      }
+
+      const autoExecuted = status === "deposited" ? await maybeAutoExecuteRun(run.id, actorId) : false;
+      res.json({ success: true, autoExecuted });
+    } catch (error) {
+      console.error("Failed to mark salary payment:", error);
+      res.status(500).json({ error: "Failed to mark salary payment" });
+    }
+  });
+
+  // Bulk: mark all remaining rows of a run as deposited
+  app.post("/api/hr/reports/salary/disbursement/runs/:runId/mark-all-deposited", requireAuth, requirePermission("hr.reports.salary.disburse", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
+    try {
+      const [run] = await db.select().from(salaryReportRuns).where(eq(salaryReportRuns.id, req.params.runId));
+      if (!run) return res.status(404).json({ error: "Run not found" });
+      if (!["approved", "sent"].includes(run.status)) {
+        return res.status(409).json({ error: run.status === "executed" ? "Run is already fully processed" : "Run is not approved yet" });
+      }
+      const rows = (run.reportData as any[]) || [];
+      const payments = await db.select().from(salaryRunPayments).where(eq(salaryRunPayments.runId, run.id));
+      const paymentByEmail = new Map(payments.map(p => [p.email, p]));
+
+      const actorId = req.session.userId!;
+      const allUsers = await storage.getAdminUsers();
+      const userByEmail = new Map(allUsers.map(u => [u.email, u]));
+      const now = new Date();
+
+      let marked = 0;
+      for (const r of rows) {
+        const existing = paymentByEmail.get(r.email);
+        if (existing?.status === "deposited") continue;
+        const employee = userByEmail.get(r.email);
+        await db.insert(salaryRunPayments)
+          .values({
+            runId: run.id,
+            email: r.email,
+            userId: employee?.id ?? null,
+            status: "deposited",
+            note: existing?.note ?? null,
+            markedBy: actorId,
+            markedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [salaryRunPayments.runId, salaryRunPayments.email],
+            set: { status: "deposited", markedBy: actorId, markedAt: now, userId: employee?.id ?? null },
+          });
+        marked++;
+        await notifyEmployeeDeposited({
+          runId: run.id,
+          year: run.year,
+          month: run.month,
+          email: r.email,
+          userId: employee?.id ?? null,
+          firstName: employee?.firstName || r.employeeName?.split(" ")[0] || "there",
+        });
+      }
+
+      await storage.createAuditLog({
+        action: "salary_payments_bulk_deposited",
+        actorId,
+        changes: { runId: run.id, year: run.year, month: run.month, markedCount: marked, totalRows: rows.length },
+      });
+
+      const autoExecuted = await maybeAutoExecuteRun(run.id, actorId);
+      res.json({ success: true, marked, autoExecuted });
+    } catch (error) {
+      console.error("Failed to bulk mark deposits:", error);
+      res.status(500).json({ error: "Failed to bulk mark deposits" });
     }
   });
 
@@ -8137,7 +8453,9 @@ export async function registerRoutes(
         return res.json(runs);
       }
 
-      // Employees + managers: only executed runs containing their email in reportData
+      // Employees + managers: executed runs containing their email in reportData,
+      // PLUS approved/sent runs where their individual payment is marked deposited
+      // (per-employee payslip unlock — no need to wait for the whole run).
       // LEFT JOIN salary_slips to include stored computation_snapshot (avoids extra render call in the UI)
       const approvedRuns = await db.select({
         id: salaryReportRuns.id,
@@ -8153,14 +8471,20 @@ export async function registerRoutes(
           eq(salarySlips.salaryRunId, salaryReportRuns.id),
           eq(salarySlips.userId, actor),
         ))
-        .where(eq(salaryReportRuns.status, "executed"))
-        .orderBy(desc(salaryReportRuns.executedAt));
+        .where(inArray(salaryReportRuns.status, ["approved", "sent", "executed"]))
+        .orderBy(desc(salaryReportRuns.year), desc(salaryReportRuns.month));
 
       const myEmail = actorUser.email ?? "";
+      const myDeposits = await db.select({ runId: salaryRunPayments.runId })
+        .from(salaryRunPayments)
+        .where(and(eq(salaryRunPayments.email, myEmail), eq(salaryRunPayments.status, "deposited")));
+      const depositedRunIds = new Set(myDeposits.map(d => d.runId));
+
       const myRuns = approvedRuns
         .filter(run => {
           const rows = (run.reportData as any[]) || [];
-          return rows.some((r: any) => r.email === myEmail);
+          if (!rows.some((r: any) => r.email === myEmail)) return false;
+          return run.status === "executed" || depositedRunIds.has(run.id);
         })
         .map(({ reportData: _rd, ...rest }) => rest);
 
@@ -8173,6 +8497,41 @@ export async function registerRoutes(
 
   // On-demand salary slip render — finds the approved run for the period, builds the slip JSON,
   // writes a slim ledger row on first access (idempotent by run+user).
+  // Find the salary run that unlocks a slip for the given employee/period:
+  // the latest executed run, OR an approved/sent run where this employee's
+  // individual payment has been marked deposited (per-employee unlock).
+  async function findSlipRunForEmail(m: number, y: number, email: string) {
+    const [executedRun] = await db.select()
+      .from(salaryReportRuns)
+      .where(and(
+        eq(salaryReportRuns.month, m),
+        eq(salaryReportRuns.year, y),
+        eq(salaryReportRuns.status, "executed"),
+      ))
+      .orderBy(desc(salaryReportRuns.executedAt))
+      .limit(1);
+    if (executedRun) return executedRun;
+
+    const candidates = await db.select()
+      .from(salaryReportRuns)
+      .where(and(
+        eq(salaryReportRuns.month, m),
+        eq(salaryReportRuns.year, y),
+        inArray(salaryReportRuns.status, ["approved", "sent"]),
+      ))
+      .orderBy(desc(salaryReportRuns.approvedAt));
+    for (const run of candidates) {
+      const [payment] = await db.select().from(salaryRunPayments)
+        .where(and(
+          eq(salaryRunPayments.runId, run.id),
+          eq(salaryRunPayments.email, email),
+          eq(salaryRunPayments.status, "deposited"),
+        ));
+      if (payment) return run;
+    }
+    return null;
+  }
+
   app.get("/api/hr/salary-slips/render/:userId/:month/:year", requireAuth, async (req: Request, res: Response) => {
     try {
       const { userId, month, year } = req.params;
@@ -8201,26 +8560,17 @@ export async function registerRoutes(
         }
       }
 
-      // Find the latest executed run for this period (executed = bank transfer confirmed)
-      const [approvedRun] = await db.select()
-        .from(salaryReportRuns)
-        .where(and(
-          eq(salaryReportRuns.month, m),
-          eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "executed"),
-        ))
-        .orderBy(desc(salaryReportRuns.executedAt))
-        .limit(1);
+      // Find the unlocking run: executed, or approved with this employee's payment deposited
+      const allUsers = await storage.getAdminUsers();
+      const targetUser = allUsers.find(u => u.id === userId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
 
+      const approvedRun = await findSlipRunForEmail(m, y, targetUser.email ?? "");
       if (!approvedRun) {
         return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
 
       const reportRows = (approvedRun.reportData as any[]) || [];
-      const allUsers = await storage.getAdminUsers();
-      const targetUser = allUsers.find(u => u.id === userId);
-      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
-
       const row = reportRows.find((r: any) => r.email === targetUser.email);
       if (!row) {
         return res.status(404).json({ error: "Employee not found in this salary run" });
@@ -8454,25 +8804,16 @@ export async function registerRoutes(
         }
       }
 
-      const [approvedRun] = await db.select()
-        .from(salaryReportRuns)
-        .where(and(
-          eq(salaryReportRuns.month, m),
-          eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "executed"),
-        ))
-        .orderBy(desc(salaryReportRuns.executedAt))
-        .limit(1);
+      const allUsers = await storage.getAdminUsers();
+      const targetUser = allUsers.find(u => u.id === userId);
+      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
 
+      const approvedRun = await findSlipRunForEmail(m, y, targetUser.email ?? "");
       if (!approvedRun) {
         return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
 
       const reportRows = (approvedRun.reportData as any[]) || [];
-      const allUsers = await storage.getAdminUsers();
-      const targetUser = allUsers.find(u => u.id === userId);
-      if (!targetUser) return res.status(404).json({ error: "Employee not found" });
-
       const row = reportRows.find((r: any) => r.email === targetUser.email);
       if (!row) return res.status(404).json({ error: "Employee not found in this salary run" });
 
@@ -8614,16 +8955,7 @@ export async function registerRoutes(
       if (!actorUser) return res.status(404).json({ error: "User not found" });
       if (!actorUser.email) return res.status(400).json({ error: "No email address on file" });
 
-      const [approvedRun] = await db.select()
-        .from(salaryReportRuns)
-        .where(and(
-          eq(salaryReportRuns.month, m),
-          eq(salaryReportRuns.year, y),
-          eq(salaryReportRuns.status, "executed"),
-        ))
-        .orderBy(desc(salaryReportRuns.executedAt))
-        .limit(1);
-
+      const approvedRun = await findSlipRunForEmail(m, y, actorUser.email);
       if (!approvedRun) {
         return res.status(404).json({ error: "Salary slips are not yet available for this period. Please check back after the payroll has been confirmed." });
       }
@@ -10107,7 +10439,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/employee-documents/send-reminder/:userId", requireAuth, requirePermission("hr.employeeDocuments.sendReminder", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+  app.post("/api/hr/employee-documents/send-reminder/:userId", requireAuth, requirePermission("hr.employeeDocuments.sendReminder", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
     try {
       const user = await storage.getAdminUser(req.params.userId);
       if (!user) {
@@ -10120,6 +10452,9 @@ export async function registerRoutes(
       const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
       const emailEnabled = featureFlags.document_reminder_email_enabled === true;
 
+      // Reporting manager gets a copy so they can follow up with their team member
+      const manager = user.managerId ? await storage.getAdminUser(user.managerId).catch(() => null) : null;
+
       if (emailEnabled) {
         const emailResult = await sendDocumentReminderEmail({
           to: user.email,
@@ -10130,6 +10465,18 @@ export async function registerRoutes(
         if (!emailResult.success) {
           console.error(`Document reminder email failed for user ${req.params.userId}:`, emailResult.error);
           return res.status(500).json({ error: "Failed to send reminder email" });
+        }
+
+        if (manager?.email && manager.isActive !== false) {
+          const mgrResult = await sendDocumentReminderManagerEmail({
+            to: manager.email,
+            managerFirstName: manager.firstName,
+            employeeName: `${user.firstName} ${user.lastName}`.trim(),
+            pendingDocuments: pendingDocs.map(d => d.documentType),
+          });
+          if (!mgrResult.success) {
+            console.error(`Manager copy of document reminder failed for manager ${manager.id}:`, mgrResult.error);
+          }
         }
       }
 
@@ -10143,10 +10490,21 @@ export async function registerRoutes(
           isRead: false,
           metadata: { pendingDocuments: pendingDocs.map(d => d.documentType) },
         });
+        if (manager && manager.isActive !== false) {
+          await storage.createNotification({
+            userId: manager.id,
+            type: "document_reminder",
+            title: "Team Member Document Reminder",
+            message: `${user.firstName} ${user.lastName} has ${pendingDocs.length} pending document(s). A reminder was sent — please follow up.`,
+            isRead: false,
+            metadata: { employeeId: user.id, pendingDocuments: pendingDocs.map(d => d.documentType) },
+          }).catch((err) => console.error("Manager document-reminder notification failed:", err));
+        }
       }
 
       const actions = [];
       if (emailEnabled) actions.push("email sent");
+      if (emailEnabled && manager?.email) actions.push("manager notified");
       if (notificationsEnabled && emailEnabled) actions.push("notification created");
       const message = actions.length > 0
         ? `Reminder sent (${actions.join(", ")})`

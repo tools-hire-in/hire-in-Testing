@@ -114,6 +114,24 @@ export const COMMUNICATION_TYPES: CommunicationTypeDef[] = [
     scheduleLabel: "Monthly · On salary run approval",
     recipientRule: "Configured accounts recipients (salary_report_recipients setting)",
   },
+  {
+    key: "salary_run_ready",
+    label: "Salary Run Ready for Processing",
+    description:
+      "Lightweight ping to executives when a salary run is approved — no figures or attachments, deep link to the Executive Cockpit.",
+    category: "Payroll",
+    scheduleLabel: "Monthly · On salary run approval",
+    recipientRule: "Active executive users",
+  },
+  {
+    key: "salary_deposited",
+    label: "Salary Deposited / Payslip Ready",
+    description:
+      "Notifies an employee that their salary was deposited and their payslip for the month is available.",
+    category: "Payroll",
+    scheduleLabel: "On deposit confirmation",
+    recipientRule: "The employee whose payment was marked deposited",
+  },
 ];
 
 export const COMMUNICATION_TYPE_KEYS = COMMUNICATION_TYPES.map((t) => t.key);

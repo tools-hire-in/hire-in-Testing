@@ -726,6 +726,115 @@ function ContentStudioSection({
   );
 }
 
+function PayrollSection({
+  hasPayrollAccess,
+  userRole,
+  isNavActive,
+  isComplianceLocked,
+  location,
+}: {
+  hasPayrollAccess: boolean;
+  userRole: string;
+  isNavActive: (item: NavItem) => boolean;
+  isComplianceLocked: boolean;
+  location: string;
+}) {
+  const { open } = useSidebar();
+
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_payroll_section_open");
+      if (stored === null) return location.startsWith("/admin/payroll");
+      return stored !== "false";
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (location.startsWith("/admin/payroll") && !expanded) {
+      setExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try { localStorage.setItem("admin_payroll_section_open", String(next)); } catch {}
+  };
+
+  if (!hasPayrollAccess) return null;
+
+  const isExec = userRole === "executive";
+  const isHRAdmin = ["super_admin", "admin", "hr"].includes(userRole);
+
+  const payrollSubItems: NavItem[] = [
+    { href: "/admin/payroll/executive", label: "Executive Summary", icon: BarChart3, roles: [] },
+    ...(!isExec ? [{ href: "/admin/payroll/run", label: "Bulk Payroll Run", icon: DollarSign, roles: [] }] : []),
+    ...(isHRAdmin || isExec ? [{ href: "/admin/payroll/setup", label: "Payroll Setup", icon: Settings, roles: [] }] : []),
+  ];
+
+  const isPayrollActive = location.startsWith("/admin/payroll");
+
+  if (!open) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={isPayrollActive}
+                tooltip="Payroll Dashboard"
+                className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+              >
+                <Link href="/admin/payroll/executive">
+                  <DollarSign className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <SidebarGroup>
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase hover:text-muted-foreground transition-colors"
+        data-testid="button-payroll-section-toggle"
+      >
+        <span>Payroll</span>
+        <ChevronRight
+          className={`h-3 w-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
+      {expanded && (
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {payrollSubItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isNavActive(item)}
+                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                  data-testid={`nav-item-${item.label.toLowerCase().replace(/[&\s]+/g, "-")}`}
+                >
+                  <Link href={item.href} className="flex items-center gap-2 w-full">
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      )}
+    </SidebarGroup>
+  );
+}
+
 function SettingsSection({
   hasSettingsAccess,
   isNavActive,
@@ -1436,6 +1545,13 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "Executive Cockpit",
       icon: LayoutDashboard,
       roles: ["executive"],
+    }, {
+      href: "/admin/service-desk",
+      label: "Service Desk",
+      icon: LifeBuoy,
+      roles: ["executive"],
+      badge: (serviceDeskOpenCount ?? 0) > 0 ? serviceDeskOpenCount : undefined,
+      badgeColor: "bg-orange-500",
     }] : []),
     ...(hasRecruitmentAccess ? [{
       href: "/admin/recruitment",
@@ -1443,12 +1559,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Briefcase,
       roles: ["super_admin", "admin", "operations", "manager", "recruiter"],
     }] : []),
-    {
+    ...(userRole !== "executive" ? [{
       href: "/admin/travel-calculator",
       label: "Travel Calculator",
       icon: Calculator,
       roles: ["all"],
-    },
+    }] : []),
     ...(hasHRAccess ? [{
       href: "/admin/hr/people",
       label: "People & HR",
@@ -1502,16 +1618,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: FileText,
       roles: ["super_admin", "admin"],
     }] : []),
-    ...(hasPayrollAccess ? [{
-      href: "/admin/payroll/executive",
-      label: "Payroll Dashboard",
-      icon: DollarSign,
-      roles: ["super_admin", "admin", "hr", "executive"],
-      children: [
-        { href: "/admin/payroll/executive", label: "Executive Summary", icon: DollarSign },
-        { href: "/admin/payroll/run", label: "Bulk Payroll Run", icon: DollarSign },
-      ],
-    }] : []),
+    // Payroll Dashboard is rendered as a dedicated PayrollSection (expandable) — not here
     ...(hasHelpDeskAccess ? [{
       href: "/admin/help-desk",
       label: "Help Desk",
@@ -1643,17 +1750,19 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
             </SidebarHeader>
 
             <SidebarContent>
-              {/* COMMAND CENTER — My Desk + Service Desk */}
-              <CommandCenterSection
-                isNavActive={isNavActive}
-                isComplianceLocked={isComplianceLocked}
-                location={location}
-                myDeskBadge={myPendingLeavesCount ?? 0}
-                serviceDeskBadge={serviceDeskOpenCount ?? 0}
-                canSeeGrace={GRACE_ROLES.includes(user?.role || "")}
-                hasSopAccess={hasSopAccess}
-                myPendingRegCount={myPendingRegCount}
-              />
+              {/* COMMAND CENTER — My Desk + Service Desk (hidden for executive; they get a standalone Service Desk item) */}
+              {userRole !== "executive" && (
+                <CommandCenterSection
+                  isNavActive={isNavActive}
+                  isComplianceLocked={isComplianceLocked}
+                  location={location}
+                  myDeskBadge={myPendingLeavesCount ?? 0}
+                  serviceDeskBadge={serviceDeskOpenCount ?? 0}
+                  canSeeGrace={GRACE_ROLES.includes(user?.role || "")}
+                  hasSopAccess={hasSopAccess}
+                  myPendingRegCount={myPendingRegCount}
+                />
+              )}
 
               {/* PERSONAL section — visible to all */}
               <SidebarGroup>
@@ -1745,6 +1854,15 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   cmReviewCount={cmReviewCount}
                 />
               )}
+
+              {/* PAYROLL — collapsible section with sub-pages */}
+              <PayrollSection
+                hasPayrollAccess={hasPayrollAccess}
+                userRole={userRole}
+                isNavActive={isNavActive}
+                isComplianceLocked={isComplianceLocked}
+                location={location}
+              />
 
               {/* SETTINGS — collapsible section with sub-category pages */}
               <SettingsSection

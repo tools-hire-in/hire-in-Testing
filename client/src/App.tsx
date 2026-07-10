@@ -115,6 +115,7 @@ const VaultPage = lazy(() => import("@/pages/admin/vault/VaultPage"));
 const VaultAuditPage = lazy(() => import("@/pages/admin/vault/VaultAuditPage"));
 const BulkPayrollRun = lazy(() => import("@/pages/admin/payroll/BulkPayrollRun"));
 const ExecutiveDashboard = lazy(() => import("@/pages/admin/payroll/ExecutiveDashboard"));
+const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -421,6 +422,7 @@ function PublicRouter() {
       {/* Payroll */}
       <Route path="/admin/payroll/run">{() => <Suspense fallback={<AdminFallback />}><BulkPayrollRun /></Suspense>}</Route>
       <Route path="/admin/payroll/executive">{() => <Suspense fallback={<AdminFallback />}><ExecutiveDashboard /></Suspense>}</Route>
+      <Route path="/admin/payroll/setup">{() => <Suspense fallback={<AdminFallback />}><PayrollSetup /></Suspense>}</Route>
 
       <Route component={NotFound} />
     </Switch>
@@ -591,6 +593,7 @@ function EmployeeRouter() {
       {/* Payroll */}
       <Route path="/admin/payroll/run">{() => <Suspense fallback={<AdminFallback />}><BulkPayrollRun /></Suspense>}</Route>
       <Route path="/admin/payroll/executive">{() => <Suspense fallback={<AdminFallback />}><ExecutiveDashboard /></Suspense>}</Route>
+      <Route path="/admin/payroll/setup">{() => <Suspense fallback={<AdminFallback />}><PayrollSetup /></Suspense>}</Route>
 
       <Route component={NotFound} />
     </Switch>

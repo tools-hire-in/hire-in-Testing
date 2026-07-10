@@ -230,6 +230,11 @@ export default function CommandCenterV2() {
     refetchInterval: 120000,
   });
 
+  const { data: myDocuments } = useQuery<Array<{ id: string; documentType: string; isRequired: boolean; status: string }>>({
+    queryKey: ["/api/hr/my-documents"],
+    enabled: isAuthenticated,
+  });
+
   const { data: assignments } = useQuery<TrainingAssignment[]>({
     queryKey: ["/api/onboarding/my-assignments"],
     queryFn: () => safeJson<TrainingAssignment[]>("/api/onboarding/my-assignments", []),
@@ -441,6 +446,15 @@ export default function CommandCenterV2() {
       onClick: () => window.open(`/addendum/${a.token}`, "_blank"),
     });
   });
+  const pendingRequiredDocs = (myDocuments || []).filter((d) => d.isRequired && d.status === "pending").length;
+  if (pendingRequiredDocs > 0) {
+    followUps.push({
+      id: "pending-documents",
+      label: `${pendingRequiredDocs} required document${pendingRequiredDocs === 1 ? "" : "s"} to upload`,
+      tone: "amber",
+      onClick: () => setLocation("/admin/profile?tab=documents"),
+    });
+  }
 
   const recentPraise = (praiseBoard?.posts || []).slice(0, 4);
   const myBadgeCount = myBadges?.posts?.length ?? 0;

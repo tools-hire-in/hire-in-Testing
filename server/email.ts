@@ -840,6 +840,148 @@ export async function sendSalaryReportApprovalReminder(options: {
   }
 }
 
+// Lightweight "ready for processing" ping sent to executives when a salary run
+// is approved. Deliberately contains NO salary figures or attachments — the data
+// lives only in the Executive Cockpit.
+export async function sendSalaryRunReadyEmail(options: {
+  to: string[];
+  runId: string;
+  year: number;
+  monthName: string;
+  portalUrl: string;
+}) {
+  const cockpitUrl = `${options.portalUrl}/admin/executive-cockpit?tab=reports`;
+  const msg = {
+    to: options.to,
+    subject: `Salary Report Ready for Processing — ${options.monthName} ${options.year}`,
+    html: `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+        <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+          <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Payroll Processing</p>
+        </div>
+        <div style="padding: 32px;">
+          <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Salary Report Approved</h2>
+          <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+            The approved salary report for <strong>${options.monthName} ${options.year}</strong> is ready for processing.
+            Please open the Executive Cockpit to review the report, run the bank transfer, and confirm each employee's payment.
+          </p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${cockpitUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+              Open Executive Cockpit
+            </a>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px; margin: 16px 0 0;">
+            For security, salary figures are not included in this email. All details are available inside the portal.
+          </p>
+          ${SIGNOFF_HTML}
+        </div>
+        <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+            &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+          </p>
+        </div>
+      </div>
+    `,
+    text: `The approved salary report for ${options.monthName} ${options.year} is ready for processing. Open the Executive Cockpit to review and confirm payments: ${cockpitUrl}${SIGNOFF_TEXT}`,
+  };
+  return dispatchAutomatedEmail("salary_run_ready", `salary_run:${options.runId}`, msg);
+}
+
+// Sent to an employee when the executive marks their salary as deposited —
+// their payslip for the month is now available.
+export async function sendSalaryDepositedEmail(options: {
+  to: string;
+  firstName: string;
+  runId: string;
+  year: number;
+  monthName: string;
+  portalUrl: string;
+}) {
+  const slipsUrl = `${options.portalUrl}/admin/my-desk?tab=payslips`;
+  const msg = {
+    to: options.to,
+    subject: `Salary Deposited — Your ${options.monthName} ${options.year} Payslip Is Ready`,
+    html: `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+        <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+          <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Salary Update</p>
+        </div>
+        <div style="padding: 32px;">
+          <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.firstName},</h2>
+          <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+            Your salary for <strong>${options.monthName} ${options.year}</strong> has been deposited to your bank account.
+            Your payslip for the month is now available in the portal.
+          </p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${slipsUrl}" style="display: inline-block; background: #1e40af; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; font-size: 15px;">
+              View My Payslip
+            </a>
+          </div>
+          ${SIGNOFF_HTML}
+        </div>
+        <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+            &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+          </p>
+        </div>
+      </div>
+    `,
+    text: `Hi ${options.firstName},\n\nYour salary for ${options.monthName} ${options.year} has been deposited. Your payslip is now available: ${slipsUrl}${SIGNOFF_TEXT}`,
+  };
+  return dispatchAutomatedEmail("salary_deposited", `salary_run:${options.runId}`, msg);
+}
+
+// Manager copy of a document reminder — lets the manager follow up so payroll
+// isn't blocked by missing documents.
+export async function sendDocumentReminderManagerEmail(options: {
+  to: string;
+  managerFirstName: string;
+  employeeName: string;
+  pendingDocuments: string[];
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: `Document Reminder Sent: ${options.employeeName} has pending documents`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Team Document Compliance</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Hi ${options.managerFirstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              A document reminder was just sent to your team member <strong>${options.employeeName}</strong>.
+              They have <strong>${options.pendingDocuments.length}</strong> mandatory document(s) still pending upload.
+            </p>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Please follow up with them so their documents are compliant before payroll processing.
+            </p>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.managerFirstName},\n\nA document reminder was sent to your team member ${options.employeeName}. They have ${options.pendingDocuments.length} mandatory document(s) pending upload. Please follow up with them.${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Document reminder manager copy sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send manager document reminder email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendWelcomeEmail(options: {
   to: string;
   firstName: string;
