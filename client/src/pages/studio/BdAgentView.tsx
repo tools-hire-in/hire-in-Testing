@@ -24,7 +24,26 @@ import {
   BookmarkPlus,
   Loader2,
   LayoutTemplate,
+  Copy,
+  Edit3,
 } from "lucide-react";
+
+const DOMAIN_LABELS: Record<string, string> = {
+  healthcare: "Healthcare",
+  it: "IT",
+  engineering: "Engineering",
+  professional_services: "Prof. Services",
+};
+
+interface BdDeckStub {
+  id: string;
+  title: string;
+  domain: string;
+  deck_type: string;
+  status: string;
+  version: string;
+  slides: unknown[];
+}
 
 interface BdConversation {
   id: string;
@@ -75,13 +94,54 @@ export default function BdAgentView() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const isSuperAdmin = role === "super_admin";
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("chat");
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [activeProjectId, setActiveProjectId] = useState("");
+
+  // "Create client deck from this message" modal state
+  const [deckSourceMsg, setDeckSourceMsg] = useState<BdMessage | null>(null);
+  const [deckClientName, setDeckClientName] = useState("");
+  const [deckDomain, setDeckDomain] = useState("healthcare");
+  const [deckNotes, setDeckNotes] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const canUseBd = can("studio.bd_agent");
+
+  // Fetch master decks so we can clone the right one for the chosen domain
+  const { data: masterDecks = [] } = useQuery<BdDeckStub[]>({
+    queryKey: ["/api/bd/decks", "master"],
+    queryFn: () =>
+      fetch("/api/bd/decks?deck_type=master", { credentials: "include" }).then((r) => r.json()),
+    enabled: canUseBd,
+  });
+
+  const cloneForClientMutation = useMutation({
+    mutationFn: ({ masterId, clientName, notes }: { masterId: string; clientName: string; notes: string }) =>
+      apiRequest("POST", `/api/bd/decks/${masterId}/clone`, {
+        client_name: clientName.trim(),
+        description: notes.trim() || null,
+      }).then((r: any) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bd/decks"] });
+      toast({ title: "Client deck created!", description: "Opening Decks tab — find your new deck there." });
+      setDeckSourceMsg(null);
+      setDeckClientName("");
+      setDeckDomain("healthcare");
+      setDeckNotes("");
+      setActiveTab("decks");
+    },
+    onError: () => toast({ title: "Failed to create client deck", variant: "destructive" }),
+  });
+
+  function handleCreateClientDeck(msg: BdMessage) {
+    setDeckSourceMsg(msg);
+    setDeckNotes(msg.content.slice(0, 300).trim());
+    setDeckDomain("healthcare");
+    setDeckClientName("");
+  }
 
   const { data: conversations = [], isLoading: convsLoading } = useQuery<BdConversation[]>({
     queryKey: ["/api/studio/bd/conversations"],
@@ -391,14 +451,35 @@ export default function BdAgentView() {
                       <div className="rounded-xl bg-muted px-4 py-3 text-sm">
                         <MarkdownProse text={msg.content} />
                       </div>
-                      <button
-                        className="flex items-center gap-1 pl-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                        onClick={() => handleSaveMsg(msg)}
-                        data-testid={`button-save-msg-${msg.id}`}
-                      >
-                        <BookmarkPlus className="h-3 w-3" />
-                        Save as content idea
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3 pl-1">
+                        <button
+                          className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                          onClick={() => handleSaveMsg(msg)}
+                          data-testid={`button-save-msg-${msg.id}`}
+                        >
+                          <BookmarkPlus className="h-3 w-3" />
+                          Save as content idea
+                        </button>
+                        <button
+                          className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary"
+                          onClick={() => handleCreateClientDeck(msg)}
+                          data-testid={`button-create-deck-${msg.id}`}
+                        >
+                          <Copy className="h-3 w-3" />
+                          Create client deck
+                        </button>
+                        {isSuperAdmin && (
+                          <button
+                            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-orange-600"
+                            onClick={() => setActiveTab("decks")}
+                            data-testid={`button-update-master-${msg.id}`}
+                            title="Go to Decks tab to edit the master template"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            Update master
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="max-w-[75%] rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">
@@ -454,6 +535,121 @@ export default function BdAgentView() {
           </div>
         </div>
       )}
+
+      {/* Create client deck from conversation dialog */}
+      <Dialog
+        open={!!deckSourceMsg}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeckSourceMsg(null);
+            setDeckClientName("");
+            setDeckDomain("healthcare");
+            setDeckNotes("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md" data-testid="modal-create-client-deck">
+          <DialogHeader>
+            <DialogTitle>Create Client Deck</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+              This creates a <strong>new client-specific copy</strong> from the master template for the chosen domain.
+              The master template is <strong>not changed</strong>.
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="deck-client-name">Client / company name <span className="text-destructive">*</span></Label>
+              <Input
+                id="deck-client-name"
+                value={deckClientName}
+                onChange={(e) => setDeckClientName(e.target.value)}
+                placeholder="e.g. Apollo Hospitals"
+                autoFocus
+                data-testid="input-deck-client-name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Industry / domain <span className="text-destructive">*</span></Label>
+              <Select value={deckDomain} onValueChange={setDeckDomain}>
+                <SelectTrigger data-testid="select-deck-domain"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["healthcare", "it", "engineering", "professional_services"].map((d) => (
+                    <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Show available masters for this domain */}
+              {(() => {
+                const domainMasters = masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived");
+                if (domainMasters.length === 0) {
+                  return (
+                    <p className="text-xs text-amber-600">
+                      No master template exists for {DOMAIN_LABELS[deckDomain]} yet.
+                      A super admin needs to create one first in the Decks tab.
+                    </p>
+                  );
+                }
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Will clone from: <strong>{domainMasters[0].title}</strong> ({domainMasters[0].version.toUpperCase()}, {domainMasters[0].slides.length} slides)
+                  </p>
+                );
+              })()}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="deck-notes">Context / notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Textarea
+                id="deck-notes"
+                value={deckNotes}
+                onChange={(e) => setDeckNotes(e.target.value)}
+                placeholder="What did you discuss? What angles to emphasise for this client?"
+                className="min-h-[80px] resize-none text-sm"
+                data-testid="input-deck-notes"
+              />
+              <p className="text-xs text-muted-foreground">
+                Saved as deck description so you remember the context when editing slides.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeckSourceMsg(null);
+                setDeckClientName("");
+                setDeckDomain("healthcare");
+                setDeckNotes("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !deckClientName.trim() ||
+                masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived").length === 0 ||
+                cloneForClientMutation.isPending
+              }
+              onClick={() => {
+                const master = masterDecks.find((m) => m.domain === deckDomain && m.status !== "archived");
+                if (!master) return;
+                cloneForClientMutation.mutate({
+                  masterId: master.id,
+                  clientName: deckClientName,
+                  notes: deckNotes,
+                });
+              }}
+              data-testid="button-confirm-create-client-deck"
+            >
+              {cloneForClientMutation.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Copy className="mr-1 h-4 w-4" />
+              )}
+              Create Client Deck
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Save message as content idea dialog */}
       <Dialog open={!!saveMsg} onOpenChange={(o) => { if (!o) setSaveMsg(null); }}>
