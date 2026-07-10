@@ -13,6 +13,7 @@ import {
   Shield,
   UserCircle,
   Settings,
+  Palette,
   GraduationCap,
   AlertTriangle,
   ShieldAlert,
@@ -652,6 +653,7 @@ function ContentStudioSection({
     ...(hasStudioAnalyticsAccess ? [{ href: "/admin/studio/analytics", label: "Content Analytics", icon: BarChart3, roles: [] }] : []),
     { href: "/admin/studio/authors", label: "Authors", icon: Users, roles: [] },
     ...(hasManageAuthorsAccess ? [{ href: "/admin/studio/access", label: "Studio Access", icon: ShieldCheck, roles: [] }] : []),
+    { href: "/admin/studio/brand-kit", label: "Brand Kit", icon: Palette, roles: [] },
   ];
 
   const isStudioActive = location.startsWith("/admin/studio");

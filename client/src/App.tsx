@@ -97,6 +97,7 @@ const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateS
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const StudioAccess = lazy(() => import("@/pages/admin/studio/StudioAccess"));
+const StudioBrandKit = lazy(() => import("@/pages/admin/studio/BrandKit"));
 const StudioPipelineView = lazy(() => import("@/pages/studio/PipelineView"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
@@ -365,6 +366,7 @@ function PublicRouter() {
       <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
       <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
       <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
@@ -528,6 +530,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
       <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
       <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}

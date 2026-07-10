@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { relocatedSettingsTabTarget } from "@/lib/settings-redirect";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck, Palette, Copy, Check } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -759,6 +759,151 @@ function ProcessGovernanceRolloutEditor() {
         {saveMutation.isPending ? "Saving..." : "Save rollout scope"}
       </Button>
     </div>
+  );
+}
+
+const BRAND_COLORS = [
+  { name: "Navy", hex: "#1F3A6E", usage: "Primary — headings, logo field, key UI" },
+  { name: "Orange", hex: "#F47C20", usage: "Primary accent — CTAs, highlights" },
+  { name: "Orange Accent", hex: "#F96D3E", usage: "Secondary accent — logo frame, gradients" },
+  { name: "White", hex: "#FFFFFF", usage: "Logo mark, text on dark surfaces" },
+  { name: "Soft Gray", hex: "#F2F4F7", usage: "Backgrounds, cards, dividers" },
+];
+
+const BRAND_LOGOS = [
+  {
+    label: "Full Logo (SVG)",
+    file: "/brand/hirein-logo.svg",
+    download: "hirein-logo.svg",
+    note: "Vector — scales to any size. Navy field with orange frame.",
+    darkPreview: false,
+  },
+  {
+    label: "Monogram — Transparent (SVG)",
+    file: "/brand/hirein-logo-mark.svg",
+    download: "hirein-logo-mark.svg",
+    note: "Vector — navy mark on transparent background. For light surfaces.",
+    darkPreview: false,
+  },
+  {
+    label: "Original Logo (JPG)",
+    file: "/brand/hirein-logo-original.jpg",
+    download: "hirein-logo-original.jpg",
+    note: "Raster 1024×1024 — for emails and tools that don't support SVG.",
+    darkPreview: false,
+  },
+];
+
+function BrandKitSection() {
+  const { toast } = useToast();
+  const [copiedHex, setCopiedHex] = useState<string | null>(null);
+
+  const copyHex = async (hex: string) => {
+    try {
+      await navigator.clipboard.writeText(hex);
+      setCopiedHex(hex);
+      setTimeout(() => setCopiedHex(null), 1500);
+      toast({ title: `Copied ${hex}` });
+    } catch {
+      toast({ title: "Couldn't copy — select and copy manually", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card data-testid="card-brand-kit">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Palette className="h-4 w-4" />
+          Brand Kit
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Official logo files, brand colors, and typography — the single source for all brand work (print, decks, social, web).
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Logos */}
+        <div className="space-y-2">
+          <Label>Logo Files</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {BRAND_LOGOS.map((logo) => (
+              <div key={logo.download} className="border rounded-lg overflow-hidden" data-testid={`card-brand-logo-${logo.download}`}>
+                <div
+                  className="h-32 flex items-center justify-center p-4"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(45deg, hsl(var(--muted)) 25%, transparent 25%, transparent 75%, hsl(var(--muted)) 75%), linear-gradient(45deg, hsl(var(--muted)) 25%, transparent 25%, transparent 75%, hsl(var(--muted)) 75%)",
+                    backgroundSize: "16px 16px",
+                    backgroundPosition: "0 0, 8px 8px",
+                  }}
+                >
+                  <img src={logo.file} alt={logo.label} className="max-h-full max-w-full object-contain" />
+                </div>
+                <div className="p-3 space-y-2 border-t">
+                  <p className="text-sm font-medium">{logo.label}</p>
+                  <p className="text-xs text-muted-foreground leading-snug">{logo.note}</p>
+                  <Button size="sm" variant="outline" className="w-full" asChild data-testid={`button-download-${logo.download}`}>
+                    <a href={logo.file} download={logo.download}>
+                      <Download className="h-3.5 w-3.5 mr-1.5" /> Download
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Colors */}
+        <div className="space-y-2">
+          <Label>Brand Colors</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {BRAND_COLORS.map((c) => (
+              <button
+                type="button"
+                key={c.hex}
+                onClick={() => copyHex(c.hex)}
+                className="flex items-center gap-3 border rounded-lg p-3 text-left hover-elevate active-elevate-2"
+                data-testid={`button-brand-color-${c.name.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <span
+                  className="h-10 w-10 rounded-md border flex-shrink-0"
+                  style={{ backgroundColor: c.hex }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    {c.name}
+                    {copiedHex === c.hex ? (
+                      <Check className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <Copy className="h-3 w-3 text-muted-foreground" />
+                    )}
+                  </span>
+                  <span className="block font-mono text-xs text-muted-foreground">{c.hex}</span>
+                  <span className="block text-[11px] text-muted-foreground truncate">{c.usage}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Click a color to copy its hex code.</p>
+        </div>
+
+        {/* Typography */}
+        <div className="space-y-2">
+          <Label>Typography</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="border rounded-lg p-3" data-testid="card-brand-font-heading">
+              <p className="text-xs text-muted-foreground mb-1">Headings</p>
+              <p className="text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>Playfair Display</p>
+              <p className="text-[11px] text-muted-foreground">Serif — decks, hero titles, social cards</p>
+            </div>
+            <div className="border rounded-lg p-3" data-testid="card-brand-font-body">
+              <p className="text-xs text-muted-foreground mb-1">Body</p>
+              <p className="text-lg" style={{ fontFamily: "Inter, sans-serif" }}>Inter</p>
+              <p className="text-[11px] text-muted-foreground">Sans-serif — body copy, UI, documents</p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -4444,6 +4589,20 @@ export default function HRSettings({ group }: { group?: string }) {
             <h1 className="text-2xl font-bold" data-testid="text-section-company-profile">Company Profile</h1>
             <p className="text-muted-foreground text-sm">Manage company identity and branding</p>
           </div>
+              <Card data-testid="card-brand-kit-link">
+                <CardContent className="flex items-center justify-between py-4">
+                  <div className="flex items-center gap-3">
+                    <Palette className="h-5 w-5 text-primary flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Brand Kit</p>
+                      <p className="text-xs text-muted-foreground">Logo files, brand colors, and typography — moved to Content Studio for the marketing team.</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" asChild data-testid="button-goto-brand-kit">
+                    <a href="/admin/studio/brand-kit">Open Brand Kit</a>
+                  </Button>
+                </CardContent>
+              </Card>
               <CompanyProfileSection />
             </>
           )}

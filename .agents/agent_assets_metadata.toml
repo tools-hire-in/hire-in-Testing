@@ -12,3 +12,15 @@ id = "F2rkBEu4SYOBNL6TIdCfZ"
 uri = "file://Rayo_Academy_Curriculum_Framework.md"
 type = "text"
 title = "Rayo Academy — Certification Curriculum Framework"
+
+[[outputs]]
+id = "iMfjCOn3WLvu69eNJTkE1"
+uri = "file://attached_assets/hirein-logo.svg"
+type = "image"
+title = "Hire'in Logo — Full (SVG)"
+
+[[outputs]]
+id = "KLtr2d_YK_mYd2FrSwodz"
+uri = "file://attached_assets/hirein-logo-mark.svg"
+type = "image"
+title = "Hire'in Monogram — Transparent (SVG)"
