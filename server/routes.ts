@@ -21,6 +21,7 @@ import { registerBulkPayrollRoutes } from "./bulkPayrollRoutes";
 import { registerVaultRoutes, revokeUserVaultGrants } from "./vaultRoutes";
 import {
   generateArticleCards,
+  generateIdeaCards,
   renderTemplateToPng,
 } from "./cardGenerationService";
 import {
@@ -19062,8 +19063,40 @@ export async function registerRoutes(
           cursor = new Date(cursor.getTime() + stepDays * 24 * 60 * 60 * 1000);
         }
         const topics = Array.isArray(topicFocus) ? topicFocus : [];
+        // Occasion context (Task #915): occasions inside the plan range —
+        // filtered by the project's occasionPreferences — are woven into the
+        // plan so occasion-timed pieces land on (or just before) the date.
+        const fmtDay = (d: Date) => d.toISOString().slice(0, 10);
+        let rangeOccasions: any[] = [];
+        try {
+          const project = await storage.getStudioProject(projectId);
+          const prefs = (project as any)?.occasionPreferences;
+          if (prefs && (Array.isArray(prefs.regions) || Array.isArray(prefs.categories))) {
+            const all = await storage.getStudioOccasions(fmtDay(from), fmtDay(to), projectId);
+            rangeOccasions = all.filter((o) =>
+              o.projectId === projectId ||
+              ((prefs.regions ?? []).includes(o.region) &&
+                (prefs.categories ?? []).includes(o.category)),
+            );
+          }
+        } catch {
+          // Occasions are optional context — never block the plan.
+        }
+        const usedOccasions = new Set<string>();
+        const occasionForSlot = (date: Date) => {
+          const day = fmtDay(date);
+          const windowEnd = fmtDay(new Date(date.getTime() + stepDays * 24 * 60 * 60 * 1000));
+          const occ = rangeOccasions.find(
+            (o) => !usedOccasions.has(o.id) && String(o.date) >= day && String(o.date) < windowEnd,
+          );
+          if (occ) usedOccasions.add(occ.id);
+          return occ;
+        };
         const stubs = await Promise.all(slots.map(async (date, i) => {
-          const topic = topics[i % Math.max(1, topics.length)] || "Hiring & Recruitment";
+          const occ = occasionForSlot(date);
+          const topic = occ
+            ? occ.name
+            : topics[i % Math.max(1, topics.length)] || "Hiring & Recruitment";
           return storage.createStudioArticle({
             projectId,
             title: `[Planned] ${topic} — ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
@@ -19071,6 +19104,7 @@ export async function registerRoutes(
             // Keep stubs as drafts — they appear on calendar as "Planned Draft" chips.
             status: "draft",
             scheduledAt: date,
+            excerpt: occ?.contentAngle ?? null,
             createdBy: req.session.userId,
           } as any);
         }));
@@ -19093,6 +19127,265 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("AI plan error:", error);
         res.status(400).json({ error: error?.message || "Failed to create AI plan" });
+      }
+    },
+  );
+
+  // =========================================================================
+  // Studio T4 — Occasion-aware calendar (Task #915)
+  // =========================================================================
+
+  // Occasions in a date range, filtered by the project's occasionPreferences.
+  // A project's own custom rows are always included; curated global rows only
+  // when they match the project's opted-in regions + categories. Without a
+  // projectId (admin views) all active global rows are returned.
+  app.get(
+    "/api/admin/studio/occasions",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const from = typeof req.query.from === "string" ? req.query.from : "";
+        const to = typeof req.query.to === "string" ? req.query.to : "";
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+          return res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" });
+        }
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId
+          : null;
+        const rows = await storage.getStudioOccasions(from, to, projectId);
+        if (!projectId) return res.json(rows);
+        const project = await storage.getStudioProject(projectId);
+        const prefs = (project as any)?.occasionPreferences;
+        // Occasions are opt-in per project: NULL preferences => custom rows only.
+        const regions: string[] = Array.isArray(prefs?.regions) ? prefs.regions : [];
+        const categories: string[] = Array.isArray(prefs?.categories) ? prefs.categories : [];
+        const filtered = rows.filter((o) =>
+          o.projectId === projectId ||
+          (regions.includes(o.region) && categories.includes(o.category)),
+        );
+        res.json(filtered);
+      } catch (error) {
+        console.error("Get studio occasions error:", error);
+        res.status(500).json({ error: "Failed to fetch occasions" });
+      }
+    },
+  );
+
+  // Create a custom project occasion (company anniversary, launch date, ...).
+  app.post(
+    "/api/admin/studio/occasions",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { name, date, region, category, contentAngle, projectId } = req.body ?? {};
+        if (typeof name !== "string" || !name.trim()) {
+          return res.status(400).json({ error: "name is required" });
+        }
+        if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return res.status(400).json({ error: "date (YYYY-MM-DD) is required" });
+        }
+        if (typeof projectId !== "string" || !projectId) {
+          return res.status(400).json({ error: "projectId is required (custom occasions are per-project)" });
+        }
+        const project = await storage.getStudioProject(projectId);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        const created = await storage.createStudioOccasion({
+          name: name.trim(),
+          date,
+          region: ["us", "india", "global"].includes(region) ? region : "global",
+          category: "custom",
+          contentAngle: typeof contentAngle === "string" && contentAngle.trim() ? contentAngle.trim() : null,
+          projectId,
+          isActive: true,
+        } as any);
+        void category; // custom rows are always category "custom"
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create studio occasion error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create occasion" });
+      }
+    },
+  );
+
+  // Edit / soft-delete (isActive=false) — custom project rows only; curated
+  // global rows are read-only from the UI.
+  app.patch(
+    "/api/admin/studio/occasions/:id",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioOccasion(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Occasion not found" });
+        if (!existing.projectId) {
+          return res.status(403).json({ error: "Curated occasions are read-only" });
+        }
+        const { name, date, region, contentAngle, isActive } = req.body ?? {};
+        const updates: Record<string, any> = {};
+        if (typeof name === "string" && name.trim()) updates.name = name.trim();
+        if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) updates.date = date;
+        if (["us", "india", "global"].includes(region)) updates.region = region;
+        if (typeof contentAngle === "string") updates.contentAngle = contentAngle.trim() || null;
+        if (typeof isActive === "boolean") updates.isActive = isActive;
+        if (Object.keys(updates).length === 0) {
+          return res.status(400).json({ error: "No valid fields to update" });
+        }
+        const updated = await storage.updateStudioOccasion(req.params.id, updates);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update studio occasion error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update occasion" });
+      }
+    },
+  );
+
+  // Save a project's occasion preferences (Studio Settings "Occasions" card).
+  app.patch(
+    "/api/admin/studio/projects/:id/occasion-preferences",
+    requireAuth,
+    requirePermission("studio.manage_settings", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { regions, categories } = req.body ?? {};
+        const validRegions = ["us", "india", "global"];
+        const validCategories = ["national_holiday", "festival", "industry_awareness", "fun_observance"];
+        const cleanRegions = Array.isArray(regions)
+          ? regions.filter((r: any) => validRegions.includes(r))
+          : [];
+        const cleanCategories = Array.isArray(categories)
+          ? categories.filter((c: any) => validCategories.includes(c))
+          : [];
+        // Empty selections mean "opt out" — store NULL so the calendar shows nothing.
+        const prefs = cleanRegions.length && cleanCategories.length
+          ? { regions: cleanRegions, categories: cleanCategories }
+          : null;
+        const updated = await storage.updateStudioProject(req.params.id, {
+          occasionPreferences: prefs,
+        } as any);
+        if (!updated) return res.status(404).json({ error: "Project not found" });
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update occasion preferences error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update occasion preferences" });
+      }
+    },
+  );
+
+  // =========================================================================
+  // Studio T4 — Social content ideas + creative cards (Task #915)
+  // (Minimal self-contained idea CRUD — T1's full three-lens pipeline is not
+  //  merged; these endpoints power "Plan content for this" + the card gallery.)
+  // =========================================================================
+  app.get(
+    "/api/admin/studio/content-ideas",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId
+          : null;
+        const rows = await storage.getStudioContentIdeas(projectId);
+        res.json(rows);
+      } catch (error) {
+        console.error("Get content ideas error:", error);
+        res.status(500).json({ error: "Failed to fetch content ideas" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/studio/content-ideas",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, topic, brief, contentType, channels, pillar, scheduledDate, captionCopy, origin } = req.body ?? {};
+        if (typeof projectId !== "string" || !projectId) {
+          return res.status(400).json({ error: "projectId is required" });
+        }
+        if (typeof topic !== "string" || !topic.trim()) {
+          return res.status(400).json({ error: "topic is required" });
+        }
+        const project = await storage.getStudioProject(projectId);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        const created = await storage.createStudioContentIdea({
+          projectId,
+          topic: topic.trim(),
+          brief: typeof brief === "string" && brief.trim() ? brief.trim() : null,
+          contentType: typeof contentType === "string" && contentType ? contentType : "social_post",
+          channels: Array.isArray(channels) ? channels : null,
+          pillar: typeof pillar === "string" && pillar.trim() ? pillar.trim() : null,
+          scheduledDate: typeof scheduledDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)
+            ? scheduledDate
+            : null,
+          captionCopy: typeof captionCopy === "string" && captionCopy.trim() ? captionCopy.trim() : null,
+          origin: typeof origin === "string" && origin ? origin : "manual",
+          status: "idea",
+          createdByUserId: req.session.userId,
+        } as any);
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create content idea error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create content idea" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/admin/studio/content-ideas/:id",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioContentIdea(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Content idea not found" });
+        const allowed = [
+          "topic", "brief", "captionCopy", "creativeLink", "requirement", "pillar",
+          "channels", "scheduledDate", "dueDate", "status", "referenceLink",
+          "storyContent", "storyReference", "storyCreativeLink",
+        ] as const;
+        const updates: Record<string, any> = {};
+        for (const key of allowed) {
+          if (key in (req.body ?? {})) updates[key] = req.body[key];
+        }
+        if (Object.keys(updates).length === 0) {
+          return res.status(400).json({ error: "No valid fields to update" });
+        }
+        const updated = await storage.updateStudioContentIdea(req.params.id, updates);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update content idea error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update content idea" });
+      }
+    },
+  );
+
+  // Render branded creative card options for a Social idea (hook/quote/stat/
+  // story-frame) via the existing Chromium pipeline; body: { hookText?, layout? }.
+  app.post(
+    "/api/admin/studio/content-ideas/:id/generate-cards",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { hookText, layout } = req.body ?? {};
+        if (layout !== undefined && layout !== null && !isCardLayout(layout)) {
+          return res.status(400).json({
+            error: `Invalid layout. Use one of: ${CARD_LAYOUTS.join(", ")}`,
+          });
+        }
+        const result = await generateIdeaCards(req.params.id, {
+          hookText: typeof hookText === "string" ? hookText : null,
+          layout: isCardLayout(layout) ? layout : null,
+        });
+        res.json(result);
+      } catch (error: any) {
+        console.error("Generate idea cards error:", error);
+        const message = error?.message || "Failed to generate cards";
+        res.status(message.includes("not found") ? 404 : 400).json({ error: message });
       }
     },
   );

@@ -424,6 +424,172 @@ function authorBlockQuote(size) {
 }
 
 // ---------------------------------------------------------------------------
+// Layout: HOOK (Social Kit — big scroll-stopping hook line) (Task #915)
+// ---------------------------------------------------------------------------
+function hook(size) {
+  const pad = Math.round(size.h * 0.09);
+  const stacked = size.kind === "square";
+  const hookSize =
+    size.kind === "landscape" ? Math.round(size.h * 0.115) : Math.round(size.h * 0.094);
+  const clamp = size.kind === "landscape" ? 3 : 4;
+  const supSize = Math.round(size.h * (size.kind === "landscape" ? 0.033 : 0.027));
+
+  const css = `
+.card{background:linear-gradient(155deg,${BRAND.navyTop} 0%,${BRAND.navy} 55%,${BRAND.navyBottom} 100%);padding:${pad}px;display:flex;flex-direction:column;}
+.body{position:relative;z-index:2;display:flex;flex-direction:column;height:100%;}
+.head{margin-bottom:${Math.round(size.h * 0.03)}px;display:flex;align-items:center;justify-content:space-between;}
+.content{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:${stacked ? "94%" : "82%"};}
+.pill{margin-bottom:${Math.round(size.h * 0.032)}px;font-size:${Math.round(size.h * 0.026)}px;}
+.eyebrow{color:var(--brand,${BRAND.orangeAccent});font-weight:700;letter-spacing:.22em;text-transform:uppercase;font-size:${Math.round(size.h * 0.024)}px;margin-bottom:${Math.round(size.h * 0.022)}px;}
+.hook{font-family:'Playfair Display',serif;font-weight:800;color:#fff;font-size:${hookSize}px;line-height:1.03;letter-spacing:-1px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${clamp};overflow:hidden;}
+.accent{width:${Math.round(size.h * 0.12)}px;height:${Math.round(size.h * 0.01)}px;margin:${Math.round(size.h * 0.034)}px 0;}
+.support{color:rgba(255,255,255,.82);font-size:${supSize}px;max-width:92%;}
+.footer{margin-top:${Math.round(size.h * 0.02)}px;padding-top:${Math.round(size.h * 0.022)}px;}
+.bottom-strip{position:absolute;left:0;right:0;bottom:0;height:${Math.round(size.h * 0.014)}px;background:var(--brand,${BRAND.orangeAccent});z-index:3;}
+`;
+
+  const body = `
+  ${watermark(size)}
+  ${dotGrid("dg1", "rgba(255,255,255,.45)", `bottom:${Math.round(size.h * 0.16)}px;right:${Math.round(size.w * 0.05)}px;width:${Math.round(size.w * 0.075)}px;height:${Math.round(size.h * 0.11)}px;opacity:.5;`)}
+  <div class="body">
+    <div class="head">${headerLockup(size, { stacked: false })}</div>
+    <div class="content">
+      ${pill(size)}
+      <h1 class="hook">{{title}}</h1>
+      <div class="accent"></div>
+      <p class="support">{{supporting_line}}</p>
+    </div>
+    ${footer(size)}
+  </div>
+  ${cornerLogo(size)}
+  <div class="bottom-strip"></div>`;
+  return { css, body };
+}
+
+// ---------------------------------------------------------------------------
+// Layout: STAT (Social Kit — big number / proof point) (Task #915)
+// Renders {{stat_value}} + {{stat_label}} when provided; falls back to the
+// hook text ({{title}}) rendered stat-style when no stat is supplied.
+// ---------------------------------------------------------------------------
+function stat(size) {
+  const land = size.kind === "landscape";
+  const outerPad = Math.round(size.h * (land ? 0.045 : 0.05));
+  const cardPad = Math.round(size.h * (land ? 0.055 : 0.06));
+  const statSize = land ? Math.round(size.h * 0.24) : Math.round(size.h * 0.2);
+  const labelSize = land ? Math.round(size.h * 0.05) : Math.round(size.h * 0.046);
+  const fallbackSize = land ? Math.round(size.h * 0.085) : Math.round(size.h * 0.075);
+  const supSize = Math.round(size.h * (land ? 0.028 : 0.024));
+
+  const css = `
+.card{background:${BRAND.navy};padding:${outerPad}px;}
+.arc{position:absolute;border:${Math.round(size.h * 0.006)}px solid ${BRAND.orangeAccent};border-radius:50%;opacity:.85;}
+.dot-grid{opacity:.4;}
+.sheet{position:relative;z-index:3;width:100%;height:100%;background:#fff;border-radius:${RADII.lg + 6}px;padding:${cardPad}px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 60px rgba(0,0,0,.25);}
+.sheet-head{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:${cardPad}px;}
+.pill{font-size:${Math.round(size.h * 0.026)}px;}
+.brandbox{display:flex;flex-direction:column;align-items:flex-end;gap:${Math.round(size.h * 0.008)}px;}
+.brandbox-sq{width:${Math.round(size.h * 0.11)}px;height:${Math.round(size.h * 0.11)}px;background:${BRAND.navy};border-radius:${RADII.md}px;display:flex;align-items:center;justify-content:center;}
+.brandbox-sq img{width:62%;}
+.brandbox-word{font-family:'Playfair Display',serif;font-weight:700;color:${BRAND.navy};font-size:${Math.round(size.h * 0.026)}px;line-height:1;}
+.brandbox-tag{color:${BRAND.orangeAccent};font-weight:600;font-size:${Math.round(size.h * 0.013)}px;letter-spacing:.12em;}
+.stat-zone{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;}
+.stat-value{font-family:'Playfair Display',serif;font-weight:800;color:var(--brand,${BRAND.orangeAccent});font-size:${statSize}px;line-height:.95;letter-spacing:-2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stat-label{font-family:'Playfair Display',serif;font-weight:700;color:${BRAND.navy};font-size:${labelSize}px;line-height:1.12;margin-top:${Math.round(size.h * 0.022)}px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;max-width:92%;}
+.stat-fallback{font-family:'Playfair Display',serif;font-weight:800;color:${BRAND.navy};font-size:${fallbackSize}px;line-height:1.05;letter-spacing:-.5px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;max-width:94%;}
+.stat-accent{width:${Math.round(size.h * 0.1)}px;height:${Math.round(size.h * 0.009)}px;background:var(--brand,${BRAND.orangeAccent});border-radius:2px;margin-top:${Math.round(size.h * 0.03)}px;}
+.support{color:${BRAND.bodyGray};font-size:${supSize}px;margin-top:${Math.round(size.h * 0.024)}px;max-width:88%;}
+.sfooter{flex:none;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #E7EAF0;padding-top:${Math.round(size.h * 0.024)}px;margin-top:${Math.round(size.h * 0.02)}px;}
+.sf-url{display:flex;align-items:center;gap:.5em;color:${BRAND.navy};font-weight:600;font-size:${Math.round(size.h * 0.024)}px;}
+.sf-url span{display:inline-flex;width:1.1em;height:1.1em;}
+.sf-url span svg{width:100%;height:100%;}
+.sf-date{color:${BRAND.bodyGray};font-size:${Math.round(size.h * 0.022)}px;}
+`;
+
+  const body = `
+  <div class="arc" style="width:${Math.round(size.w * 0.5)}px;height:${Math.round(size.w * 0.5)}px;top:${-Math.round(size.w * 0.3)}px;right:${-Math.round(size.w * 0.18)}px;"></div>
+  <div class="arc" style="width:${Math.round(size.w * 0.42)}px;height:${Math.round(size.w * 0.42)}px;bottom:${-Math.round(size.w * 0.26)}px;left:${-Math.round(size.w * 0.2)}px;"></div>
+  ${dotGrid("dg1", "rgba(255,255,255,.5)", `top:${Math.round(size.h * 0.46)}px;left:${Math.round(size.w * 0.012)}px;width:${Math.round(size.w * 0.05)}px;height:${Math.round(size.h * 0.09)}px;`)}
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="pill" style="background:var(--cat,${BRAND.orange})">{{category}}</div>
+      <div class="brandbox">
+        <div class="brandbox-sq"><img src="${LOGO_MONO}" alt="Hire'in Solutions" /></div>
+        <div class="brandbox-word">Hire'in Solutions</div>
+        <div class="brandbox-tag">${BRAND.tagline}</div>
+      </div>
+    </div>
+    <div class="stat-zone">
+      {{#stat_value}}
+      <div class="stat-value">{{stat_value}}</div>
+      <div class="stat-label">{{stat_label}}</div>
+      {{/stat_value}}
+      {{^stat_value}}
+      <div class="stat-fallback">{{title}}</div>
+      {{/stat_value}}
+      <div class="stat-accent"></div>
+      <p class="support">{{supporting_line}}</p>
+    </div>
+    <div class="sfooter">
+      <div class="sf-url"><span>${ICONS.globe(BRAND.navy)}</span>{{footer_url}}</div>
+      <div class="sf-date">{{publish_date}}</div>
+    </div>
+  </div>`;
+  return { css, body };
+}
+
+// ---------------------------------------------------------------------------
+// Layout: STORY-FRAME (Social Kit — Instagram story 1080×1920) (Task #915)
+// All text/logo/CTA constrained to the Instagram safe core: padding-top ≥14%
+// and padding-bottom ≥20% of frame height are baked into the CSS so platform
+// UI chrome (username bar / reply box) never covers content.
+// ---------------------------------------------------------------------------
+function storyFrame(size) {
+  const safeTop = Math.round(size.h * 0.15);    // ≥ 14% requirement
+  const safeBottom = Math.round(size.h * 0.21); // ≥ 20% requirement
+  const padX = Math.round(size.w * 0.09);
+  const hookSize = Math.round(size.h * 0.052);
+  const supSize = Math.round(size.h * 0.024);
+
+  const css = `
+.card{background:linear-gradient(165deg,${BRAND.navyTop} 0%,${BRAND.navy} 55%,${BRAND.navyBottom} 100%);padding:${safeTop}px ${padX}px ${safeBottom}px;display:flex;flex-direction:column;}
+.body{position:relative;z-index:2;display:flex;flex-direction:column;height:100%;}
+.head{flex:none;}
+.content{flex:1;display:flex;flex-direction:column;justify-content:center;}
+.pill{margin-bottom:${Math.round(size.h * 0.026)}px;font-size:${Math.round(size.h * 0.02)}px;}
+.hook{font-family:'Playfair Display',serif;font-weight:800;color:#fff;font-size:${hookSize}px;line-height:1.06;letter-spacing:-.5px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;}
+.accent{width:${Math.round(size.h * 0.075)}px;height:${Math.round(size.h * 0.007)}px;margin:${Math.round(size.h * 0.026)}px 0;}
+.support{color:rgba(255,255,255,.82);font-size:${supSize}px;-webkit-line-clamp:3;}
+.cta{display:inline-flex;align-self:flex-start;align-items:center;gap:.7em;margin-top:${Math.round(size.h * 0.032)}px;padding:.85em 1.6em;background:var(--brand,${BRAND.orangeAccent});border-radius:999px;color:#fff;font-weight:700;font-size:${Math.round(size.h * 0.021)}px;letter-spacing:.04em;}
+.cta-arrow{display:inline-flex;width:1.2em;height:1.2em;}
+.cta-arrow svg{width:100%;height:100%;}
+.sfoot{flex:none;display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.18);padding-top:${Math.round(size.h * 0.018)}px;}
+.sfoot-url{display:flex;align-items:center;gap:.5em;color:#fff;font-weight:600;font-size:${Math.round(size.h * 0.019)}px;}
+.sfoot-url span{display:inline-flex;width:1.1em;height:1.1em;}
+.sfoot-url span svg{width:100%;height:100%;}
+.sfoot-date{color:rgba(255,255,255,.7);font-size:${Math.round(size.h * 0.017)}px;}
+`;
+
+  const body = `
+  ${watermark(size)}
+  ${dotGrid("dg1", "rgba(255,255,255,.45)", `top:${Math.round(size.h * 0.4)}px;right:${Math.round(size.w * 0.04)}px;width:${Math.round(size.w * 0.09)}px;height:${Math.round(size.h * 0.07)}px;opacity:.5;`)}
+  <div class="body">
+    <div class="head">${headerLockup(size, { stacked: true })}</div>
+    <div class="content">
+      ${pill(size)}
+      <h1 class="hook">{{title}}</h1>
+      <div class="accent"></div>
+      <p class="support">{{supporting_line}}</p>
+      <a class="cta"><span>Learn More</span><span class="cta-arrow">${ICONS.arrowRight(BRAND.white)}</span></a>
+    </div>
+    <div class="sfoot">
+      <div class="sfoot-url"><span>${ICONS.globe(BRAND.white)}</span>{{footer_url}}</div>
+      <div class="sfoot-date">{{publish_date}}</div>
+    </div>
+  </div>`;
+  return { css, body };
+}
+
+// ---------------------------------------------------------------------------
 // Assemble + write.
 // ---------------------------------------------------------------------------
 function page(size, layoutCss, body) {
@@ -457,6 +623,10 @@ const TEMPLATES = [
   { layout: "standard", platforms: ["linkedin", "instagram-square", "instagram-story", "twitter"], fn: standard },
   { layout: "checklist", platforms: ["linkedin", "instagram-square"], fn: checklist },
   { layout: "quote", platforms: ["linkedin", "instagram-square", "twitter"], fn: quote },
+  // Social Kit creative layouts (Task #915)
+  { layout: "hook", platforms: ["linkedin", "instagram-square"], fn: hook },
+  { layout: "stat", platforms: ["linkedin", "instagram-square"], fn: stat },
+  { layout: "story-frame", platforms: ["instagram-story"], fn: storyFrame },
 ];
 
 const manifest = [];

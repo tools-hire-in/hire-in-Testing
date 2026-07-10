@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, ImageIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, ImageIcon, Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -25,7 +28,248 @@ import {
 } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { StudioProject } from "@shared/schema";
+import type { StudioProject, StudioOccasion } from "@shared/schema";
+
+const OCCASION_REGIONS = [
+  { value: "us", label: "US" },
+  { value: "india", label: "India" },
+  { value: "global", label: "Global" },
+];
+const OCCASION_CATEGORIES = [
+  { value: "national_holiday", label: "National holidays" },
+  { value: "festival", label: "Festivals" },
+  { value: "industry_awareness", label: "Industry awareness days" },
+  { value: "fun_observance", label: "Fun observances" },
+];
+
+// Studio T4: per-project occasion relevance settings + custom occasions.
+function OccasionsSettingsCard({ project }: { project: StudioProject }) {
+  const { toast } = useToast();
+  const prefs = (project.occasionPreferences as any) ?? null;
+  const [regions, setRegions] = useState<string[]>(Array.isArray(prefs?.regions) ? prefs.regions : []);
+  const [categories, setCategories] = useState<string[]>(Array.isArray(prefs?.categories) ? prefs.categories : []);
+  const [newName, setNewName] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newAngle, setNewAngle] = useState("");
+
+  useEffect(() => {
+    const p = (project.occasionPreferences as any) ?? null;
+    setRegions(Array.isArray(p?.regions) ? p.regions : []);
+    setCategories(Array.isArray(p?.categories) ? p.categories : []);
+  }, [project.id]);
+
+  const year = new Date().getFullYear();
+  const { data: occasions } = useQuery<StudioOccasion[]>({
+    queryKey: ["/api/admin/studio/occasions", "custom", project.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        from: `${year}-01-01`,
+        to: `${year + 2}-12-31`,
+        projectId: project.id,
+      });
+      const res = await fetch(`/api/admin/studio/occasions?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const customOccasions = (occasions ?? []).filter((o) => o.projectId === project.id);
+
+  const savePrefsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/admin/studio/projects/${project.id}/occasion-preferences`,
+        { regions, categories },
+      );
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to save preferences");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/occasions"] });
+      toast({ title: "Occasion preferences saved" });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Could not save preferences", description: err.message, variant: "destructive" }),
+  });
+
+  const addOccasionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/studio/occasions", {
+        name: newName.trim(),
+        date: newDate,
+        contentAngle: newAngle.trim() || null,
+        projectId: project.id,
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to add occasion");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setNewName("");
+      setNewDate("");
+      setNewAngle("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/occasions"] });
+      toast({ title: "Custom occasion added" });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Could not add occasion", description: err.message, variant: "destructive" }),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/admin/studio/occasions/${id}`, { isActive: false });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to remove occasion");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/occasions"] });
+      toast({ title: "Occasion removed" });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Could not remove occasion", description: err.message, variant: "destructive" }),
+  });
+
+  const toggle = (list: string[], set: (v: string[]) => void, value: string) => {
+    set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  };
+
+  return (
+    <Card data-testid="card-occasions-settings">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Star className="h-4 w-4 text-amber-500" />
+          Occasions on the Calendar
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Pick which curated occasions (holidays, festivals, awareness days) appear as badges on{" "}
+          <span className="font-medium text-foreground">{project.name}</span>'s planning calendar.
+          Leave everything unchecked to hide curated occasions entirely.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Regions</p>
+            {OCCASION_REGIONS.map((r) => (
+              <label key={r.value} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={regions.includes(r.value)}
+                  onCheckedChange={() => toggle(regions, setRegions, r.value)}
+                  data-testid={`checkbox-region-${r.value}`}
+                />
+                {r.label}
+              </label>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Categories</p>
+            {OCCASION_CATEGORIES.map((c) => (
+              <label key={c.value} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={categories.includes(c.value)}
+                  onCheckedChange={() => toggle(categories, setCategories, c.value)}
+                  data-testid={`checkbox-category-${c.value}`}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => savePrefsMutation.mutate()}
+          disabled={savePrefsMutation.isPending}
+          data-testid="button-save-occasion-prefs"
+        >
+          {savePrefsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Save preferences
+        </Button>
+
+        <div className="space-y-2 border-t pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Custom occasions (always shown for this project)
+          </p>
+          {customOccasions.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-no-custom-occasions">
+              None yet — add company anniversaries, launch dates, etc.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {customOccasions.map((o) => (
+                <div
+                  key={o.id}
+                  className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                  data-testid={`custom-occasion-${o.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{o.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {o.date}
+                      {o.contentAngle ? ` · ${o.contentAngle}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deactivateMutation.mutate(o.id)}
+                    disabled={deactivateMutation.isPending}
+                    data-testid={`button-remove-occasion-${o.id}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr_auto]">
+            <Input
+              placeholder="Occasion name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              data-testid="input-new-occasion-name"
+            />
+            <Input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="sm:w-[150px]"
+              data-testid="input-new-occasion-date"
+            />
+            <Input
+              placeholder="Content angle (optional)"
+              value={newAngle}
+              onChange={(e) => setNewAngle(e.target.value)}
+              data-testid="input-new-occasion-angle"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => addOccasionMutation.mutate()}
+              disabled={addOccasionMutation.isPending || !newName.trim() || !newDate}
+              data-testid="button-add-occasion"
+            >
+              {addOccasionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Add
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 interface CardTemplateMeta {
   id: string;
@@ -155,6 +399,9 @@ export default function TemplateSettings() {
           </Select>
         </CardContent>
       </Card>
+
+      {/* Occasion-aware calendar preferences (Studio T4) */}
+      {project && <OccasionsSettingsCard project={project} />}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">

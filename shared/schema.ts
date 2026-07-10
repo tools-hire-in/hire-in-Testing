@@ -2624,6 +2624,10 @@ export const studioProjects = pgTable("studio_projects", {
   //          defaultReviewerUserIds?: string[],
   //          rules: { category: string; reviewerUserIds: string[] }[] }
   routingRules: jsonb("routing_rules"),
+  // Occasion-aware calendar opt-in (Studio T4). Shape: StudioOccasionPreferences
+  // { regions: ["us","india"], categories: ["festival","industry_awareness"] }.
+  // NULL = show no occasions for this project.
+  occasionPreferences: jsonb("occasion_preferences"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -2935,6 +2939,87 @@ export interface StudioRoutingRules {
   defaultReviewerUserIds?: string[];
   rules: StudioRoutingRule[];
 }
+
+// ==========================================
+// STUDIO T4 — OCCASION-AWARE CALENDAR + CONTENT IDEAS
+// ==========================================
+
+// Curated occasions dataset (US holidays, Indian festivals, industry awareness
+// days) + per-project custom occasions. project_id NULL = global curated row.
+export const studioOccasions = pgTable("studio_occasions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  // Resolved calendar date; movable festivals stored explicitly per year.
+  date: date("date").notNull(),
+  // "us" | "india" | "global"
+  region: varchar("region").notNull(),
+  // "national_holiday" | "festival" | "industry_awareness" | "fun_observance" | "custom"
+  category: varchar("category").notNull(),
+  // One-sentence strategic content angle (never "wish them a happy day").
+  contentAngle: text("content_angle"),
+  projectId: varchar("project_id").references(() => studioProjects.id),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // Natural key for the idempotent curated seed (global rows only).
+  globalNameDateIdx: uniqueIndex("studio_occasions_global_name_date_idx")
+    .on(table.name, table.date)
+    .where(sql`project_id IS NULL`),
+}));
+
+// Shape of studio_projects.occasion_preferences jsonb. NULL = occasions off
+// for the project (opt-in).
+export interface StudioOccasionPreferences {
+  regions: string[];    // subset of ["us","india","global"]
+  categories: string[]; // subset of occasion categories
+}
+
+// Unified content-ideas pipeline (declared per the Studio T1 column spec so
+// parallel Studio tasks converge on one table; T4 adds social_cards_jsonb).
+export const studioContentIdeas = pgTable("studio_content_ideas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  campaignId: varchar("campaign_id"),
+  groupId: varchar("group_id"),
+  parentIdeaId: varchar("parent_idea_id"),
+  importBatchId: varchar("import_batch_id"),
+  // "manual" | "import" | "ai" | "repurposed"
+  origin: varchar("origin").default("manual").notNull(),
+  // "article" | "social_post" | "story"
+  contentType: varchar("content_type").default("social_post").notNull(),
+  // ["linkedin","instagram","facebook","x","website"]
+  channels: jsonb("channels"),
+  pillar: varchar("pillar"),
+  topic: varchar("topic").notNull(),
+  brief: text("brief"),
+  generationBrief: text("generation_brief"),
+  referenceLink: varchar("reference_link"),
+  captionCopy: text("caption_copy"),
+  requirement: text("requirement"),
+  creativeLink: varchar("creative_link"),
+  storyContent: text("story_content"),
+  storyReference: varchar("story_reference"),
+  storyCreativeLink: varchar("story_creative_link"),
+  scheduledDate: date("scheduled_date"),
+  dueDate: date("due_date"),
+  assignedToUserId: varchar("assigned_to_user_id"),
+  // suggested | idea | in_review | changes_requested | approved | in_production | scheduled | published | done | rejected
+  status: varchar("status").default("idea").notNull(),
+  linkedArticleId: varchar("linked_article_id"),
+  // T4: generated branded social cards for this idea — same contract shape as
+  // studio_articles.social_cards_jsonb ({family, layout, generatedAt, cards:[...]}).
+  socialCardsJsonb: jsonb("social_cards_jsonb"),
+  createdByUserId: varchar("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertStudioOccasionSchema = createInsertSchema(studioOccasions).omit({ id: true, createdAt: true });
+export type StudioOccasion = typeof studioOccasions.$inferSelect;
+export type InsertStudioOccasion = z.infer<typeof insertStudioOccasionSchema>;
+export const insertStudioContentIdeaSchema = createInsertSchema(studioContentIdeas).omit({ id: true, createdAt: true, updatedAt: true });
+export type StudioContentIdea = typeof studioContentIdeas.$inferSelect;
+export type InsertStudioContentIdea = z.infer<typeof insertStudioContentIdeaSchema>;
 
 // ==========================================
 // INTERNAL HELP DESK (HIRD)

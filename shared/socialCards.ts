@@ -8,7 +8,15 @@
 // The actual PNG rasterisation (Chromium/Puppeteer) lives server-side.
 // ---------------------------------------------------------------------------
 
-export const CARD_LAYOUTS = ["standard", "checklist", "quote"] as const;
+export const CARD_LAYOUTS = [
+  "standard",
+  "checklist",
+  "quote",
+  // Social Kit creative layouts (Task #915)
+  "hook",
+  "stat",
+  "story-frame",
+] as const;
 export type CardLayout = (typeof CARD_LAYOUTS)[number];
 
 export const CARD_PLATFORMS = [
@@ -27,7 +35,15 @@ export const LAYOUT_PLATFORMS: Record<CardLayout, CardPlatform[]> = {
   standard: ["linkedin", "instagram-square", "instagram-story", "twitter"],
   checklist: ["linkedin", "instagram-square"],
   quote: ["linkedin", "instagram-square", "twitter"],
+  hook: ["linkedin", "instagram-square"],
+  stat: ["linkedin", "instagram-square"],
+  "story-frame": ["instagram-story"],
 };
+
+// Layouts offered when generating creative cards for a Social idea (Task #915).
+// The engine picks platforms per layout from LAYOUT_PLATFORMS, filtered by the
+// idea's channels where known.
+export const SOCIAL_IDEA_LAYOUTS: CardLayout[] = ["hook", "quote", "stat", "story-frame"];
 
 export function isCardLayout(value: unknown): value is CardLayout {
   return typeof value === "string" && (CARD_LAYOUTS as readonly string[]).includes(value);
@@ -93,6 +109,11 @@ export const CARD_BUDGETS: Record<string, CardBudget> = {
   "quote:linkedin": { quote: 90, category: 28 },
   "quote:instagram-square": { quote: 110, category: 28 },
   "quote:twitter": { quote: 100, category: 28 },
+  "hook:linkedin": { title: 80, supporting: 100, category: 28 },
+  "hook:instagram-square": { title: 90, supporting: 90, category: 28 },
+  "stat:linkedin": { title: 90, supporting: 90, category: 28 },
+  "stat:instagram-square": { title: 100, supporting: 80, category: 28 },
+  "story-frame:instagram-story": { title: 120, supporting: 110, category: 28 },
 };
 
 export function cardBudget(layout: string, platform: string): CardBudget {
@@ -144,6 +165,37 @@ export interface CardVariables {
   footer_url?: string;
   publish_date?: string;
   tips?: CardTip[];
+  // Social-idea creative slots (Task #915). stat templates render stat_value
+  // big + stat_label under it, falling back to title when stat_value is empty.
+  stat_value?: string;
+  stat_label?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Social-idea card variables (Task #915). Hook text (first line of the
+// caption, or an explicit override) drives {{title}}; stat layouts try to
+// extract a leading figure ("73% of nurses...") into stat_value/stat_label.
+// ---------------------------------------------------------------------------
+const STAT_RE = /(\$?\d[\d,.]*\s*(?:%|x|X|percent|million|billion|k|K|hrs?|hours?|days?)?)/;
+
+export function extractStatFromText(text: string): { statValue: string; statLabel: string } | null {
+  const m = text.match(STAT_RE);
+  if (!m || m.index === undefined) return null;
+  const statValue = m[1].trim();
+  // Must actually look like a figure, not a bare year mention inside a sentence.
+  if (!/\d/.test(statValue)) return null;
+  const label = (text.slice(0, m.index) + text.slice(m.index + m[1].length))
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, "")
+    .trim();
+  if (!label) return null;
+  return { statValue, statLabel: label };
+}
+
+export function firstLine(text?: string | null): string {
+  if (!text) return "";
+  const line = text.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+  return line.trim();
 }
 
 export interface BuildCardVariablesInput {
@@ -339,6 +391,20 @@ export function sampleCardVariables(layout: CardLayout): CardVariables {
   }
   if (layout === "quote") {
     base.title = "Speed and quality aren't opposites — the right process delivers both.";
+  }
+  if (layout === "hook") {
+    base.title = "Your best candidate just accepted another offer. Here's why.";
+    base.supporting_line = "The 48-hour window most hiring teams miss.";
+  }
+  if (layout === "stat") {
+    base.title = "73% of candidates drop off after a slow first week";
+    base.stat_value = "73%";
+    base.stat_label = "of candidates drop off after a slow first week";
+    base.supporting_line = "Source: Hire'in placement data, 2026.";
+  }
+  if (layout === "story-frame") {
+    base.title = "The hiring metric nobody tracks (and why it costs you offers)";
+    base.supporting_line = "Swipe up for the full breakdown.";
   }
   return base;
 }

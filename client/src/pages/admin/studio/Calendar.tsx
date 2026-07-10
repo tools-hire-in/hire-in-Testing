@@ -21,16 +21,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus, Calendar as CalIcon } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus, Calendar as CalIcon, Star, ImageIcon } from "lucide-react";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { useStudioProject } from "./useStudioProject";
-import { SocialKitPreview } from "./SocialKitPreview";
+import { SocialKitPreview, IdeaCardGallery } from "./SocialKitPreview";
 import { STATUS_BADGE_CLASS, STATUS_LABELS } from "./studioConstants";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { StudioArticle } from "@shared/schema";
+import type { StudioArticle, StudioOccasion, StudioContentIdea } from "@shared/schema";
 import type { CanonicalSocialKit } from "@shared/studioAi";
+
+const OCCASION_CATEGORY_LABELS: Record<string, string> = {
+  national_holiday: "Holiday",
+  festival: "Festival",
+  industry_awareness: "Awareness",
+  fun_observance: "Observance",
+  custom: "Custom",
+};
+
+const OCCASION_REGION_LABELS: Record<string, string> = {
+  us: "US",
+  india: "India",
+  global: "Global",
+};
 
 type CalendarItem = StudioArticle & {
   authorName: string | null;
@@ -225,10 +240,104 @@ function CreateOnDateButton({
   );
 }
 
+// ---- "Plan content for this" — prefilled idea form from an occasion ----
+function PlanContentForm({
+  occasion,
+  projectId,
+  onDone,
+}: {
+  occasion: StudioOccasion;
+  projectId: string;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  // Lead time: schedule social content 1 day before the occasion by default.
+  const dayBefore = (() => {
+    const d = new Date(`${occasion.date}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    return ymd(d);
+  })();
+  const [topic, setTopic] = useState(`${occasion.name} — ${OCCASION_CATEGORY_LABELS[occasion.category] ?? "occasion"} post`);
+  const [brief, setBrief] = useState(occasion.contentAngle ?? "");
+  const [scheduledDate, setScheduledDate] = useState(dayBefore);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/studio/content-ideas", {
+        projectId,
+        topic: topic.trim(),
+        brief: brief.trim() || null,
+        contentType: "social_post",
+        scheduledDate,
+        origin: "manual",
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to create idea");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      toast({ title: "Content idea planned", description: `Scheduled for ${scheduledDate}` });
+      onDone();
+    },
+    onError: (err: Error) =>
+      toast({ title: "Could not plan content", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/20 p-2.5" data-testid={`plan-content-form-${occasion.id}`}>
+      <div className="space-y-1">
+        <Label htmlFor={`plan-topic-${occasion.id}`} className="text-xs">Topic</Label>
+        <Input
+          id={`plan-topic-${occasion.id}`}
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          data-testid={`input-plan-topic-${occasion.id}`}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`plan-brief-${occasion.id}`} className="text-xs">Brief</Label>
+        <Textarea
+          id={`plan-brief-${occasion.id}`}
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          rows={2}
+          data-testid={`input-plan-brief-${occasion.id}`}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`plan-date-${occasion.id}`} className="text-xs">
+          Scheduled date (occasion is {occasion.date})
+        </Label>
+        <Input
+          id={`plan-date-${occasion.id}`}
+          type="date"
+          value={scheduledDate}
+          onChange={(e) => setScheduledDate(e.target.value)}
+          data-testid={`input-plan-date-${occasion.id}`}
+        />
+      </div>
+      <Button
+        size="sm"
+        className="w-full"
+        onClick={() => createMutation.mutate()}
+        disabled={createMutation.isPending || !topic.trim()}
+        data-testid={`button-plan-submit-${occasion.id}`}
+      >
+        {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+        Create planned idea
+      </Button>
+    </div>
+  );
+}
+
 // ---- Day Scheduler Dialog: click a day to schedule an existing draft ----
 function DaySchedulerDialog({
   date,
   projectId,
+  occasions,
   canSchedulePublish,
   canCreateArticle,
   onClose,
@@ -236,12 +345,14 @@ function DaySchedulerDialog({
 }: {
   date: string | null;
   projectId: string | null;
+  occasions: StudioOccasion[];
   canSchedulePublish: boolean;
   canCreateArticle: boolean;
   onClose: () => void;
   onNavigate: (path: string) => void;
 }) {
   const { toast } = useToast();
+  const [planningFor, setPlanningFor] = useState<string | null>(null);
 
   const { data: drafts, isLoading } = useQuery<StudioArticle[]>({
     queryKey: ["/api/admin/studio/articles", { status: "draft", projectId }],
@@ -288,6 +399,49 @@ function DaySchedulerDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
+          {occasions.length > 0 && (
+            <div className="space-y-2" data-testid="day-occasions">
+              {occasions.map((occ) => (
+                <div key={occ.id} className="rounded-md border border-amber-200 bg-amber-50/60 p-2.5 dark:border-amber-900 dark:bg-amber-950/20" data-testid={`occasion-${occ.id}`}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Star className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-sm font-medium">{occ.name}</span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {OCCASION_REGION_LABELS[occ.region] ?? occ.region}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {OCCASION_CATEGORY_LABELS[occ.category] ?? occ.category}
+                    </Badge>
+                  </div>
+                  {occ.contentAngle && (
+                    <p className="mt-1 text-xs text-muted-foreground">{occ.contentAngle}</p>
+                  )}
+                  {canCreateArticle && projectId && (
+                    planningFor === occ.id ? (
+                      <div className="mt-2">
+                        <PlanContentForm
+                          occasion={occ}
+                          projectId={projectId}
+                          onDone={() => setPlanningFor(null)}
+                        />
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() => setPlanningFor(occ.id)}
+                        data-testid={`button-plan-content-${occ.id}`}
+                      >
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        Plan content for this
+                      </Button>
+                    )
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {canSchedulePublish ? (
             <>
               <p className="text-sm text-muted-foreground">Pick a draft to schedule for publishing on this date.</p>
@@ -375,6 +529,43 @@ export default function Calendar() {
     const key = ymd(new Date(when));
     (byDay[key] ??= []).push(a);
   }
+
+  // Occasions for the visible month (filtered server-side by the project's
+  // occasionPreferences — opt-in per project via Studio Settings).
+  const { data: occasions } = useQuery<StudioOccasion[]>({
+    queryKey: ["/api/admin/studio/occasions", selectedProjectId, ymd(monthStart)],
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: ymd(monthStart), to: ymd(monthEnd) });
+      if (selectedProjectId) params.set("projectId", selectedProjectId);
+      const res = await fetch(`/api/admin/studio/occasions?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const occByDay: Record<string, StudioOccasion[]> = {};
+  for (const occ of occasions ?? []) {
+    (occByDay[String(occ.date)] ??= []).push(occ);
+  }
+
+  // Planned content ideas (social posts) for the selected project.
+  const { data: contentIdeas } = useQuery<StudioContentIdea[]>({
+    queryKey: ["/api/admin/studio/content-ideas", selectedProjectId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedProjectId) params.set("projectId", selectedProjectId);
+      const res = await fetch(`/api/admin/studio/content-ideas?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedProjectId,
+  });
+  const ideasByDay: Record<string, StudioContentIdea[]> = {};
+  for (const idea of contentIdeas ?? []) {
+    if (!idea.scheduledDate) continue;
+    (ideasByDay[String(idea.scheduledDate)] ??= []).push(idea);
+  }
+  const [galleryIdeaId, setGalleryIdeaId] = useState<string | null>(null);
+  const galleryIdea = (contentIdeas ?? []).find((i) => i.id === galleryIdeaId) ?? null;
 
   const firstWeekday = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
@@ -505,6 +696,8 @@ export default function Calendar() {
                   if (!cell) return <div key={i} className="min-h-[96px] rounded-md bg-muted/20" />;
                   const key = ymd(cell);
                   const dayItems = byDay[key] ?? [];
+                  const dayOccasions = occByDay[key] ?? [];
+                  const dayIdeas = ideasByDay[key] ?? [];
                   return (
                     <div
                       key={i}
@@ -515,7 +708,18 @@ export default function Calendar() {
                       data-testid={`calendar-day-${key}`}
                     >
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">{cell.getDate()}</span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          {cell.getDate()}
+                          {dayOccasions.length > 0 && (
+                            <span
+                              className="inline-flex items-center text-amber-500"
+                              title={dayOccasions.map((o) => o.name).join(" · ")}
+                              data-testid={`occasion-badge-${key}`}
+                            >
+                              <Star className="h-3 w-3 fill-current" />
+                            </span>
+                          )}
+                        </span>
                         {canCreateArticle && selectedProjectId && (
                           <button
                             className="hidden rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex"
@@ -562,6 +766,20 @@ export default function Calendar() {
                             </button>
                           );
                         })}
+                        {dayIdeas.map((idea) => (
+                          <button
+                            key={idea.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setGalleryIdeaId(idea.id);
+                            }}
+                            className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                            title={`${idea.topic} — planned social idea (click for creative cards)`}
+                            data-testid={`calendar-idea-${idea.id}`}
+                          >
+                            ✦ {idea.topic}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   );
@@ -580,6 +798,12 @@ export default function Calendar() {
           <span className="inline-flex items-center gap-1 rounded border border-dashed bg-amber-50 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
             ⇩ Ready to Export (other projects)
           </span>
+          <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">
+            ✦ Planned social idea
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Star className="h-3 w-3 fill-current text-amber-500" /> Occasion
+          </span>
           <span className="text-muted-foreground/60 ml-auto">Click a day to schedule · Click chip to edit</span>
         </div>
       </div>
@@ -588,11 +812,28 @@ export default function Calendar() {
       <DaySchedulerDialog
         date={schedulerDate}
         projectId={selectedProjectId}
+        occasions={schedulerDate ? occByDay[schedulerDate] ?? [] : []}
         canSchedulePublish={canSchedulePublish}
         canCreateArticle={canCreateArticle}
         onClose={() => setSchedulerDate(null)}
         onNavigate={navigate}
       />
+
+      {/* Idea creative-card gallery dialog */}
+      <Dialog open={!!galleryIdea} onOpenChange={(o) => !o && setGalleryIdeaId(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-idea-cards">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" />
+              {galleryIdea?.topic}
+            </DialogTitle>
+          </DialogHeader>
+          {galleryIdea?.brief && (
+            <p className="text-sm text-muted-foreground">{galleryIdea.brief}</p>
+          )}
+          {galleryIdea && <IdeaCardGallery idea={galleryIdea} />}
+        </DialogContent>
+      </Dialog>
 
       {/* Social kit export sheet */}
       <Sheet open={!!exportItem} onOpenChange={(open) => !open && setExportItem(null)}>

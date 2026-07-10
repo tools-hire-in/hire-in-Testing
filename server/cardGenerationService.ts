@@ -13,8 +13,16 @@ import {
   cardVariantsForLayout,
   buildCardVariables,
   renderCardTemplate,
+  isCardLayout,
+  extractStatFromText,
+  firstLine,
+  categoryColor,
+  BRAND_DEFAULTS,
+  SOCIAL_IDEA_LAYOUTS,
+  LAYOUT_PLATFORMS,
   type CardLayout,
   type CardPlatform,
+  type CardVariables,
 } from "@shared/socialCards";
 
 const objectStorageService = new ObjectStorageService();
@@ -266,4 +274,145 @@ export async function generateArticleCards(
   });
 
   return { articleId, layout, family, cards, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Social-idea creative cards (Task #915). Renders hook/quote/stat/story-frame
+// options for a Social idea using the idea's captionCopy hook (first line) or
+// an explicit hookText override, and persists them to
+// studio_content_ideas.social_cards_jsonb. Same template resolution, render
+// pipeline, and upload path as article cards — extend, never rebuild.
+// ---------------------------------------------------------------------------
+function ideaCardObjectPath(ideaId: string, layout: string, platform: string): string {
+  return `studio/social-cards/ideas/${ideaId}/${layout}-${platform}.png`;
+}
+function ideaCardPublicUrl(ideaId: string, layout: string, platform: string): string {
+  return `/objects/${ideaCardObjectPath(ideaId, layout, platform)}`;
+}
+
+// Map an idea's channels (e.g. ["linkedin","instagram"]) to card platforms.
+function ideaChannelPlatforms(channels: unknown): CardPlatform[] | null {
+  if (!Array.isArray(channels) || channels.length === 0) return null;
+  const set = new Set<CardPlatform>();
+  for (const raw of channels) {
+    const c = String(raw).toLowerCase();
+    if (c.includes("linkedin") || c.includes("facebook")) set.add("linkedin");
+    if (c.includes("instagram")) {
+      set.add("instagram-square");
+      set.add("instagram-story");
+    }
+    if (c.includes("twitter") || c === "x") set.add("twitter");
+    if (c.includes("story")) set.add("instagram-story");
+  }
+  return set.size > 0 ? Array.from(set) : null;
+}
+
+export interface GenerateIdeaCardsResult {
+  ideaId: string;
+  family: string;
+  hookText: string;
+  cards: GeneratedCard[];
+  skipped: Array<{ layout: string; platform: string; reason: string }>;
+}
+
+export async function generateIdeaCards(
+  ideaId: string,
+  options: { hookText?: string | null; layout?: string | null } = {},
+): Promise<GenerateIdeaCardsResult> {
+  const idea = await storage.getStudioContentIdea(ideaId);
+  if (!idea) throw new Error(`Content idea ${ideaId} not found`);
+
+  const project = idea.projectId ? await storage.getStudioProject(idea.projectId) : undefined;
+  const brand = await storage.getStudioBrandSettings();
+  const family = project?.activeTemplateFamily || "hirein-v1";
+
+  const hookText =
+    (options.hookText ?? "").trim() ||
+    firstLine(idea.captionCopy) ||
+    idea.topic ||
+    "";
+  if (!hookText) throw new Error("No hook text available — add caption copy or supply hookText");
+
+  // A single-layout regenerate is allowed; otherwise render the full option set.
+  const layouts: CardLayout[] = isCardLayout(options.layout)
+    ? [options.layout]
+    : SOCIAL_IDEA_LAYOUTS;
+
+  const wantedPlatforms = ideaChannelPlatforms(idea.channels);
+  const brandColor = project?.brandColor || brand?.orangeAccent || BRAND_DEFAULTS.orangeAccent;
+  const stat = extractStatFromText(hookText);
+
+  const cards: GeneratedCard[] = [];
+  const skipped: Array<{ layout: string; platform: string; reason: string }> = [];
+
+  for (const layout of layouts) {
+    for (const platform of LAYOUT_PLATFORMS[layout]) {
+      if (wantedPlatforms && !wantedPlatforms.includes(platform)) continue;
+      const template = await storage.getCardTemplateFor(
+        family,
+        layout,
+        platform,
+        project?.id ?? null,
+      );
+      if (!template) {
+        skipped.push({ layout, platform, reason: "no active template for variant" });
+        continue;
+      }
+      try {
+        const vars: CardVariables = {
+          title: hookText,
+          supporting_line: idea.brief ? firstLine(idea.brief) : "",
+          category: idea.pillar ?? "",
+          category_color: categoryColor(idea.pillar),
+          brand_color: brandColor,
+          logo_url: project?.logoUrl ?? brand?.logoUrl ?? "",
+          footer_url: project?.footerUrl ?? "hire-in.com/insights",
+          publish_date: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+        };
+        if (layout === "stat" && stat) {
+          vars.stat_value = stat.statValue;
+          vars.stat_label = stat.statLabel;
+        }
+        const png = await renderTemplateToPng(
+          { html: template.html, width: template.width, height: template.height },
+          vars,
+        );
+        await objectStorageService.uploadBuffer(
+          png,
+          ideaCardObjectPath(ideaId, layout, platform),
+          "image/png",
+        );
+        cards.push({
+          layout,
+          platform,
+          url: ideaCardPublicUrl(ideaId, layout, platform),
+          width: template.width,
+          height: template.height,
+        });
+      } catch (err: any) {
+        skipped.push({ layout, platform, reason: err?.message ?? "render failed" });
+      }
+    }
+  }
+
+  // Single-layout regenerate keeps the other layouts' existing cards.
+  const existing = (idea.socialCardsJsonb as any)?.cards;
+  const merged =
+    isCardLayout(options.layout) && Array.isArray(existing)
+      ? [
+          ...existing.filter((c: any) => c?.layout !== options.layout),
+          ...cards,
+        ]
+      : cards;
+
+  const payload = {
+    family,
+    layout: isCardLayout(options.layout) ? options.layout : "social",
+    hookText,
+    generatedAt: new Date().toISOString(),
+    cards: merged,
+  };
+  await storage.updateStudioContentIdea(ideaId, { socialCardsJsonb: payload as any });
+
+  return { ideaId, family, hookText, cards, skipped };
 }

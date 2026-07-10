@@ -81,5 +81,50 @@
     "label": "X / Twitter (1600×900)",
     "width": 1600,
     "height": 900
+  },
+  {
+    "file": "hook-linkedin.html",
+    "family": "hirein-v1",
+    "layout": "hook",
+    "platform": "linkedin",
+    "label": "LinkedIn / Facebook (1200×627)",
+    "width": 1200,
+    "height": 627
+  },
+  {
+    "file": "hook-instagram-square.html",
+    "family": "hirein-v1",
+    "layout": "hook",
+    "platform": "instagram-square",
+    "label": "Instagram square (1080×1080)",
+    "width": 1080,
+    "height": 1080
+  },
+  {
+    "file": "stat-linkedin.html",
+    "family": "hirein-v1",
+    "layout": "stat",
+    "platform": "linkedin",
+    "label": "LinkedIn / Facebook (1200×627)",
+    "width": 1200,
+    "height": 627
+  },
+  {
+    "file": "stat-instagram-square.html",
+    "family": "hirein-v1",
+    "layout": "stat",
+    "platform": "instagram-square",
+    "label": "Instagram square (1080×1080)",
+    "width": 1080,
+    "height": 1080
+  },
+  {
+    "file": "story-frame-instagram-story.html",
+    "family": "hirein-v1",
+    "layout": "story-frame",
+    "platform": "instagram-story",
+    "label": "Instagram / Facebook story (1080×1920)",
+    "width": 1080,
+    "height": 1920
   }
 ]

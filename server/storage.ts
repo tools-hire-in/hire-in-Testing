@@ -128,6 +128,12 @@ import {
   studioNewsletterSubscribers,
   type StudioNewsletterSubscriber,
   type InsertStudioNewsletterSubscriber,
+  studioOccasions,
+  studioContentIdeas,
+  type StudioOccasion,
+  type InsertStudioOccasion,
+  type StudioContentIdea,
+  type InsertStudioContentIdea,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -571,6 +577,16 @@ export interface IStorage {
 
   updateStudioProject(id: string, updates: Partial<InsertStudioProject>): Promise<StudioProject | undefined>;
   getStudioProject(id: string): Promise<StudioProject | undefined>;
+
+  // ---- Studio T4: occasions + content ideas ----
+  getStudioOccasions(from: string, to: string, projectId?: string | null): Promise<StudioOccasion[]>;
+  getStudioOccasion(id: string): Promise<StudioOccasion | undefined>;
+  createStudioOccasion(data: InsertStudioOccasion): Promise<StudioOccasion>;
+  updateStudioOccasion(id: string, updates: Partial<InsertStudioOccasion>): Promise<StudioOccasion | undefined>;
+  getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined>;
+  getStudioContentIdeas(projectId?: string | null): Promise<StudioContentIdea[]>;
+  createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea>;
+  updateStudioContentIdea(id: string, updates: Partial<InsertStudioContentIdea>): Promise<StudioContentIdea | undefined>;
 
   createStudioReviewAssignment(data: InsertStudioReviewAssignment): Promise<StudioReviewAssignment>;
   getStudioReviewAssignment(id: string): Promise<StudioReviewAssignment | undefined>;
@@ -4337,6 +4353,81 @@ export class DatabaseStorage implements IStorage {
       .update(studioProjects)
       .set(updates)
       .where(eq(studioProjects.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ---- Studio T4: occasions + content ideas ----
+  async getStudioOccasions(
+    from: string,
+    to: string,
+    projectId?: string | null,
+  ): Promise<StudioOccasion[]> {
+    const scope = projectId
+      ? or(isNull(studioOccasions.projectId), eq(studioOccasions.projectId, projectId))
+      : isNull(studioOccasions.projectId);
+    return await db
+      .select()
+      .from(studioOccasions)
+      .where(
+        and(
+          eq(studioOccasions.isActive, true),
+          sql`${studioOccasions.date} >= ${from}`,
+          sql`${studioOccasions.date} <= ${to}`,
+          scope,
+        ),
+      )
+      .orderBy(studioOccasions.date, studioOccasions.name);
+  }
+
+  async getStudioOccasion(id: string): Promise<StudioOccasion | undefined> {
+    const [row] = await db.select().from(studioOccasions).where(eq(studioOccasions.id, id));
+    return row;
+  }
+
+  async createStudioOccasion(data: InsertStudioOccasion): Promise<StudioOccasion> {
+    const [created] = await db.insert(studioOccasions).values(data).returning();
+    return created;
+  }
+
+  async updateStudioOccasion(
+    id: string,
+    updates: Partial<InsertStudioOccasion>,
+  ): Promise<StudioOccasion | undefined> {
+    const [updated] = await db
+      .update(studioOccasions)
+      .set(updates)
+      .where(eq(studioOccasions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined> {
+    const [row] = await db.select().from(studioContentIdeas).where(eq(studioContentIdeas.id, id));
+    return row;
+  }
+
+  async getStudioContentIdeas(projectId?: string | null): Promise<StudioContentIdea[]> {
+    const base = db.select().from(studioContentIdeas);
+    const rows = projectId
+      ? await base.where(eq(studioContentIdeas.projectId, projectId))
+      : await base;
+    return rows.sort((a, b) => (a.scheduledDate ?? "9999").localeCompare(b.scheduledDate ?? "9999"));
+  }
+
+  async createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea> {
+    const [created] = await db.insert(studioContentIdeas).values(data).returning();
+    return created;
+  }
+
+  async updateStudioContentIdea(
+    id: string,
+    updates: Partial<InsertStudioContentIdea>,
+  ): Promise<StudioContentIdea | undefined> {
+    const [updated] = await db
+      .update(studioContentIdeas)
+      .set({ ...updates, updatedAt: new Date() } as any)
+      .where(eq(studioContentIdeas.id, id))
       .returning();
     return updated;
   }
