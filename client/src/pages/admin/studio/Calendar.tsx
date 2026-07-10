@@ -33,6 +33,7 @@ import { Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus, Calendar 
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { useStudioProject } from "./useStudioProject";
 import { SocialKitPreview, IdeaCardGallery } from "./SocialKitPreview";
+import { IdeaPeek } from "@/pages/studio/PipelineView";
 import { STATUS_BADGE_CLASS, STATUS_LABELS } from "./studioConstants";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -228,7 +229,7 @@ function CreateOnDateButton({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       toast({ title: "Idea added to plan", description: `Scheduled for ${date ?? "later"}. Find it in the content pipeline.` });
       onClose();
     },
@@ -366,18 +367,22 @@ function DaySchedulerDialog({
   date,
   projectId,
   occasions,
+  ideas,
   canSchedulePublish,
   canCreateArticle,
   onClose,
   onNavigate,
+  onOpenIdea,
 }: {
   date: string | null;
   projectId: string | null;
   occasions: StudioOccasion[];
+  ideas: StudioContentIdea[];
   canSchedulePublish: boolean;
   canCreateArticle: boolean;
   onClose: () => void;
   onNavigate: (path: string) => void;
+  onOpenIdea: (id: string) => void;
 }) {
   const { toast } = useToast();
   const [planningFor, setPlanningFor] = useState<string | null>(null);
@@ -427,6 +432,37 @@ function DaySchedulerDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
+          {ideas.length > 0 && (
+            <div className="space-y-2" data-testid="day-planned-ideas">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Planned ideas</p>
+              {ideas.map((idea) => (
+                <div
+                  key={idea.id}
+                  className="flex items-center justify-between gap-2 rounded-md border p-2"
+                  data-testid={`day-idea-row-${idea.id}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{idea.topic}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[idea.status] ?? "bg-slate-100 text-slate-700"}`}>
+                        {STATUS_LABELS[idea.status] ?? idea.status}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{idea.contentType?.replace(/_/g, " ")}</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="shrink-0 h-7 px-2 text-xs"
+                    onClick={() => { onOpenIdea(idea.id); onClose(); }}
+                    data-testid={`button-open-idea-${idea.id}`}
+                  >
+                    Open
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           {occasions.length > 0 && (
             <div className="space-y-2" data-testid="day-occasions">
               {occasions.map((occ) => (
@@ -594,6 +630,7 @@ export default function Calendar() {
   }
   const [galleryIdeaId, setGalleryIdeaId] = useState<string | null>(null);
   const galleryIdea = (contentIdeas ?? []).find((i) => i.id === galleryIdeaId) ?? null;
+  const [peekIdeaId, setPeekIdeaId] = useState<string | null>(null);
 
   const firstWeekday = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
@@ -799,10 +836,10 @@ export default function Calendar() {
                             key={idea.id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setGalleryIdeaId(idea.id);
+                              setPeekIdeaId(idea.id);
                             }}
                             className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
-                            title={`${idea.topic} — planned social idea (click for creative cards)`}
+                            title={`${idea.topic} — planned idea (click to open workspace)`}
                             data-testid={`calendar-idea-${idea.id}`}
                           >
                             ✦ {idea.topic}
@@ -841,10 +878,25 @@ export default function Calendar() {
         date={schedulerDate}
         projectId={selectedProjectId}
         occasions={schedulerDate ? occByDay[schedulerDate] ?? [] : []}
+        ideas={schedulerDate ? ideasByDay[schedulerDate] ?? [] : []}
         canSchedulePublish={canSchedulePublish}
         canCreateArticle={canCreateArticle}
         onClose={() => setSchedulerDate(null)}
         onNavigate={navigate}
+        onOpenIdea={(id) => { setSchedulerDate(null); setPeekIdeaId(id); }}
+      />
+
+      {/* IdeaPeek slide-over — full idea workspace from calendar context */}
+      <IdeaPeek
+        ideaId={peekIdeaId}
+        onClose={() => setPeekIdeaId(null)}
+        fromCalendar
+        onOpenGallery={() => {
+          if (peekIdeaId) setGalleryIdeaId(peekIdeaId);
+        }}
+        onMutated={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+        }}
       />
 
       {/* Idea creative-card gallery dialog */}

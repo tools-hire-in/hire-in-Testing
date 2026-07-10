@@ -62,6 +62,7 @@ import {
   Columns3,
   Download,
   ExternalLink,
+  ImageIcon,
   Inbox,
   Loader2,
   MessageSquare,
@@ -569,12 +570,18 @@ function ImportWizardDialog({
 }
 
 // ── Peek panel ──────────────────────────────────────────────────────────────
-function IdeaPeek({
+export function IdeaPeek({
   ideaId,
   onClose,
+  onOpenGallery,
+  fromCalendar,
+  onMutated,
 }: {
   ideaId: string | null;
   onClose: () => void;
+  onOpenGallery?: () => void;
+  fromCalendar?: boolean;
+  onMutated?: () => void;
 }) {
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -589,6 +596,7 @@ function IdeaPeek({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
     if (ideaId) queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas", ideaId] });
+    onMutated?.();
   };
 
   const transitionMutation = useMutation({
@@ -866,6 +874,18 @@ function IdeaPeek({
                 </Button>
               )}
 
+              {isSocialIdea && onOpenGallery && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onOpenGallery}
+                  data-testid="button-peek-creative-cards"
+                >
+                  <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
+                  Creative Cards
+                </Button>
+              )}
+
               {(visibleNext.length > 0 || promotable) && (
                 <div>
                   <Label className="text-xs text-muted-foreground">Actions</Label>
@@ -935,6 +955,21 @@ function IdeaPeek({
                   </div>
                 </div>
               </div>
+
+              {fromCalendar && ideaId && (
+                <div className="border-t pt-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => navigate(studioPath(`?idea=${ideaId}`))}
+                    data-testid="button-view-in-pipeline"
+                  >
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    View in Pipeline
+                  </Button>
+                </div>
+              )}
             </div>
           </>
         )}
