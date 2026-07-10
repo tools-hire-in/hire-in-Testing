@@ -90,7 +90,7 @@ function MarkdownProse({ text }: { text: string }) {
 type ActiveTab = "chat" | "decks";
 
 export default function BdAgentView() {
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -101,16 +101,17 @@ export default function BdAgentView() {
   const [draft, setDraft] = useState("");
   const [activeProjectId, setActiveProjectId] = useState("");
 
-  // "Create client deck from this message" modal state
+  // "Build targeted client deck" modal state
   const [deckSourceMsg, setDeckSourceMsg] = useState<BdMessage | null>(null);
   const [deckClientName, setDeckClientName] = useState("");
   const [deckDomain, setDeckDomain] = useState("healthcare");
-  const [deckNotes, setDeckNotes] = useState("");
+  const [deckPositioning, setDeckPositioning] = useState("full_staffing");
+  const [deckContext, setDeckContext] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const canUseBd = can("studio.bd_agent");
 
-  // Fetch master decks so we can clone the right one for the chosen domain
+  // Fetch master decks so we can find the right one for the chosen domain
   const { data: masterDecks = [] } = useQuery<BdDeckStub[]>({
     queryKey: ["/api/bd/decks", "master"],
     queryFn: () =>
@@ -118,29 +119,55 @@ export default function BdAgentView() {
     enabled: canUseBd,
   });
 
-  const cloneForClientMutation = useMutation({
-    mutationFn: ({ masterId, clientName, notes }: { masterId: string; clientName: string; notes: string }) =>
-      apiRequest("POST", `/api/bd/decks/${masterId}/clone`, {
+  const POSITIONING_OPTIONS: { value: string; label: string; description: string }[] = [
+    { value: "full_staffing", label: "Full Staffing Partner", description: "End-to-end talent pipeline across all roles" },
+    { value: "delivery_partner", label: "Delivery Partner", description: "We own the execution — you focus on your business" },
+    { value: "rpo", label: "RPO / Embedded Team", description: "Hire'in team embedded inside your HR function" },
+    { value: "domain_specialist", label: "Domain Specialist", description: "Deep domain expertise, not a generalist agency" },
+    { value: "cost_efficiency", label: "Cost Efficiency Play", description: "Same quality, significantly lower cost-per-hire" },
+    { value: "custom", label: "Custom / Other", description: "Describe your own angle in the context box" },
+  ];
+
+  const customizeDeckMutation = useMutation({
+    mutationFn: ({
+      masterId,
+      clientName,
+      positioningAngle,
+      contextSummary,
+    }: {
+      masterId: string;
+      clientName: string;
+      positioningAngle: string;
+      contextSummary: string;
+    }) =>
+      apiRequest("POST", `/api/bd/decks/${masterId}/customize`, {
         client_name: clientName.trim(),
-        description: notes.trim() || null,
+        positioning_angle: positioningAngle,
+        context_summary: contextSummary.trim() || null,
       }).then((r: any) => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bd/decks"] });
-      toast({ title: "Client deck created!", description: "Opening Decks tab — find your new deck there." });
+      toast({
+        title: "Targeted deck ready!",
+        description: "AI has customized every slide for this client. Opening Decks tab to review.",
+      });
       setDeckSourceMsg(null);
       setDeckClientName("");
       setDeckDomain("healthcare");
-      setDeckNotes("");
+      setDeckPositioning("full_staffing");
+      setDeckContext("");
       setActiveTab("decks");
     },
-    onError: () => toast({ title: "Failed to create client deck", variant: "destructive" }),
+    onError: () => toast({ title: "Failed to build deck", description: "Check your connection and try again.", variant: "destructive" }),
   });
 
   function handleCreateClientDeck(msg: BdMessage) {
     setDeckSourceMsg(msg);
-    setDeckNotes(msg.content.slice(0, 300).trim());
+    // Pre-fill the context with the agent's reply — user can trim/edit
+    setDeckContext(msg.content.slice(0, 800).trim());
     setDeckDomain("healthcare");
     setDeckClientName("");
+    setDeckPositioning("full_staffing");
   }
 
   const { data: conversations = [], isLoading: convsLoading } = useQuery<BdConversation[]>({
@@ -536,118 +563,168 @@ export default function BdAgentView() {
         </div>
       )}
 
-      {/* Create client deck from conversation dialog */}
+      {/* Build targeted client deck dialog */}
       <Dialog
         open={!!deckSourceMsg}
         onOpenChange={(o) => {
-          if (!o) {
+          if (!o && !customizeDeckMutation.isPending) {
             setDeckSourceMsg(null);
             setDeckClientName("");
             setDeckDomain("healthcare");
-            setDeckNotes("");
+            setDeckPositioning("full_staffing");
+            setDeckContext("");
           }
         }}
       >
-        <DialogContent className="max-w-md" data-testid="modal-create-client-deck">
+        <DialogContent className="max-w-lg" data-testid="modal-create-client-deck">
           <DialogHeader>
-            <DialogTitle>Create Client Deck</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              Build Targeted Client Deck
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              AI rewrites every slide specifically for this client. The master template stays untouched.
+            </p>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
-              This creates a <strong>new client-specific copy</strong> from the master template for the chosen domain.
-              The master template is <strong>not changed</strong>.
+
+          {customizeDeckMutation.isPending ? (
+            <div className="flex flex-col items-center gap-4 py-10">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+                <Loader2 className="h-7 w-7 text-primary animate-spin" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-sm">AI is customizing your deck…</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Rewriting each slide for {deckClientName || "this client"}. Usually takes 15–30 seconds.
+                </p>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="deck-client-name">Client / company name <span className="text-destructive">*</span></Label>
-              <Input
-                id="deck-client-name"
-                value={deckClientName}
-                onChange={(e) => setDeckClientName(e.target.value)}
-                placeholder="e.g. Apollo Hospitals"
-                autoFocus
-                data-testid="input-deck-client-name"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Industry / domain <span className="text-destructive">*</span></Label>
-              <Select value={deckDomain} onValueChange={setDeckDomain}>
-                <SelectTrigger data-testid="select-deck-domain"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["healthcare", "it", "engineering", "professional_services"].map((d) => (
-                    <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {/* Show available masters for this domain */}
-              {(() => {
-                const domainMasters = masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived");
-                if (domainMasters.length === 0) {
+          ) : (
+            <div className="space-y-4 py-1">
+              {/* Client name */}
+              <div className="space-y-1.5">
+                <Label htmlFor="deck-client-name">
+                  Client / company name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="deck-client-name"
+                  value={deckClientName}
+                  onChange={(e) => setDeckClientName(e.target.value)}
+                  placeholder="e.g. Apollo Hospitals, Infosys BPM, L&T…"
+                  autoFocus
+                  data-testid="input-deck-client-name"
+                />
+              </div>
+
+              {/* Domain */}
+              <div className="space-y-1.5">
+                <Label>Industry / domain <span className="text-destructive">*</span></Label>
+                <Select value={deckDomain} onValueChange={setDeckDomain}>
+                  <SelectTrigger data-testid="select-deck-domain"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(["healthcare", "it", "engineering", "professional_services"] as const).map((d) => (
+                      <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const domainMasters = masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived");
+                  if (domainMasters.length === 0) {
+                    return (
+                      <p className="text-xs text-amber-600">
+                        No master template for {DOMAIN_LABELS[deckDomain]} yet — a super admin needs to create one in the Decks tab first.
+                      </p>
+                    );
+                  }
                   return (
-                    <p className="text-xs text-amber-600">
-                      No master template exists for {DOMAIN_LABELS[deckDomain]} yet.
-                      A super admin needs to create one first in the Decks tab.
+                    <p className="text-xs text-muted-foreground">
+                      Based on: <strong>{domainMasters[0].title}</strong> · {domainMasters[0].slides.length} slides
                     </p>
                   );
+                })()}
+              </div>
+
+              {/* Positioning angle */}
+              <div className="space-y-1.5">
+                <Label>
+                  How should we position Hire'in? <span className="text-destructive">*</span>
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {POSITIONING_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setDeckPositioning(opt.value)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        deckPositioning === opt.value
+                          ? "border-primary bg-primary/8 text-foreground"
+                          : "border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                      }`}
+                      data-testid={`btn-positioning-${opt.value}`}
+                    >
+                      <p className="text-xs font-semibold leading-tight">{opt.label}</p>
+                      <p className="text-[10px] mt-0.5 leading-snug opacity-70">{opt.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Context from conversation */}
+              <div className="space-y-1.5">
+                <Label htmlFor="deck-context">
+                  Context from conversation
+                  <span className="ml-1 text-muted-foreground text-xs">(pre-filled from agent reply — trim or add to)</span>
+                </Label>
+                <Textarea
+                  id="deck-context"
+                  value={deckContext}
+                  onChange={(e) => setDeckContext(e.target.value)}
+                  placeholder="What's specific about this client? Their pain points, current vendor, budget signals, relationship status…"
+                  className="min-h-[90px] resize-none text-xs"
+                  data-testid="input-deck-context"
+                />
+              </div>
+            </div>
+          )}
+
+          {!customizeDeckMutation.isPending && (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeckSourceMsg(null);
+                  setDeckClientName("");
+                  setDeckDomain("healthcare");
+                  setDeckPositioning("full_staffing");
+                  setDeckContext("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  !deckClientName.trim() ||
+                  masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived").length === 0
                 }
-                return (
-                  <p className="text-xs text-muted-foreground">
-                    Will clone from: <strong>{domainMasters[0].title}</strong> ({domainMasters[0].version.toUpperCase()}, {domainMasters[0].slides.length} slides)
-                  </p>
-                );
-              })()}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="deck-notes">Context / notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Textarea
-                id="deck-notes"
-                value={deckNotes}
-                onChange={(e) => setDeckNotes(e.target.value)}
-                placeholder="What did you discuss? What angles to emphasise for this client?"
-                className="min-h-[80px] resize-none text-sm"
-                data-testid="input-deck-notes"
-              />
-              <p className="text-xs text-muted-foreground">
-                Saved as deck description so you remember the context when editing slides.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeckSourceMsg(null);
-                setDeckClientName("");
-                setDeckDomain("healthcare");
-                setDeckNotes("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                !deckClientName.trim() ||
-                masterDecks.filter((m) => m.domain === deckDomain && m.status !== "archived").length === 0 ||
-                cloneForClientMutation.isPending
-              }
-              onClick={() => {
-                const master = masterDecks.find((m) => m.domain === deckDomain && m.status !== "archived");
-                if (!master) return;
-                cloneForClientMutation.mutate({
-                  masterId: master.id,
-                  clientName: deckClientName,
-                  notes: deckNotes,
-                });
-              }}
-              data-testid="button-confirm-create-client-deck"
-            >
-              {cloneForClientMutation.isPending ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <Copy className="mr-1 h-4 w-4" />
-              )}
-              Create Client Deck
-            </Button>
-          </DialogFooter>
+                onClick={() => {
+                  const master = masterDecks.find((m) => m.domain === deckDomain && m.status !== "archived");
+                  if (!master) return;
+                  const posLabel = POSITIONING_OPTIONS.find((p) => p.value === deckPositioning)?.label ?? deckPositioning;
+                  customizeDeckMutation.mutate({
+                    masterId: master.id,
+                    clientName: deckClientName,
+                    positioningAngle: posLabel,
+                    contextSummary: deckContext,
+                  });
+                }}
+                data-testid="button-confirm-create-client-deck"
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Bot className="mr-1.5 h-4 w-4" />
+                Build Targeted Deck
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 

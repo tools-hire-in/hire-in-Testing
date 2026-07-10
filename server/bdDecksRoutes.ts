@@ -2,6 +2,12 @@ import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import PDFDocument from "pdfkit";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 const NAVY = "#1F3A6E";
 const ORANGE = "#F47C20";
@@ -273,6 +279,109 @@ export function registerBdDecksRoutes(app: Express) {
     } catch (err: any) {
       console.error("[bd-decks] clone error:", err);
       res.status(500).json({ error: err?.message || "Failed to clone deck" });
+    }
+  });
+
+  // POST /api/bd/decks/:id/customize — AI-rewrite master slides for a specific client + positioning
+  // Creates a NEW client deck; never touches the master.
+  app.post("/api/bd/decks/:id/customize", async (req: Request, res: Response) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!canCreateClientDeck(req)) return res.status(403).json({ error: "Manager or above required" });
+
+    try {
+      const userId = (req.session as any).userId;
+      const { client_name, positioning_angle, context_summary } = req.body;
+
+      if (!client_name?.trim()) return res.status(400).json({ error: "client_name is required" });
+      if (!positioning_angle?.trim()) return res.status(400).json({ error: "positioning_angle is required" });
+
+      // Load the master
+      const masterResult = await db.execute(sql`SELECT * FROM bd_decks WHERE id = ${req.params.id} LIMIT 1`);
+      if (masterResult.rows.length === 0) return res.status(404).json({ error: "Master deck not found" });
+      const master = masterResult.rows[0] as BdDeckRow;
+      if (master.deck_type !== "master") return res.status(400).json({ error: "Can only customize master decks" });
+
+      const masterSlides: BdSlide[] = Array.isArray(master.slides) ? master.slides : [];
+      const domainLabel = DOMAIN_LABELS[master.domain] || master.domain;
+
+      // ── AI rewrite ──────────────────────────────────────────────────────────
+      const systemPrompt = `You are a pitch deck specialist for Hire'in Solutions, a staffing & talent acquisition firm that serves Healthcare, IT, Engineering, and Professional Services.
+
+Your task: rewrite a slide deck so every slide feels written SPECIFICALLY for the named client — not generic staffing boilerplate.
+
+Rules:
+1. Keep the slide TITLE exactly as-is (do not change wording, capitalization, or punctuation).
+2. Rewrite 3–5 bullet points per slide. Each bullet must be concrete, specific, and reinforce the chosen positioning angle throughout.
+3. Replace any generic phrases with language that speaks directly to the client's world.
+4. Keep speaker_notes to 1–2 sentences that prep the presenter for that slide.
+5. Respond ONLY with a valid JSON array — no markdown fences, no commentary, just the array.
+6. Array shape: [{"title":"...","bullets":["...","..."],"speaker_notes":"..."}]`;
+
+      const userPrompt = `Client: ${client_name.trim()}
+Domain: ${domainLabel}
+Positioning angle: ${positioning_angle.trim()}
+${context_summary?.trim() ? `\nContext from BD conversation:\n${context_summary.trim().slice(0, 1200)}` : ""}
+
+Rewrite these ${masterSlides.length} slides:
+${JSON.stringify(masterSlides, null, 2)}`;
+
+      let customizedSlides: BdSlide[] = masterSlides; // fallback = unmodified master
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5.4",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_completion_tokens: 4000,
+          temperature: 0.7,
+        });
+        const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          customizedSlides = parsed.map((s: any, i: number) => ({
+            title: masterSlides[i]?.title ?? s.title ?? `Slide ${i + 1}`,
+            bullets: Array.isArray(s.bullets) ? s.bullets : [],
+            speaker_notes: typeof s.speaker_notes === "string" ? s.speaker_notes : "",
+          }));
+        }
+      } catch (aiErr) {
+        console.error("[bd-decks] AI customization error (falling back to plain clone):", aiErr);
+        // graceful degradation: plain clone with context note
+      }
+
+      // ── Save as new client deck ──────────────────────────────────────────────
+      const now = new Date();
+      const monthName = now.toLocaleDateString("en-US", { month: "short" });
+      const year = now.getFullYear();
+      const deckTitle = `${client_name.trim()} · ${domainLabel} · ${monthName} ${year}`;
+      const slidesJson = JSON.stringify(customizedSlides);
+      const descVal = [
+        `Positioning: ${positioning_angle.trim()}`,
+        context_summary?.trim() ? `Context: ${context_summary.trim().slice(0, 400)}` : null,
+      ].filter(Boolean).join("\n\n");
+
+      const result = await db.execute(sql`
+        INSERT INTO bd_decks (title, domain, deck_type, parent_id, version, client_name, status, description, slides, created_by)
+        VALUES (
+          ${deckTitle}, ${master.domain}, 'client', ${master.id},
+          ${master.version}, ${client_name.trim()}, 'draft',
+          ${descVal}, ${slidesJson}::jsonb, ${userId}
+        )
+        RETURNING *
+      `);
+
+      const deck = result.rows[0] as BdDeckRow;
+      await logAudit(
+        deck.id,
+        "ai_customized_from_master",
+        req,
+        `AI-customized from "${master.title}" · positioning: ${positioning_angle.trim()}`
+      );
+      res.status(201).json(deck);
+    } catch (err: any) {
+      console.error("[bd-decks] customize error:", err);
+      res.status(500).json({ error: err?.message || "Failed to create customized deck" });
     }
   });
 
