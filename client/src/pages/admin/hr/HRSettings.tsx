@@ -613,6 +613,11 @@ export function FeatureFlagsSection() {
       label: "Process Governance Center (master switch)",
       description: "Master switch for the SOP / Process Governance Center (21-SOP library + version control). When ON, the SOP library becomes available to super admins/admins and to whoever is included in the rollout scope below. When OFF, the entire feature is hidden — use this as an instant kill-switch.",
     },
+    {
+      key: "studio_v2_enabled",
+      label: "Content Studio v2 (standalone /studio shell)",
+      description: "When ON, the Content Studio sidebar item becomes a single launcher button (\"Open Studio ↗\") that opens the new standalone /studio shell in a new tab — with the full planning pipeline, campaigns, brand voice, and BD agent. When OFF, the classic accordion sub-menu is shown instead. Toggle OFF as an instant kill-switch if anything looks wrong.",
+    },
   ];
 
   return (

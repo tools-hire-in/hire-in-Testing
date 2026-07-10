@@ -3421,6 +3421,39 @@ async function runStartupTasks() {
     console.error("App announcement seed error (non-fatal):", err);
   }
 
+  // Ensure all known feature flags have a default value in the feature_flags JSON.
+  // This is the single idempotent seed for flag defaults — add new flags HERE so they
+  // never silently default to false/undefined in a fresh or migrated environment.
+  try {
+    // Merge FLAG_DEFAULTS into the existing feature_flags JSON using COALESCE so
+    // admin overrides always win (existing keys are preserved, only missing keys get defaults).
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('feature_flags', ${JSON.stringify({
+        notifications_enabled: true,
+        document_reminder_email_enabled: false,
+        esign_docusign_flow: true,
+        new_look: true,
+        probation_framework_db: true,
+        process_governance: true,
+        studio_v2_enabled: true,
+      })}::jsonb)
+      ON CONFLICT (key) DO UPDATE
+        SET value = ${JSON.stringify({
+          notifications_enabled: true,
+          document_reminder_email_enabled: false,
+          esign_docusign_flow: true,
+          new_look: true,
+          probation_framework_db: true,
+          process_governance: true,
+          studio_v2_enabled: true,
+        })}::jsonb || system_settings.value
+    `);
+    log("Feature flag defaults ensured");
+  } catch (err) {
+    console.error("Feature flag defaults seed error (non-fatal):", err);
+  }
+
   // One-time patch: rename "90-day performance plan" → "90-day growth plan" in the
   // stored addendum clause sentence. Only updates the row if it still has the old wording.
   try {

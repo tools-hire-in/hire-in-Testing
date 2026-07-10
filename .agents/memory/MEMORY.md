@@ -49,6 +49,7 @@
 - [Payroll tables bootstrap](payroll-tables-bootstrap.md) — db:push blocks on offer_letters unique constraint prompt; create payroll tables via raw SQL instead; lop_mode enum must include 'fixed' (not 'flat'); payroll_settings needs lop_basis + default_jurisdiction + updated_by; headcount_history needs jurisdiction column.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — drizzle-kit push uses arrow-key terminal UI; can't be piped; when new tables/columns are needed, apply via a direct SQL script (scripts/*.ts with db.execute).
 - [Salary structure engine](salary-structure-engine.md) — pure engine in server/salaryEngine.ts; shared types in shared/salaryEngineTypes.ts; slip components stored as JSONB; grossSalary in run rows may be post-LOP — audit before passing to engine.
+- [Feature flag three-place rule](feature-flag-three-place-rule.md) — every new flag needs: ALLOWED_FLAGS (routes.ts) + flagDefs UI (HRSettings.tsx) + FLAG_DEFAULTS seed (index.ts). Missing any one = silently OFF forever.
 - [Studio occasions & idea cards](studio-occasions-idea-cards.md) — occasionPreferences opt-in (NULL=no curated, custom always show); seed ends 2027; ideas live only as calendar chips + IdeaCardGallery.
 - [Studio AI propose→confirm](studio-ai-propose-confirm.md) — bulk AI generation must be preview (no writes) then confirm (re-validate all rows, then insert as suggested).
 - [App.tsx duplicate route blocks](app-tsx-duplicate-route-blocks.md) — studio/legacy route lists exist twice; new routes need replace_all into both blocks or the page 404s in one context.
