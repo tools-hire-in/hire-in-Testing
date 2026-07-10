@@ -239,7 +239,7 @@ export function Footer() {
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                   data-testid="link-ehealthcare-staffing"
                 >
-                  eHealthcare Staffing
+                  Healthcare Staffing
                 </Link>
               </li>
             </ul>

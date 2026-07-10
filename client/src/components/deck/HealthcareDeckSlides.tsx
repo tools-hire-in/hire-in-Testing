@@ -250,8 +250,8 @@ function Slide3About() {
         <div style={{ flex: 0.8, display: "flex", flexDirection: "column", gap: 10 }}>
           {[
             { icon: Heart, label: "Healthcare-Exclusive Division", desc: "Dedicated clinical staffing expertise" },
-            { icon: ShieldCheck, label: "proKred.com", desc: "Compliance packets, credential sharing & skill checklists" },
-            { icon: Users, label: "15+ Talent Acquisition Experts", desc: "Delivery Manager, Director of Sales, Sr. Account Manager" },
+            { icon: ShieldCheck, label: "proKred.com Platform", desc: "Advanced credentialing automation" },
+            { icon: Users, label: "15+ Talent Acquisition Experts", desc: "Specialty-trained healthcare teams" },
             { icon: Globe, label: "All 50 US States", desc: "Coast-to-coast clinical coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div key={i} style={{ background: WHITE, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 6px rgba(31,58,110,0.07)" }}>

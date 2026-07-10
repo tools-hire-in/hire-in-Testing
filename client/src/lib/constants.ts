@@ -106,7 +106,7 @@ export const NAV_LINKS = [
     children: [
       { href: "/capability-deck", label: "Capability Deck" },
       { href: "/it-staffing", label: "IT Staffing Solutions" },
-      { href: "/ehealthcare-staffing", label: "eHealthcare Staffing" },
+      { href: "/ehealthcare-staffing", label: "Healthcare Staffing" },
     ],
   },
   { href: "/contracts", label: "Contracts" },

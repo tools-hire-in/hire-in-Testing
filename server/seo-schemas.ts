@@ -27,7 +27,7 @@ const IT_SERVICE_SCHEMA = {
 const EHEALTHCARE_SERVICE_SCHEMA = {
   "@context": "https://schema.org",
   "@type": "Service",
-  name: "eHealthcare Staffing Services",
+  name: "Healthcare Staffing Services",
   provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
   serviceType: "Healthcare Staffing",
   description: "AI-powered healthcare staffing with Joint Commission-aligned workflows. Travel nursing, locum tenens, allied health, and clinical recruitment across all 50 US states.",

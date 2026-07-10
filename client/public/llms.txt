@@ -9,7 +9,7 @@ Canonical domain: https://hire-in.com
 - [Home](https://hire-in.com/) — Overview of staffing services and value proposition
 - [Why Hire'in Solutions](https://hire-in.com/why-hire-in-solutions) — Differentiators, client results, and staffing approach
 - [IT Staffing](https://hire-in.com/it-staffing) — IT and software staffing services overview
-- [eHealthcare Staffing](https://hire-in.com/ehealthcare-staffing) — Healthcare staffing services overview
+- [Healthcare Staffing](https://hire-in.com/ehealthcare-staffing) — Healthcare staffing services overview
 - [IT Staffing Guide](https://hire-in.com/it-staffing-guide) — In-depth guide to IT staffing and hiring
 - [Healthcare Staffing Guide](https://hire-in.com/healthcare-staffing-guide) — In-depth guide to healthcare staffing
 - [Staffing FAQ](https://hire-in.com/staffing-faq) — Common questions from employers and job seekers

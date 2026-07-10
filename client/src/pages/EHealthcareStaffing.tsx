@@ -23,7 +23,7 @@ import { COMPANY, CONTACT } from "@/lib/constants";
 const SERVICE_SCHEMA = {
   "@context": "https://schema.org",
   "@type": "Service",
-  name: "eHealthcare Staffing Services",
+  name: "Healthcare Staffing Services",
   provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
   serviceType: "Healthcare Staffing",
   description: "AI-powered healthcare staffing with Joint Commission-aligned workflows. Travel nursing, locum tenens, allied health, and clinical recruitment across all 50 US states.",
@@ -39,7 +39,7 @@ export default function EHealthcareStaffing() {
   const slideContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.title = "eHealthcare Staffing Services | Hire'in Solutions - AI + Compliance Healthcare Recruitment";
+    document.title = "Healthcare Staffing Services | Hire'in Solutions - AI + Compliance Healthcare Recruitment";
     const setMeta = (name: string, content: string, property?: boolean) => {
       const attr = property ? "property" : "name";
       let el = document.querySelector(`meta[${attr}="${name}"]`);
@@ -50,8 +50,8 @@ export default function EHealthcareStaffing() {
       }
       el.setAttribute("content", content);
     };
-    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows, compliant submission packets via proKred.com. Clinical recruitment across all 50 US states.");
-    setMeta("og:title", "eHealthcare Staffing Services | Hire'in Solutions", true);
+    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows, verified documents & compliant submission packages via proKred.com. Clinical recruitment across all 50 US states.");
+    setMeta("og:title", "Healthcare Staffing Services | Hire'in Solutions", true);
     setMeta("og:description", "AI-powered healthcare staffing with Joint Commission-aligned workflows, verified documents & compliant submission packages. Travel nursing, locum tenens, allied health. View our interactive deck.", true);
     setMeta("og:type", "website", true);
     setMeta("og:url", "https://hire-in.com/ehealthcare-staffing", true);
