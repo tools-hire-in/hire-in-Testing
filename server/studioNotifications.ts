@@ -65,8 +65,10 @@ export async function syncIdeaDoneForPublishedArticle(articleId: string): Promis
 }
 
 /**
- * notifyUser() — T1 stub. Fire-and-forget; never throws into the caller
- * (a failed notification must not fail the workflow action).
+ * notifyUser() — Studio-flavoured wrapper around the centralized gateway
+ * (server/notifications.ts, Task #908). Keeps the Studio event vocabulary and
+ * deep-link conventions; preference checks happen in the gateway.
+ * Fire-and-forget; never throws into the caller.
  */
 export async function notifyUser(params: {
   userId: string;
@@ -77,12 +79,12 @@ export async function notifyUser(params: {
   metadata?: Record<string, unknown>;
 }): Promise<void> {
   try {
-    await storage.createNotification({
+    const { notifyUser: gatewayNotify } = await import("./notifications");
+    await gatewayNotify({
       userId: params.userId,
       type: `studio_${params.event}`,
       title: EVENT_TITLES[params.event] ?? "Studio update",
       message: params.message,
-      isRead: false,
       metadata: {
         ...params.metadata,
         link: params.linkPath ? `${STUDIO_BASE}${params.linkPath}` : STUDIO_BASE,

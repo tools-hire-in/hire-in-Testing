@@ -69,6 +69,7 @@ import {
   STUDIO_BASE,
 } from "./studioNotifications";
 import { INSIGHT_REACTION_VALUES } from "@shared/insights";
+import { NOTIFICATION_TYPES, VALID_PREFERENCE_KEYS } from "@shared/notificationTypes";
 import {
   getComplianceMode,
   brandVoiceConfigSchema,
@@ -664,6 +665,56 @@ export async function registerRoutes(
     };
   }
 
+  // ── Render-time CTA rewriting (Studio T3, Task #908) ─────────────────────
+  // Rewrites markdown links in a SERVED insight body so clicks route through
+  // GET /api/track/click (302 redirect + engagement event). The stored
+  // bodyMarkdown is NEVER mutated — this happens at serve time only. UTM
+  // params are appended to the destination here, not at publish time.
+  // Already-wrapped links (/api/track/click) are never double-wrapped.
+  const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)/g;
+
+  function rewriteCtaLinks(
+    bodyMarkdown: string | null | undefined,
+    article: { id: string; slug: string | null },
+    campaignId: string | null,
+  ): string | null | undefined {
+    if (!bodyMarkdown) return bodyMarkdown;
+    return bodyMarkdown.replace(
+      MD_LINK_RE,
+      (full, bang: string, label: string, url: string, titlePart: string | undefined) => {
+        if (bang === "!") return full; // images are not CTAs
+        if (url.startsWith("/api/track/click")) return full; // never double-wrap
+        if (url.startsWith("#") || url.startsWith("mailto:") || url.startsWith("tel:")) return full;
+        // Only http(s) absolute or same-origin relative links are CTA candidates.
+        const isHttps = url.startsWith("https://");
+        const isHttp = url.startsWith("http://");
+        const isRelative = url.startsWith("/") && !url.startsWith("//");
+        if (!isHttps && !isHttp && !isRelative) return full;
+        if (isHttp) return full; // plain http destinations are left untouched
+
+        let destination = url;
+        try {
+          const parsed = new URL(url, "https://hire-in.com");
+          parsed.searchParams.set("utm_source", "insights");
+          parsed.searchParams.set("utm_campaign", article.slug ?? article.id);
+          parsed.searchParams.set("utm_content", article.id);
+          destination = isRelative
+            ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+            : parsed.toString();
+        } catch {
+          return full; // unparseable URL — leave as-is
+        }
+
+        const qs = new URLSearchParams();
+        qs.set("a", article.id);
+        if (campaignId) qs.set("c", campaignId);
+        qs.set("cta", label.slice(0, 120));
+        qs.set("redirect", destination);
+        return `[${label}](/api/track/click?${qs.toString()}${titlePart ?? ""})`;
+      },
+    );
+  }
+
   // Dynamic sitemap — includes all static marketing pages + active job detail pages
   app.get("/sitemap.xml", async (req, res) => {
     try {
@@ -767,9 +818,22 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Article not found" });
       }
       const related = await storage.getRelatedInsights(article.id, article.category, 3);
+      // Render-time CTA rewriting (Task #908): wrap links in the SERVED body
+      // through /api/track/click. Stored body is never touched; campaign
+      // attribution comes from the linked content idea when present.
+      let attribution = { campaignId: null as string | null, contentIdeaId: null as string | null };
+      try {
+        attribution = await storage.getCampaignIdForArticle(article.id);
+      } catch { /* attribution is best-effort */ }
+      const sanitized = sanitizePublicInsight(article);
+      sanitized.bodyMarkdown = rewriteCtaLinks(
+        sanitized.bodyMarkdown,
+        { id: article.id, slug: article.slug ?? null },
+        attribution.campaignId,
+      );
       res.set("Cache-Control", "public, max-age=300");
       res.json({
-        article: sanitizePublicInsight(article),
+        article: sanitized,
         related: related.map(sanitizePublicInsight),
       });
     } catch (error) {
@@ -892,6 +956,24 @@ export async function registerRoutes(
         eventType: "article_viewed",
         metadata: null,
       });
+      // Mirror into studio_engagement_events with campaign attribution
+      // (Task #908) — best-effort, never fails the response.
+      try {
+        const attribution = await storage.getCampaignIdForArticle(req.params.articleId);
+        await storage.createStudioEngagementEvent({
+          articleId: req.params.articleId,
+          campaignId: attribution.campaignId,
+          contentIdeaId: attribution.contentIdeaId,
+          eventName: "article_view",
+          referrer: typeof req.headers.referer === "string" ? req.headers.referer.slice(0, 512) : null,
+          sessionHash: crypto
+            .createHash("sha256")
+            .update(`${req.ip || ""}|${String(req.headers["user-agent"] ?? "").slice(0, 512)}`)
+            .digest("hex"),
+        });
+      } catch (err) {
+        console.error("Failed to record engagement view event:", err);
+      }
       res.json({ counted: true });
     } catch (error) {
       console.error("Failed to record view:", error);
@@ -916,6 +998,99 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to record CTA click:", error);
       res.status(500).json({ message: "Failed to record CTA click" });
+    }
+  });
+
+  // ── Redirect-based CTA click tracking (Studio T3, Task #908) ─────────────
+  // Public, no auth. Served insight bodies rewrite CTA links through here
+  // (see rewriteCtaLinks). Validates the redirect target (https absolute or
+  // single-slash relative path — no protocol-relative, no open redirect via
+  // arbitrary schemes), rate-limits 60/min/IP with a sliding window, logs a
+  // studio_engagement_events row keyed by an anonymous SHA-256(IP|UA) hash,
+  // then 302-redirects.
+  const _trackClickWindow = new Map<string, number[]>();
+  const TRACK_WINDOW_MS = 60_000;
+  const TRACK_MAX = 60;
+
+  function trackClickRateLimiter(req: Request, res: Response, next: NextFunction) {
+    const ip = (req.ip || req.socket.remoteAddress || "unknown").trim();
+    const now = Date.now();
+    const hits = (_trackClickWindow.get(ip) || []).filter((t) => now - t < TRACK_WINDOW_MS);
+    if (hits.length >= TRACK_MAX) {
+      return res.status(429).set("Retry-After", "60").json({ error: "too_many_requests" });
+    }
+    hits.push(now);
+    _trackClickWindow.set(ip, hits);
+    if (_trackClickWindow.size > 10_000) {
+      for (const [k, v] of _trackClickWindow) {
+        if (v.every((t) => now - t >= TRACK_WINDOW_MS)) _trackClickWindow.delete(k);
+      }
+    }
+    next();
+  }
+
+  function isSafeRedirectTarget(target: string): boolean {
+    if (target.startsWith("/") && !target.startsWith("//") && !target.includes("\\")) return true;
+    if (target.startsWith("https://")) {
+      try {
+        const u = new URL(target);
+        return u.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  app.get("/api/track/click", trackClickRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const articleId = typeof req.query.a === "string" ? req.query.a.slice(0, 64) : "";
+      const campaignId = typeof req.query.c === "string" && req.query.c ? req.query.c.slice(0, 64) : null;
+      const ctaLabel = typeof req.query.cta === "string" && req.query.cta ? req.query.cta.slice(0, 120) : null;
+      const redirect = typeof req.query.redirect === "string" ? req.query.redirect.slice(0, 2048) : "";
+
+      if (!redirect || !isSafeRedirectTarget(redirect)) {
+        return res.status(400).json({ error: "invalid_redirect" });
+      }
+      if (!articleId) {
+        // No article context — still honour the (already validated) redirect
+        // so a stale link never strands a reader, but log nothing.
+        return res.redirect(302, redirect);
+      }
+
+      // Best-effort event write: a logging failure must never break the CTA.
+      try {
+        const published = await storage.isInsightPublished(articleId);
+        if (published) {
+          let contentIdeaId: string | null = null;
+          let resolvedCampaignId = campaignId;
+          try {
+            const attribution = await storage.getCampaignIdForArticle(articleId);
+            contentIdeaId = attribution.contentIdeaId;
+            if (!resolvedCampaignId) resolvedCampaignId = attribution.campaignId;
+          } catch { /* attribution best-effort */ }
+          await storage.createStudioEngagementEvent({
+            articleId,
+            campaignId: resolvedCampaignId,
+            contentIdeaId,
+            eventName: "cta_click",
+            ctaLabel,
+            sourceChannel: "insights",
+            referrer: typeof req.headers.referer === "string" ? req.headers.referer.slice(0, 512) : null,
+            sessionHash: crypto
+              .createHash("sha256")
+              .update(`${req.ip || ""}|${String(req.headers["user-agent"] ?? "").slice(0, 512)}`)
+              .digest("hex"),
+          });
+        }
+      } catch (err) {
+        console.error("Failed to record CTA click event:", err);
+      }
+
+      return res.redirect(302, redirect);
+    } catch (error) {
+      console.error("Track click error:", error);
+      return res.status(500).json({ error: "Failed to track click" });
     }
   });
 
@@ -21007,6 +21182,72 @@ export async function registerRoutes(
     }
   });
 
+  // ── Notification Centre history (Studio T3, Task #908) ──────────────────
+  // Paginated full history for /admin/notifications. Unlike the bell feed,
+  // this is NOT flag-gated to empty — the Centre always shows history.
+  app.get("/api/notifications/history", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 20;
+      const result = await storage.getNotificationsByUserPaged(req.session.userId!, {
+        page: Number.isFinite(page) ? page : 1,
+        pageSize: Number.isFinite(pageSize) ? pageSize : 20,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Get notification history error:", error);
+      res.status(500).json({ error: "Failed to fetch notification history" });
+    }
+  });
+
+  // ── Notification preferences (Studio T3, Task #908) ─────────────────────
+  // Full list of preference keys with the user's saved rows merged in.
+  // Default-on: types with no row report both channels enabled.
+  app.get("/api/notifications/preferences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const rows = await storage.getNotificationPreferences(req.session.userId!);
+      const byType = new Map(rows.map((r) => [r.notificationType, r]));
+      res.json(NOTIFICATION_TYPES.map((def) => ({
+        notificationType: def.key,
+        label: def.label,
+        description: def.description,
+        category: def.category,
+        inAppEnabled: byType.get(def.key)?.inAppEnabled ?? true,
+        emailEnabled: byType.get(def.key)?.emailEnabled ?? true,
+      })));
+    } catch (error) {
+      console.error("Get notification preferences error:", error);
+      res.status(500).json({ error: "Failed to fetch notification preferences" });
+    }
+  });
+
+  const patchPreferenceSchema = z.object({
+    notificationType: z.string().min(1),
+    inAppEnabled: z.boolean().optional(),
+    emailEnabled: z.boolean().optional(),
+  });
+
+  app.patch("/api/notifications/preferences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const parsed = patchPreferenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid preference payload", details: parsed.error.issues });
+      }
+      if (!VALID_PREFERENCE_KEYS.has(parsed.data.notificationType)) {
+        return res.status(400).json({ error: `Unknown notification type '${parsed.data.notificationType}'` });
+      }
+      const row = await storage.upsertNotificationPreference(
+        req.session.userId!,
+        parsed.data.notificationType,
+        { inAppEnabled: parsed.data.inAppEnabled, emailEnabled: parsed.data.emailEnabled },
+      );
+      res.json(row);
+    } catch (error) {
+      console.error("Update notification preference error:", error);
+      res.status(500).json({ error: "Failed to update notification preference" });
+    }
+  });
+
   app.post("/api/notifications/mark-all-read", requireAuth, async (req: Request, res: Response) => {
     try {
       const flagSetting = await storage.getSystemSetting("feature_flags");
@@ -22891,6 +23132,204 @@ export async function registerRoutes(
       } catch (error) {
         console.error("Get campaign error:", error);
         res.status(500).json({ error: "Failed to fetch campaign" });
+      }
+    },
+  );
+
+  // ── Campaign Analytics (Studio T3, Task #908) ────────────────────────────
+  // Joins engagement events (cta_click) + reactions for a campaign's linked
+  // published articles. Matrix quadrants are derived from median splits.
+  app.get(
+    "/api/studio/campaigns/:id/analytics",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+        const ideas = await storage.getStudioContentIdeas({ campaignId: campaign.id });
+        const ideasByStatus: Record<string, number> = {};
+        for (const idea of ideas) {
+          ideasByStatus[idea.status] = (ideasByStatus[idea.status] ?? 0) + 1;
+        }
+
+        const links = await storage.getCampaignArticleLinks(campaign.id);
+        const articleIds = links.map((l) => l.articleId);
+        const published = await storage.getPublishedArticlesNarrow(articleIds);
+        const publishedIds = published.map((p) => p.id);
+        const [ctaCounts, reactionCounts] = await Promise.all([
+          storage.getEngagementCtaCounts(publishedIds),
+          storage.getReactionCountsForArticles(publishedIds),
+        ]);
+
+        const publishedArticles = published
+          .map((p) => {
+            const reactions = reactionCounts.get(p.id) ?? {};
+            const totalReactions = Object.values(reactions).reduce((s, n) => s + n, 0);
+            return {
+              id: p.id,
+              title: p.title,
+              slug: p.slug,
+              publishedAt: p.publishedAt,
+              ctaClicks: ctaCounts.get(p.id) ?? 0,
+              reactionCounts: reactions,
+              totalReactions,
+            };
+          })
+          .sort((a, b) => (b.totalReactions * 0.4 + b.ctaClicks * 0.6) - (a.totalReactions * 0.4 + a.ctaClicks * 0.6));
+
+        // Median split for the 2×2 matrix. With < 2 articles everything lands
+        // in a single quadrant, which the frontend renders gracefully.
+        const median = (values: number[]): number => {
+          if (!values.length) return 0;
+          const sorted = [...values].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        const medReactions = median(publishedArticles.map((p) => p.totalReactions));
+        const medClicks = median(publishedArticles.map((p) => p.ctaClicks));
+        const quadrantFor = (reactions: number, clicks: number): string => {
+          const highR = reactions >= medReactions && reactions > 0;
+          const highC = clicks >= medClicks && clicks > 0;
+          if (highR && highC) return "resonates_converts";
+          if (highR && !highC) return "resonates_fix_cta";
+          if (!highR && highC) return "converts_low_resonance";
+          return "revisit";
+        };
+        const engagementMatrix = {
+          medianReactions: medReactions,
+          medianClicks: medClicks,
+          points: publishedArticles.map((p) => ({
+            articleId: p.id,
+            title: p.title,
+            reactions: p.totalReactions,
+            clicks: p.ctaClicks,
+            quadrant: quadrantFor(p.totalReactions, p.ctaClicks),
+          })),
+        };
+
+        res.json({
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          ideasByStatus,
+          totalIdeas: ideas.length,
+          publishedArticles,
+          engagementMatrix,
+        });
+      } catch (error) {
+        console.error("Campaign analytics error:", error);
+        res.status(500).json({ error: "Failed to fetch campaign analytics" });
+      }
+    },
+  );
+
+  // ── Content Pulse (Studio T3, Task #908) ─────────────────────────────────
+  // Top published articles this month by combined score:
+  // reactions × 0.4 + CTA clicks × 0.6 (engagement counted within the period).
+  app.get(
+    "/api/studio/analytics/pulse",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "3"), 10) || 3, 1), 10);
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId : undefined;
+        const now = new Date();
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const published = await storage.getPublishedArticleIdsForProject(projectId);
+        const ids = published.map((p) => p.id);
+        const [ctaCounts, reactionCounts] = await Promise.all([
+          storage.getEngagementCtaCounts(ids, { dateFrom: periodStart }),
+          storage.getReactionCountsForArticles(ids, { dateFrom: periodStart }),
+        ]);
+
+        const scored = published.map((p) => {
+          const reactions = reactionCounts.get(p.id) ?? {};
+          const totalReactions = Object.values(reactions).reduce((s, n) => s + n, 0);
+          const ctaClicks = ctaCounts.get(p.id) ?? 0;
+          return {
+            id: p.id,
+            title: p.title,
+            slug: p.slug,
+            publishedAt: p.publishedAt,
+            reactionCounts: reactions,
+            totalReactions,
+            ctaClicks,
+            score: totalReactions * 0.4 + ctaClicks * 0.6,
+          };
+        })
+          .filter((p) => p.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
+
+        // Campaign chip per top article (small N, best-effort).
+        const withCampaign = await Promise.all(scored.map(async (p) => {
+          try {
+            const attribution = await storage.getCampaignIdForArticle(p.id);
+            if (attribution.campaignId) {
+              const campaign = await storage.getStudioCampaign(attribution.campaignId);
+              return { ...p, campaign: campaign ? { id: campaign.id, name: campaign.name } : null };
+            }
+          } catch { /* chip is optional */ }
+          return { ...p, campaign: null };
+        }));
+
+        res.json({ periodStart: periodStart.toISOString(), items: withCampaign });
+      } catch (error) {
+        console.error("Content pulse error:", error);
+        res.status(500).json({ error: "Failed to fetch content pulse" });
+      }
+    },
+  );
+
+  // ── Campaign Attribution (Studio T3, Task #908) ──────────────────────────
+  // Per-campaign roll-up for the existing Analytics page (extend, not rebuild).
+  app.get(
+    "/api/studio/analytics/attribution",
+    requireAuth,
+    requirePermission("studio.view_analytics", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId : undefined;
+        const campaigns = await storage.getStudioCampaigns(projectId);
+        const rows = await Promise.all(campaigns.map(async (campaign) => {
+          const links = await storage.getCampaignArticleLinks(campaign.id);
+          const published = await storage.getPublishedArticlesNarrow(links.map((l) => l.articleId));
+          const ids = published.map((p) => p.id);
+          const [ctaCounts, reactionCounts] = await Promise.all([
+            storage.getEngagementCtaCounts(ids),
+            storage.getReactionCountsForArticles(ids),
+          ]);
+          let totalClicks = 0;
+          const reactionTotals: Record<string, number> = {};
+          for (const id of ids) {
+            totalClicks += ctaCounts.get(id) ?? 0;
+            const reactions = reactionCounts.get(id) ?? {};
+            for (const [type, n] of Object.entries(reactions)) {
+              reactionTotals[type] = (reactionTotals[type] ?? 0) + n;
+            }
+          }
+          const totalReactions = Object.values(reactionTotals).reduce((s, n) => s + n, 0);
+          const topReaction = Object.entries(reactionTotals)
+            .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+          return {
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            status: campaign.status,
+            articleCount: published.length,
+            totalReactions,
+            ctaClicks: totalClicks,
+            topReaction,
+          };
+        }));
+        res.json(rows.filter((r) => r.articleCount > 0 || r.totalReactions > 0 || r.ctaClicks > 0));
+      } catch (error) {
+        console.error("Campaign attribution error:", error);
+        res.status(500).json({ error: "Failed to fetch campaign attribution" });
       }
     },
   );

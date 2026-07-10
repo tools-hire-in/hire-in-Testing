@@ -28,7 +28,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2, UserPlus, Users } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2, UserPlus, Users, Trophy, MousePointerClick, Heart, Recycle } from "lucide-react";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -387,6 +388,215 @@ function PlanPreviewDialog({
   );
 }
 
+interface CampaignAnalyticsData {
+  campaignId: string;
+  campaignName: string;
+  ideasByStatus: Record<string, number>;
+  totalIdeas: number;
+  publishedArticles: {
+    id: string;
+    title: string;
+    slug: string;
+    publishedAt: string | null;
+    ctaClicks: number;
+    reactionCounts: Record<string, number>;
+    totalReactions: number;
+  }[];
+  engagementMatrix: {
+    medianReactions: number;
+    medianClicks: number;
+    points: { articleId: string; title: string; reactions: number; clicks: number; quadrant: string }[];
+  };
+}
+
+const QUADRANT_META: Record<string, { label: string; hint: string; tone: string }> = {
+  resonates_converts: {
+    label: "Resonates & converts",
+    hint: "Double down on these themes",
+    tone: "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30",
+  },
+  resonates_fix_cta: {
+    label: "Resonates, weak CTA",
+    hint: "Loved but not clicked — fix the CTA",
+    tone: "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30",
+  },
+  converts_low_resonance: {
+    label: "Converts, low resonance",
+    hint: "Clicks without love — sharpen the hook",
+    tone: "border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30",
+  },
+  revisit: {
+    label: "Revisit",
+    hint: "Low on both — rethink or retire",
+    tone: "border-border bg-muted/40",
+  },
+};
+
+const IDEA_STATUS_COLORS: Record<string, string> = {
+  idea: "bg-slate-400",
+  suggested: "bg-slate-300",
+  in_review: "bg-amber-400",
+  changes_requested: "bg-orange-400",
+  approved: "bg-blue-400",
+  in_production: "bg-violet-400",
+  scheduled: "bg-cyan-400",
+  done: "bg-emerald-500",
+  discarded: "bg-rose-300",
+};
+
+function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
+  const { data, isLoading } = useQuery<CampaignAnalyticsData>({
+    queryKey: ["/api/studio/campaigns", campaignId, "analytics"],
+  });
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+  if (!data) return <p className="text-sm text-muted-foreground">No analytics available.</p>;
+
+  const statusEntries = Object.entries(data.ideasByStatus).filter(([, n]) => n > 0);
+  const maxScore = Math.max(
+    1,
+    ...data.publishedArticles.map((a) => a.totalReactions * 0.4 + a.ctaClicks * 0.6),
+  );
+  const top = data.publishedArticles[0];
+  const topScore = top ? top.totalReactions * 0.4 + top.ctaClicks * 0.6 : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Idea status distribution */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Plan progress ({data.totalIdeas} idea{data.totalIdeas === 1 ? "" : "s"})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!statusEntries.length ? (
+            <p className="text-sm text-muted-foreground">No ideas in this campaign yet.</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex h-3 w-full overflow-hidden rounded-full" data-testid="bar-idea-status">
+                {statusEntries.map(([status, n]) => (
+                  <div
+                    key={status}
+                    className={IDEA_STATUS_COLORS[status] ?? "bg-slate-400"}
+                    style={{ width: `${(n / data.totalIdeas) * 100}%` }}
+                    title={`${status.replace(/_/g, " ")}: ${n}`}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {statusEntries.map(([status, n]) => (
+                  <span key={status} className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`legend-status-${status}`}>
+                    <span className={`h-2 w-2 rounded-full ${IDEA_STATUS_COLORS[status] ?? "bg-slate-400"}`} />
+                    {status.replace(/_/g, " ")} · {n}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Top performer */}
+      {top && topScore > 0 && (
+        <Card className="border-amber-300 dark:border-amber-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Trophy className="h-4 w-4 text-amber-500" /> Top performer
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium" data-testid="text-top-performer">{top.title}</p>
+              <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {top.totalReactions} reactions</span>
+                <span className="flex items-center gap-1"><MousePointerClick className="h-3 w-3" /> {top.ctaClicks} CTA clicks</span>
+              </p>
+            </div>
+            <Link href={studioPath(`/articles/${top.id}/edit`)}>
+              <Button size="sm" variant="outline" data-testid="button-repurpose-top">
+                <Recycle className="mr-1 h-4 w-4" /> Repurpose →
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Published article engagement */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Published content engagement</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!data.publishedArticles.length ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing from this campaign is published yet — engagement appears here once articles go live.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {data.publishedArticles.map((a) => {
+                const score = a.totalReactions * 0.4 + a.ctaClicks * 0.6;
+                return (
+                  <div key={a.id} data-testid={`row-engagement-${a.id}`}>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate font-medium">{a.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {a.totalReactions} ❤ · {a.ctaClicks} clicks
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 w-full rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-primary"
+                        style={{ width: `${Math.max(2, (score / maxScore) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 2×2 engagement matrix */}
+      {data.publishedArticles.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Engagement matrix</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Reactions (do people love it?) vs CTA clicks (does it convert?), split at the campaign median.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {(["resonates_converts", "resonates_fix_cta", "converts_low_resonance", "revisit"] as const).map((q) => {
+                const meta = QUADRANT_META[q];
+                const points = data.engagementMatrix.points.filter((p) => p.quadrant === q);
+                return (
+                  <div key={q} className={`rounded-md border p-3 ${meta.tone}`} data-testid={`quadrant-${q}`}>
+                    <p className="text-xs font-semibold">{meta.label}</p>
+                    <p className="text-[11px] text-muted-foreground">{meta.hint}</p>
+                    <div className="mt-2 space-y-1">
+                      {!points.length ? (
+                        <p className="text-xs text-muted-foreground/70">—</p>
+                      ) : (
+                        points.map((p) => (
+                          <p key={p.articleId} className="truncate text-xs" title={p.title}>
+                            {p.title}
+                            <span className="ml-1 text-muted-foreground">({p.reactions}❤ / {p.clicks}⤴)</span>
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function CampaignDetail({ id }: { id: string }) {
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -490,6 +700,13 @@ function CampaignDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview" data-testid="tab-campaign-overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics" data-testid="tab-campaign-analytics">Analytics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="mt-4 space-y-4">
 
       {campaign.brief && (
         <Card>
@@ -607,6 +824,11 @@ function CampaignDetail({ id }: { id: string }) {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+        <TabsContent value="analytics" className="mt-4">
+          <CampaignAnalyticsTab campaignId={campaign.id} />
+        </TabsContent>
+      </Tabs>
 
       {editOpen && (
         <CampaignFormDialog

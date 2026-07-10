@@ -161,6 +161,17 @@ export function NotificationBell() {
             </DropdownMenuItem>
           ))
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="justify-center text-sm font-medium text-primary cursor-pointer"
+          onClick={() => {
+            setOpen(false);
+            setLocation("/admin/notifications");
+          }}
+          data-testid="link-view-all-notifications"
+        >
+          View all notifications
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

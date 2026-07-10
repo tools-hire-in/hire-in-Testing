@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { UserCircle, Mail, Shield, Calendar, KeyRound, Loader2, ShieldCheck, ShieldOff, Clock, History } from "lucide-react";
+import { UserCircle, Mail, Shield, Calendar, KeyRound, Loader2, ShieldCheck, ShieldOff, Clock, History, Bell } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { NOTIFICATION_CATEGORIES } from "@shared/notificationTypes";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -519,13 +521,129 @@ function TwoFactorSection() {
   );
 }
 
+interface NotificationPreferenceRow {
+  notificationType: string;
+  label: string;
+  description: string;
+  category: string;
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+}
+
+function NotificationPreferencesSection() {
+  const { toast } = useToast();
+
+  const { data: prefs, isLoading } = useQuery<NotificationPreferenceRow[]>({
+    queryKey: ["/api/notifications/preferences"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (payload: { notificationType: string; inAppEnabled?: boolean; emailEnabled?: boolean }) => {
+      const res = await apiRequest("PATCH", "/api/notifications/preferences", payload);
+      return res.json();
+    },
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/notifications/preferences"] });
+      const previous = queryClient.getQueryData<NotificationPreferenceRow[]>(["/api/notifications/preferences"]);
+      if (previous) {
+        queryClient.setQueryData(
+          ["/api/notifications/preferences"],
+          previous.map((p) =>
+            p.notificationType === payload.notificationType ? { ...p, ...payload } : p,
+          ),
+        );
+      }
+      return { previous };
+    },
+    onError: (_err, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/notifications/preferences"], context.previous);
+      }
+      toast({ title: "Could not save preference", description: "Please try again.", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/preferences"] });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+      </div>
+    );
+  }
+
+  const grouped = NOTIFICATION_CATEGORIES
+    .map((cat) => ({
+      ...cat,
+      rows: (prefs ?? []).filter((p) => p.category === cat.value),
+    }))
+    .filter((g) => g.rows.length > 0);
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Bell className="h-4 w-4" />
+        Choose how you'd like to be notified. All notifications are on by default.
+      </div>
+      {grouped.map((group) => (
+        <Card key={group.value} data-testid={`card-pref-group-${group.value}`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{group.label}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="hidden sm:grid grid-cols-[1fr_70px_70px] gap-2 text-xs font-medium text-muted-foreground">
+              <span />
+              <span className="text-center">In-app</span>
+              <span className="text-center">Email</span>
+            </div>
+            {group.rows.map((row) => (
+              <div
+                key={row.notificationType}
+                className="grid grid-cols-1 sm:grid-cols-[1fr_70px_70px] gap-2 items-center"
+                data-testid={`row-pref-${row.notificationType}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{row.label}</p>
+                  <p className="text-xs text-muted-foreground">{row.description}</p>
+                </div>
+                <div className="flex sm:justify-center items-center gap-2">
+                  <span className="sm:hidden text-xs text-muted-foreground w-12">In-app</span>
+                  <Switch
+                    checked={row.inAppEnabled}
+                    onCheckedChange={(checked) =>
+                      updateMutation.mutate({ notificationType: row.notificationType, inAppEnabled: checked })
+                    }
+                    data-testid={`switch-inapp-${row.notificationType}`}
+                  />
+                </div>
+                <div className="flex sm:justify-center items-center gap-2">
+                  <span className="sm:hidden text-xs text-muted-foreground w-12">Email</span>
+                  <Switch
+                    checked={row.emailEnabled}
+                    onCheckedChange={(checked) =>
+                      updateMutation.mutate({ notificationType: row.notificationType, emailEnabled: checked })
+                    }
+                    data-testid={`switch-email-${row.notificationType}`}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function Profile() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
   const requestedTab = params.get("tab");
-  const validTabs = ["profile", "emergency-contacts"];
+  const validTabs = ["profile", "emergency-contacts", "notifications"];
   const initialTab = requestedTab && validTabs.includes(requestedTab) ? requestedTab : "profile";
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -609,6 +727,7 @@ export default function Profile() {
           <TabsList>
             <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
             <TabsTrigger value="emergency-contacts" data-testid="tab-emergency-contacts">Emergency Contacts</TabsTrigger>
+            <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -732,6 +851,9 @@ export default function Profile() {
           </TabsContent>
           <TabsContent value="emergency-contacts">
             <EmergencyContactsSection />
+          </TabsContent>
+          <TabsContent value="notifications">
+            <NotificationPreferencesSection />
           </TabsContent>
         </Tabs>
       </div>

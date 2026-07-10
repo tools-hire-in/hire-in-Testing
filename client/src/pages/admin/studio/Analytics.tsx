@@ -30,6 +30,7 @@ import {
   Star,
   Users,
   Newspaper,
+  Megaphone,
 } from "lucide-react";
 import type { StudioProject } from "@shared/schema";
 import { INSIGHT_REACTIONS, insightCategoryLabel } from "@shared/insights";
@@ -62,6 +63,16 @@ interface StudioAnalytics {
   }[];
   categoryBreakdown: { category: string; published: number; avgViewsPerCategory: number }[];
   subscribers: { confirmed: number; newThisMonth: number };
+}
+
+interface CampaignAttributionRow {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  articleCount: number;
+  totalReactions: number;
+  ctaClicks: number;
+  topReaction: string | null;
 }
 
 const RANGE_OPTIONS: { value: string; label: string }[] = [
@@ -144,7 +155,25 @@ export default function StudioAnalytics() {
     enabled: !!selectedProjectId,
   });
 
+  const { data: attribution } = useQuery<CampaignAttributionRow[]>({
+    queryKey: ["/api/studio/analytics/attribution", { projectId: selectedProjectId }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedProjectId) params.append("projectId", selectedProjectId);
+      const res = await fetch(`/api/studio/analytics/attribution?${params.toString()}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch campaign attribution");
+      return res.json();
+    },
+    enabled: !!selectedProjectId,
+  });
+
   const fmtPct = (v: number | null) => (v == null ? "—" : `${v}%`);
+  const reactionEmoji = (type: string | null) => {
+    const found = INSIGHT_REACTIONS.find((r) => r.value === type);
+    return found ? `${found.emoji} ${found.label}` : "—";
+  };
 
   return (
     <AdminLayout>
@@ -466,6 +495,50 @@ export default function StudioAnalytics() {
                           >
                             {c.avgViewsPerCategory}
                           </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Campaign attribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Megaphone className="h-4 w-4 text-muted-foreground" />
+                  Campaign attribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!attribution?.length ? (
+                  <p className="py-4 text-center text-sm text-muted-foreground" data-testid="text-no-attribution">
+                    No campaign has published content with engagement yet.
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Campaign</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Published</TableHead>
+                        <TableHead className="text-right">Reactions</TableHead>
+                        <TableHead className="text-right">CTA clicks</TableHead>
+                        <TableHead>Top reaction</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {attribution.map((c) => (
+                        <TableRow key={c.campaignId} data-testid={`row-attribution-${c.campaignId}`}>
+                          <TableCell className="max-w-[220px] truncate font-medium">{c.campaignName}</TableCell>
+                          <TableCell className="capitalize text-muted-foreground">{c.status}</TableCell>
+                          <TableCell className="text-right tabular-nums">{c.articleCount}</TableCell>
+                          <TableCell className="text-right tabular-nums">{c.totalReactions}</TableCell>
+                          <TableCell className="text-right tabular-nums" data-testid={`text-attr-clicks-${c.campaignId}`}>
+                            {c.ctaClicks}
+                          </TableCell>
+                          <TableCell data-testid={`text-attr-top-${c.campaignId}`}>{reactionEmoji(c.topReaction)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

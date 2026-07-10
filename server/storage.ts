@@ -113,6 +113,11 @@ import {
   notifications,
   type Notification,
   type InsertNotification,
+  notificationPreferences,
+  type NotificationPreference,
+  studioEngagementEvents,
+  type StudioEngagementEvent,
+  type InsertStudioEngagementEvent,
   attendanceRegularizations,
   type AttendanceRegularization,
   type InsertAttendanceRegularization,
@@ -451,8 +456,23 @@ export interface IStorage {
 
   createNotification(data: InsertNotification): Promise<Notification>;
   getNotificationsByUser(userId: string): Promise<Notification[]>;
+  getNotificationsByUserPaged(userId: string, opts: { page: number; pageSize: number }): Promise<{ items: Notification[]; total: number; unread: number }>;
   markNotificationRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsRead(userId: string): Promise<void>;
+
+  // Notification preferences (Studio T3, Task #908). No row = both channels on.
+  getNotificationPreferences(userId: string): Promise<NotificationPreference[]>;
+  getNotificationPreference(userId: string, notificationType: string): Promise<NotificationPreference | undefined>;
+  upsertNotificationPreference(userId: string, notificationType: string, updates: { inAppEnabled?: boolean; emailEnabled?: boolean }): Promise<NotificationPreference>;
+
+  // Studio engagement events (Task #908)
+  createStudioEngagementEvent(data: InsertStudioEngagementEvent): Promise<StudioEngagementEvent>;
+  getEngagementCtaCounts(articleIds: string[], range?: { dateFrom?: Date; dateTo?: Date }): Promise<Map<string, number>>;
+  getReactionCountsForArticles(articleIds: string[], range?: { dateFrom?: Date; dateTo?: Date }): Promise<Map<string, Record<string, number>>>;
+  getCampaignArticleLinks(campaignId: string): Promise<{ ideaId: string; articleId: string }[]>;
+  getCampaignIdForArticle(articleId: string): Promise<{ campaignId: string | null; contentIdeaId: string | null }>;
+  getPublishedArticlesNarrow(articleIds: string[]): Promise<{ id: string; title: string; slug: string | null; publishedAt: Date | null; projectId: string }[]>;
+  getPublishedArticleIdsForProject(projectId?: string): Promise<{ id: string; title: string; slug: string | null; publishedAt: Date | null }[]>;
 
   // Offer Letters
   createOfferLetter(data: InsertOfferLetter): Promise<OfferLetter>;
@@ -3259,6 +3279,178 @@ export class DatabaseStorage implements IStorage {
     await db.update(notifications)
       .set({ isRead: true })
       .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+  }
+
+  async getNotificationsByUserPaged(
+    userId: string,
+    opts: { page: number; pageSize: number },
+  ): Promise<{ items: Notification[]; total: number; unread: number }> {
+    const page = Math.max(1, opts.page);
+    const pageSize = Math.min(Math.max(1, opts.pageSize), 100);
+    const [items, [totals]] = await Promise.all([
+      db.select().from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+      db.select({
+        total: sql<number>`count(*)::int`,
+        unread: sql<number>`count(*) FILTER (WHERE ${notifications.isRead} = false)::int`,
+      }).from(notifications).where(eq(notifications.userId, userId)),
+    ]);
+    return { items, total: totals?.total ?? 0, unread: totals?.unread ?? 0 };
+  }
+
+  async getNotificationPreferences(userId: string): Promise<NotificationPreference[]> {
+    return db.select().from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, userId));
+  }
+
+  async getNotificationPreference(
+    userId: string,
+    notificationType: string,
+  ): Promise<NotificationPreference | undefined> {
+    const [row] = await db.select().from(notificationPreferences)
+      .where(and(
+        eq(notificationPreferences.userId, userId),
+        eq(notificationPreferences.notificationType, notificationType),
+      ));
+    return row;
+  }
+
+  async upsertNotificationPreference(
+    userId: string,
+    notificationType: string,
+    updates: { inAppEnabled?: boolean; emailEnabled?: boolean },
+  ): Promise<NotificationPreference> {
+    const [row] = await db.insert(notificationPreferences)
+      .values({
+        userId,
+        notificationType,
+        inAppEnabled: updates.inAppEnabled ?? true,
+        emailEnabled: updates.emailEnabled ?? true,
+      })
+      .onConflictDoUpdate({
+        target: [notificationPreferences.userId, notificationPreferences.notificationType],
+        set: {
+          ...(updates.inAppEnabled !== undefined ? { inAppEnabled: updates.inAppEnabled } : {}),
+          ...(updates.emailEnabled !== undefined ? { emailEnabled: updates.emailEnabled } : {}),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async createStudioEngagementEvent(data: InsertStudioEngagementEvent): Promise<StudioEngagementEvent> {
+    const [row] = await db.insert(studioEngagementEvents).values(data).returning();
+    return row;
+  }
+
+  async getEngagementCtaCounts(
+    articleIds: string[],
+    range?: { dateFrom?: Date; dateTo?: Date },
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (!articleIds.length) return map;
+    const conditions: SQL[] = [
+      inArray(studioEngagementEvents.articleId, articleIds),
+      eq(studioEngagementEvents.eventName, "cta_click"),
+    ];
+    if (range?.dateFrom) conditions.push(gte(studioEngagementEvents.createdAt, range.dateFrom));
+    if (range?.dateTo) conditions.push(lte(studioEngagementEvents.createdAt, range.dateTo));
+    const rows = await db.select({
+      articleId: studioEngagementEvents.articleId,
+      count: sql<number>`count(*)::int`,
+    }).from(studioEngagementEvents)
+      .where(and(...conditions))
+      .groupBy(studioEngagementEvents.articleId);
+    for (const r of rows) map.set(r.articleId, r.count);
+    return map;
+  }
+
+  async getReactionCountsForArticles(
+    articleIds: string[],
+    range?: { dateFrom?: Date; dateTo?: Date },
+  ): Promise<Map<string, Record<string, number>>> {
+    const map = new Map<string, Record<string, number>>();
+    if (!articleIds.length) return map;
+    const conditions: SQL[] = [inArray(studioArticleReactions.articleId, articleIds)];
+    if (range?.dateFrom) conditions.push(gte(studioArticleReactions.createdAt, range.dateFrom));
+    if (range?.dateTo) conditions.push(lte(studioArticleReactions.createdAt, range.dateTo));
+    const rows = await db.select({
+      articleId: studioArticleReactions.articleId,
+      reactionType: studioArticleReactions.reactionType,
+      count: sql<number>`count(*)::int`,
+    }).from(studioArticleReactions)
+      .where(and(...conditions))
+      .groupBy(studioArticleReactions.articleId, studioArticleReactions.reactionType);
+    for (const r of rows) {
+      const entry = map.get(r.articleId) ?? {};
+      entry[r.reactionType] = r.count;
+      map.set(r.articleId, entry);
+    }
+    return map;
+  }
+
+  async getCampaignArticleLinks(campaignId: string): Promise<{ ideaId: string; articleId: string }[]> {
+    const rows = await db.select({
+      ideaId: studioContentIdeas.id,
+      articleId: studioContentIdeas.linkedArticleId,
+    }).from(studioContentIdeas)
+      .where(and(
+        eq(studioContentIdeas.campaignId, campaignId),
+        isNotNull(studioContentIdeas.linkedArticleId),
+        isNull(studioContentIdeas.archivedAt),
+      ));
+    return rows.filter((r) => !!r.articleId) as { ideaId: string; articleId: string }[];
+  }
+
+  async getCampaignIdForArticle(
+    articleId: string,
+  ): Promise<{ campaignId: string | null; contentIdeaId: string | null }> {
+    const [row] = await db.select({
+      ideaId: studioContentIdeas.id,
+      campaignId: studioContentIdeas.campaignId,
+    }).from(studioContentIdeas)
+      .where(and(
+        eq(studioContentIdeas.linkedArticleId, articleId),
+        isNull(studioContentIdeas.archivedAt),
+      ))
+      .limit(1);
+    return { campaignId: row?.campaignId ?? null, contentIdeaId: row?.ideaId ?? null };
+  }
+
+  async getPublishedArticlesNarrow(
+    articleIds: string[],
+  ): Promise<{ id: string; title: string; slug: string | null; publishedAt: Date | null; projectId: string }[]> {
+    if (!articleIds.length) return [];
+    return db.select({
+      id: studioArticles.id,
+      title: studioArticles.title,
+      slug: studioArticles.slug,
+      publishedAt: studioArticles.publishedAt,
+      projectId: studioArticles.projectId,
+    }).from(studioArticles)
+      .where(and(
+        inArray(studioArticles.id, articleIds),
+        eq(studioArticles.status, "published"),
+      ));
+  }
+
+  async getPublishedArticleIdsForProject(
+    projectId?: string,
+  ): Promise<{ id: string; title: string; slug: string | null; publishedAt: Date | null }[]> {
+    const conditions: SQL[] = [eq(studioArticles.status, "published")];
+    if (projectId) conditions.push(eq(studioArticles.projectId, projectId));
+    return db.select({
+      id: studioArticles.id,
+      title: studioArticles.title,
+      slug: studioArticles.slug,
+      publishedAt: studioArticles.publishedAt,
+    }).from(studioArticles)
+      .where(and(...conditions))
+      .orderBy(desc(studioArticles.publishedAt));
   }
 
   async createHrLetter(data: InsertHrLetter): Promise<HrLetter> {

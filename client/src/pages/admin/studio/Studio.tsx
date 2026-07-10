@@ -38,6 +38,9 @@ import {
   Type,
   LayoutTemplate,
   Plus,
+  Flame,
+  Heart,
+  MousePointerClick,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings } from "@shared/schema";
@@ -52,6 +55,67 @@ import { LaunchControlPanel } from "./LaunchControlPanel";
 import { usePermissions } from "@/hooks/use-permissions";
 
 const STORAGE_KEY = "studio.selectedProjectId";
+
+interface PulseItem {
+  id: string;
+  title: string;
+  slug: string;
+  publishedAt: string | null;
+  totalReactions: number;
+  ctaClicks: number;
+  score: number;
+  campaign: { id: string; name: string } | null;
+}
+
+function ContentPulseCard({ projectId }: { projectId: string }) {
+  const { data, isLoading } = useQuery<{ periodStart: string; items: PulseItem[] }>({
+    queryKey: ["/api/studio/analytics/pulse", { projectId, limit: "3" }],
+    enabled: !!projectId,
+  });
+
+  return (
+    <Card data-testid="card-content-pulse">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Flame className="h-4 w-4 text-orange-500" />
+          Content pulse
+          <span className="text-xs font-normal text-muted-foreground">this month's top performers</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !data?.items.length ? (
+          <p className="py-4 text-center text-sm text-muted-foreground" data-testid="text-pulse-empty">
+            No engagement yet this month — pulse lights up once readers react or click.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {data.items.map((item, i) => (
+              <div key={item.id} className="flex items-center gap-3" data-testid={`row-pulse-${item.id}`}>
+                <span className="w-5 shrink-0 text-center text-sm font-bold text-muted-foreground">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.title}</p>
+                  <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {item.totalReactions}</span>
+                    <span className="flex items-center gap-1"><MousePointerClick className="h-3 w-3" /> {item.ctaClicks}</span>
+                    {item.campaign && (
+                      <Badge variant="outline" className="h-4 px-1.5 text-[10px]" data-testid={`badge-pulse-campaign-${item.id}`}>
+                        {item.campaign.name}
+                      </Badge>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 interface StudioStats {
   totalArticles: number;
@@ -527,6 +591,8 @@ export default function Studio() {
                     )}
                   </CardContent>
                 </Card>
+
+                <ContentPulseCard projectId={selectedProjectId} />
               </>
             )}
           </TabsContent>

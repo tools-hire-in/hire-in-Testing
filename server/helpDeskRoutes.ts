@@ -47,17 +47,29 @@ async function notifyUser(opts: {
     portalUrl: string;
   };
 }) {
-  // Always create in-app notification
-  storage.createNotification({
-    userId: opts.userId,
-    type: opts.type,
-    title: opts.title,
-    message: opts.message,
-    link: opts.link,
-  } as any).catch(() => {});
+  // Per-user channel preferences via the central gateway (Task #908).
+  // No preference row = both channels on; lookup failures fail open.
+  let inAppEnabled = true;
+  let emailEnabled = true;
+  try {
+    const { getChannelPreferences } = await import("./notifications");
+    const prefs = await getChannelPreferences(opts.userId, opts.type);
+    inAppEnabled = prefs.inAppEnabled;
+    emailEnabled = prefs.emailEnabled;
+  } catch { /* fail open */ }
+
+  if (inAppEnabled) {
+    storage.createNotification({
+      userId: opts.userId,
+      type: opts.type,
+      title: opts.title,
+      message: opts.message,
+      link: opts.link,
+    } as any).catch(() => {});
+  }
 
   // Email is optional / best-effort
-  if (opts.email?.to) {
+  if (opts.email?.to && emailEnabled) {
     sendHelpDeskEmail({
       to: opts.email.to,
       firstName: opts.email.firstName,

@@ -810,6 +810,90 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
+  // ─── Studio T3: weekly Monday digest (Task #908) ───────────────────────────
+  // Monday 08:00 IST for content/marketing/admin users: pending approvals,
+  // overdue ideas, this week's deadlines. Per-user opt-out via the central
+  // gateway (preference key "studio_digest", COALESCE default on). NEVER sent
+  // when the user's digest would be empty.
+  cron.schedule("0 8 * * 1", async () => {
+    try {
+      const { getChannelPreferences, notifyUser: gatewayNotify } = await import("./notifications");
+      const { year, month, day } = getIstDateTime();
+      const todayIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const weekEnd = new Date(Date.UTC(year, month - 1, day) + 7 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
+      const OPEN_STATUSES = new Set(["idea", "in_review", "changes_requested", "approved", "in_production", "scheduled"]);
+      const allIdeas = await storage.getStudioContentIdeas({});
+      const openIdeas = allIdeas.filter((i) => OPEN_STATUSES.has(i.status));
+      const pendingReview = openIdeas.filter((i) => i.status === "in_review");
+      const overdue = openIdeas.filter((i) => i.scheduledDate && i.scheduledDate < todayIso);
+      const dueThisWeek = openIdeas.filter(
+        (i) => i.scheduledDate && i.scheduledDate >= todayIso && i.scheduledDate <= weekEnd,
+      );
+      if (!pendingReview.length && !overdue.length && !dueThisWeek.length) return;
+
+      const { resolveRoles } = await import("@shared/accessControl");
+      const reviewerRoles = resolveRoles("studio.review_article", ["super_admin", "admin", "marketing_manager", "reviewer"]);
+      const viewRoles = resolveRoles("studio.view", ["super_admin", "marketing_manager", "content_editor", "reviewer"]);
+      const users = await storage.getAdminUsers();
+      const eligible = users.filter(
+        (u: any) => u.isActive !== false && !u.deletedAt &&
+          (viewRoles.includes(u.role) || !!u.studioAddOn),
+      );
+
+      let sent = 0;
+      for (const user of eligible) {
+        const isReviewer = reviewerRoles.includes((user as any).role);
+        const myOverdue = overdue.filter((i) => i.assignedToUserId === user.id);
+        const myDueThisWeek = dueThisWeek.filter((i) => i.assignedToUserId === user.id);
+        const myPendingReview = isReviewer ? pendingReview : [];
+        if (!myOverdue.length && !myDueThisWeek.length && !myPendingReview.length) continue;
+
+        const prefs = await getChannelPreferences(user.id, "studio_weekly_digest");
+        if (!prefs.inAppEnabled && !prefs.emailEnabled) continue;
+
+        const parts: string[] = [];
+        if (myPendingReview.length) parts.push(`${myPendingReview.length} idea(s) awaiting review`);
+        if (myOverdue.length) parts.push(`${myOverdue.length} of your item(s) overdue`);
+        if (myDueThisWeek.length) parts.push(`${myDueThisWeek.length} of your item(s) due this week`);
+        const summary = parts.join(" · ");
+
+        const lines: string[] = [];
+        if (myPendingReview.length) {
+          lines.push(`<h3>Awaiting review (${myPendingReview.length})</h3><ul>${myPendingReview.slice(0, 5).map((i) => `<li>${i.topic}</li>`).join("")}${myPendingReview.length > 5 ? "<li>…and more</li>" : ""}</ul>`);
+        }
+        if (myOverdue.length) {
+          lines.push(`<h3>Overdue (${myOverdue.length})</h3><ul>${myOverdue.slice(0, 5).map((i) => `<li>${i.topic} — was due ${i.scheduledDate}</li>`).join("")}${myOverdue.length > 5 ? "<li>…and more</li>" : ""}</ul>`);
+        }
+        if (myDueThisWeek.length) {
+          lines.push(`<h3>Due this week (${myDueThisWeek.length})</h3><ul>${myDueThisWeek.slice(0, 5).map((i) => `<li>${i.topic} — due ${i.scheduledDate}</li>`).join("")}${myDueThisWeek.length > 5 ? "<li>…and more</li>" : ""}</ul>`);
+        }
+        const studioLink = `${getPortalBaseUrl()}/studio/calendar`;
+
+        await gatewayNotify({
+          userId: user.id,
+          type: "studio_weekly_digest",
+          title: "Your weekly Studio digest",
+          message: summary,
+          metadata: { link: "/studio/calendar", url: studioLink },
+          email: {
+            subject: `Studio weekly digest — ${summary}`,
+            html: `<p>Good morning! Here's your Content Studio week ahead:</p>${lines.join("")}<p><a href="${studioLink}">Open the content calendar →</a></p>`,
+            configType: "studio_weekly_digest",
+            sourceJob: "studio_weekly_digest_cron",
+          },
+        });
+        sent++;
+      }
+      if (sent) console.log(`[scheduler] Studio T3 weekly digest sent to ${sent} user(s).`);
+    } catch (err) {
+      console.error("[scheduler] Studio T3 weekly digest error:", err);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
   // ─── 25th-of-month: Manager Regularization Digest ───────────────────────────
   // Sends each manager a list of their pending regularization requests so they
   // resolve them before the month-end salary run.

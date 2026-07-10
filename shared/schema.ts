@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, index, real, check } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, unique, index, real, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1572,6 +1572,31 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+// Per-user per-type notification channel preferences (Studio T3, Task #908).
+// No row = both channels enabled (COALESCE-default-on in the gateway).
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  notificationType: varchar("notification_type").notNull(),
+  inAppEnabled: boolean("in_app_enabled").default(true).notNull(),
+  emailEnabled: boolean("email_enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userTypeUnique: unique("notification_preferences_user_type_unique").on(
+    table.userId,
+    table.notificationType,
+  ),
+}));
+
+export const insertNotificationPreferenceSchema = createInsertSchema(notificationPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreference = z.infer<typeof insertNotificationPreferenceSchema>;
 export type Department = typeof departments.$inferSelect;
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
@@ -2913,6 +2938,41 @@ export const studioAuditEvents = pgTable("studio_audit_events", {
     table.createdAt,
   ),
 }));
+
+// Studio T3 (Task #908): first-class engagement events for the redirect-based
+// CTA click tracker + render-time view attribution. Separate from the audit
+// trail so analytics reads never contend with workflow audit writes.
+export const studioEngagementEvents = pgTable("studio_engagement_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id").notNull().references(() => studioArticles.id),
+  campaignId: varchar("campaign_id"),
+  contentIdeaId: varchar("content_idea_id"),
+  eventName: varchar("event_name").notNull(), // article_view | cta_click
+  ctaLabel: varchar("cta_label"),
+  sourceChannel: varchar("source_channel"),
+  referrer: varchar("referrer"),
+  // SHA-256 of IP+UA — anonymous, no PII stored.
+  sessionHash: varchar("session_hash"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  articleEventIdx: index("studio_engagement_events_article_event_idx").on(
+    table.articleId,
+    table.eventName,
+    table.createdAt,
+  ),
+  campaignIdx: index("studio_engagement_events_campaign_idx").on(
+    table.campaignId,
+    table.createdAt,
+  ),
+}));
+
+export const insertStudioEngagementEventSchema = createInsertSchema(studioEngagementEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type StudioEngagementEvent = typeof studioEngagementEvents.$inferSelect;
+export type InsertStudioEngagementEvent = z.infer<typeof insertStudioEngagementEventSchema>;
 
 // Branded social-card template matrix (family × layout × platform). project_id
 // NULL = global default templates shared by every project.

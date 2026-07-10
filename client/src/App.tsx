@@ -56,6 +56,7 @@ const HRAttendance = lazy(() => import("@/pages/admin/hr/Attendance"));
 const HRLeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
 const HRHolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
 const HRProfile = lazy(() => import("@/pages/admin/hr/Profile"));
+const NotificationCentre = lazy(() => import("@/pages/admin/NotificationCentre"));
 const HRLeaveApprovals = lazy(() => import("@/pages/admin/hr/LeaveApprovals"));
 const HRSettings = lazy(() => import("@/pages/admin/hr/HRSettings"));
 const OrgChart = lazy(() => import("@/pages/admin/hr/OrgChart"));
@@ -308,6 +309,9 @@ function PublicRouter() {
       {/* Communications — What's New + Release Notes */}
       <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
 
+      {/* Notification Centre */}
+      <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>
+
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
       <Route path="/admin/sops/my-reviews">{() => <Suspense fallback={<AdminFallback />}><MySopReviews /></Suspense>}</Route>
@@ -481,6 +485,9 @@ function EmployeeRouter() {
 
       {/* Communications — What's New + Release Notes */}
       <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
+
+      {/* Notification Centre */}
+      <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>
 
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
