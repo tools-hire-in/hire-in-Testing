@@ -137,12 +137,15 @@ import {
   studioContentIdeas,
   studioIdeaComments,
   studioImportBatches,
+  studioIdeaWatchers,
   type StudioOccasion,
   type InsertStudioOccasion,
   type StudioContentIdea,
   type InsertStudioContentIdea,
   type StudioIdeaComment,
   type InsertStudioIdeaComment,
+  type StudioIdeaWatcher,
+  type InsertStudioIdeaWatcher,
   type StudioImportBatch,
   type InsertStudioImportBatch,
   studioCampaigns,
@@ -673,6 +676,9 @@ export interface IStorage {
   createStudioIdeaComment(data: InsertStudioIdeaComment): Promise<StudioIdeaComment>;
   getStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined>;
   resolveStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined>;
+  getStudioIdeaWatchers(ideaId: string): Promise<StudioIdeaWatcher[]>;
+  addStudioIdeaWatcher(data: InsertStudioIdeaWatcher): Promise<StudioIdeaWatcher>;
+  removeStudioIdeaWatcher(ideaId: string, userId: string): Promise<void>;
   createStudioImportBatch(data: InsertStudioImportBatch): Promise<StudioImportBatch>;
   getStudioImportBatch(id: string): Promise<StudioImportBatch | undefined>;
   getStudioImportBatches(projectId?: string): Promise<StudioImportBatch[]>;
@@ -4130,6 +4136,36 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async getStudioIdeaWatchers(ideaId: string): Promise<StudioIdeaWatcher[]> {
+    return await db
+      .select()
+      .from(studioIdeaWatchers)
+      .where(eq(studioIdeaWatchers.ideaId, ideaId))
+      .orderBy(asc(studioIdeaWatchers.createdAt));
+  }
+
+  async addStudioIdeaWatcher(data: InsertStudioIdeaWatcher): Promise<StudioIdeaWatcher> {
+    const [created] = await db
+      .insert(studioIdeaWatchers)
+      .values(data)
+      .onConflictDoNothing()
+      .returning();
+    if (!created) {
+      const [existing] = await db
+        .select()
+        .from(studioIdeaWatchers)
+        .where(and(eq(studioIdeaWatchers.ideaId, data.ideaId), eq(studioIdeaWatchers.userId, data.userId)));
+      return existing;
+    }
+    return created;
+  }
+
+  async removeStudioIdeaWatcher(ideaId: string, userId: string): Promise<void> {
+    await db
+      .delete(studioIdeaWatchers)
+      .where(and(eq(studioIdeaWatchers.ideaId, ideaId), eq(studioIdeaWatchers.userId, userId)));
+  }
+
   async createStudioImportBatch(data: InsertStudioImportBatch): Promise<StudioImportBatch> {
     const [created] = await db.insert(studioImportBatches).values(data).returning();
     return created;
@@ -4944,6 +4980,36 @@ export class DatabaseStorage implements IStorage {
       .where(eq(studioContentIdeas.id, id))
       .returning();
     return updated;
+  }
+
+  async getStudioIdeaWatchers(ideaId: string): Promise<StudioIdeaWatcher[]> {
+    return await db
+      .select()
+      .from(studioIdeaWatchers)
+      .where(eq(studioIdeaWatchers.ideaId, ideaId))
+      .orderBy(asc(studioIdeaWatchers.createdAt));
+  }
+
+  async addStudioIdeaWatcher(data: InsertStudioIdeaWatcher): Promise<StudioIdeaWatcher> {
+    const [created] = await db
+      .insert(studioIdeaWatchers)
+      .values(data)
+      .onConflictDoNothing()
+      .returning();
+    if (!created) {
+      const [existing] = await db
+        .select()
+        .from(studioIdeaWatchers)
+        .where(and(eq(studioIdeaWatchers.ideaId, data.ideaId), eq(studioIdeaWatchers.userId, data.userId)));
+      return existing;
+    }
+    return created;
+  }
+
+  async removeStudioIdeaWatcher(ideaId: string, userId: string): Promise<void> {
+    await db
+      .delete(studioIdeaWatchers)
+      .where(and(eq(studioIdeaWatchers.ideaId, ideaId), eq(studioIdeaWatchers.userId, userId)));
   }
 
   async getStudioGenerations(articleId: string): Promise<StudioGeneration[]> {

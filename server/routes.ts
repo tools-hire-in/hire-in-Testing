@@ -17658,6 +17658,34 @@ export async function registerRoutes(
     idea.createdByUserId === access.userId ||
     idea.assignedToUserId === access.userId;
 
+  // Batch comment counts — lightweight read for card chips
+  app.get(
+    "/api/studio/content-ideas/comment-counts",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const raw = typeof req.query.ids === "string" ? req.query.ids : "";
+        const ids = raw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 50);
+        if (!ids.length) return res.json({});
+        const access = await getPipelineRecordAccess(req);
+        const counts: Record<string, number> = {};
+        // Fetch comments for each idea (cached at storage layer). Honour record-level access.
+        await Promise.all(
+          ids.map(async (id) => {
+            const idea = await storage.getStudioContentIdea(id);
+            if (!idea || !canAccessIdeaRecord(access, idea)) return;
+            const comments = await storage.getStudioIdeaComments(id);
+            counts[id] = comments.length;
+          }),
+        );
+        res.json(counts);
+      } catch (error: any) {
+        res.status(500).json({ error: "Failed to fetch comment counts" });
+      }
+    },
+  );
+
   // Unified query powering Calendar, Board, and Table lenses.
   app.get(
     "/api/studio/content-ideas",
@@ -17924,8 +17952,20 @@ export async function registerRoutes(
         if (!canAccessIdeaRecord(access, idea)) {
           return res.status(404).json({ error: "Idea not found" });
         }
-        const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-        if (!message) return res.status(400).json({ error: "message is required" });
+        const rawMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+        if (!rawMessage) return res.status(400).json({ error: "message is required" });
+        // Extract structured mentions from inline tokens @[Name](userId) before persisting.
+        const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+        const mentions: { userId: string; displayName: string }[] = [];
+        let m: RegExpExecArray | null;
+        while ((m = mentionRegex.exec(rawMessage)) !== null) {
+          mentions.push({ displayName: m[1], userId: m[2] });
+        }
+        // Store as structured JSON when mentions are present so downstream can index/report;
+        // fall back to plain text for backwards compat when there are none.
+        const message = mentions.length > 0
+          ? JSON.stringify({ text: rawMessage, mentions })
+          : rawMessage;
         const comment = await storage.createStudioIdeaComment({
           ideaId: idea.id,
           userId: req.session.userId!,
@@ -17934,6 +17974,11 @@ export async function registerRoutes(
         const notifyTargets = new Set<string>();
         if (idea.createdByUserId) notifyTargets.add(idea.createdByUserId);
         if (idea.assignedToUserId) notifyTargets.add(idea.assignedToUserId);
+        // Fan out to watchers
+        try {
+          const watchers = await storage.getStudioIdeaWatchers(idea.id);
+          for (const w of watchers) notifyTargets.add(w.userId);
+        } catch { /* non-fatal */ }
         notifyTargets.delete(req.session.userId!);
         for (const uid of notifyTargets) {
           void notifyStudioUser({
@@ -17976,6 +18021,72 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Resolve idea comment error:", error);
         res.status(400).json({ error: error?.message || "Failed to resolve comment" });
+      }
+    },
+  );
+
+  // Watchers
+  app.get(
+    "/api/studio/content-ideas/:id/watchers",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const watchers = await storage.getStudioIdeaWatchers(req.params.id);
+        res.json(watchers);
+      } catch (error: any) {
+        res.status(500).json({ error: "Failed to get watchers" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/studio/content-ideas/:id/watchers",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const writeErr = await assertPipelineProject(idea.projectId, { forWrite: true });
+        if (writeErr) return res.status(writeErr.status).json({ error: writeErr.error, code: writeErr.code });
+        const userId = req.body?.userId ?? req.session.userId!;
+        const watcher = await storage.addStudioIdeaWatcher({ ideaId: req.params.id, userId });
+        res.status(201).json(watcher);
+      } catch (error: any) {
+        res.status(400).json({ error: error?.message || "Failed to add watcher" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/studio/content-ideas/:id/watchers/:userId",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const writeErr = await assertPipelineProject(idea.projectId, { forWrite: true });
+        if (writeErr) return res.status(writeErr.status).json({ error: writeErr.error, code: writeErr.code });
+        await storage.removeStudioIdeaWatcher(req.params.id, req.params.userId);
+        res.json({ ok: true });
+      } catch (error: any) {
+        res.status(400).json({ error: error?.message || "Failed to remove watcher" });
       }
     },
   );

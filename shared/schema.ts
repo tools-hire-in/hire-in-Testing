@@ -2800,6 +2800,9 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   storyContent: text("story_content"),
   storyReference: varchar("story_reference"),
   storyCreativeLink: varchar("story_creative_link"),
+  creativeDone: boolean("creative_done").notNull().default(false),
+  storyCreativeDone: boolean("story_creative_done").notNull().default(false),
+  storyPublishDate: date("story_publish_date"),
   scheduledDate: date("scheduled_date"), // NULL = backlog
   dueDate: date("due_date"),
   assignedToUserId: varchar("assigned_to_user_id"),
@@ -2859,6 +2862,15 @@ export const studioIdeaComments = pgTable("studio_idea_comments", {
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const studioIdeaWatchers = pgTable("studio_idea_watchers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ideaId: varchar("idea_id").notNull().references(() => studioContentIdeas.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("uq_studio_idea_watcher_idea_user").on(table.ideaId, table.userId),
+]);
 
 export const studioImportBatches = pgTable("studio_import_batches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -3097,6 +3109,7 @@ export const insertStudioPromptTemplateSchema = createInsertSchema(studioPromptT
 export const insertStudioGenerationSchema = createInsertSchema(studioGenerations).omit({ id: true, createdAt: true });
 export const insertStudioContentIdeaSchema = createInsertSchema(studioContentIdeas).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStudioIdeaCommentSchema = createInsertSchema(studioIdeaComments).omit({ id: true, createdAt: true });
+export const insertStudioIdeaWatcherSchema = createInsertSchema(studioIdeaWatchers).omit({ id: true, createdAt: true });
 export const insertStudioImportBatchSchema = createInsertSchema(studioImportBatches).omit({ id: true, createdAt: true });
 export const insertStudioCampaignSchema = createInsertSchema(studioCampaigns).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStudioOutreachSequenceSchema = createInsertSchema(studioOutreachSequences).omit({ id: true, createdAt: true, updatedAt: true });
@@ -3108,6 +3121,8 @@ export type StudioContentIdea = typeof studioContentIdeas.$inferSelect;
 export type InsertStudioContentIdea = z.infer<typeof insertStudioContentIdeaSchema>;
 export type StudioIdeaComment = typeof studioIdeaComments.$inferSelect;
 export type InsertStudioIdeaComment = z.infer<typeof insertStudioIdeaCommentSchema>;
+export type StudioIdeaWatcher = typeof studioIdeaWatchers.$inferSelect;
+export type InsertStudioIdeaWatcher = z.infer<typeof insertStudioIdeaWatcherSchema>;
 export type StudioImportBatch = typeof studioImportBatches.$inferSelect;
 export type InsertStudioImportBatch = z.infer<typeof insertStudioImportBatchSchema>;
 

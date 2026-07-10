@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -29,32 +29,36 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus, Calendar as CalIcon, Star, ImageIcon } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus,
+  Calendar as CalIcon, Star, ImageIcon, MessageSquare, Eye, Check, X, RefreshCw,
+} from "lucide-react";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { useStudioProject } from "./useStudioProject";
 import { SocialKitPreview, IdeaCardGallery } from "./SocialKitPreview";
-import { IdeaPeek } from "@/pages/studio/PipelineView";
 import { STATUS_BADGE_CLASS, STATUS_LABELS } from "./studioConstants";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { StudioArticle, StudioOccasion, StudioContentIdea } from "@shared/schema";
-import { STUDIO_PIPELINE_CONTENT_TYPES } from "@shared/studioContent";
+import type { StudioArticle, StudioOccasion, StudioContentIdea, StudioIdeaComment } from "@shared/schema";
+import { STUDIO_PIPELINE_CONTENT_TYPES, STUDIO_IDEA_TRANSITIONS, type StudioIdeaStatus } from "@shared/studioContent";
 import type { CanonicalSocialKit } from "@shared/studioAi";
 
-const OCCASION_CATEGORY_LABELS: Record<string, string> = {
-  national_holiday: "Holiday",
-  festival: "Festival",
-  industry_awareness: "Awareness",
-  fun_observance: "Observance",
-  custom: "Custom",
-};
+// ─── Constants ──────────────────────────────────────────────────────────────
 
-const OCCASION_REGION_LABELS: Record<string, string> = {
-  us: "US",
-  india: "India",
-  global: "Global",
+const OCCASION_CATEGORY_LABELS: Record<string, string> = {
+  national_holiday: "Holiday", festival: "Festival",
+  industry_awareness: "Awareness", fun_observance: "Observance", custom: "Custom",
 };
+const OCCASION_REGION_LABELS: Record<string, string> = {
+  us: "US", india: "India", global: "Global",
+};
+const TYPE_ICON: Record<string, string> = {
+  article: "📄", social_post: "📣", story: "⏱", reel: "🎬", carousel: "📷",
+};
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type CalendarItem = StudioArticle & {
   authorName: string | null;
@@ -62,22 +66,64 @@ type CalendarItem = StudioArticle & {
   publishesToInsights: boolean;
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function fmtDate(d?: string | null): string {
+  if (!d) return "—";
+  try { return new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+  catch { return d; }
+}
 
-// ---- AI Plan Dialog ----
-function AIPlanDialog({
-  projectId,
-  monthStart,
-  monthEnd,
-}: {
-  projectId: string | null;
-  monthStart: Date;
-  monthEnd: Date;
-}) {
+// Structured mention type persisted in JSON comment bodies
+type StoredMention = { userId: string; displayName: string };
+
+// Parse stored comment message — may be plain text or structured JSON with mentions array.
+function parseCommentMessage(raw: string): { text: string; mentions: StoredMention[] } {
+  if (raw.trimStart().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as { text?: string; mentions?: StoredMention[] };
+      return { text: parsed.text ?? raw, mentions: parsed.mentions ?? [] };
+    } catch { /* fall through */ }
+  }
+  return { text: raw, mentions: [] };
+}
+
+// Render inline @[Name](id) tokens from the text field as highlighted chips.
+function renderInlineTokens(text: string) {
+  const parts: Array<{ type: "text" | "mention"; value: string; userId?: string }> = [];
+  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push({ type: "text", value: text.slice(last, match.index) });
+    parts.push({ type: "mention", value: match[1], userId: match[2] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  return parts;
+}
+
+function CommentText({ message }: { message: string }) {
+  const { text } = parseCommentMessage(message);
+  const parts = renderInlineTokens(text);
+  return (
+    <span>
+      {parts.map((p, i) =>
+        p.type === "mention" ? (
+          <span key={i} className="inline-flex items-center rounded-sm bg-blue-100 px-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs font-medium">
+            @{p.value}
+          </span>
+        ) : (
+          <span key={i}>{p.value}</span>
+        )
+      )}
+    </span>
+  );
+}
+
+// ─── AI Plan Dialog ───────────────────────────────────────────────────────────
+function AIPlanDialog({ projectId, monthStart, monthEnd }: { projectId: string | null; monthStart: Date; monthEnd: Date }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [perWeek, setPerWeek] = useState(3);
@@ -89,26 +135,16 @@ function AIPlanDialog({
   const mutation = useMutation({
     mutationFn: async () => {
       if (!projectId) throw new Error("Select a project first");
-      const topics = topicInput.trim()
-        ? topicInput.split(",").map((t) => t.trim()).filter(Boolean)
-        : [];
+      const topics = topicInput.trim() ? topicInput.split(",").map((t) => t.trim()).filter(Boolean) : [];
       const res = await apiRequest("POST", "/api/admin/studio/calendar/ai-plan", {
-        projectId,
-        fromDate,
-        toDate,
-        articlesPerWeek: perWeek,
-        topicFocus: topics,
+        projectId, fromDate, toDate, articlesPerWeek: perWeek, topicFocus: topics,
       });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || "AI plan failed");
-      }
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "AI plan failed"); }
       return res.json();
     },
     onSuccess: (data) => {
       const plan = data.plan ?? [];
       setPlanResult(plan);
-      // Refresh calendar so the new scheduled stubs appear immediately.
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/calendar"] });
       toast({ title: `AI plan created: ${plan.length} article${plan.length === 1 ? "" : "s"} scheduled` });
     },
@@ -118,14 +154,11 @@ function AIPlanDialog({
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} data-testid="button-ai-plan">
-        <Sparkles className="mr-2 h-4 w-4" />
-        AI Schedule
+        <Sparkles className="mr-2 h-4 w-4" />AI Schedule
       </Button>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setPlanResult(null); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-ai-plan">
-          <DialogHeader>
-            <DialogTitle>AI Content Schedule</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>AI Content Schedule</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -139,38 +172,16 @@ function AIPlanDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-per-week">Articles per week</Label>
-              <Input
-                id="ai-per-week"
-                type="number"
-                min={1}
-                max={7}
-                value={perWeek}
-                onChange={(e) => setPerWeek(Number(e.target.value))}
-                data-testid="input-ai-per-week"
-              />
+              <Input id="ai-per-week" type="number" min={1} max={7} value={perWeek} onChange={(e) => setPerWeek(Number(e.target.value))} data-testid="input-ai-per-week" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-topics">Topic focus (comma-separated, optional)</Label>
-              <Input
-                id="ai-topics"
-                value={topicInput}
-                onChange={(e) => setTopicInput(e.target.value)}
-                placeholder="Healthcare Staffing, IT Hiring Trends, Leadership"
-                data-testid="input-ai-topics"
-              />
+              <Input id="ai-topics" value={topicInput} onChange={(e) => setTopicInput(e.target.value)} placeholder="Healthcare Staffing, IT Hiring Trends" data-testid="input-ai-topics" />
             </div>
-            <Button
-              className="w-full"
-              onClick={() => mutation.mutate()}
-              disabled={mutation.isPending || !projectId}
-              data-testid="button-ai-plan-submit"
-            >
+            <Button className="w-full" onClick={() => mutation.mutate()} disabled={mutation.isPending || !projectId} data-testid="button-ai-plan-submit">
               {mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Schedule
             </Button>
-            {!projectId && (
-              <p className="text-center text-xs text-destructive">Select a project in the calendar header first.</p>
-            )}
             {planResult && planResult.length > 0 && (
               <div className="space-y-2 rounded-md border p-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Suggested Plan</p>
@@ -178,15 +189,9 @@ function AIPlanDialog({
                   <div key={i} className="rounded border p-2 text-sm" data-testid={`ai-plan-item-${i}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium line-clamp-1">{item.title}</span>
-                      {item.scheduledDate && (
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {new Date(item.scheduledDate).toLocaleDateString()}
-                        </span>
-                      )}
+                      {item.scheduledDate && <span className="shrink-0 text-xs text-muted-foreground">{new Date(item.scheduledDate).toLocaleDateString()}</span>}
                     </div>
-                    {item.contentType && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.contentType}</p>
-                    )}
+                    {item.contentType && <p className="text-xs text-muted-foreground mt-0.5">{item.contentType}</p>}
                   </div>
                 ))}
               </div>
@@ -198,89 +203,9 @@ function AIPlanDialog({
   );
 }
 
-// ---- In-context idea creation from a calendar date ----
-// Task #906 defect fix: this used to POST an article with the invalid
-// contentType "blog_post" (always a 400). Date-click now quick-creates a
-// content idea in the planning pipeline instead.
-function CreateOnDateButton({
-  date,
-  projectId,
-  onNavigate: _onNavigate,
-  onClose,
-}: {
-  date: string | null;
-  projectId: string | null;
-  onNavigate: (path: string) => void;
-  onClose: () => void;
-}) {
+// ─── Plan Content Form ────────────────────────────────────────────────────────
+function PlanContentForm({ occasion, projectId, onDone }: { occasion: StudioOccasion; projectId: string; onDone: () => void }) {
   const { toast } = useToast();
-  const [topic, setTopic] = useState("");
-  const [contentType, setContentType] = useState("article");
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/studio/content-ideas", {
-        projectId: projectId ?? undefined,
-        topic: topic.trim(),
-        contentType,
-        channels: contentType === "article" ? ["website"] : ["linkedin"],
-        scheduledDate: date ?? undefined,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
-      toast({ title: "Idea added to plan", description: `Scheduled for ${date ?? "later"}. Find it in the content pipeline.` });
-      onClose();
-    },
-    onError: (err: Error) => toast({ title: "Could not create idea", description: err.message, variant: "destructive" }),
-  });
-
-  return (
-    <div className="space-y-2 rounded-md border p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan something for this date</p>
-      <Input
-        value={topic}
-        onChange={(e) => setTopic(e.target.value)}
-        placeholder="Topic, e.g. 5 interview red flags"
-        data-testid="input-create-on-date-topic"
-      />
-      <Select value={contentType} onValueChange={setContentType}>
-        <SelectTrigger data-testid="select-create-on-date-type"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => (
-            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        variant="outline"
-        className="w-full"
-        onClick={() => createMutation.mutate()}
-        disabled={createMutation.isPending || !topic.trim() || !projectId}
-        data-testid="button-create-new-on-date"
-      >
-        {createMutation.isPending
-          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          : <Plus className="mr-2 h-4 w-4" />}
-        Add idea for this date
-      </Button>
-    </div>
-  );
-}
-
-// ---- "Plan content for this" — prefilled idea form from an occasion ----
-function PlanContentForm({
-  occasion,
-  projectId,
-  onDone,
-}: {
-  occasion: StudioOccasion;
-  projectId: string;
-  onDone: () => void;
-}) {
-  const { toast } = useToast();
-  // Lead time: schedule social content 1 day before the occasion by default.
   const dayBefore = (() => {
     const d = new Date(`${occasion.date}T12:00:00`);
     d.setDate(d.getDate() - 1);
@@ -293,17 +218,10 @@ function PlanContentForm({
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/studio/content-ideas", {
-        projectId,
-        topic: topic.trim(),
-        brief: brief.trim() || null,
-        contentType: "social_post",
-        scheduledDate,
-        origin: "manual",
+        projectId, topic: topic.trim(), brief: brief.trim() || null,
+        contentType: "social_post", scheduledDate, origin: "manual",
       });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || "Failed to create idea");
-      }
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
       return res.json();
     },
     onSuccess: () => {
@@ -311,50 +229,24 @@ function PlanContentForm({
       toast({ title: "Content idea planned", description: `Scheduled for ${scheduledDate}` });
       onDone();
     },
-    onError: (err: Error) =>
-      toast({ title: "Could not plan content", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Could not plan content", description: err.message, variant: "destructive" }),
   });
 
   return (
     <div className="space-y-2 rounded-md border bg-muted/20 p-2.5" data-testid={`plan-content-form-${occasion.id}`}>
       <div className="space-y-1">
         <Label htmlFor={`plan-topic-${occasion.id}`} className="text-xs">Topic</Label>
-        <Input
-          id={`plan-topic-${occasion.id}`}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          data-testid={`input-plan-topic-${occasion.id}`}
-        />
+        <Input id={`plan-topic-${occasion.id}`} value={topic} onChange={(e) => setTopic(e.target.value)} data-testid={`input-plan-topic-${occasion.id}`} />
       </div>
       <div className="space-y-1">
         <Label htmlFor={`plan-brief-${occasion.id}`} className="text-xs">Brief</Label>
-        <Textarea
-          id={`plan-brief-${occasion.id}`}
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          rows={2}
-          data-testid={`input-plan-brief-${occasion.id}`}
-        />
+        <Textarea id={`plan-brief-${occasion.id}`} value={brief} onChange={(e) => setBrief(e.target.value)} rows={2} data-testid={`input-plan-brief-${occasion.id}`} />
       </div>
       <div className="space-y-1">
-        <Label htmlFor={`plan-date-${occasion.id}`} className="text-xs">
-          Scheduled date (occasion is {occasion.date})
-        </Label>
-        <Input
-          id={`plan-date-${occasion.id}`}
-          type="date"
-          value={scheduledDate}
-          onChange={(e) => setScheduledDate(e.target.value)}
-          data-testid={`input-plan-date-${occasion.id}`}
-        />
+        <Label htmlFor={`plan-date-${occasion.id}`} className="text-xs">Scheduled date (occasion is {occasion.date})</Label>
+        <Input id={`plan-date-${occasion.id}`} type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} data-testid={`input-plan-date-${occasion.id}`} />
       </div>
-      <Button
-        size="sm"
-        className="w-full"
-        onClick={() => createMutation.mutate()}
-        disabled={createMutation.isPending || !topic.trim()}
-        data-testid={`button-plan-submit-${occasion.id}`}
-      >
+      <Button size="sm" className="w-full" onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !topic.trim()} data-testid={`button-plan-submit-${occasion.id}`}>
         {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
         Create planned idea
       </Button>
@@ -362,197 +254,901 @@ function PlanContentForm({
   );
 }
 
-// ---- Day Scheduler Dialog: click a day to schedule an existing draft ----
-function DaySchedulerDialog({
-  date,
-  projectId,
-  occasions,
-  ideas,
-  canSchedulePublish,
-  canCreateArticle,
-  onClose,
-  onNavigate,
-  onOpenIdea,
+// ─── Day Idea Card ─────────────────────────────────────────────────────────────
+function DayIdeaCard({
+  idea, isSelected, onClick, assignees, commentCount, canEdit,
+}: {
+  idea: StudioContentIdea;
+  isSelected: boolean;
+  onClick: () => void;
+  assignees: { id: string; name: string }[];
+  commentCount?: number;
+  canEdit: boolean;
+}) {
+  const { toast } = useToast();
+  const assignee = assignees.find((a) => a.id === idea.assignedToUserId);
+  const initials = assignee ? assignee.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : null;
+  const channels = (idea.channels as string[] | null) ?? [];
+  const nextStates: StudioIdeaStatus[] = STUDIO_IDEA_TRANSITIONS[idea.status as StudioIdeaStatus] ?? [];
+
+  const transitionMutation = useMutation({
+    mutationFn: async (to: string) => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${idea.id}/transition`, { to });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      toast({ title: "Status updated" });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't change status", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div
+      className={`rounded-lg border transition-colors ${
+        isSelected ? "border-primary bg-primary/5" : "border-border"
+      }`}
+      data-testid={`day-idea-card-${idea.id}`}
+    >
+      <button
+        onClick={onClick}
+        className="w-full text-left p-3 hover:bg-muted/20 rounded-t-lg transition-colors"
+      >
+        <div className="flex items-start gap-2">
+          <span className="text-base mt-0.5 shrink-0">{TYPE_ICON[idea.contentType] || "📌"}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium truncate">{idea.topic}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[idea.status] ?? "bg-slate-100 text-slate-700"}`}>
+                {STATUS_LABELS[idea.status] ?? idea.status}
+              </span>
+              {channels.slice(0, 2).map((c) => (
+                <span key={c} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c}</span>
+              ))}
+            </div>
+          </div>
+          <div className="shrink-0 flex flex-col items-end gap-1">
+            {initials && (
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold dark:bg-indigo-900/40 dark:text-indigo-300">
+                {initials}
+              </div>
+            )}
+            {(commentCount ?? 0) > 0 && (
+              <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                <MessageSquare className="h-3 w-3" />
+                <span>{commentCount}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </button>
+      {/* Inline quick-status strip */}
+      {canEdit && nextStates.length > 0 && (
+        <div className="flex flex-wrap gap-1 border-t px-2 py-1.5">
+          {nextStates.slice(0, 4).map((s) => (
+            <button
+              key={s}
+              onClick={(e) => { e.stopPropagation(); transitionMutation.mutate(s); }}
+              disabled={transitionMutation.isPending}
+              className="rounded px-1.5 py-0.5 text-[10px] font-medium border border-border hover:bg-muted transition-colors disabled:opacity-50"
+              data-testid={`quick-transition-${idea.id}-${s}`}
+            >
+              {STATUS_LABELS[s] ?? s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── @Mention Comment Input ───────────────────────────────────────────────────
+function MentionCommentInput({
+  ideaId, members, onSuccess,
+}: {
+  ideaId: string;
+  members: { id: string; name: string }[];
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [text, setText] = useState("");
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const commentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${ideaId}/comments`, { message: text.trim() });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => { setText(""); setMentionQuery(null); onSuccess(); },
+    onError: (e: Error) => toast({ title: "Comment failed", description: e.message, variant: "destructive" }),
+  });
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setText(val);
+    const cur = e.target.selectionStart ?? 0;
+    const textBefore = val.slice(0, cur);
+    const atIdx = textBefore.lastIndexOf("@");
+    if (atIdx !== -1 && !textBefore.slice(atIdx + 1).includes(" ")) {
+      setMentionQuery(textBefore.slice(atIdx + 1).toLowerCase());
+      setMentionStart(atIdx);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (member: { id: string; name: string }) => {
+    const before = text.slice(0, mentionStart);
+    const after = text.slice(textareaRef.current?.selectionStart ?? mentionStart + (mentionQuery?.length ?? 0) + 1);
+    const mention = `@[${member.name}](${member.id})`;
+    const newText = before + mention + " " + after;
+    setText(newText);
+    setMentionQuery(null);
+    textareaRef.current?.focus();
+  };
+
+  const filtered = mentionQuery !== null
+    ? members.filter((m) => m.name.toLowerCase().includes(mentionQuery))
+    : [];
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleInput}
+          placeholder="Write a comment… type @ to mention someone"
+          rows={2}
+          className="text-sm resize-none"
+          data-testid="input-idea-comment"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              if (text.trim() && !commentMutation.isPending) commentMutation.mutate();
+            }
+          }}
+        />
+        {mentionQuery !== null && filtered.length > 0 && (
+          <div className="absolute bottom-full left-0 mb-1 z-50 w-56 rounded-md border bg-popover shadow-md">
+            {filtered.map((m) => (
+              <button
+                key={m.id}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}
+                data-testid={`mention-option-${m.id}`}
+              >
+                <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                  {m.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                </div>
+                {m.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <Button
+        size="sm"
+        onClick={() => commentMutation.mutate()}
+        disabled={!text.trim() || commentMutation.isPending}
+        data-testid="button-post-comment"
+      >
+        {commentMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        Post
+      </Button>
+    </div>
+  );
+}
+
+// ─── Idea Detail Pane ─────────────────────────────────────────────────────────
+function IdeaDetailPane({
+  ideaId, members, onClose,
+}: {
+  ideaId: string;
+  members: { id: string; name: string }[];
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const { can } = usePermissions();
+  const canEdit = can("studio.edit_article");
+  const canReview = can("studio.review_article");
+
+  const { data: idea, isLoading } = useQuery<StudioContentIdea & { comments: StudioIdeaComment[] }>({
+    queryKey: ["/api/studio/content-ideas", ideaId],
+    enabled: !!ideaId,
+  });
+
+  const { data: watchers = [] } = useQuery<{ id: string; ideaId: string; userId: string; createdAt: string }[]>({
+    queryKey: ["/api/studio/content-ideas", ideaId, "watchers"],
+    queryFn: async () => {
+      const res = await fetch(`/api/studio/content-ideas/${ideaId}/watchers`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!ideaId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas", ideaId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas", ideaId, "watchers"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+  };
+
+  const patchMutation = useMutation({
+    mutationFn: async (patch: Record<string, unknown>) => {
+      const res = await apiRequest("PATCH", `/api/studio/content-ideas/${ideaId}`, patch);
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => { invalidate(); },
+    onError: (e: Error) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
+  const transitionMutation = useMutation({
+    mutationFn: async (to: string) => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${ideaId}/transition`, { to });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => { invalidate(); toast({ title: "Status updated" }); },
+    onError: (e: Error) => toast({ title: "Couldn't change status", description: e.message, variant: "destructive" }),
+  });
+
+  const addWatcherMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${ideaId}/watchers`, { userId });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => toast({ title: "Couldn't add watcher", description: e.message, variant: "destructive" }),
+  });
+
+  const removeWatcherMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("DELETE", `/api/studio/content-ideas/${ideaId}/watchers/${userId}`, {});
+      return res.json();
+    },
+    onSuccess: () => invalidate(),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      const res = await apiRequest("PATCH", `/api/studio/idea-comments/${commentId}/resolve`, {});
+      return res.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!idea) return null;
+
+  const nextStates: StudioIdeaStatus[] = STUDIO_IDEA_TRANSITIONS[idea.status as StudioIdeaStatus] ?? [];
+  const reviewActions = nextStates.filter((s) => ["approved", "rejected", "changes_requested"].includes(s));
+  const editActions = nextStates.filter((s) => !["approved", "rejected", "changes_requested"].includes(s));
+  const dayOfWeek = idea.scheduledDate ? WEEKDAYS_LONG[new Date(`${idea.scheduledDate}T00:00:00`).getDay()] : "—";
+  const watcherUserIds = new Set(watchers.map((w) => w.userId));
+
+  const autoSave = (field: string) => (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const val = e.target.value.trim() || null;
+    const existing = (idea as any)[field] ?? null;
+    if (val !== existing) patchMutation.mutate({ [field]: val });
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Approval action strip */}
+      {(canReview || canEdit) && (reviewActions.length > 0 || editActions.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3 bg-muted/30">
+          <span className="text-xs font-medium text-muted-foreground mr-1">Move to:</span>
+          {canReview && reviewActions.map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant={s === "approved" ? "default" : s === "rejected" ? "destructive" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => transitionMutation.mutate(s)}
+              disabled={transitionMutation.isPending}
+              data-testid={`button-transition-${s}`}
+            >
+              {s === "approved" ? <Check className="mr-1 h-3 w-3" /> : s === "rejected" ? <X className="mr-1 h-3 w-3" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+              {STATUS_LABELS[s] ?? s}
+            </Button>
+          ))}
+          {canEdit && editActions.map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => transitionMutation.mutate(s)}
+              disabled={transitionMutation.isPending}
+              data-testid={`button-transition-${s}`}
+            >
+              {STATUS_LABELS[s] ?? s}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {/* Status + type badges */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[idea.status] ?? "bg-slate-100 text-slate-700"}`}>
+            {STATUS_LABELS[idea.status] ?? idea.status}
+          </span>
+          <Badge variant="outline" className="text-[10px]">
+            {STUDIO_PIPELINE_CONTENT_TYPES.find((t) => t.value === idea.contentType)?.label ?? idea.contentType}
+          </Badge>
+          {(idea.channels as string[] | null)?.map((c) => (
+            <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
+          ))}
+        </div>
+
+        {/* ── Core section ── */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Core</p>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input
+                  type="date"
+                  defaultValue={idea.scheduledDate || ""}
+                  onBlur={(e) => {
+                    const v = e.target.value || null;
+                    if (v !== (idea.scheduledDate || null)) patchMutation.mutate({ scheduledDate: v });
+                  }}
+                  className="h-8 text-sm"
+                  disabled={!canEdit}
+                  data-testid="input-detail-date"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Day</Label>
+                <div className="flex h-8 items-center text-sm text-muted-foreground">{dayOfWeek}</div>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Post Type</Label>
+              <Select
+                value={idea.contentType}
+                onValueChange={(v) => patchMutation.mutate({ contentType: v })}
+                disabled={!canEdit}
+              >
+                <SelectTrigger className="h-8 text-sm" data-testid="select-detail-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Topic</Label>
+              <Input
+                defaultValue={idea.topic}
+                onBlur={autoSave("topic")}
+                className="h-8 text-sm"
+                disabled={!canEdit}
+                data-testid="input-detail-topic"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Details / Brief</Label>
+              <Textarea
+                defaultValue={idea.brief ?? ""}
+                onBlur={autoSave("brief")}
+                rows={3}
+                className="text-sm"
+                disabled={!canEdit}
+                data-testid="input-detail-brief"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Reference Link</Label>
+              <Input
+                defaultValue={idea.referenceLink ?? ""}
+                onBlur={autoSave("referenceLink")}
+                className="h-8 text-sm"
+                type="url"
+                placeholder="https://"
+                disabled={!canEdit}
+                data-testid="input-detail-reference"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Caption / Copy</Label>
+              <Textarea
+                defaultValue={idea.captionCopy ?? ""}
+                onBlur={autoSave("captionCopy")}
+                rows={3}
+                className="text-sm"
+                disabled={!canEdit}
+                data-testid="input-detail-caption"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Requirement</Label>
+              <Input
+                defaultValue={idea.requirement ?? ""}
+                onBlur={autoSave("requirement")}
+                className="h-8 text-sm"
+                placeholder="e.g. carousel 9-slide, single image"
+                disabled={!canEdit}
+                data-testid="input-detail-requirement"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Final Creative ── */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Final Creative</p>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Final Creative URL</Label>
+              <Input
+                defaultValue={idea.creativeLink ?? ""}
+                onBlur={autoSave("creativeLink")}
+                className="h-8 text-sm"
+                type="url"
+                placeholder="https://drive.google.com/..."
+                disabled={!canEdit}
+                data-testid="input-detail-creative-url"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Label className="text-xs text-muted-foreground flex-1">Creative Done</Label>
+              <Switch
+                checked={idea.creativeDone ?? false}
+                onCheckedChange={(v) => patchMutation.mutate({ creativeDone: v })}
+                disabled={!canEdit}
+                data-testid="switch-detail-creative-done"
+              />
+              <span className="text-xs text-muted-foreground">{idea.creativeDone ? "Done" : "Pending"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Story Track ── */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Story Track</p>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Story Content</Label>
+              <Textarea
+                defaultValue={idea.storyContent ?? ""}
+                onBlur={autoSave("storyContent")}
+                rows={3}
+                className="text-sm"
+                placeholder="Story copy / script"
+                disabled={!canEdit}
+                data-testid="input-detail-story-content"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Story Reference</Label>
+              <Input
+                defaultValue={idea.storyReference ?? ""}
+                onBlur={autoSave("storyReference")}
+                className="h-8 text-sm"
+                type="url"
+                placeholder="https://"
+                disabled={!canEdit}
+                data-testid="input-detail-story-reference"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Final Story Creative URL</Label>
+              <Input
+                defaultValue={idea.storyCreativeLink ?? ""}
+                onBlur={autoSave("storyCreativeLink")}
+                className="h-8 text-sm"
+                type="url"
+                placeholder="https://"
+                disabled={!canEdit}
+                data-testid="input-detail-story-creative-url"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Label className="text-xs text-muted-foreground flex-1">Story Creative Done</Label>
+              <Switch
+                checked={idea.storyCreativeDone ?? false}
+                onCheckedChange={(v) => patchMutation.mutate({ storyCreativeDone: v })}
+                disabled={!canEdit}
+                data-testid="switch-detail-story-creative-done"
+              />
+              <span className="text-xs text-muted-foreground">{idea.storyCreativeDone ? "Done" : "Pending"}</span>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Story Publish Date</Label>
+              <Input
+                type="date"
+                defaultValue={(idea as any).storyPublishDate ?? ""}
+                onBlur={(e) => {
+                  const v = e.target.value || null;
+                  if (v !== ((idea as any).storyPublishDate || null)) patchMutation.mutate({ storyPublishDate: v });
+                }}
+                className="h-8 text-sm"
+                disabled={!canEdit}
+                data-testid="input-detail-story-publish-date"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Workflow ── */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Workflow</p>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Assignee</Label>
+              <Select
+                value={idea.assignedToUserId || "unassigned"}
+                onValueChange={(v) => patchMutation.mutate({ assignedToUserId: v === "unassigned" ? null : v })}
+                disabled={!canEdit}
+              >
+                <SelectTrigger className="h-8 text-sm" data-testid="select-detail-assignee"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Watchers</Label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {watchers.map((w) => {
+                  const member = members.find((m) => m.id === w.userId);
+                  return (
+                    <div key={w.userId} className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                      <div className="h-4 w-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[9px] font-bold dark:bg-indigo-900/40 dark:text-indigo-300">
+                        {member?.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) ?? "?"}
+                      </div>
+                      <span>{member?.name ?? w.userId}</span>
+                      {canEdit && (
+                        <button onClick={() => removeWatcherMutation.mutate(w.userId)} className="ml-0.5 text-muted-foreground hover:text-foreground" data-testid={`button-remove-watcher-${w.userId}`}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {canEdit && (
+                  <Select
+                    value=""
+                    onValueChange={(v) => { if (v && !watcherUserIds.has(v)) addWatcherMutation.mutate(v); }}
+                  >
+                    <SelectTrigger className="h-7 w-auto text-xs gap-1 border-dashed" data-testid="select-add-watcher">
+                      <Eye className="h-3 w-3" />
+                      <span>Add watcher</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.filter((m) => !watcherUserIds.has(m.id)).map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Comments ── */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
+            <MessageSquare className="h-3.5 w-3.5" />
+            Comments {(idea.comments?.length ?? 0) > 0 && `(${idea.comments.length})`}
+          </p>
+          <div className="space-y-2 mb-3">
+            {(idea.comments ?? []).length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-3">No comments yet</p>
+            )}
+            {(idea.comments ?? []).map((c) => (
+              <div key={c.id} className={`rounded-md bg-muted/40 p-2.5 text-sm ${c.resolvedAt ? "opacity-50" : ""}`} data-testid={`comment-${c.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <CommentText message={c.message} />
+                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(c.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                  {!c.resolvedAt && (
+                    <button onClick={() => resolveMutation.mutate(c.id)} className="shrink-0 text-muted-foreground hover:text-emerald-600" title="Resolve" data-testid={`button-resolve-comment-${c.id}`}>
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <MentionCommentInput ideaId={ideaId} members={members} onSuccess={invalidate} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick Create Idea Row ────────────────────────────────────────────────────
+function QuickCreateIdeaRow({
+  date, projectId, onCreated,
+}: {
+  date: string | null;
+  projectId: string | null;
+  onCreated: (idea: StudioContentIdea) => void;
+}) {
+  const { toast } = useToast();
+  const [topic, setTopic] = useState("");
+  const [contentType, setContentType] = useState("social_post");
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/studio/content-ideas", {
+        projectId: projectId ?? undefined,
+        topic: topic.trim(),
+        contentType,
+        channels: contentType === "article" ? ["website"] : ["linkedin"],
+        scheduledDate: date ?? undefined,
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: (idea) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      toast({ title: "Idea added", description: `Scheduled for ${date ?? "later"}` });
+      setTopic("");
+      onCreated(idea);
+    },
+    onError: (err: Error) => toast({ title: "Could not create idea", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="flex items-center gap-2 border-t pt-3 mt-3">
+      <Input
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        placeholder="Topic for this date…"
+        className="flex-1 h-8 text-sm"
+        data-testid="input-quick-create-topic"
+        onKeyDown={(e) => { if (e.key === "Enter" && topic.trim() && !createMutation.isPending) createMutation.mutate(); }}
+      />
+      <Select value={contentType} onValueChange={setContentType}>
+        <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-quick-create-type"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        className="h-8"
+        onClick={() => createMutation.mutate()}
+        disabled={createMutation.isPending || !topic.trim() || !projectId}
+        data-testid="button-quick-create-idea"
+      >
+        {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Draft Article Schedule Row ───────────────────────────────────────────────
+function DraftScheduleRow({
+  article, date,
+}: {
+  article: CalendarItem;
+  date: string;
+}) {
+  const { toast } = useToast();
+  const [time, setTime] = useState("09:00");
+
+  const scheduleMutation = useMutation({
+    mutationFn: async () => {
+      const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${article.id}/schedule-draft`, { scheduledAt });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/calendar"] });
+      toast({ title: `"${article.title}" scheduled for ${date} at ${time}` });
+    },
+    onError: (e: Error) => toast({ title: "Schedule failed", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-md border p-2.5 space-y-2" data-testid={`draft-schedule-row-${article.id}`}>
+      <p className="text-xs font-medium truncate">{article.title}</p>
+      <div className="flex items-center gap-2">
+        <Input
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          className="h-7 w-28 text-xs"
+          data-testid={`input-schedule-time-${article.id}`}
+        />
+        <Button
+          size="sm"
+          className="h-7 text-xs flex-1"
+          onClick={() => scheduleMutation.mutate()}
+          disabled={scheduleMutation.isPending}
+          data-testid={`button-schedule-draft-${article.id}`}
+        >
+          {scheduleMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CalIcon className="mr-1 h-3 w-3" />}
+          Schedule
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Date Workspace Sheet ─────────────────────────────────────────────────────
+function DayWorkspaceSheet({
+  date, projectId, occasions, ideas, articles, canCreateArticle, canEdit, canSchedule, members,
+  initialIdeaId, onClose,
 }: {
   date: string | null;
   projectId: string | null;
   occasions: StudioOccasion[];
   ideas: StudioContentIdea[];
-  canSchedulePublish: boolean;
+  articles: CalendarItem[];
   canCreateArticle: boolean;
+  canEdit: boolean;
+  canSchedule: boolean;
+  members: { id: string; name: string }[];
+  initialIdeaId?: string | null;
   onClose: () => void;
-  onNavigate: (path: string) => void;
-  onOpenIdea: (id: string) => void;
 }) {
-  const { toast } = useToast();
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(initialIdeaId ?? null);
   const [planningFor, setPlanningFor] = useState<string | null>(null);
 
-  const { data: drafts, isLoading } = useQuery<StudioArticle[]>({
-    queryKey: ["/api/admin/studio/articles", { status: "draft", projectId }],
-    queryFn: async () => {
-      const params = new URLSearchParams({ status: "draft", pageSize: "50" });
-      if (projectId) params.set("projectId", projectId);
-      const res = await fetch(`/api/admin/studio/articles?${params.toString()}`, { credentials: "include" });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.items ?? [];
-    },
-    enabled: !!date && canSchedulePublish,
-  });
+  useEffect(() => {
+    setSelectedIdeaId(initialIdeaId ?? null);
+  }, [initialIdeaId, date]);
 
-  const scheduleMutation = useMutation({
-    mutationFn: async (articleId: string) => {
-      // Use 9 AM on the selected date as the scheduled publish time.
-      const scheduledAt = date ? new Date(`${date}T09:00:00`) : null;
-      const res = await apiRequest("POST", `/api/admin/studio/articles/${articleId}/schedule-draft`, {
-        scheduledAt: scheduledAt?.toISOString() ?? null,
-      });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || "Failed to schedule");
-      }
+  // Batch-fetch comment counts for all visible idea cards
+  const ideaIds = ideas.map((i) => i.id);
+  const { data: commentCounts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/studio/content-ideas/comment-counts", ideaIds.join(",")],
+    queryFn: async () => {
+      if (!ideaIds.length) return {};
+      const res = await fetch(`/api/studio/content-ideas/comment-counts?ids=${ideaIds.join(",")}`, { credentials: "include" });
+      if (!res.ok) return {};
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/calendar"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
-      toast({ title: `Article scheduled for ${date}` });
-      onClose();
-    },
-    onError: (err: Error) => toast({ title: "Schedule failed", description: err.message, variant: "destructive" }),
+    enabled: ideaIds.length > 0,
   });
 
+  const displayDate = date
+    ? new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : "";
+
   return (
-    <Dialog open={!!date} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" data-testid="dialog-day-scheduler">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CalIcon className="h-4 w-4" />
-            {date}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          {ideas.length > 0 && (
-            <div className="space-y-2" data-testid="day-planned-ideas">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Planned ideas</p>
-              {ideas.map((idea) => (
-                <div
-                  key={idea.id}
-                  className="flex items-center justify-between gap-2 rounded-md border p-2"
-                  data-testid={`day-idea-row-${idea.id}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{idea.topic}</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[idea.status] ?? "bg-slate-100 text-slate-700"}`}>
-                        {STATUS_LABELS[idea.status] ?? idea.status}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{idea.contentType?.replace(/_/g, " ")}</span>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0 h-7 px-2 text-xs"
-                    onClick={() => { onOpenIdea(idea.id); onClose(); }}
-                    data-testid={`button-open-idea-${idea.id}`}
-                  >
-                    Open
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+    <Sheet open={!!date} onOpenChange={(o) => { if (!o) { onClose(); setSelectedIdeaId(null); } }}>
+      <SheetContent
+        className="w-[95vw] max-w-none sm:max-w-none overflow-hidden flex flex-col"
+        style={{ width: "min(95vw, 1200px)" }}
+        data-testid="sheet-day-workspace"
+      >
+        <SheetHeader className="border-b pb-3 shrink-0">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            <CalIcon className="h-4 w-4 text-muted-foreground" />
+            {displayDate}
+          </SheetTitle>
           {occasions.length > 0 && (
-            <div className="space-y-2" data-testid="day-occasions">
+            <div className="flex flex-wrap gap-1.5 mt-1">
               {occasions.map((occ) => (
-                <div key={occ.id} className="rounded-md border border-amber-200 bg-amber-50/60 p-2.5 dark:border-amber-900 dark:bg-amber-950/20" data-testid={`occasion-${occ.id}`}>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Star className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-sm font-medium">{occ.name}</span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {OCCASION_REGION_LABELS[occ.region] ?? occ.region}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px]">
-                      {OCCASION_CATEGORY_LABELS[occ.category] ?? occ.category}
-                    </Badge>
-                  </div>
-                  {occ.contentAngle && (
-                    <p className="mt-1 text-xs text-muted-foreground">{occ.contentAngle}</p>
-                  )}
-                  {canCreateArticle && projectId && (
-                    planningFor === occ.id ? (
-                      <div className="mt-2">
-                        <PlanContentForm
-                          occasion={occ}
-                          projectId={projectId}
-                          onDone={() => setPlanningFor(null)}
-                        />
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => setPlanningFor(occ.id)}
-                        data-testid={`button-plan-content-${occ.id}`}
-                      >
-                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                        Plan content for this
-                      </Button>
-                    )
-                  )}
+                <div key={occ.id} className="flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-400" data-testid={`occasion-badge-ws-${occ.id}`}>
+                  <Star className="h-3 w-3 fill-current" />
+                  {occ.name}
+                  <span className="text-amber-500/70">· {OCCASION_REGION_LABELS[occ.region] ?? occ.region}</span>
                 </div>
               ))}
             </div>
           )}
-          {canSchedulePublish ? (
-            <>
-              <p className="text-sm text-muted-foreground">Pick a draft to schedule for publishing on this date.</p>
-              {isLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </SheetHeader>
+
+        <div className="flex flex-1 overflow-hidden gap-0 mt-0">
+          {/* Left: idea list */}
+          <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {ideas.length === 0 && (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  <CalIcon className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p>No ideas for this date</p>
                 </div>
-              ) : (drafts ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No draft articles found.</p>
-              ) : (
-                <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {(drafts ?? []).map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={() => scheduleMutation.mutate(d.id)}
-                      disabled={scheduleMutation.isPending}
-                      className="w-full rounded-md border p-2.5 text-left text-sm hover:bg-muted/40 transition-colors disabled:opacity-50"
-                      data-testid={`button-schedule-draft-${d.id}`}
-                    >
-                      <div className="font-medium line-clamp-1">{d.title}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {STATUS_LABELS[d.status] ?? d.status} · {d.contentType}
-                      </div>
-                    </button>
+              )}
+              {ideas.map((idea) => (
+                <DayIdeaCard
+                  key={idea.id}
+                  idea={idea}
+                  isSelected={selectedIdeaId === idea.id}
+                  onClick={() => setSelectedIdeaId(selectedIdeaId === idea.id ? null : idea.id)}
+                  assignees={members}
+                  commentCount={commentCounts[idea.id]}
+                  canEdit={canEdit}
+                />
+              ))}
+
+              {/* Draft articles — schedule them directly from the workspace */}
+              {canSchedule && articles.filter((a) => a.status === "draft").length > 0 && date && (
+                <div className="pt-2 space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1">Schedule Draft Articles</p>
+                  {articles.filter((a) => a.status === "draft").map((a) => (
+                    <DraftScheduleRow key={a.id} article={a} date={date} />
                   ))}
                 </div>
               )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-2">
-              Only super admins can schedule articles directly from the calendar.
-            </p>
-          )}
-          {canCreateArticle && (
-            <CreateOnDateButton
-              date={date}
-              projectId={projectId}
-              onNavigate={onNavigate}
-              onClose={onClose}
-            />
-          )}
+
+              {/* Occasions for planning */}
+              {occasions.length > 0 && canCreateArticle && projectId && (
+                <div className="pt-2 space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1">Plan for an occasion</p>
+                  {occasions.map((occ) => (
+                    <div key={occ.id} className="rounded-md border border-amber-200 bg-amber-50/60 p-2 dark:border-amber-900 dark:bg-amber-950/20" data-testid={`occasion-ws-${occ.id}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium">{occ.name}</span>
+                        {planningFor !== occ.id && (
+                          <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setPlanningFor(occ.id)} data-testid={`button-plan-content-ws-${occ.id}`}>
+                            <Sparkles className="mr-1 h-3 w-3" />Plan
+                          </Button>
+                        )}
+                      </div>
+                      {occ.contentAngle && <p className="mt-0.5 text-[10px] text-muted-foreground">{occ.contentAngle}</p>}
+                      {planningFor === occ.id && (
+                        <div className="mt-2">
+                          <PlanContentForm occasion={occ} projectId={projectId} onDone={() => { setPlanningFor(null); queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] }); }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {canCreateArticle && projectId && (
+              <div className="px-3 pb-3 shrink-0">
+                <QuickCreateIdeaRow date={date} projectId={projectId} onCreated={(idea) => setSelectedIdeaId(idea.id)} />
+              </div>
+            )}
+          </div>
+
+          {/* Right: detail pane */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {selectedIdeaId ? (
+              <IdeaDetailPane ideaId={selectedIdeaId} members={members} onClose={() => setSelectedIdeaId(null)} />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+                <MessageSquare className="h-10 w-10 opacity-20" />
+                <p className="text-sm">Select an idea to view its planner</p>
+                {canCreateArticle && projectId && (
+                  <p className="text-xs text-center">or add one using the form on the left</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
+// ─── Main Calendar Component ──────────────────────────────────────────────────
 export default function Calendar() {
   const [, navigate] = useLocation();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
@@ -560,23 +1156,43 @@ export default function Calendar() {
   const canCreateArticle = can("studio.create_article");
   const canSchedulePublish = can("studio.schedule_publish");
   const [scope, setScope] = useState<"hireins" | "all">("all");
+  const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [exportItem, setExportItem] = useState<CalendarItem | null>(null);
-  const [schedulerDate, setSchedulerDate] = useState<string | null>(null);
+  const [workspaceDate, setWorkspaceDate] = useState<string | null>(null);
+  const [workspaceInitialIdea, setWorkspaceInitialIdea] = useState<string | null>(null);
   const [cursor, setCursor] = useState(() => {
+    const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
+  // Week cursor: start of the week (Monday)
+  const [weekCursor, setWeekCursor] = useState(() => {
     const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), 1);
+    const day = n.getDay(); // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;
+    const mon = new Date(n);
+    mon.setDate(n.getDate() + diff);
+    mon.setHours(0, 0, 0, 0);
+    return mon;
   });
 
   const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59);
 
+  // Week range (Mon–Sun)
+  const weekDates: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekCursor);
+    d.setDate(weekCursor.getDate() + i);
+    weekDates.push(d);
+  }
+  const weekEnd = weekDates[6];
+
+  // Calendar articles (published/scheduled)
   const { data: items, isLoading } = useQuery<CalendarItem[]>({
-    queryKey: ["/api/admin/studio/calendar", selectedProjectId, ymd(monthStart)],
+    queryKey: ["/api/admin/studio/calendar", selectedProjectId, ymd(viewMode === "month" ? monthStart : weekCursor)],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        from: monthStart.toISOString(),
-        to: monthEnd.toISOString(),
-      });
+      const from = viewMode === "month" ? monthStart : weekCursor;
+      const to = viewMode === "month" ? monthEnd : weekEnd;
+      const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
       if (selectedProjectId) params.set("projectId", selectedProjectId);
       const res = await fetch(`/api/admin/studio/calendar?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load calendar");
@@ -584,8 +1200,7 @@ export default function Calendar() {
     },
   });
 
-  const visible = (items ?? []).filter((a) => (scope === "hireins" ? a.publishesToInsights : true));
-
+  const visible = (items ?? []).filter((a) => scope === "hireins" ? a.publishesToInsights : true);
   const byDay: Record<string, CalendarItem[]> = {};
   for (const a of visible) {
     const when = a.status === "scheduled" ? a.scheduledAt : a.publishedAt;
@@ -594,12 +1209,13 @@ export default function Calendar() {
     (byDay[key] ??= []).push(a);
   }
 
-  // Occasions for the visible month (filtered server-side by the project's
-  // occasionPreferences — opt-in per project via Studio Settings).
+  // Occasions
   const { data: occasions } = useQuery<StudioOccasion[]>({
-    queryKey: ["/api/admin/studio/occasions", selectedProjectId, ymd(monthStart)],
+    queryKey: ["/api/admin/studio/occasions", selectedProjectId, ymd(viewMode === "month" ? monthStart : weekCursor)],
     queryFn: async () => {
-      const params = new URLSearchParams({ from: ymd(monthStart), to: ymd(monthEnd) });
+      const from = viewMode === "month" ? monthStart : weekCursor;
+      const to = viewMode === "month" ? monthEnd : weekEnd;
+      const params = new URLSearchParams({ from: ymd(from), to: ymd(to) });
       if (selectedProjectId) params.set("projectId", selectedProjectId);
       const res = await fetch(`/api/admin/studio/occasions?${params.toString()}`, { credentials: "include" });
       if (!res.ok) return [];
@@ -611,7 +1227,7 @@ export default function Calendar() {
     (occByDay[String(occ.date)] ??= []).push(occ);
   }
 
-  // Planned content ideas (social posts) for the selected project.
+  // Content ideas (social posts)
   const { data: contentIdeas } = useQuery<StudioContentIdea[]>({
     queryKey: ["/api/admin/studio/content-ideas", selectedProjectId],
     queryFn: async () => {
@@ -628,10 +1244,22 @@ export default function Calendar() {
     if (!idea.scheduledDate) continue;
     (ideasByDay[String(idea.scheduledDate)] ??= []).push(idea);
   }
-  const [galleryIdeaId, setGalleryIdeaId] = useState<string | null>(null);
-  const galleryIdea = (contentIdeas ?? []).find((i) => i.id === galleryIdeaId) ?? null;
-  const [peekIdeaId, setPeekIdeaId] = useState<string | null>(null);
 
+  // Members for @mention + assignee
+  const { data: members = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/studio/assignees"],
+  });
+
+  const todayKey = ymd(new Date());
+  const monthLabel = cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const weekLabel = `${weekCursor.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${weekEnd.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+
+  const openWorkspace = (dateKey: string, ideaId?: string) => {
+    setWorkspaceDate(dateKey);
+    setWorkspaceInitialIdea(ideaId ?? null);
+  };
+
+  // Build month grid cells
   const firstWeekday = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
   const cells: (Date | null)[] = [];
@@ -639,20 +1267,11 @@ export default function Calendar() {
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(cursor.getFullYear(), cursor.getMonth(), d));
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const todayKey = ymd(new Date());
-  const monthLabel = cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const exportKit = exportItem ? ((exportItem.socialKitJsonb as CanonicalSocialKit | null) ?? null) : null;
 
   const downloadSocialKit = (item: CalendarItem) => {
     const kit = (item.socialKitJsonb as CanonicalSocialKit | null) ?? {};
-    const payload = {
-      title: item.title,
-      project: item.projectName,
-      author: item.authorName,
-      seoTitle: item.seoTitle,
-      seoDescription: item.seoDescription,
-      coverImageUrl: item.coverImageUrl,
-      socialKit: kit,
-    };
+    const payload = { title: item.title, project: item.projectName, author: item.authorName, seoTitle: item.seoTitle, seoDescription: item.seoDescription, coverImageUrl: item.coverImageUrl, socialKit: kit };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -664,98 +1283,58 @@ export default function Calendar() {
     URL.revokeObjectURL(url);
   };
 
-  const exportKit = exportItem
-    ? ((exportItem.socialKitJsonb as CanonicalSocialKit | null) ?? null)
-    : null;
-
   return (
     <AdminLayout>
       <div className="space-y-4">
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-calendar-title">
-              Publishing Calendar
-            </h1>
-            <p className="text-sm text-muted-foreground">Scheduled and published articles by date. Click a day to schedule a draft.</p>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-calendar-title">Publishing Calendar</h1>
+            <p className="text-sm text-muted-foreground">Click a day to open the workspace. Up to 2 idea chips per cell.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {canCreateArticle && (
-              <AIPlanDialog
-                projectId={selectedProjectId}
-                monthStart={monthStart}
-                monthEnd={monthEnd}
-              />
-            )}
-            <ToggleGroup
-              type="single"
-              value={scope}
-              onValueChange={(v) => v && setScope(v as "hireins" | "all")}
-              variant="outline"
-              size="sm"
-            >
-              <ToggleGroupItem value="hireins" data-testid="toggle-hireins">
-                Hire'in
-              </ToggleGroupItem>
-              <ToggleGroupItem value="all" data-testid="toggle-all-projects">
-                All Projects
-              </ToggleGroupItem>
+            {canCreateArticle && <AIPlanDialog projectId={selectedProjectId} monthStart={monthStart} monthEnd={monthEnd} />}
+            <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as "month" | "week")} variant="outline" size="sm">
+              <ToggleGroupItem value="month" data-testid="toggle-month-view">Month</ToggleGroupItem>
+              <ToggleGroupItem value="week" data-testid="toggle-week-view">Week</ToggleGroupItem>
             </ToggleGroup>
-            <ProjectSwitcher
-              projects={projects}
-              projectsLoading={projectsLoading}
-              selectedProjectId={selectedProjectId}
-              onChange={setSelectedProjectId}
-            />
+            <ToggleGroup type="single" value={scope} onValueChange={(v) => v && setScope(v as "hireins" | "all")} variant="outline" size="sm">
+              <ToggleGroupItem value="hireins" data-testid="toggle-hireins">Hire'in</ToggleGroupItem>
+              <ToggleGroupItem value="all" data-testid="toggle-all-projects">All Projects</ToggleGroupItem>
+            </ToggleGroup>
+            <ProjectSwitcher projects={projects} projectsLoading={projectsLoading} selectedProjectId={selectedProjectId} onChange={setSelectedProjectId} />
           </div>
         </div>
 
+        {/* Navigation */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
-              data-testid="button-prev-month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[160px] text-center text-sm font-semibold" data-testid="text-month-label">
-              {monthLabel}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
-              data-testid="button-next-month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            {viewMode === "month" ? (
+              <>
+                <Button variant="outline" size="icon" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} data-testid="button-prev-month"><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="min-w-[160px] text-center text-sm font-semibold" data-testid="text-month-label">{monthLabel}</span>
+                <Button variant="outline" size="icon" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} data-testid="button-next-month"><ChevronRight className="h-4 w-4" /></Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="icon" onClick={() => { const d = new Date(weekCursor); d.setDate(d.getDate() - 7); setWeekCursor(d); }} data-testid="button-prev-week"><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="min-w-[200px] text-center text-sm font-semibold" data-testid="text-week-label">{weekLabel}</span>
+                <Button variant="outline" size="icon" onClick={() => { const d = new Date(weekCursor); d.setDate(d.getDate() + 7); setWeekCursor(d); }} data-testid="button-next-week"><ChevronRight className="h-4 w-4" /></Button>
+              </>
+            )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              const n = new Date();
-              setCursor(new Date(n.getFullYear(), n.getMonth(), 1));
-            }}
-            data-testid="button-today"
-          >
-            Today
-          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { const n = new Date(); setCursor(new Date(n.getFullYear(), n.getMonth(), 1)); const day = n.getDay(); const diff = day === 0 ? -6 : 1 - day; const mon = new Date(n); mon.setDate(n.getDate() + diff); mon.setHours(0, 0, 0, 0); setWeekCursor(mon); }} data-testid="button-today">Today</Button>
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
+          <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : viewMode === "month" ? (
+          /* ── Month view ── */
           <Card>
             <CardContent className="p-3">
               <div className="grid grid-cols-7 gap-1">
                 {WEEKDAYS.map((w) => (
-                  <div key={w} className="px-2 py-1 text-center text-xs font-semibold text-muted-foreground">
-                    {w}
-                  </div>
+                  <div key={w} className="px-2 py-1 text-center text-xs font-semibold text-muted-foreground">{w}</div>
                 ))}
                 {cells.map((cell, i) => {
                   if (!cell) return <div key={i} className="min-h-[96px] rounded-md bg-muted/20" />;
@@ -763,24 +1342,21 @@ export default function Calendar() {
                   const dayItems = byDay[key] ?? [];
                   const dayOccasions = occByDay[key] ?? [];
                   const dayIdeas = ideasByDay[key] ?? [];
+                  const visibleIdeas = dayIdeas.slice(0, 2);
+                  const overflowCount = dayIdeas.length - 2;
+
                   return (
                     <div
                       key={i}
-                      className={`group min-h-[96px] rounded-md border p-1.5 transition-colors cursor-pointer hover:bg-muted/30 ${
-                        key === todayKey ? "border-primary" : ""
-                      }`}
-                      onClick={() => setSchedulerDate(key)}
+                      className={`group min-h-[96px] rounded-md border p-1.5 transition-colors cursor-pointer hover:bg-muted/30 ${key === todayKey ? "border-primary" : ""}`}
+                      onClick={() => openWorkspace(key)}
                       data-testid={`calendar-day-${key}`}
                     >
                       <div className="mb-1 flex items-center justify-between">
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           {cell.getDate()}
                           {dayOccasions.length > 0 && (
-                            <span
-                              className="inline-flex items-center text-amber-500"
-                              title={dayOccasions.map((o) => o.name).join(" · ")}
-                              data-testid={`occasion-badge-${key}`}
-                            >
+                            <span className="inline-flex items-center text-amber-500" title={dayOccasions.map((o) => o.name).join(" · ")} data-testid={`occasion-badge-${key}`}>
                               <Star className="h-3 w-3 fill-current" />
                             </span>
                           )}
@@ -788,15 +1364,16 @@ export default function Calendar() {
                         {canCreateArticle && selectedProjectId && (
                           <button
                             className="hidden rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex"
-                            title="Schedule draft or create article on this date"
-                            onClick={(e) => { e.stopPropagation(); setSchedulerDate(key); }}
+                            title="Open workspace for this date"
+                            onClick={(e) => { e.stopPropagation(); openWorkspace(key); }}
                             data-testid={`button-add-article-${key}`}
                           >
                             <Plus className="h-3 w-3" />
                           </button>
                         )}
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-0.5">
+                        {/* Article chips */}
                         {dayItems.map((a) => {
                           const isDraftPlanned = a.status === "draft";
                           const readyToExport = !isDraftPlanned && !a.publishesToInsights;
@@ -805,46 +1382,104 @@ export default function Calendar() {
                               key={a.id}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (readyToExport) {
-                                  setExportItem(a);
-                                } else {
-                                  navigate(`/admin/studio/articles/${a.id}/edit`);
-                                }
+                                if (readyToExport) setExportItem(a);
+                                else navigate(`/admin/studio/articles/${a.id}/edit`);
                               }}
                               className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] hover-elevate ${
-                                isDraftPlanned
-                                  ? "border border-dashed bg-gray-50 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400"
-                                  : readyToExport
-                                    ? "border border-dashed bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
-                                    : STATUS_BADGE_CLASS[a.status] ?? ""
+                                isDraftPlanned ? "border border-dashed bg-gray-50 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400"
+                                : readyToExport ? "border border-dashed bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                                : STATUS_BADGE_CLASS[a.status] ?? ""
                               }`}
-                              title={
-                                isDraftPlanned
-                                  ? `${a.title} — Planned Draft (click to edit)`
-                                  : readyToExport
-                                    ? `${a.title} — Ready to Export`
-                                    : `${a.title} — ${a.status} (click to edit)`
-                              }
+                              title={isDraftPlanned ? `${a.title} — Planned Draft` : readyToExport ? `${a.title} — Ready to Export` : `${a.title} — ${a.status}`}
                               data-testid={`calendar-item-${a.id}`}
                             >
                               {isDraftPlanned ? `· ${a.title}` : readyToExport ? `⇩ ${a.title}` : a.title}
                             </button>
                           );
                         })}
-                        {dayIdeas.map((idea) => (
+                        {/* Idea chips (capped at 2) */}
+                        {visibleIdeas.map((idea) => (
                           <button
                             key={idea.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPeekIdeaId(idea.id);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
                             className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
-                            title={`${idea.topic} — planned idea (click to open workspace)`}
+                            title={`${idea.topic} — planned idea`}
                             data-testid={`calendar-idea-${idea.id}`}
                           >
-                            ✦ {idea.topic}
+                            {TYPE_ICON[idea.contentType] || "✦"} {idea.topic}
                           </button>
                         ))}
+                        {/* +N more overflow */}
+                        {overflowCount > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openWorkspace(key); }}
+                            className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
+                            data-testid={`overflow-link-${key}`}
+                          >
+                            +{overflowCount} more
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          /* ── Week view ── */
+          <Card>
+            <CardContent className="p-3">
+              <div className="grid grid-cols-7 gap-1">
+                {weekDates.map((date) => {
+                  const key = ymd(date);
+                  const dayOccasions = occByDay[key] ?? [];
+                  const dayIdeas = ideasByDay[key] ?? [];
+                  const dayItems = byDay[key] ?? [];
+                  return (
+                    <div key={key} className={`rounded-md border ${key === todayKey ? "border-primary" : ""}`} data-testid={`week-day-${key}`}>
+                      {/* Day header */}
+                      <button
+                        onClick={() => openWorkspace(key)}
+                        className="w-full rounded-t-md px-2 py-2 text-center hover:bg-muted/40 transition-colors"
+                        data-testid={`week-day-header-${key}`}
+                      >
+                        <div className="text-xs text-muted-foreground">{WEEKDAYS[date.getDay()]}</div>
+                        <div className={`text-sm font-semibold ${key === todayKey ? "text-primary" : ""}`}>{date.getDate()}</div>
+                        {dayOccasions.length > 0 && <Star className="h-3 w-3 text-amber-500 fill-current mx-auto mt-0.5" />}
+                      </button>
+                      {/* Cards */}
+                      <div className="p-1.5 space-y-1 min-h-[120px]">
+                        {dayItems.slice(0, 2).map((a) => (
+                          <button
+                            key={a.id}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/admin/studio/articles/${a.id}/edit`); }}
+                            className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] ${STATUS_BADGE_CLASS[a.status] ?? ""}`}
+                            data-testid={`week-item-${a.id}`}
+                          >
+                            {a.title}
+                          </button>
+                        ))}
+                        {dayIdeas.slice(0, 3).map((idea) => (
+                          <button
+                            key={idea.id}
+                            onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
+                            className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[10px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                            title={idea.topic}
+                            data-testid={`week-idea-${idea.id}`}
+                          >
+                            {TYPE_ICON[idea.contentType] || "✦"} {idea.topic}
+                          </button>
+                        ))}
+                        {dayIdeas.length > 3 && (
+                          <button
+                            onClick={() => openWorkspace(key)}
+                            className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
+                            data-testid={`week-overflow-${key}`}
+                          >
+                            +{dayIdeas.length - 3} more
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -854,84 +1489,39 @@ export default function Calendar() {
           </Card>
         )}
 
+        {/* Legend */}
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <Badge variant="secondary" className={STATUS_BADGE_CLASS.scheduled}>Scheduled</Badge>
-          <Badge variant="secondary" className={STATUS_BADGE_CLASS.published}>Published</Badge>
-          <span className="inline-flex items-center gap-1 rounded border border-dashed bg-gray-50 px-1.5 py-0.5 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400">
-            · Planned Draft (AI plan)
-          </span>
-          <span className="inline-flex items-center gap-1 rounded border border-dashed bg-amber-50 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-            ⇩ Ready to Export (other projects)
-          </span>
-          <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">
-            ✦ Planned social idea
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Star className="h-3 w-3 fill-current text-amber-500" /> Occasion
-          </span>
-          <span className="text-muted-foreground/60 ml-auto">Click a day to schedule · Click chip to edit</span>
+          <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">✦ Planned idea</span>
+          <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-current text-amber-500" /> Occasion</span>
+          <span className="text-muted-foreground/60 ml-auto">Click a day to open workspace · Click chip to open idea</span>
         </div>
       </div>
 
-      {/* Day scheduler dialog */}
-      <DaySchedulerDialog
-        date={schedulerDate}
+      {/* Date Workspace Sheet */}
+      <DayWorkspaceSheet
+        date={workspaceDate}
         projectId={selectedProjectId}
-        occasions={schedulerDate ? occByDay[schedulerDate] ?? [] : []}
-        ideas={schedulerDate ? ideasByDay[schedulerDate] ?? [] : []}
-        canSchedulePublish={canSchedulePublish}
+        occasions={workspaceDate ? occByDay[workspaceDate] ?? [] : []}
+        ideas={workspaceDate ? ideasByDay[workspaceDate] ?? [] : []}
+        articles={workspaceDate ? byDay[workspaceDate] ?? [] : []}
         canCreateArticle={canCreateArticle}
-        onClose={() => setSchedulerDate(null)}
-        onNavigate={navigate}
-        onOpenIdea={(id) => { setSchedulerDate(null); setPeekIdeaId(id); }}
+        canEdit={can("studio.edit_article")}
+        canSchedule={canSchedulePublish}
+        members={members}
+        initialIdeaId={workspaceInitialIdea}
+        onClose={() => { setWorkspaceDate(null); setWorkspaceInitialIdea(null); }}
       />
-
-      {/* IdeaPeek slide-over — full idea workspace from calendar context */}
-      <IdeaPeek
-        ideaId={peekIdeaId}
-        onClose={() => setPeekIdeaId(null)}
-        fromCalendar
-        onOpenGallery={() => {
-          if (peekIdeaId) setGalleryIdeaId(peekIdeaId);
-        }}
-        onMutated={() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
-        }}
-      />
-
-      {/* Idea creative-card gallery dialog */}
-      <Dialog open={!!galleryIdea} onOpenChange={(o) => !o && setGalleryIdeaId(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-idea-cards">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ImageIcon className="h-4 w-4" />
-              {galleryIdea?.topic}
-            </DialogTitle>
-          </DialogHeader>
-          {galleryIdea?.brief && (
-            <p className="text-sm text-muted-foreground">{galleryIdea.brief}</p>
-          )}
-          {galleryIdea && <IdeaCardGallery idea={galleryIdea} />}
-        </DialogContent>
-      </Dialog>
 
       {/* Social kit export sheet */}
       <Sheet open={!!exportItem} onOpenChange={(open) => !open && setExportItem(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg" data-testid="sheet-social-kit">
           <SheetHeader>
             <SheetTitle>Ready to Export</SheetTitle>
-            <SheetDescription>
-              {exportItem?.title}
-              {exportItem?.projectName ? ` — ${exportItem.projectName}` : ""}
-            </SheetDescription>
+            <SheetDescription>{exportItem?.title}{exportItem?.projectName ? ` — ${exportItem.projectName}` : ""}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-4">
-            <Button
-              onClick={() => exportItem && downloadSocialKit(exportItem)}
-              data-testid="button-download-social-kit"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download Social Kit (JSON)
+            <Button onClick={() => exportItem && downloadSocialKit(exportItem)} data-testid="button-download-social-kit">
+              <Download className="mr-2 h-4 w-4" />Download Social Kit (JSON)
             </Button>
             <SocialKitPreview kit={exportKit} />
           </div>
