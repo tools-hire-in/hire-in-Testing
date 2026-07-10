@@ -148,6 +148,16 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen w-full flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3 sm:px-4">
+        <Link href="/admin/my-desk">
+          <span
+            className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            data-testid="link-back-to-portal"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Portal</span>
+          </span>
+        </Link>
+        <div className="h-4 w-px bg-border" />
         <Link href={STUDIO_BASE}>
           <span className="flex cursor-pointer items-center gap-2" data-testid="link-studio-home">
             <Clapperboard className="h-5 w-5 text-primary" />

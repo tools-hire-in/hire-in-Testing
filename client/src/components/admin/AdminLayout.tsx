@@ -52,6 +52,7 @@ import {
   Receipt,
   KeyRound,
   DollarSign,
+  ArrowUpRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -617,6 +618,8 @@ function ContentStudioSection({
   cmReviewCount: number;
 }) {
   const { open } = useSidebar();
+  const { isEnabled } = useFeatureFlags();
+  const studioV2Enabled = isEnabled("studio_v2_enabled");
 
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -640,6 +643,53 @@ function ContentStudioSection({
   };
 
   if (!hasStudioAccess) return null;
+
+  if (studioV2Enabled) {
+    if (!open) {
+      return (
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="Open Studio"
+                  className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                >
+                  <a href="/studio" target="_blank" rel="noopener noreferrer">
+                    <ArrowUpRight className="h-4 w-4 shrink-0" />
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      );
+    }
+    return (
+      <SidebarGroup>
+        <div className="px-2 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase">
+          Content Studio
+        </div>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                data-testid="nav-item-open-studio"
+              >
+                <a href="/studio" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 w-full">
+                  <ArrowUpRight className="h-4 w-4 shrink-0" />
+                  <span className="flex-1">Open Studio</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
 
   const studioSubItems: NavItem[] = [
     { href: "/admin/studio", label: "Dashboard", icon: LayoutDashboard, roles: [] },
