@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -134,6 +135,7 @@ export default function AdminUsers() {
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
   const [newRole, setNewRole] = useState("employee");
+  const [execToggle, setExecToggle] = useState(false);
   const [newJoiningDate, setNewJoiningDate] = useState("");
   const [newDesignation, setNewDesignation] = useState("");
   const [newDepartmentId, setNewDepartmentId] = useState("");
@@ -264,7 +266,7 @@ export default function AdminUsers() {
         toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
       }
       setInviteOpen(false);
-      setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee");
+      setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee"); setExecToggle(false);
       setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced"); setNewShiftId("");
     },
     onError: () => {
@@ -900,7 +902,11 @@ export default function AdminUsers() {
         </Card>
 
         {/* Invite Dialog */}
-        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <Dialog open={inviteOpen} onOpenChange={(open) => {
+          setInviteOpen(open);
+          setExecToggle(false);
+          setNewRole("employee");
+        }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
@@ -911,6 +917,23 @@ export default function AdminUsers() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              {currentUserRank > roleRank.executive && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="exec-toggle" className="font-medium">Executive (read-only observer)</Label>
+                    <p className="text-xs text-muted-foreground">No email sent — login credentials shown once.</p>
+                  </div>
+                  <Switch
+                    id="exec-toggle"
+                    checked={execToggle}
+                    onCheckedChange={(checked) => {
+                      setExecToggle(checked);
+                      setNewRole(checked ? "executive" : "employee");
+                    }}
+                    data-testid="switch-invite-executive"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
@@ -925,23 +948,25 @@ export default function AdminUsers() {
                 <Label htmlFor="email">Email Address</Label>
                 <Input id="email" type="email" placeholder="user@hire-in.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
               </div>
+              {newRole !== "executive" && (
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select value={newRole} onValueChange={setNewRole}>
-                    <SelectTrigger data-testid="select-invite-role"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
-                      {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
-                      {currentUserRank > roleRank.finance && <SelectItem value="finance">Finance</SelectItem>}
-                      {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
-                      {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
-                      {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}
-                      {currentUserRank > roleRank.executive && <SelectItem value="executive">Executive</SelectItem>}
-                      <SelectItem value="employee">Employee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {newRole !== "executive" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Select value={newRole} onValueChange={setNewRole}>
+                      <SelectTrigger data-testid="select-invite-role"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
+                        {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
+                        {currentUserRank > roleRank.finance && <SelectItem value="finance">Finance</SelectItem>}
+                        {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
+                        {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
+                        {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}
+                        <SelectItem value="employee">Employee</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {newRole !== "executive" && (
                   <div className="space-y-2">
                     <Label htmlFor="hierarchyLevel">Level</Label>
@@ -960,6 +985,7 @@ export default function AdminUsers() {
                   </div>
                 )}
               </div>
+              )}
               {newRole !== "executive" && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
