@@ -207,6 +207,23 @@ export function isValidIdeaTransition(from: string, to: string): boolean {
 
 export const STUDIO_IDEA_ORIGINS = ["manual", "import", "ai", "repurposed"] as const;
 
+// ── Studio T2: campaign taxonomy ─────────────────────────────────────────────
+export const STUDIO_CAMPAIGN_STATUSES = ["draft", "active", "paused", "completed"] as const;
+export type StudioCampaignStatus = (typeof STUDIO_CAMPAIGN_STATUSES)[number];
+
+export const STUDIO_FUNNEL_STAGES = ["awareness", "consideration", "decision"] as const;
+export type StudioFunnelStage = (typeof STUDIO_FUNNEL_STAGES)[number];
+
+export const STUDIO_OUTREACH_TYPES = ["linkedin", "email"] as const;
+export const STUDIO_OUTREACH_STATUSES = ["draft", "approved", "archived"] as const;
+
+export interface StudioOutreachStep {
+  order: number;
+  subjectOrHook: string;
+  body: string;
+  notes?: string;
+}
+
 export const STUDIO_PILLARS = [
   "healthcare_staffing",
   "it_staffing",

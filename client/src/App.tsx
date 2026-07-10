@@ -99,6 +99,9 @@ const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const StudioAccess = lazy(() => import("@/pages/admin/studio/StudioAccess"));
 const StudioBrandKit = lazy(() => import("@/pages/admin/studio/BrandKit"));
 const StudioPipelineView = lazy(() => import("@/pages/studio/PipelineView"));
+const StudioCampaignsView = lazy(() => import("@/pages/studio/CampaignsView"));
+const StudioBrandVoiceView = lazy(() => import("@/pages/studio/BrandVoiceView"));
+const StudioOutreachView = lazy(() => import("@/pages/studio/OutreachView"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -384,6 +387,10 @@ function PublicRouter() {
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
+      <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
+      <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
+      <Route path="/studio/outreach">{() => <StudioV2><StudioOutreachView /></StudioV2>}</Route>
+      <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
@@ -548,6 +555,10 @@ function EmployeeRouter() {
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
+      <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
+      <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
+      <Route path="/studio/outreach">{() => <StudioV2><StudioOutreachView /></StudioV2>}</Route>
+      <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>

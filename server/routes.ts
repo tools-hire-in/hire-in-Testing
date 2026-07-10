@@ -35,6 +35,8 @@ import {
 import {
   insertStudioArticleSchema,
   insertStudioContentIdeaSchema,
+  insertStudioCampaignSchema,
+  insertStudioOutreachSequenceSchema,
   insertStudioIdeaCommentSchema,
   insertStudioAuthorProfileSchema,
   studioArticles,
@@ -54,6 +56,11 @@ import {
   isValidIdeaStatus,
   STUDIO_CHANNELS,
   STUDIO_IDEA_ORIGINS,
+  STUDIO_CAMPAIGN_STATUSES,
+  STUDIO_FUNNEL_STAGES,
+  STUDIO_OUTREACH_TYPES,
+  STUDIO_OUTREACH_STATUSES,
+  STUDIO_PILLARS,
 } from "@shared/studioContent";
 import {
   notifyUser as notifyStudioUser,
@@ -63,6 +70,9 @@ import {
 import { INSIGHT_REACTION_VALUES } from "@shared/insights";
 import {
   getComplianceMode,
+  brandVoiceConfigSchema,
+  composeBrandVoice,
+  type BrandVoiceConfig,
   type AiGenerationParams,
 } from "@shared/studioAi";
 import {
@@ -71,6 +81,9 @@ import {
   runQualityReview,
   isAiConfigured,
   AiGenerationError,
+  generateCampaignPlan,
+  generateRepurposeIdeas,
+  generateOutreachSequence,
 } from "./services/aiDraftService";
 import { z } from "zod";
 // express-rate-limit kept for other potential uses; verify endpoint uses a
@@ -16637,7 +16650,12 @@ export async function registerRoutes(
           );
         }
 
-        const params = buildArticleParams(article, req.body);
+        // Brand Voice Hub (T2): articles are long-form/website copy — resolve
+        // the project default voice (no platform override) into the params.
+        const params: AiGenerationParams = {
+          ...buildArticleParams(article, req.body),
+          ...(await resolveBrandVoiceParams(article.projectId)),
+        };
         const compliance = getComplianceMode(params.compliance_mode);
 
         // Record the generation up-front (status reflects outcome).
@@ -16772,6 +16790,12 @@ export async function registerRoutes(
           cta_url: req.body?.ctaUrl,
           visual_template: req.body?.visualTemplate,
           compliance_mode: compliance.value,
+          // Brand Voice Hub (T2): platform override (linkedin/instagram/story)
+          // → project default → system default.
+          ...(await resolveBrandVoiceParams(
+            article.projectId,
+            typeof req.body?.platform === "string" ? req.body.platform : null,
+          )),
         };
 
         const generation = await storage.createStudioGeneration({
@@ -22368,6 +22392,716 @@ export async function registerRoutes(
   registerTravelRoutes(app);
   registerTrainingCatalogRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);
+
+  // ==========================================================================
+  // STUDIO T2 — Campaigns, Brand Voice Hub, Repurpose-to-Ideas, Copy-Only
+  // Outreach (Task #907). AI proposes; humans decide. Nothing here publishes
+  // or sends anything.
+  // ==========================================================================
+
+  /** Resolve a project's brand voice into flat prompt params. */
+  const resolveBrandVoiceParams = async (
+    projectId: string,
+    channel?: string | null,
+  ) => {
+    const project = await storage.getStudioProject(projectId);
+    return composeBrandVoice(
+      project?.name,
+      undefined,
+      (project?.brandVoiceConfig ?? null) as BrandVoiceConfig | null,
+      channel,
+    );
+  };
+
+  const notifyCampaignContributors = (
+    campaign: { contributorUserIds?: unknown; id: string; name: string },
+    actorUserId: string,
+    event: "campaign_contributor_added" | "campaign_plan_proposed" | "campaign_plan_approved" | "campaign_overdue",
+    message: string,
+  ) => {
+    const ids = Array.isArray(campaign.contributorUserIds)
+      ? (campaign.contributorUserIds as string[])
+      : [];
+    for (const uid of ids) {
+      if (uid && uid !== actorUserId) {
+        void notifyStudioUser({
+          userId: uid,
+          event,
+          message,
+          linkPath: `/campaigns/${campaign.id}`,
+          metadata: { campaignId: campaign.id },
+        });
+      }
+    }
+  };
+
+  // ── Brand Voice Hub ────────────────────────────────────────────────────────
+  app.get(
+    "/api/studio/projects/:id/brand-voice",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const project = await storage.getStudioProject(req.params.id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        res.json({
+          projectId: project.id,
+          config: project.brandVoiceConfig ?? null,
+          // Live preview of what the AI will actually be told.
+          resolved: composeBrandVoice(
+            project.name,
+            undefined,
+            (project.brandVoiceConfig ?? null) as BrandVoiceConfig | null,
+          ),
+        });
+      } catch (error) {
+        console.error("Get brand voice error:", error);
+        res.status(500).json({ error: "Failed to fetch brand voice" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/studio/projects/:id/brand-voice",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const project = await storage.getStudioProject(req.params.id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        if (project.isActive === false) {
+          return res.status(403).json({ error: "Project is archived" });
+        }
+        const body = req.body ?? {};
+        const config = body.config === null ? null : brandVoiceConfigSchema.parse(body.config ?? {});
+        const updated = await storage.updateStudioProject(project.id, {
+          brandVoiceConfig: config,
+        } as any);
+        res.json({
+          projectId: project.id,
+          config: updated?.brandVoiceConfig ?? null,
+          resolved: composeBrandVoice(project.name, undefined, config),
+        });
+      } catch (error: any) {
+        console.error("Update brand voice error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update brand voice" });
+      }
+    },
+  );
+
+  // ── Campaigns CRUD ─────────────────────────────────────────────────────────
+  app.get(
+    "/api/studio/campaigns",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const campaigns = await storage.getStudioCampaigns(projectId);
+        const counts = await storage.getStudioCampaignIdeaCounts(campaigns.map((c) => c.id));
+        res.json(
+          campaigns.map((c) => ({
+            ...c,
+            ideaCounts: counts.get(c.id) ?? { total: 0, done: 0 },
+          })),
+        );
+      } catch (error) {
+        console.error("List campaigns error:", error);
+        res.status(500).json({ error: "Failed to fetch campaigns" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/studio/campaigns/:id",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const ideas = await storage.getStudioContentIdeas({ campaignId: campaign.id });
+        const counts = await storage.getStudioCampaignIdeaCounts([campaign.id]);
+        res.json({
+          ...campaign,
+          ideas,
+          ideaCounts: counts.get(campaign.id) ?? { total: 0, done: 0 },
+        });
+      } catch (error) {
+        console.error("Get campaign error:", error);
+        res.status(500).json({ error: "Failed to fetch campaign" });
+      }
+    },
+  );
+
+  const validateCampaignBody = (body: any): string | null => {
+    if (body.status !== undefined && !(STUDIO_CAMPAIGN_STATUSES as readonly string[]).includes(body.status)) {
+      return `Invalid status '${body.status}'`;
+    }
+    if (body.funnelStage !== undefined && body.funnelStage !== null &&
+        !(STUDIO_FUNNEL_STAGES as readonly string[]).includes(body.funnelStage)) {
+      return `Invalid funnel stage '${body.funnelStage}'`;
+    }
+    if (body.channels !== undefined && body.channels !== null) {
+      if (!Array.isArray(body.channels) || body.channels.some((c: any) => !(STUDIO_CHANNELS as readonly string[]).includes(c))) {
+        return "channels must be an array of valid studio channels";
+      }
+    }
+    if (body.contributorUserIds !== undefined && body.contributorUserIds !== null) {
+      if (!Array.isArray(body.contributorUserIds) || body.contributorUserIds.some((v: any) => typeof v !== "string")) {
+        return "contributorUserIds must be an array of user ids";
+      }
+    }
+    if (body.startDate && body.endDate && String(body.endDate) < String(body.startDate)) {
+      return "endDate must be on or after startDate";
+    }
+    return null;
+  };
+
+  app.post(
+    "/api/studio/campaigns",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const body = req.body ?? {};
+        const invalid = validateCampaignBody(body);
+        if (invalid) return res.status(400).json({ error: invalid });
+        const parsed = insertStudioCampaignSchema.partial().parse(body);
+        if (!parsed.projectId) return res.status(400).json({ error: "projectId is required" });
+        const projErr = await assertPipelineProject(parsed.projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        if (!parsed.name || !String(parsed.name).trim()) {
+          return res.status(400).json({ error: "name is required" });
+        }
+        const created = await storage.createStudioCampaign({
+          ...parsed,
+          projectId: parsed.projectId,
+          name: String(parsed.name).trim(),
+          status: (parsed.status as string) ?? "draft",
+          createdByUserId: req.session.userId,
+        } as any);
+        notifyCampaignContributors(
+          created as any,
+          req.session.userId!,
+          "campaign_contributor_added",
+          `You were added as a contributor on campaign "${created.name}".`,
+        );
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create campaign error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create campaign" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/studio/campaigns/:id",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioCampaign(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Campaign not found" });
+        const body = req.body ?? {};
+        const invalid = validateCampaignBody(body);
+        if (invalid) return res.status(400).json({ error: invalid });
+        const parsed = insertStudioCampaignSchema.partial().parse(body);
+        delete (parsed as any).projectId; // campaigns never move between projects
+        delete (parsed as any).createdByUserId;
+        const updated = await storage.updateStudioCampaign(existing.id, parsed);
+        // Notify newly added contributors only.
+        const before = new Set(Array.isArray(existing.contributorUserIds) ? existing.contributorUserIds as string[] : []);
+        const after = Array.isArray(updated?.contributorUserIds) ? updated!.contributorUserIds as string[] : [];
+        const added = after.filter((id) => !before.has(id));
+        if (added.length) {
+          notifyCampaignContributors(
+            { ...updated!, contributorUserIds: added } as any,
+            req.session.userId!,
+            "campaign_contributor_added",
+            `You were added as a contributor on campaign "${updated!.name}".`,
+          );
+        }
+        // Spec: transitioning to "active" means the plan is approved — tell
+        // every contributor the campaign is live.
+        if (existing.status !== "active" && updated?.status === "active") {
+          notifyCampaignContributors(
+            updated as any,
+            req.session.userId!,
+            "campaign_plan_approved",
+            `Campaign "${updated.name}" is now active — its content plan is approved.`,
+          );
+        }
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update campaign error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update campaign" });
+      }
+    },
+  );
+
+  // Add contributor(s) to a campaign — appends (deduped) and notifies only the
+  // newly added users.
+  app.post(
+    "/api/studio/campaigns/:id/contributors",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const raw = req.body?.userIds ?? (req.body?.userId ? [req.body.userId] : null);
+        if (!Array.isArray(raw) || !raw.length || raw.some((v: any) => typeof v !== "string" || !v.trim())) {
+          return res.status(400).json({ error: "userId (string) or userIds (string[]) is required" });
+        }
+        const existing = Array.isArray(campaign.contributorUserIds)
+          ? (campaign.contributorUserIds as string[])
+          : [];
+        const before = new Set(existing);
+        const added = Array.from(new Set(raw.map((v: string) => v.trim()))).filter((id) => !before.has(id));
+        if (!added.length) return res.json(campaign); // idempotent no-op
+        const updated = await storage.updateStudioCampaign(campaign.id, {
+          contributorUserIds: [...existing, ...added],
+        } as any);
+        notifyCampaignContributors(
+          { ...updated!, contributorUserIds: added } as any,
+          req.session.userId!,
+          "campaign_contributor_added",
+          `You were added as a contributor on campaign "${updated!.name}".`,
+        );
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Add campaign contributor error:", error);
+        res.status(400).json({ error: error?.message || "Failed to add contributor" });
+      }
+    },
+  );
+
+  // ── AI campaign planner — two-step: preview (no writes) then confirm ──────
+  // Step 1: AI generates a plan PREVIEW only. Nothing is written to the
+  // pipeline; the human edits the suggestions client-side first.
+  app.post(
+    "/api/studio/campaigns/:id/generate-plan-preview",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI is not configured on this environment." });
+        }
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const template = await storage.getActiveStudioPromptTemplate("campaign_planner", campaign.projectId);
+        if (!template) return res.status(500).json({ error: "campaign_planner prompt template missing" });
+
+        const itemCount = Math.min(Math.max(Number(req.body?.itemCount) || 8, 3), 15);
+        const channels = Array.isArray(campaign.channels) && (campaign.channels as string[]).length
+          ? (campaign.channels as string[])
+          : [...STUDIO_CHANNELS];
+        let durationWeeks = 4;
+        if (campaign.startDate && campaign.endDate) {
+          const ms = new Date(campaign.endDate).getTime() - new Date(campaign.startDate).getTime();
+          durationWeeks = Math.max(1, Math.round(ms / (7 * 24 * 60 * 60 * 1000)));
+        }
+        const voice = await resolveBrandVoiceParams(campaign.projectId);
+        const result = await generateCampaignPlan(template, {
+          ...voice,
+          campaign_name: campaign.name,
+          campaign_brief: campaign.brief || "",
+          campaign_goal: campaign.goal || "",
+          funnel_stage: campaign.funnelStage || "awareness",
+          icp: campaign.icp || "",
+          primary_cta: campaign.primaryCta || "",
+          allowed_channels: channels.join(", "),
+          duration_weeks: durationWeeks,
+          item_count: itemCount,
+          pillars: STUDIO_PILLARS.join(", "),
+          compliance_mode: "normal",
+        } as any);
+
+        // Validate every proposal server-side before it reaches the preview;
+        // invalid contentType/channel combos are dropped here, never inserted.
+        const suggestions = result.items.flatMap((item) => {
+          const typeCheck = validateIdeaTypeAndChannels(item.content_type, item.channels);
+          if (typeCheck.error) return [];
+          let suggestedDate: string | null = null;
+          if (campaign.startDate) {
+            const start = new Date(campaign.startDate);
+            const due = new Date(start.getTime() + (Math.max(1, item.suggested_week) - 1) * 7 * 24 * 60 * 60 * 1000);
+            suggestedDate = due.toISOString().slice(0, 10);
+          }
+          return [{
+            topic: item.topic,
+            contentType: item.content_type,
+            channels: typeCheck.channels ?? [],
+            pillar: (STUDIO_PILLARS as readonly string[]).includes(item.pillar) ? item.pillar : null,
+            suggestedDate,
+            brief: [item.angle, item.cta ? `CTA: ${item.cta}` : ""].filter(Boolean).join("\n"),
+          }];
+        });
+        res.json({ summary: result.summary, suggestions, model: result.model });
+      } catch (error: any) {
+        if (error instanceof AiGenerationError) {
+          return res.status(502).json({ error: error.message, code: error.code, retryable: error.retryable });
+        }
+        console.error("Campaign plan preview error:", error);
+        res.status(500).json({ error: error?.message || "Failed to generate campaign plan preview" });
+      }
+    },
+  );
+
+  // Step 2: receive the (possibly edited) suggestions and insert them as
+  // SUGGESTED pipeline ideas. Every row is re-validated server-side.
+  app.post(
+    "/api/studio/campaigns/:id/confirm-plan",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const projErr = await assertPipelineProject(campaign.projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+
+        const suggestions = req.body?.suggestions;
+        if (!Array.isArray(suggestions) || !suggestions.length) {
+          return res.status(400).json({ error: "suggestions must be a non-empty array" });
+        }
+        if (suggestions.length > 30) {
+          return res.status(400).json({ error: "Too many suggestions (max 30 per confirm)" });
+        }
+        // Validate ALL rows before inserting ANY — no partial plans.
+        const validated: {
+          topic: string; contentType: string; channels: string[];
+          pillar: string | null; suggestedDate: string | null; brief: string;
+        }[] = [];
+        for (let i = 0; i < suggestions.length; i++) {
+          const s = suggestions[i] ?? {};
+          const topic = typeof s.topic === "string" ? s.topic.trim() : "";
+          if (!topic) return res.status(400).json({ error: `Row ${i + 1}: topic is required` });
+          const typeCheck = validateIdeaTypeAndChannels(s.contentType, s.channels);
+          if (typeCheck.error) return res.status(400).json({ error: `Row ${i + 1}: ${typeCheck.error}` });
+          let suggestedDate: string | null = null;
+          if (s.suggestedDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s.suggestedDate))) {
+              return res.status(400).json({ error: `Row ${i + 1}: suggestedDate must be YYYY-MM-DD` });
+            }
+            suggestedDate = String(s.suggestedDate);
+          }
+          validated.push({
+            topic,
+            contentType: String(s.contentType),
+            channels: typeCheck.channels ?? [],
+            pillar: (STUDIO_PILLARS as readonly string[]).includes(s.pillar) ? s.pillar : null,
+            suggestedDate,
+            brief: typeof s.brief === "string" ? s.brief.slice(0, 5000) : "",
+          });
+        }
+        const createdIdeas = [];
+        for (const v of validated) {
+          const idea = await storage.createStudioContentIdea({
+            projectId: campaign.projectId,
+            campaignId: campaign.id,
+            topic: v.topic,
+            brief: v.brief || null,
+            contentType: v.contentType,
+            channels: v.channels as any,
+            pillar: v.pillar,
+            origin: "ai",
+            status: "suggested",
+            dueDate: v.suggestedDate,
+            createdByUserId: req.session.userId,
+          } as any);
+          createdIdeas.push(idea);
+        }
+        notifyCampaignContributors(
+          campaign as any,
+          req.session.userId!,
+          "campaign_plan_proposed",
+          `A content plan with ${createdIdeas.length} idea(s) was added to campaign "${campaign.name}". Review and accept or discard each one.`,
+        );
+        res.status(201).json({ created: createdIdeas.length, ideas: createdIdeas });
+      } catch (error: any) {
+        console.error("Campaign plan confirm error:", error);
+        res.status(500).json({ error: error?.message || "Failed to confirm campaign plan" });
+      }
+    },
+  );
+
+  // ── Attach/detach an idea to a campaign ────────────────────────────────────
+  app.patch(
+    "/api/studio/content-ideas/:id/campaign",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) return res.status(404).json({ error: "Idea not found" });
+        const campaignId = req.body?.campaignId ?? null;
+        if (campaignId !== null) {
+          const campaign = await storage.getStudioCampaign(String(campaignId));
+          if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+          if (campaign.projectId !== idea.projectId) {
+            return res.status(400).json({ error: "Campaign belongs to a different project" });
+          }
+        }
+        const updated = await storage.updateStudioContentIdea(idea.id, { campaignId } as any);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Attach idea to campaign error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update idea campaign" });
+      }
+    },
+  );
+
+  // ── Repurpose a published article into suggested ideas ────────────────────
+  app.post(
+    "/api/admin/studio/articles/:id/repurpose",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI is not configured on this environment." });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "published" && article.status !== "approved") {
+          return res.status(400).json({
+            error: "Only published or approved articles can be repurposed",
+            code: "not_published",
+          });
+        }
+        const template = await storage.getActiveStudioPromptTemplate("repurpose_to_ideas", article.projectId);
+        if (!template) return res.status(500).json({ error: "repurpose_to_ideas prompt template missing" });
+
+        // Channel picker: one suggested idea per selected channel.
+        const rawChannels = req.body?.channels;
+        if (!Array.isArray(rawChannels) || !rawChannels.length) {
+          return res.status(400).json({ error: "channels must be a non-empty array", code: "channels_required" });
+        }
+        const selectedChannels: string[] = [];
+        for (const c of rawChannels) {
+          if (!(STUDIO_CHANNELS as readonly string[]).includes(c)) {
+            return res.status(400).json({ error: `Invalid channel '${c}'`, code: "invalid_channels" });
+          }
+          if (!selectedChannels.includes(c)) selectedChannels.push(c);
+        }
+        const campaignId = req.body?.campaignId ? String(req.body.campaignId) : null;
+        if (campaignId) {
+          const campaign = await storage.getStudioCampaign(campaignId);
+          if (!campaign || campaign.projectId !== article.projectId) {
+            return res.status(400).json({ error: "Invalid campaign for this article's project" });
+          }
+        }
+        const voice = await resolveBrandVoiceParams(article.projectId);
+        const result = await generateRepurposeIdeas(template, {
+          ...voice,
+          article_title: article.title,
+          article_summary: article.summary || "",
+          article_body: (article.bodyMarkdown || "").slice(0, 20000),
+          allowed_channels: selectedChannels.join(", "),
+          item_count: selectedChannels.length,
+          compliance_mode: "normal",
+        } as any);
+
+        // One idea per selected channel, staggered start dates (every 2 days
+        // from tomorrow) so the pipeline doesn't stack everything on one day.
+        const createdIdeas = [];
+        const today = new Date();
+        for (let i = 0; i < selectedChannels.length; i++) {
+          const channel = selectedChannels[i];
+          const item = result.items[i] ?? result.items[result.items.length - 1];
+          if (!item) break;
+          // Force the idea onto the selected channel; fall back to social_post
+          // when the AI's content type isn't valid for that channel.
+          let contentType = item.content_type;
+          let typeCheck = validateIdeaTypeAndChannels(contentType, [channel]);
+          if (typeCheck.error) {
+            contentType = "social_post";
+            typeCheck = validateIdeaTypeAndChannels(contentType, [channel]);
+            if (typeCheck.error) continue;
+          }
+          const scheduled = new Date(today.getTime() + (1 + i * 2) * 24 * 60 * 60 * 1000);
+          const idea = await storage.createStudioContentIdea({
+            projectId: article.projectId,
+            campaignId,
+            linkedArticleId: article.id,
+            topic: item.topic,
+            brief: [
+              `Repurposed from article: ${article.title}`,
+              item.angle,
+              item.hook ? `Hook: ${item.hook}` : "",
+            ].filter(Boolean).join("\n"),
+            contentType,
+            channels: (typeCheck.channels ?? [channel]) as any,
+            origin: "repurposed",
+            status: "suggested",
+            scheduledDate: scheduled.toISOString().slice(0, 10),
+            createdByUserId: req.session.userId,
+          } as any);
+          createdIdeas.push(idea);
+        }
+        res.status(201).json({ created: createdIdeas.length, ideas: createdIdeas, model: result.model });
+      } catch (error: any) {
+        if (error instanceof AiGenerationError) {
+          return res.status(502).json({ error: error.message, code: error.code, retryable: error.retryable });
+        }
+        console.error("Repurpose article error:", error);
+        res.status(500).json({ error: error?.message || "Failed to repurpose article" });
+      }
+    },
+  );
+
+  // ── Copy-only outreach sequences (system never sends anything) ────────────
+  app.get(
+    "/api/studio/outreach",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+        const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
+        res.json(await storage.getStudioOutreachSequences(projectId, campaignId));
+      } catch (error) {
+        console.error("List outreach sequences error:", error);
+        res.status(500).json({ error: "Failed to fetch outreach sequences" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/studio/outreach/:id",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const seq = await storage.getStudioOutreachSequence(req.params.id);
+        if (!seq) return res.status(404).json({ error: "Sequence not found" });
+        res.json(seq);
+      } catch (error) {
+        console.error("Get outreach sequence error:", error);
+        res.status(500).json({ error: "Failed to fetch outreach sequence" });
+      }
+    },
+  );
+
+  const validateOutreachBody = (body: any): string | null => {
+    if (body.sequenceType !== undefined && !(STUDIO_OUTREACH_TYPES as readonly string[]).includes(body.sequenceType)) {
+      return `Invalid sequenceType '${body.sequenceType}'`;
+    }
+    if (body.status !== undefined && !(STUDIO_OUTREACH_STATUSES as readonly string[]).includes(body.status)) {
+      return `Invalid status '${body.status}'`;
+    }
+    if (body.stepsJsonb !== undefined && body.stepsJsonb !== null && !Array.isArray(body.stepsJsonb)) {
+      return "stepsJsonb must be an array of steps";
+    }
+    return null;
+  };
+
+  app.post(
+    "/api/studio/outreach",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const body = req.body ?? {};
+        const invalid = validateOutreachBody(body);
+        if (invalid) return res.status(400).json({ error: invalid });
+        const parsed = insertStudioOutreachSequenceSchema.partial().parse(body);
+        if (!parsed.projectId) return res.status(400).json({ error: "projectId is required" });
+        const projErr = await assertPipelineProject(parsed.projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        if (!parsed.name || !String(parsed.name).trim()) {
+          return res.status(400).json({ error: "name is required" });
+        }
+        if (parsed.campaignId) {
+          const campaign = await storage.getStudioCampaign(parsed.campaignId);
+          if (!campaign || campaign.projectId !== parsed.projectId) {
+            return res.status(400).json({ error: "Invalid campaign for this project" });
+          }
+        }
+        const created = await storage.createStudioOutreachSequence({
+          ...parsed,
+          projectId: parsed.projectId,
+          name: String(parsed.name).trim(),
+          createdByUserId: req.session.userId,
+        } as any);
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create outreach sequence error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create outreach sequence" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/studio/outreach/:id",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioOutreachSequence(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Sequence not found" });
+        const body = req.body ?? {};
+        const invalid = validateOutreachBody(body);
+        if (invalid) return res.status(400).json({ error: invalid });
+        const parsed = insertStudioOutreachSequenceSchema.partial().parse(body);
+        delete (parsed as any).projectId;
+        delete (parsed as any).createdByUserId;
+        res.json(await storage.updateStudioOutreachSequence(existing.id, parsed));
+      } catch (error: any) {
+        console.error("Update outreach sequence error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update outreach sequence" });
+      }
+    },
+  );
+
+  // AI-draft the steps for an outreach sequence (fills stepsJsonb; still draft).
+  app.post(
+    "/api/studio/outreach/:id/generate",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI is not configured on this environment." });
+        }
+        const seq = await storage.getStudioOutreachSequence(req.params.id);
+        if (!seq) return res.status(404).json({ error: "Sequence not found" });
+        const template = await storage.getActiveStudioPromptTemplate("outreach_sequence", seq.projectId);
+        if (!template) return res.status(500).json({ error: "outreach_sequence prompt template missing" });
+        const campaign = seq.campaignId ? await storage.getStudioCampaign(seq.campaignId) : null;
+        const stepCount = Math.min(Math.max(Number(req.body?.stepCount) || 4, 2), 8);
+        const voice = await resolveBrandVoiceParams(seq.projectId, seq.sequenceType === "email" ? null : "linkedin");
+        const result = await generateOutreachSequence(template, {
+          ...voice,
+          sequence_type: seq.sequenceType,
+          audience_type: seq.audienceType || "",
+          campaign_context: campaign
+            ? `${campaign.name}: ${campaign.brief || ""} Goal: ${campaign.goal || ""}`
+            : "",
+          primary_cta: campaign?.primaryCta || req.body?.primaryCta || "",
+          step_count: stepCount,
+          extra_instructions: typeof req.body?.instructions === "string" ? req.body.instructions.slice(0, 2000) : "",
+          compliance_mode: "normal",
+        } as any);
+        const updated = await storage.updateStudioOutreachSequence(seq.id, {
+          stepsJsonb: result.steps,
+          status: "draft",
+        } as any);
+        res.json({ ...updated, model: result.model });
+      } catch (error: any) {
+        if (error instanceof AiGenerationError) {
+          return res.status(502).json({ error: error.message, code: error.code, retryable: error.retryable });
+        }
+        console.error("Generate outreach sequence error:", error);
+        res.status(500).json({ error: error?.message || "Failed to generate outreach sequence" });
+      }
+    },
+  );
 
   // Seed badge types on startup (idempotent)
   seedPraiseBadgeTypes().catch(console.error);

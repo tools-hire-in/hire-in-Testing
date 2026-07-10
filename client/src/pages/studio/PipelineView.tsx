@@ -647,6 +647,48 @@ function IdeaPeek({
     queryKey: ["/api/studio/assignees"],
     enabled: !!ideaId,
   });
+  const { data: campaigns } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/studio/campaigns", { projectId: idea?.projectId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/studio/campaigns?projectId=${encodeURIComponent(idea!.projectId)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch campaigns");
+      return res.json();
+    },
+    enabled: !!idea?.projectId,
+  });
+  const campaignMutation = useMutation({
+    mutationFn: async (campaignId: string | null) => {
+      const res = await apiRequest("PATCH", `/api/studio/content-ideas/${ideaId}/campaign`, { campaignId });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/campaigns"] });
+      toast({ title: "Campaign updated" });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't update campaign", description: e.message, variant: "destructive" }),
+  });
+  // Inline "New Campaign" quick form (bottom-up flow): create a draft
+  // campaign with just a name, then attach this idea to it.
+  const [newCampaignOpen, setNewCampaignOpen] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState("");
+  const createCampaignMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/studio/campaigns", {
+        projectId: idea!.projectId,
+        name,
+        status: "draft",
+      });
+      return res.json();
+    },
+    onSuccess: (created: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/campaigns"] });
+      setNewCampaignOpen(false);
+      setNewCampaignName("");
+      campaignMutation.mutate(created.id);
+    },
+    onError: (e: Error) => toast({ title: "Couldn't create campaign", description: e.message, variant: "destructive" }),
+  });
   const assigneeName = (userId?: string | null) =>
     userId ? assignees?.find((a) => a.id === userId)?.name : undefined;
   const nextStates = idea ? (STUDIO_IDEA_TRANSITIONS[idea.status as StudioIdeaStatus] ?? []) : [];
@@ -725,6 +767,71 @@ function IdeaPeek({
                 <div>
                   <Label className="text-xs text-muted-foreground">Owner</Label>
                   <p data-testid="text-peek-owner">{assigneeName(idea.createdByUserId) || "—"}</p>
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs text-muted-foreground">Campaign</Label>
+                  {canEdit ? (
+                    <div className="space-y-2">
+                      <Select
+                        value={(idea as any).campaignId || "none"}
+                        onValueChange={(v) => {
+                          if (v === "__new__") {
+                            setNewCampaignOpen(true);
+                            return;
+                          }
+                          campaignMutation.mutate(v === "none" ? null : v);
+                        }}
+                      >
+                        <SelectTrigger className="h-8" data-testid="select-peek-campaign"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No campaign</SelectItem>
+                          {(campaigns ?? []).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                          <SelectItem value="__new__">+ New campaign...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {newCampaignOpen && (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className="h-8"
+                            placeholder="New campaign name"
+                            value={newCampaignName}
+                            onChange={(e) => setNewCampaignName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && newCampaignName.trim() && !createCampaignMutation.isPending) {
+                                createCampaignMutation.mutate(newCampaignName.trim());
+                              }
+                            }}
+                            autoFocus
+                            data-testid="input-peek-new-campaign"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-8"
+                            disabled={!newCampaignName.trim() || createCampaignMutation.isPending}
+                            onClick={() => createCampaignMutation.mutate(newCampaignName.trim())}
+                            data-testid="button-peek-create-campaign"
+                          >
+                            {createCampaignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8"
+                            onClick={() => { setNewCampaignOpen(false); setNewCampaignName(""); }}
+                            data-testid="button-peek-cancel-campaign"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p data-testid="text-peek-campaign">
+                      {campaigns?.find((c) => c.id === (idea as any).campaignId)?.name || "—"}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -857,13 +964,17 @@ export default function PipelineView({ lens }: { lens: Lens }) {
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
   const [showBacklog, setShowBacklog] = useState(true);
+  const [campaignFilter, setCampaignFilter] = useState<string | null>(null);
 
-  // Deep links: ?idea=<id> opens the peek; ?create=1 opens quick-create.
+  // Deep links: ?idea=<id> opens the peek; ?create=1 opens quick-create;
+  // ?campaignId=<id> filters the pipeline to one campaign's content (T2).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const idea = params.get("idea");
     if (idea) setPeekId(idea);
     if (params.get("create")) setCreateOpen(true);
+    const campaign = params.get("campaignId");
+    if (campaign) setCampaignFilter(campaign);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -875,9 +986,10 @@ export default function PipelineView({ lens }: { lens: Lens }) {
     if (originFilter !== "all") f.origin = originFilter;
     if (pillarFilter !== "all") f.pillar = pillarFilter;
     if (assigneeFilter !== "all") f.assignedTo = assigneeFilter;
+    if (campaignFilter) f.campaignId = campaignFilter;
     if (search.trim()) f.search = search.trim();
     return f;
-  }, [selectedProjectId, statusFilter, typeFilter, channelFilter, originFilter, pillarFilter, assigneeFilter, search]);
+  }, [selectedProjectId, statusFilter, typeFilter, channelFilter, originFilter, pillarFilter, assigneeFilter, campaignFilter, search]);
 
   const { data: assignees } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/studio/assignees"],

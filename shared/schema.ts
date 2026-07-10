@@ -2628,6 +2628,12 @@ export const studioProjects = pgTable("studio_projects", {
   // { regions: ["us","india"], categories: ["festival","industry_awareness"] }.
   // NULL = show no occasions for this project.
   occasionPreferences: jsonb("occasion_preferences"),
+  // Brand Voice Hub (Studio T2, Task #907). Shape:
+  // { default: { tone[], guardrails[], bannedPhrases[], signaturePhrases[],
+  //   icpOneLiner, brandPromise, ctaStyle, complianceNotes, defaultFramework },
+  //   platforms: { linkedin|instagram|facebook|x|story: { tone[], signaturePhrases[] } } }
+  // NULL = fall back to system DEFAULT_BRAND.
+  brandVoiceConfig: jsonb("brand_voice_config"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -2748,6 +2754,43 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   // T4: generated branded social cards for this idea — same contract shape as
   // studio_articles.social_cards_jsonb ({family, layout, generatedAt, cards:[...]}).
   socialCardsJsonb: jsonb("social_cards_jsonb"),
+  createdByUserId: varchar("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Studio T2: campaigns — the unit of marketing intent (Task #907) ─────────
+export const studioCampaigns = pgTable("studio_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  name: varchar("name").notNull(),
+  brief: text("brief"), // strategic paragraph handed to the AI planner
+  icp: varchar("icp"), // ideal customer profile one-liner
+  goal: varchar("goal"),
+  funnelStage: varchar("funnel_stage"), // awareness | consideration | decision
+  primaryCta: varchar("primary_cta"),
+  channels: jsonb("channels"), // subset of STUDIO_CHANNELS
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  status: varchar("status").default("draft").notNull(), // draft | active | paused | completed
+  // Contributor admin-user ids notified on campaign events.
+  contributorUserIds: jsonb("contributor_user_ids"),
+  createdByUserId: varchar("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Studio T2: copy-only outreach sequences (never sent by the system) ──────
+export const studioOutreachSequences = pgTable("studio_outreach_sequences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  campaignId: varchar("campaign_id"),
+  name: varchar("name").notNull(),
+  sequenceType: varchar("sequence_type").default("linkedin").notNull(), // linkedin | email
+  audienceType: varchar("audience_type"),
+  // [{ order, subjectOrHook, body, notes }]
+  stepsJsonb: jsonb("steps_jsonb"),
+  status: varchar("status").default("draft").notNull(), // draft | approved | archived
   createdByUserId: varchar("created_by_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2965,6 +3008,12 @@ export const insertStudioGenerationSchema = createInsertSchema(studioGenerations
 export const insertStudioContentIdeaSchema = createInsertSchema(studioContentIdeas).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStudioIdeaCommentSchema = createInsertSchema(studioIdeaComments).omit({ id: true, createdAt: true });
 export const insertStudioImportBatchSchema = createInsertSchema(studioImportBatches).omit({ id: true, createdAt: true });
+export const insertStudioCampaignSchema = createInsertSchema(studioCampaigns).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertStudioOutreachSequenceSchema = createInsertSchema(studioOutreachSequences).omit({ id: true, createdAt: true, updatedAt: true });
+export type StudioCampaign = typeof studioCampaigns.$inferSelect;
+export type InsertStudioCampaign = z.infer<typeof insertStudioCampaignSchema>;
+export type StudioOutreachSequence = typeof studioOutreachSequences.$inferSelect;
+export type InsertStudioOutreachSequence = z.infer<typeof insertStudioOutreachSequenceSchema>;
 export type StudioContentIdea = typeof studioContentIdeas.$inferSelect;
 export type InsertStudioContentIdea = z.infer<typeof insertStudioContentIdeaSchema>;
 export type StudioIdeaComment = typeof studioIdeaComments.$inferSelect;

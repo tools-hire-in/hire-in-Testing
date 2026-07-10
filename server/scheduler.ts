@@ -749,6 +749,67 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
+  // ─── Studio T2: overdue campaign content digest (Task #907) ────────────────
+  // Daily 09:00 IST: unfinished campaign-linked ideas past their due date →
+  // one digest per campaign to its contributors + owner. Copy-only alert; no
+  // status is changed automatically.
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      const { year, month, day } = getIstDateTime();
+      const todayIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const overdue = await storage.getOverdueCampaignIdeas(todayIso);
+      if (!overdue.length) return;
+      const byCampaign = new Map<string, typeof overdue>();
+      for (const idea of overdue) {
+        const list = byCampaign.get(idea.campaignId!) ?? [];
+        list.push(idea);
+        byCampaign.set(idea.campaignId!, list);
+      }
+      console.log(`[scheduler] Studio T2: overdue campaign items in ${byCampaign.size} campaign(s).`);
+      for (const [campaignId, ideas] of Array.from(byCampaign.entries())) {
+        const campaign = await storage.getStudioCampaign(campaignId);
+        if (!campaign || campaign.status === "completed" || campaign.status === "paused") continue;
+
+        // 1) Flag each overdue piece to its assignee (one digest per assignee
+        //    per campaign — unassigned pieces surface via the creator summary).
+        const byAssignee = new Map<string, typeof ideas>();
+        for (const idea of ideas) {
+          if (!idea.assignedToUserId) continue;
+          const list = byAssignee.get(idea.assignedToUserId) ?? [];
+          list.push(idea);
+          byAssignee.set(idea.assignedToUserId, list);
+        }
+        for (const [assigneeId, mine] of Array.from(byAssignee.entries())) {
+          const preview = mine.slice(0, 3).map((i) => `"${i.topic}"`).join(", ");
+          await notifyStudioUser({
+            userId: assigneeId,
+            event: "campaign_overdue",
+            message: `${mine.length} of your item(s) in campaign "${campaign.name}" are past due: ${preview}${mine.length > 3 ? "..." : ""}`,
+            linkPath: `/campaigns/${campaign.id}`,
+            metadata: { campaignId: campaign.id, overdueCount: mine.length },
+          });
+        }
+
+        // 2) Summary to the campaign creator — only when the campaign has
+        //    accumulated >= 3 overdue pieces (product rule; avoids noise).
+        if (ideas.length >= 3 && campaign.createdByUserId) {
+          const preview = ideas.slice(0, 3).map((i) => `"${i.topic}"`).join(", ");
+          await notifyStudioUser({
+            userId: campaign.createdByUserId,
+            event: "campaign_overdue",
+            message: `${ideas.length} item(s) in campaign "${campaign.name}" are past due: ${preview}${ideas.length > 3 ? "..." : ""}`,
+            linkPath: `/campaigns/${campaign.id}`,
+            metadata: { campaignId: campaign.id, overdueCount: ideas.length },
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[scheduler] Studio T2 campaign overdue digest error:", err);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
   // ─── 25th-of-month: Manager Regularization Digest ───────────────────────────
   // Sends each manager a list of their pending regularization requests so they
   // resolve them before the month-end salary run.

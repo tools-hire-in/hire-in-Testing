@@ -821,6 +821,46 @@ async function ensureStudioOccasionsAndIdeas() {
       )
     `);
     await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS social_cards_jsonb jsonb`);
+    // Studio T2: later-added columns are never backfilled by the CREATE TABLE
+    // IF NOT EXISTS above, so ensure them explicitly (idempotent).
+    await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS campaign_id varchar`);
+    await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS archived_at timestamp`);
+    await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS brand_voice_config jsonb`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS studio_campaigns (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id varchar NOT NULL REFERENCES studio_projects(id),
+        name varchar NOT NULL,
+        brief text,
+        icp varchar,
+        goal varchar,
+        funnel_stage varchar,
+        primary_cta varchar,
+        channels jsonb,
+        start_date date,
+        end_date date,
+        status varchar NOT NULL DEFAULT 'draft',
+        contributor_user_ids jsonb,
+        created_by_user_id varchar,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS studio_outreach_sequences (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id varchar NOT NULL REFERENCES studio_projects(id),
+        campaign_id varchar,
+        name varchar NOT NULL,
+        sequence_type varchar NOT NULL DEFAULT 'linkedin',
+        audience_type varchar,
+        steps_jsonb jsonb,
+        status varchar NOT NULL DEFAULT 'draft',
+        created_by_user_id varchar,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
 
     const { seedStudioOccasions } = await import("./occasionsSeed");
     await seedStudioOccasions();

@@ -193,6 +193,83 @@ export interface AiGenerationParams {
   raw_input?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Brand Voice Hub (Studio T2) — per-project voice config stored in
+// studio_projects.brand_voice_config. Resolution order in aiDraftService:
+// platforms[channel] merged over default merged over DEFAULT_BRAND.
+// ---------------------------------------------------------------------------
+export const BRAND_VOICE_FRAMEWORKS = ["none", "aida", "pas", "bab"] as const;
+
+export const brandVoicePlatformOverrideSchema = z.object({
+  tone: z.array(z.string()).optional(),
+  signaturePhrases: z.array(z.string()).optional(),
+});
+
+export const brandVoiceDefaultSchema = z.object({
+  tone: z.array(z.string()).optional(),
+  guardrails: z.array(z.string()).optional(),
+  bannedPhrases: z.array(z.string()).optional(),
+  signaturePhrases: z.array(z.string()).optional(),
+  icpOneLiner: z.string().optional(),
+  brandPromise: z.string().optional(),
+  ctaStyle: z.string().optional(),
+  complianceNotes: z.string().optional(),
+  defaultFramework: z.string().optional(),
+});
+
+export const brandVoiceConfigSchema = z.object({
+  default: brandVoiceDefaultSchema.optional(),
+  platforms: z.record(z.string(), brandVoicePlatformOverrideSchema).optional(),
+});
+
+export type BrandVoiceConfig = z.infer<typeof brandVoiceConfigSchema>;
+export type BrandVoiceDefault = z.infer<typeof brandVoiceDefaultSchema>;
+
+/** Resolved brand voice handed to prompt rendering as flat params. */
+export interface ResolvedBrandVoice {
+  brand_name: string;
+  brand_tagline: string;
+  brand_voice: string;
+}
+
+/**
+ * Merge a project's brandVoiceConfig (+ optional channel override) over the
+ * system DEFAULT_BRAND into the flat prompt params. Pure — usable client-side
+ * for preview and server-side for generation.
+ */
+export function composeBrandVoice(
+  brandName: string | undefined,
+  tagline: string | undefined,
+  config: BrandVoiceConfig | null | undefined,
+  channel?: string | null,
+): ResolvedBrandVoice {
+  const base = config?.default ?? {};
+  const override = channel && config?.platforms ? config.platforms[channel] : undefined;
+  const tone = override?.tone?.length ? override.tone : base.tone;
+  const signature = override?.signaturePhrases?.length
+    ? override.signaturePhrases
+    : base.signaturePhrases;
+
+  const parts: string[] = [];
+  if (tone?.length) parts.push(`Tone: ${tone.join(", ")}.`);
+  if (base.guardrails?.length) parts.push(`Guardrails: ${base.guardrails.join("; ")}.`);
+  if (base.bannedPhrases?.length) parts.push(`Never use these phrases: ${base.bannedPhrases.join(", ")}.`);
+  if (signature?.length) parts.push(`Signature phrases to weave in naturally: ${signature.join(" | ")}.`);
+  if (base.icpOneLiner) parts.push(`Ideal customer profile: ${base.icpOneLiner}.`);
+  if (base.brandPromise) parts.push(`Brand promise: ${base.brandPromise}.`);
+  if (base.ctaStyle) parts.push(`CTA style: ${base.ctaStyle}.`);
+  if (base.complianceNotes) parts.push(`Compliance notes: ${base.complianceNotes}.`);
+  if (base.defaultFramework && base.defaultFramework !== "none") {
+    parts.push(`Structure copy using the ${base.defaultFramework.toUpperCase()} framework.`);
+  }
+
+  return {
+    brand_name: brandName || DEFAULT_BRAND.brand_name,
+    brand_tagline: tagline || DEFAULT_BRAND.brand_tagline,
+    brand_voice: parts.length ? parts.join(" ") : DEFAULT_BRAND.brand_voice,
+  };
+}
+
 export const DEFAULT_BRAND = {
   brand_name: "Hire'in Solutions",
   brand_tagline: "AI-powered recruitment for Healthcare, IT, Engineering & Professional Services",

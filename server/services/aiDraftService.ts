@@ -404,6 +404,183 @@ RELEASE NOTE FORMAT:
   }
 }
 
+// ---------------------------------------------------------------------------
+// Studio T2 (Task #907) — campaign planner, repurpose-to-ideas, and copy-only
+// outreach sequence generators. All propose; none publish or send.
+// ---------------------------------------------------------------------------
+const CAMPAIGN_PLAN_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          topic: { type: "string" },
+          angle: { type: "string" },
+          content_type: { type: "string", enum: ["article", "social_post", "story"] },
+          channels: { type: "array", items: { type: "string" } },
+          pillar: { type: "string" },
+          suggested_week: { type: "integer" },
+          cta: { type: "string" },
+        },
+        required: ["topic", "angle", "content_type", "channels", "pillar", "suggested_week", "cta"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "items"],
+  additionalProperties: false,
+};
+
+export interface CampaignPlanItem {
+  topic: string;
+  angle: string;
+  content_type: "article" | "social_post" | "story";
+  channels: string[];
+  pillar: string;
+  suggested_week: number;
+  cta: string;
+}
+
+export interface CampaignPlanResult {
+  summary: string;
+  items: CampaignPlanItem[];
+  model: string;
+  tokenEstimate: number;
+  rawOutput: any;
+}
+
+export async function generateCampaignPlan(
+  template: StudioPromptTemplate,
+  params: AiGenerationParams,
+): Promise<CampaignPlanResult> {
+  const { raw, model, tokenEstimate } = await callStructured(
+    template,
+    params,
+    CAMPAIGN_PLAN_JSON_SCHEMA,
+    "campaign_plan",
+  );
+  if (!raw || !Array.isArray(raw.items) || !raw.items.length) {
+    throw new AiGenerationError("validation", "Campaign plan output had no items.", false);
+  }
+  return {
+    summary: String(raw.summary || ""),
+    items: raw.items as CampaignPlanItem[],
+    model,
+    tokenEstimate,
+    rawOutput: raw,
+  };
+}
+
+const REPURPOSE_IDEAS_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          topic: { type: "string" },
+          angle: { type: "string" },
+          content_type: { type: "string", enum: ["social_post", "story"] },
+          channels: { type: "array", items: { type: "string" } },
+          hook: { type: "string" },
+        },
+        required: ["topic", "angle", "content_type", "channels", "hook"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
+
+export interface RepurposeIdeaItem {
+  topic: string;
+  angle: string;
+  content_type: "social_post" | "story";
+  channels: string[];
+  hook: string;
+}
+
+export interface RepurposeIdeasResult {
+  items: RepurposeIdeaItem[];
+  model: string;
+  tokenEstimate: number;
+  rawOutput: any;
+}
+
+export async function generateRepurposeIdeas(
+  template: StudioPromptTemplate,
+  params: AiGenerationParams,
+): Promise<RepurposeIdeasResult> {
+  const { raw, model, tokenEstimate } = await callStructured(
+    template,
+    params,
+    REPURPOSE_IDEAS_JSON_SCHEMA,
+    "repurpose_ideas",
+  );
+  if (!raw || !Array.isArray(raw.items) || !raw.items.length) {
+    throw new AiGenerationError("validation", "Repurpose output had no items.", false);
+  }
+  return { items: raw.items as RepurposeIdeaItem[], model, tokenEstimate, rawOutput: raw };
+}
+
+const OUTREACH_SEQUENCE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    steps: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          order: { type: "integer" },
+          subject_or_hook: { type: "string" },
+          body: { type: "string" },
+          notes: { type: "string" },
+        },
+        required: ["order", "subject_or_hook", "body", "notes"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["steps"],
+  additionalProperties: false,
+};
+
+export interface OutreachSequenceResult {
+  steps: { order: number; subjectOrHook: string; body: string; notes: string }[];
+  model: string;
+  tokenEstimate: number;
+  rawOutput: any;
+}
+
+export async function generateOutreachSequence(
+  template: StudioPromptTemplate,
+  params: AiGenerationParams,
+): Promise<OutreachSequenceResult> {
+  const { raw, model, tokenEstimate } = await callStructured(
+    template,
+    params,
+    OUTREACH_SEQUENCE_JSON_SCHEMA,
+    "outreach_sequence",
+  );
+  if (!raw || !Array.isArray(raw.steps) || !raw.steps.length) {
+    throw new AiGenerationError("validation", "Outreach output had no steps.", false);
+  }
+  const steps = raw.steps
+    .map((s: any) => ({
+      order: Number(s.order) || 0,
+      subjectOrHook: String(s.subject_or_hook || ""),
+      body: String(s.body || ""),
+      notes: String(s.notes || ""),
+    }))
+    .sort((a: any, b: any) => a.order - b.order);
+  return { steps, model, tokenEstimate, rawOutput: raw };
+}
+
 export function isAiConfigured(): boolean {
   return Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
 }

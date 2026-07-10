@@ -58,6 +58,7 @@ import {
   Download,
   RefreshCw,
   Lock,
+  Recycle,
 } from "lucide-react";
 import {
   Dialog,
@@ -71,6 +72,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { COMPLIANCE_MODES, type CanonicalSocialKit } from "@shared/studioAi";
 import {
   STUDIO_CONTENT_TYPES,
+  STUDIO_CHANNELS,
   getStudioContentType,
   computeReadTime,
 } from "@shared/studioContent";
@@ -127,6 +129,8 @@ function ArticleEditorInner({ id }: { id: string }) {
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
+  const [repurposeOpen, setRepurposeOpen] = useState(false);
+  const [repurposeChannels, setRepurposeChannels] = useState<string[]>(["linkedin"]);
   const [genMode, setGenMode] = useState<"topic" | "shape">("topic");
   const [genTopic, setGenTopic] = useState("");
   const [genRawInput, setGenRawInput] = useState("");
@@ -335,6 +339,24 @@ function ArticleEditorInner({ id }: { id: string }) {
     },
     onError: (err: Error) => {
       toast({ title: "Action failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const repurposeMutation = useMutation({
+    mutationFn: async (channels: string[]) => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/repurpose`, { channels });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      setRepurposeOpen(false);
+      toast({
+        title: `AI proposed ${data.created} idea(s) from this article`,
+        description: "Find them in the pipeline as dashed 'suggested' cards — accept or discard each one.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Repurpose failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -656,6 +678,22 @@ function ArticleEditorInner({ id }: { id: string }) {
                 )}
               </div>
             </>
+          )}
+          {canGenerate && (article.status === "published" || article.status === "approved") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRepurposeOpen(true)}
+              disabled={repurposeMutation.isPending}
+              data-testid="button-repurpose-article"
+            >
+              {repurposeMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Recycle className="mr-2 h-4 w-4" />
+              )}
+              Repurpose
+            </Button>
           )}
           {canEdit && (
             <Button
@@ -1301,6 +1339,53 @@ function ArticleEditorInner({ id }: { id: string }) {
           </Card>
         </div>
       </div>
+
+      {/* Repurpose-to-ideas modal — channel picker. */}
+      <Dialog open={repurposeOpen} onOpenChange={setRepurposeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Recycle className="h-5 w-5" />
+              Repurpose article
+            </DialogTitle>
+            <DialogDescription>
+              Pick the channels to repurpose this article into. The AI proposes one suggested
+              idea per channel — nothing is published until you accept it in the pipeline.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Channels</Label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {STUDIO_CHANNELS.map((c) => (
+                <Badge
+                  key={c}
+                  variant={repurposeChannels.includes(c) ? "default" : "outline"}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    setRepurposeChannels((prev) =>
+                      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+                    )
+                  }
+                  data-testid={`badge-repurpose-channel-${c}`}
+                >
+                  {c}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepurposeOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => repurposeMutation.mutate(repurposeChannels)}
+              disabled={!repurposeChannels.length || repurposeMutation.isPending}
+              data-testid="button-confirm-repurpose"
+            >
+              {repurposeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Repurpose into {repurposeChannels.length || "no"} idea(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* AI Generate Draft modal — two input modes. */}
       <Dialog open={genOpen} onOpenChange={setGenOpen}>

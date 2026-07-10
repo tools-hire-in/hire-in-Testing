@@ -31,8 +31,10 @@ import {
   Clapperboard,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Newspaper,
   Plus,
+  Send,
   Settings,
   Users,
 } from "lucide-react";
@@ -77,6 +79,12 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       active: ["/calendar", "/board", "/table"].some((p) => location.startsWith(studioPath(p))),
     },
     {
+      href: studioPath("/campaigns"),
+      label: "Campaigns",
+      icon: Megaphone,
+      active: location.startsWith(studioPath("/campaigns")),
+    },
+    {
       href: studioPath("/articles"),
       label: "Articles",
       icon: Newspaper,
@@ -87,6 +95,12 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       label: "Authors",
       icon: Users,
       active: location.startsWith(studioPath("/authors")),
+    },
+    {
+      href: studioPath("/outreach"),
+      label: "Outreach",
+      icon: Send,
+      active: location.startsWith(studioPath("/outreach")),
     },
     ...(canManageAuthors
       ? [{

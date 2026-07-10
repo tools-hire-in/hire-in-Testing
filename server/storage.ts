@@ -140,6 +140,12 @@ import {
   type InsertStudioIdeaComment,
   type StudioImportBatch,
   type InsertStudioImportBatch,
+  studioCampaigns,
+  studioOutreachSequences,
+  type StudioCampaign,
+  type InsertStudioCampaign,
+  type StudioOutreachSequence,
+  type InsertStudioOutreachSequence,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -652,6 +658,18 @@ export interface IStorage {
   getStudioImportBatches(projectId?: string): Promise<StudioImportBatch[]>;
   rollbackStudioImportBatch(id: string): Promise<number>;
   getStudioIdeasDueOn(date: string): Promise<StudioContentIdea[]>;
+
+  // Studio T2 — campaigns + outreach (Task #907)
+  getStudioCampaigns(projectId?: string): Promise<StudioCampaign[]>;
+  getStudioCampaign(id: string): Promise<StudioCampaign | undefined>;
+  createStudioCampaign(data: InsertStudioCampaign): Promise<StudioCampaign>;
+  updateStudioCampaign(id: string, updates: Partial<InsertStudioCampaign>): Promise<StudioCampaign | undefined>;
+  getStudioCampaignIdeaCounts(campaignIds: string[]): Promise<Map<string, { total: number; done: number }>>;
+  getOverdueCampaignIdeas(todayIso: string): Promise<StudioContentIdea[]>;
+  getStudioOutreachSequences(projectId?: string, campaignId?: string): Promise<StudioOutreachSequence[]>;
+  getStudioOutreachSequence(id: string): Promise<StudioOutreachSequence | undefined>;
+  createStudioOutreachSequence(data: InsertStudioOutreachSequence): Promise<StudioOutreachSequence>;
+  updateStudioOutreachSequence(id: string, updates: Partial<InsertStudioOutreachSequence>): Promise<StudioOutreachSequence | undefined>;
 
   // Public Insights read path (published Hire'in articles only).
   getPublishedInsights(filters: {
@@ -3963,6 +3981,121 @@ export class DatabaseStorage implements IStorage {
           sql`${studioContentIdeas.status} NOT IN ('published','done','rejected')`,
         ),
       );
+  }
+
+  // ---- Studio T2: campaigns + outreach (Task #907) ----
+  async getStudioCampaigns(projectId?: string): Promise<StudioCampaign[]> {
+    return await db
+      .select()
+      .from(studioCampaigns)
+      .where(projectId ? eq(studioCampaigns.projectId, projectId) : undefined)
+      .orderBy(desc(studioCampaigns.createdAt));
+  }
+
+  async getStudioCampaign(id: string): Promise<StudioCampaign | undefined> {
+    const [row] = await db.select().from(studioCampaigns).where(eq(studioCampaigns.id, id));
+    return row;
+  }
+
+  async createStudioCampaign(data: InsertStudioCampaign): Promise<StudioCampaign> {
+    const [created] = await db.insert(studioCampaigns).values(data).returning();
+    return created;
+  }
+
+  async updateStudioCampaign(
+    id: string,
+    updates: Partial<InsertStudioCampaign>,
+  ): Promise<StudioCampaign | undefined> {
+    const [updated] = await db
+      .update(studioCampaigns)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(studioCampaigns.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getStudioCampaignIdeaCounts(
+    campaignIds: string[],
+  ): Promise<Map<string, { total: number; done: number }>> {
+    const map = new Map<string, { total: number; done: number }>();
+    if (!campaignIds.length) return map;
+    const rows = await db
+      .select({
+        campaignId: studioContentIdeas.campaignId,
+        status: studioContentIdeas.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studioContentIdeas)
+      .where(
+        and(
+          inArray(studioContentIdeas.campaignId, campaignIds),
+          isNull(studioContentIdeas.archivedAt),
+        ),
+      )
+      .groupBy(studioContentIdeas.campaignId, studioContentIdeas.status);
+    for (const r of rows) {
+      if (!r.campaignId) continue;
+      const entry = map.get(r.campaignId) ?? { total: 0, done: 0 };
+      entry.total += r.count;
+      if (r.status === "published" || r.status === "done") entry.done += r.count;
+      map.set(r.campaignId, entry);
+    }
+    return map;
+  }
+
+  async getOverdueCampaignIdeas(todayIso: string): Promise<StudioContentIdea[]> {
+    return await db
+      .select()
+      .from(studioContentIdeas)
+      .where(
+        and(
+          isNull(studioContentIdeas.archivedAt),
+          sql`${studioContentIdeas.campaignId} IS NOT NULL`,
+          sql`${studioContentIdeas.dueDate} < ${todayIso}`,
+          sql`${studioContentIdeas.status} NOT IN ('published','done','rejected')`,
+        ),
+      );
+  }
+
+  async getStudioOutreachSequences(
+    projectId?: string,
+    campaignId?: string,
+  ): Promise<StudioOutreachSequence[]> {
+    const conditions = [];
+    if (projectId) conditions.push(eq(studioOutreachSequences.projectId, projectId));
+    if (campaignId) conditions.push(eq(studioOutreachSequences.campaignId, campaignId));
+    return await db
+      .select()
+      .from(studioOutreachSequences)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(studioOutreachSequences.createdAt));
+  }
+
+  async getStudioOutreachSequence(id: string): Promise<StudioOutreachSequence | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioOutreachSequences)
+      .where(eq(studioOutreachSequences.id, id));
+    return row;
+  }
+
+  async createStudioOutreachSequence(
+    data: InsertStudioOutreachSequence,
+  ): Promise<StudioOutreachSequence> {
+    const [created] = await db.insert(studioOutreachSequences).values(data).returning();
+    return created;
+  }
+
+  async updateStudioOutreachSequence(
+    id: string,
+    updates: Partial<InsertStudioOutreachSequence>,
+  ): Promise<StudioOutreachSequence | undefined> {
+    const [updated] = await db
+      .update(studioOutreachSequences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(studioOutreachSequences.id, id))
+      .returning();
+    return updated;
   }
 
   // ---- Audit ----

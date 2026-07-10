@@ -7,7 +7,8 @@ In the isolated dev env, several studio columns exist in `shared/schema.ts` but 
 MISSING from the actual DB (auto-migrations disabled; the original CREATE TABLE IF NOT
 EXISTS ensure-blocks never add later-added columns). Known drifters: `studio_articles.category`,
 `studio_newsletter_subscribers.suppressed_at` / `bounce_count` / `last_bounce_at`, and
-`studio_projects.routing_rules` (whole-row `getStudioProjects` 500s until an ALTER ensure adds it).
+`studio_projects.routing_rules` (whole-row `getStudioProjects` 500s until an ALTER ensure adds it),
+and `studio_content_ideas.archived_at` (broke campaign idea-count queries until ALTER'd in).
 Any `db.select()` (all columns) against these tables throws `column ... does not exist`
 (Postgres 42703), which 500s the read path (insights getters, getNewsletterSubscriberCounts).
 

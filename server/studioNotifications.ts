@@ -28,7 +28,11 @@ export type StudioNotificationEvent =
   | "idea_changes_requested"
   | "idea_comment"
   | "idea_due_soon"
-  | "idea_promoted";
+  | "idea_promoted"
+  | "campaign_contributor_added"
+  | "campaign_plan_proposed"
+  | "campaign_plan_approved"
+  | "campaign_overdue";
 
 const EVENT_TITLES: Record<StudioNotificationEvent, string> = {
   idea_assigned: "Content idea assigned to you",
@@ -39,6 +43,10 @@ const EVENT_TITLES: Record<StudioNotificationEvent, string> = {
   idea_comment: "New comment on a content idea",
   idea_due_soon: "Content idea due tomorrow",
   idea_promoted: "Idea promoted to article",
+  campaign_contributor_added: "You were added to a campaign",
+  campaign_plan_proposed: "AI campaign plan proposed",
+  campaign_plan_approved: "Campaign plan approved",
+  campaign_overdue: "Campaign content overdue",
 };
 
 /**

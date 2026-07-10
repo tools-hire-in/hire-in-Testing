@@ -19,7 +19,13 @@ interface SeedTemplate {
   modelName: string;
   modelTier: "economy" | "standard";
   maxTokens: number;
-  outputSchemaRef: "article_draft" | "social_kit" | "quality_review";
+  outputSchemaRef:
+    | "article_draft"
+    | "social_kit"
+    | "quality_review"
+    | "campaign_plan"
+    | "repurpose_ideas"
+    | "outreach_sequence";
 }
 
 const BRAND_GUARDRAIL =
@@ -197,6 +203,46 @@ const TEMPLATES: SeedTemplate[] = [
     modelTier: "economy",
     maxTokens: 2000,
     outputSchemaRef: "quality_review",
+  },
+  // ── Studio T2 (Task #907) ─────────────────────────────────────────────────
+  {
+    contentType: "campaign_planner",
+    version: 1,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " Task: act as a senior content strategist. From a campaign brief, propose a mixed-format content plan (articles, social posts, stories) spread across the campaign duration. Every item must serve the campaign goal, funnel stage, and ICP. Vary formats and angles; avoid repetitive topics. Use only the allowed channels supplied. suggested_week is 1-based from campaign start. These are PROPOSALS for a human planner to accept or discard; do not assume anything will be published.",
+    userPromptTemplate:
+      "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Compliance mode: {{compliance_mode}}.\n\nCampaign: {{campaign_name}}\nBrief: {{campaign_brief}}\nGoal: {{campaign_goal}}\nFunnel stage: {{funnel_stage}}\nIdeal customer profile: {{icp}}\nPrimary CTA: {{primary_cta}}\nAllowed channels: {{allowed_channels}}\nDuration in weeks: {{duration_weeks}}\nNumber of items to propose: {{item_count}}\nContent pillars available: {{pillars}}\n\nPropose the campaign content plan now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 5000,
+    outputSchemaRef: "campaign_plan",
+  },
+  {
+    contentType: "repurpose_to_ideas",
+    version: 1,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " Task: repurpose an existing published article into new derivative content ideas (social posts and stories). Each idea must stand alone with a distinct angle drawn from the article: a statistic or claim ALREADY IN the article, a contrarian take it supports, a checklist extraction, a quote-style pull, or a question hook. Never add facts that are not in the source article. These are idea PROPOSALS only; a human decides what gets drafted.",
+    userPromptTemplate:
+      "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Compliance mode: {{compliance_mode}}.\n\nSource article title: {{article_title}}\nSummary: {{article_summary}}\nBody:\n{{article_body}}\n\nAllowed channels: {{allowed_channels}}\nNumber of ideas: {{item_count}}\n\nPropose the repurposed content ideas now.",
+    modelName: "gpt-5-mini",
+    modelTier: "economy",
+    maxTokens: 3000,
+    outputSchemaRef: "repurpose_ideas",
+  },
+  {
+    contentType: "outreach_sequence",
+    version: 1,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " Task: write a multi-step outreach message sequence (LinkedIn DMs or emails) for a human to copy and send manually from their own account. The system NEVER sends messages. Keep each step short, personal, and specific to the audience; no spammy pressure tactics, no false urgency, no invented case studies or client names. Later steps must reference earlier ones naturally and give a graceful opt-out. subject_or_hook is the email subject line, or the opening line for LinkedIn. notes explains when and why to send that step.",
+    userPromptTemplate:
+      "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Compliance mode: {{compliance_mode}}.\n\nSequence type: {{sequence_type}}\nAudience: {{audience_type}}\nCampaign context: {{campaign_context}}\nGoal / primary CTA: {{primary_cta}}\nNumber of steps: {{step_count}}\nExtra instructions: {{extra_instructions}}\n\nWrite the outreach sequence now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 4000,
+    outputSchemaRef: "outreach_sequence",
   },
 ];
 
